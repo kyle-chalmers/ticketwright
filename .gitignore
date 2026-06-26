@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+.idea/
+*.iml
+
+# Per-install generated (a consuming repo renders these from the templates;
+# they are NOT part of the kit itself)
+.claude/settings.json
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local self-test / scratch output
+/tmp_selftest/
+*.log

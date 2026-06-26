@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# selftest.sh — the starter kit's own test suite (evals-as-first-class).
+# Validates the foundation, skills, adapters, templates, and HOOKS so a reviewer (or CI) can
+# trust the kit without manual poking. Read-only; no MFA/network. Exit non-zero on any failure.
+#
+# Run from anywhere:  bash bin/selftest.sh
+set -uo pipefail
+
+# cd to kit root (this script lives in <kit>/bin/)
+cd "$(dirname "$0")/.." || exit 2
+KIT="$(pwd)"
+PASS=0; FAIL=0; TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+ok()   { PASS=$((PASS+1)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
+bad()  { FAIL=$((FAIL+1)); printf "  \033[31m✗\033[0m %s\n" "$1"; [ -n "${2:-}" ] && printf "      %s\n" "$2"; }
+hdr()  { printf "\n\033[1m%s\033[0m\n" "$1"; }
+
+hdr "0 · tooling"
+command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
+command -v python3 >/dev/null 2>&1 && ok "python3 present" || bad "python3 missing"
+
+hdr "1 · config parses + every seam resolves to an adapter (both stacks)"
+for s in .claude/config/stack.yaml .claude/config/stack.example.asana-bq.yaml; do
+  if yq -e '.seams|keys' "$s" >/dev/null 2>&1; then ok "parses: $s"; else bad "parse error: $s"; fi
+  out="$(bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
+  if grep -q "All seams OK" <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
+    ok "all seams resolve: $s"
+  else bad "seam resolution failed: $s" "$(grep -E 'missing|UNREACHABLE' <<<"$out" | head -2)"; fi
+done
+
+hdr "2 · adapter verb coverage matches the contract"
+verbs_expected() {  # bash 3.2-safe (no associative arrays)
+  case "$1" in
+    tracker) echo 6;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;; *) echo 0;;
+  esac
+}
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  seam="$(basename "$(dirname "$f")")"; want="$(verbs_expected "$seam")"
+  got="$(grep -c '^## verb:' "$f")"
+  [ "$got" -eq "$want" ] && ok "$f ($got/$want verbs)" || bad "$f has $got verbs, expected $want"
+done
+
+hdr "3 · no tool names leak into skill/command orchestration"
+# Two intentional matches are allowed: the CLI *detector* and the self-test *instruction* line.
+leaks="$(grep -REn -i 'acli|\bsnow \b|snow sql|mcp__slack|slack_send|\bgh pr\b|\bgh auth\b|ACCOUNT_USAGE|SHOW VIEWS' \
+          .claude/skills .claude/commands 2>/dev/null \
+          | grep -v 'for c in snow acli gh' \
+          | grep -v 'grep -REn "acli|snow ' || true)"
+[ -z "$leaks" ] && ok "skills/commands are tool-neutral" || bad "tool name leaked into a skill" "$leaks"
+
+hdr "4 · frontmatter valid (skills + agents)"
+for f in .claude/skills/*/SKILL.md .claude/agents/*.md; do
+  [ -f "$f" ] || continue
+  if [ "$(head -1 "$f")" = "---" ] && grep -q '^name:' "$f" && grep -q '^description:' "$f"; then
+    ok "frontmatter: $f"
+  else bad "bad frontmatter: $f"; fi
+done
+
+hdr "5 · render.sh round-trip (AGENTS.md.tmpl → no unresolved tokens)"
+cat > "$TMP/vars.env" <<'EOF'
+repo_name=demo
+domain=data
+ticket_path=tickets/{assignee}/{id}
+tracker_tool=jira
+warehouse_tool=snowflake
+chat_tool=slack
+docstore_tool=gdrive
+vcs_tool=github
+key_prefix=ENG
+terminal_status=Done
+wl_tracker_comment=100
+wl_chat=100
+wl_pr=200
+wl_ticket=200
+chat_always_include=Alice
+default_branch=main
+EOF
+err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
+[ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
+
+hdr "6 · db_write_guard hook (PreToolUse policy enforcement)"
+guard() { python3 .claude/hooks/db_write_guard.py; }
+# read-only inline SELECT → no decision (allow through)
+out="$(echo '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \"SELECT * FROM t LIMIT 5\""}}' | guard)"
+[ -z "$out" ] && ok "SELECT passes through (no prompt)" || bad "SELECT wrongly gated" "$out"
+# inline destructive UPDATE → ask
+out="$(echo '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \"UPDATE t SET x=1\""}}' | guard)"
+grep -q '"permissionDecision": "ask"' <<<"$out" && grep -q UPDATE <<<"$out" && ok "inline UPDATE → ask" || bad "UPDATE not gated" "$out"
+# destructive SQL inside a -f file → ask (the strengthened file scan)
+echo "CREATE OR REPLACE TABLE foo AS SELECT 1;" > "$TMP/deploy.sql"
+out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"snow sql -f $TMP/deploy.sql\"},\"cwd\":\"/\"}" | guard)"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "-f deploy.sql (CREATE OR REPLACE) → ask" || bad "file-based write not gated" "$out"
+# read-only -f file → no decision
+echo "SELECT count(*) FROM t;" > "$TMP/qc.sql"
+out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"snow sql -f $TMP/qc.sql\"},\"cwd\":\"/\"}" | guard)"
+[ -z "$out" ] && ok "-f qc.sql (SELECT only) passes through" || bad "read-only file wrongly gated" "$out"
+# non-warehouse bash → no decision
+out="$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' | guard)"
+[ -z "$out" ] && ok "non-warehouse bash passes through" || bad "non-warehouse wrongly gated" "$out"
+# non-Bash tool → no decision
+out="$(echo '{"tool_name":"Read","tool_input":{"file_path":"x"}}' | guard)"
+[ -z "$out" ] && ok "non-Bash tool passes through" || bad "non-Bash wrongly gated" "$out"
+
+hdr "7 · session_context hook (SessionStart priming)"
+out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q "ENG" <<<"$out" && grep -qi "PIV loop" <<<"$out" && ok "emits stack + PIV summary" || bad "session context missing/empty" "$out"
+
+hdr "8 · statusline renders"
+out="$(echo '{}' | CLAUDE_PROJECT_DIR="$KIT" bash .claude/statusline.sh 2>&1)"
+grep -q "ENG" <<<"$out" && ok "statusline: $out" || bad "statusline empty/broken" "$out"
+
+hdr "9 · productize-workflow stamp smoke (SKILL.md.tmpl → 0 leftover tokens)"
+err="$(bash bin/render.sh templates/productized-skill/SKILL.md.tmpl \
+  skill_name=x one_line_description=x argument_hint=x workflow_name=x params_table=x \
+  param_validation=x precondition=x render_run_steps=x qc_table=x output_filenames=x \
+  golden_invocation=x golden_fixture=x golden_assertions=x failure_mode_tests=x side_effects=x \
+  2>&1 >/dev/null)"
+[ -z "$err" ] && ok "productized SKILL.md stamps clean" || bad "leftover tokens in stamped SKILL.md" "$err"
+
+hdr "10 · ticket index (renderer + url template + hooks)"
+P="$TMP/proj"
+mkdir -p "$P/.claude/config" "$P/bin" "$P/tickets/alice/ENG-1"
+cp bin/build_ticket_index.py bin/ingest_index_records.py "$P/bin/"
+cat > "$P/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+  key_prefixes: [ENG]
+  ticket_url_template: "https://acme.example/browse/{id}"
+EOF
+printf '# ENG-1: Demo index ticket\n\nA demo ticket used by the kit self-test to exercise the index renderer.\n' > "$P/tickets/alice/ENG-1/README.md"
+CLAUDE_PROJECT_DIR="$P" python3 bin/build_ticket_index.py >/dev/null 2>&1
+if grep -q 'ENG-1' "$P/tickets/INDEX.md" 2>/dev/null && grep -q '▱' "$P/tickets/INDEX.md" 2>/dev/null; then
+  ok "renderer writes INDEX.md with an un-enriched row"; else bad "renderer did not produce expected INDEX.md"; fi
+grep -q 'acme.example/browse/ENG-1' "$P/tickets/INDEX.md" 2>/dev/null && ok "ticket_url_template applied" || bad "ticket_url_template not applied"
+if CLAUDE_PROJECT_DIR="$P" python3 bin/build_ticket_index.py --check >/dev/null 2>&1; then
+  ok "--check passes after render (deterministic)"; else bad "--check reported stale immediately after render"; fi
+mkdir -p "$P/tickets/alice/ENG-2"
+printf '# ENG-2: Second demo ticket\n\nAnother demo ticket.\n' > "$P/tickets/alice/ENG-2/README.md"
+echo "{\"tool_input\":{\"file_path\":\"$P/tickets/alice/ENG-2/README.md\"},\"cwd\":\"$P\"}" | CLAUDE_PROJECT_DIR="$P" python3 .claude/hooks/regenerate_ticket_index.py >/dev/null 2>&1
+grep -q 'ENG-2' "$P/tickets/INDEX.md" 2>/dev/null && ok "PostToolUse hook auto-adds a new ticket row" || bad "PostToolUse hook did not regenerate"
+out="$(echo '{}' | CLAUDE_PROJECT_DIR="$P" python3 .claude/hooks/ticket_index_context.py 2>&1)"
+grep -qi 'INDEX.md' <<<"$out" && ok "SessionStart index hook emits a catalog pointer" || bad "SessionStart index hook silent" "$out"
+
+printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || exit 1

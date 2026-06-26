@@ -1,0 +1,72 @@
+# AI Agent Instructions — {{repo_name}}
+
+> Rendered from the starter kit by `/configure-workspace`. Edit the kit template, not this file, if
+> you want changes to propagate to other repos. Tool specifics live in `.claude/config/stack.yaml`
+> + `adapters/`; this file is the always-loaded **global rules** tier of the AI layer.
+
+## Role
+Ticket-driven {{domain}} work — analysis-first, quality-first. **KISS / YAGNI.** One folder per
+ticket under `{{ticket_path}}`.
+
+## The PIV loop (how work flows)
+**Plan → Implement → Validate.** `/start-ticket` (+ `/prime-ticket`, `/prime-warehouse`,
+`/prime-domain`) → `/spec-and-build` → `/qc-review` → `/deliver-ticket`. Recurring work →
+`/productize-workflow`. Domain knowledge base → `/build-context-pack`.
+
+## The stack (this repo)
+| Seam | Tool | Adapter |
+|---|---|---|
+| Tracker | {{tracker_tool}} | `adapters/tracker/{{tracker_tool}}.md` |
+| Warehouse | {{warehouse_tool}} | `adapters/warehouse/{{warehouse_tool}}.md` |
+| Chat | {{chat_tool}} | `adapters/chat/{{chat_tool}}.md` |
+| Docstore | {{docstore_tool}} | `adapters/docstore/{{docstore_tool}}.md` |
+| VCS | {{vcs_tool}} | `adapters/vcs/{{vcs_tool}}.md` |
+
+Ticket-id prefix `{{key_prefix}}`; done state `{{terminal_status}}`. Skills target abstract verbs
+and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI, or ID
+in a skill**; put it in the config/adapter.
+
+## Permission hierarchy
+**No permission needed (internal):** read queries / data exploration; reading/searching/writing files
+in the repo; local analysis + output.
+**Explicit permission required (external/destructive):** any DB write (UPDATE/ALTER/DROP/DELETE/
+INSERT/CREATE OR REPLACE/TRUNCATE/DDL); commits/pushes/PRs; tracker comments; chat messages; docstore
+backups. **DB-write protocol:** show the exact SQL → explain the change → wait for `yes` → run. This
+is enforced mechanically by the `db_write_guard` PreToolUse hook (`.claude/hooks/`) — it asks before
+any destructive warehouse statement, including SQL hidden in a `-f` file — so the rule holds even if
+the agent forgets it.
+
+## The 9 policies (inherited by every skill, from stack.yaml)
+1. **hard_halt_before_external_posts** — pause for human go before any tracker/chat/docstore write.
+2. **db_write_requires_approval** — show SQL, explain, wait.
+3. **chat_default_draft** — draft, don't send, unless told "send it".
+4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
+5. **commandify_everything** — recurring work becomes a `/productize-workflow` skill.
+6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
+7. **commit_plan_before_implement** — `/spec-and-build` commits the spec before building (blame-free retry).
+8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
+9. **deterministic_outputs** — explicit `ORDER BY` on exports; productized skills ship golden-replay diffs.
+
+## Ticket folder
+```
+{{ticket_path}}/
+├── README.md            # business context + ALL assumptions + QC results
+├── source_materials/    # attachments / inputs
+├── final_deliverables/  # numbered in review order; filenames carry record counts
+├── qc_queries/          # numbered QC + the /qc-review verdict
+└── exploratory_analysis/
+```
+
+## Communication (limits)
+Tracker comment <{{wl_tracker_comment}} words · chat <{{wl_chat}} · PR <{{wl_pr}} · new ticket
+<{{wl_ticket}}>. Tracker comments: business-first, segmented with counts/%/$, link the specific
+docstore file. Chat: include {{chat_always_include}}; hyperlink everything; default to draft.
+
+## Quality control (the validation pyramid)
+Every deliverable: ① dialect lint → ② counts & dedup (duplicate detection is the primary test) →
+③ cross-source reconciliation → ④ independent re-run + anti-pattern sweep → ⑤ human sign-off.
+Run `/qc-review` before `/deliver-ticket`.
+
+## Git
+Branch = ticket id off `{{default_branch}}`. Semantic commits/PRs (`feat|fix|docs|refactor|chore|
+test|ci`). Stage only files you changed. Co-Authored-By trailer on commits.

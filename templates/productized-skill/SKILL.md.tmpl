@@ -1,0 +1,60 @@
+---
+name: {{skill_name}}
+description: {{one_line_description}} Parameterized, QC-gated, golden-tested; hard-halts before any external post.
+argument-hint: {{argument_hint}}
+---
+
+# /{{skill_name}}
+
+Productized replacement for the clone-the-last-ticket {{workflow_name}} workflow. Parameterized,
+phased, QC-gated, and **hard-halts before any external post**. Reads `.claude/config/stack.yaml` and
+resolves all I/O through adapters (no hardcoded tools).
+
+## Required parameters
+| Flag | Format | Example | Notes |
+|---|---|---|---|
+{{params_table}}
+
+## Phase 0 — Pre-flight (halt-on-fail)
+1. Validate every parameter ({{param_validation}}).
+2. `bash bin/drift_check.sh` — confirm every object/view this workflow reads is still reachable; halt on any miss.
+3. `bash bin/verify_stack.sh` for the seams this workflow touches; halt with adapter auth notes if unreachable.
+4. Source-state precondition: {{precondition}} — halt with a pointer if unmet.
+5. Scaffold the ticket folder if absent.
+
+## Phase 1 — Render & run steps
+{{render_run_steps}}
+Render each `sql/*.sql` (or `bin/*`) by substituting tokens, write to the ticket's
+`final_deliverables/`, execute via the warehouse adapter. Capture the metrics each step emits.
+Any DB write ⇒ policy `db_write_requires_approval` (show SQL, explain, wait). Record a **rollback
+key** for any write.
+
+## Phase 2 — QC (atomic checkpoint)
+Render `sql/qc.sql`, execute, parse per check:
+{{qc_table}}
+Hard-halt checks non-zero → halt with structured remediation. Warn checks → surface, don't block.
+
+## Phase 3 — Export (deterministic)
+Export with explicit `ORDER BY` (byte-identical replays); strip the CLI preamble; verify headers row 1.
+Canonical filenames: {{output_filenames}}.
+
+## Phase 4 — Render docs & HARD HALT
+Render `templates/README.md.tmpl` → ticket README and `templates/tracker_comment.txt.tmpl` → draft.
+Print the summary and **exit** — no tracker post, no docstore backup, no commit. To ship after review:
+`/{{skill_name}}-post-review --ticket <ticket>` (or `/deliver-ticket <ticket>`).
+
+## Phase 5 — Post-review (separate invocation)
+Honors `hard_halt_before_external_posts`: docstore backup → tracker comment (smart links) → chat
+draft (include always_include; hyperlink everything) → commit + PR. Then the system-evolution retro.
+
+## Golden test
+`/{{skill_name}} {{golden_invocation}}` → expected per `golden/{{golden_fixture}}.json`
+({{golden_assertions}}). Export must byte-match the fixture's reference file.
+
+## Failure-mode tests
+{{failure_mode_tests}}
+
+## Files read / written / side effects
+- Reads: `sql/*`, `templates/*`, `golden/*`, `bin/drift_check.sh`, `.claude/config/stack.yaml`
+- Writes: the ticket's README, deliverable SQL, QC SQL, the canonical CSVs, the tracker-comment draft
+- Side effects: {{side_effects}}

@@ -1,0 +1,67 @@
+# stack.example.asana-bq.yaml — ABSTRACTION PROOF (hypothetical repo).
+# A completely different stack — Asana + BigQuery + Teams + SharePoint + GitLab — with the SAME
+# skills and SAME verb contract. Nothing in .claude/skills/** changes; only this file + adapters do.
+# Try it: bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run
+
+project:
+  key_prefix: GROW                      # a tag added to task names for branch parity
+  assignee_dir: ana
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
+  default_epic: null                    # Asana has no Epics; create_ticket uses a project section
+  terminal_status: Done
+  word_limits: {tracker_comment: 120, chat: 120, pr: 200, ticket: 200}
+
+seams:
+  tracker:
+    tool: asana
+    adapter: adapters/tracker/asana.md
+    transport: mcp
+    workspace_gid: "1122334455"
+    default_project_gid: "9988776655"
+    verify: null                        # MCP-only
+
+  warehouse:
+    tool: bigquery
+    adapter: adapters/warehouse/bigquery.md
+    transport: cli
+    project: growth-analytics-prod
+    dataset: analytics
+    dev_dataset: analytics_dev
+    verify: "bq query --use_legacy_sql=false --dry_run 'SELECT 1'"
+
+  chat:
+    tool: teams
+    adapter: adapters/chat/teams.md
+    transport: mcp
+    channel: "Data Team / General"
+    default_mode: draft
+    always_include: [Ana]
+    verify: null
+
+  docstore:
+    tool: sharepoint
+    adapter: adapters/docstore/sharepoint.md
+    transport: cli
+    base_path: "/Users/ana/Library/CloudStorage/OneDrive-Growth/Data Tickets"
+    verify: "test -d \"{base_path}\""
+
+  vcs:
+    tool: gitlab
+    adapter: adapters/vcs/gitlab.md
+    transport: cli
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".worktrees"
+    verify: "glab auth status"
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: true
+  chat_default_draft: true
+  hyperlink_everything: true
+  commandify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

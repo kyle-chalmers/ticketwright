@@ -1,0 +1,75 @@
+# stack.yaml — the tool registry + project facts + policies (single source of truth).
+#
+# This is a WORKED EXAMPLE for a fictional "Acme" data team (Jira / Snowflake / Slack /
+# Google Drive / GitHub). Replace the values with your own, or run `/configure-workspace`
+# to generate this file by detecting your tooling and interviewing you.
+# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.yaml
+# A second example (Asana / BigQuery / Teams / SharePoint / GitLab) lives in stack.example.asana-bq.yaml.
+
+project:
+  key_prefix: ENG                       # ticket-ID prefix; branch names = {key_prefix}-NNNN
+  key_prefixes: [ENG]                   # prefixes the ticket index recognizes (defaults to [key_prefix])
+  assignee_dir: alice                   # default owner subdir under tickets/
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
+  default_epic: ENG-100                 # parent epic for new tickets (or null if the tracker has no epics)
+  terminal_status: Done                 # the workflow's "done" state (not always "Done")
+  ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
+  word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: both
+    site: acme.atlassian.net
+    cli: acli
+    mcp: atlassian
+    verify: "acli jira workitem view {default_epic}"
+
+  warehouse:
+    tool: snowflake
+    adapter: adapters/warehouse/snowflake.md
+    transport: both
+    cli: snow
+    default_warehouse: ANALYTICS_WH
+    pii_role: PII_READER
+    dev_db: ANALYTICS_DEV
+    verify: "snow connection test"
+
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: slack
+    default_channel: C0XXXXXXXXX         # your channel's ID
+    default_mode: draft
+    always_include: [Alice]              # names always added to a chat message (never solo-DM a stakeholder)
+    verify: null                         # MCP-only: skills check reachability via an MCP call, not the shell
+
+  docstore:
+    tool: gdrive
+    adapter: adapters/docstore/gdrive.md
+    transport: cli
+    base_path: "/path/to/your/Shared drives/Tickets"
+    verify: "test -d \"{base_path}\""
+
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".claude/worktrees"
+    verify: "gh auth status"
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: true
+  chat_default_draft: true
+  hyperlink_everything: true
+  commandify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

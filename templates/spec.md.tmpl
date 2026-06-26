@@ -1,0 +1,34 @@
+# Spec — {{ticket_id}}: {{thing}}
+
+> The committed blueprint `/spec-and-build build` executes. Front-loads decisions before code.
+> **Confidence (1–10): {{confidence}}** — target ≥8 for one-pass implementation.
+
+## Operation
+- **Type:** {{operation}}  (new / alter)  ·  **Scope:** {{scope}} (single / multiple objects)
+- **Target layer / dev env:** {{dev_target}}
+
+## Data grain
+{{grain}}  — the unique key; how duplicates are prevented.
+
+## Sources & joins
+| Source object | Key(s) | Cast/filter rules | Notes |
+|---|---|---|---|
+| … | … | … | … |
+
+## Transformation logic
+*Business rules, calculations, filters, aggregations. Cite the glossary/rule for each.*
+
+## Validation gates (the QC the build MUST pass)
+1. Duplicate detection on the grain key (primary test).
+2. Record-count reconciliation (source vs output).
+3. Cross-source join-match rates.
+4. [domain-specific gates…]
+
+## Downstream impact
+*Objects/reports that consume this; what could break; how to test them.*
+
+## Open questions (ask before building)
+- …
+
+## Closest prior analogs
+- {{analog_1}} — …

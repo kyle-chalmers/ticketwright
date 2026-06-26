@@ -1,0 +1,19 @@
+-- {{skill_name}} — QC checkpoint. Each check is conditional (no hardcoded pass/fail).
+-- Title format: --N: Description. Hard-halt checks must return 0; warn checks surface a list.
+
+--1: Duplicate detection on the grain key (PRIMARY hard-halt test)
+SELECT COUNT(*) AS total_rows,
+       COUNT(DISTINCT {{grain_key}}) AS distinct_keys,
+       COUNT(*) - COUNT(DISTINCT {{grain_key}}) AS dup_count   -- expect 0
+FROM   {{output_object}};
+
+--2: Record-count reconciliation (source vs output) -- expect 0 delta
+SELECT (SELECT COUNT(*) FROM {{source_object}} WHERE {{filter}}) AS src,
+       (SELECT COUNT(*) FROM {{output_object}})                  AS out;
+
+--3: NULL guard on required columns -- expect 0
+SELECT COUNT(*) AS null_required
+FROM   {{output_object}}
+WHERE  {{required_col}} IS NULL;
+
+-- ... add domain-specific checks; mark each hard-halt | warn | info ...

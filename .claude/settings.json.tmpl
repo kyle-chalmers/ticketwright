@@ -1,0 +1,57 @@
+{
+  "_README": "Rendered to .claude/settings.json by /configure-workspace. Wires the harness hooks (policy enforcement + session priming + ticket-index surfacing/auto-regen), a conservative read-only permission baseline (configure-workspace appends stack-specific query/CLI allows), and the stack statusline. The db_write_guard hook turns 'db_write_requires_approval' into a mechanical ask before any destructive warehouse statement.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 .claude/hooks/db_write_guard.py" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 .claude/hooks/session_context.py" },
+          { "type": "command", "command": "python3 .claude/hooks/ticket_index_context.py" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "python3 .claude/hooks/regenerate_ticket_index.py" }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "_README": "Read-only baseline that is safe in any stack. configure-workspace appends the chosen warehouse/tracker/vcs read verbs (e.g. Bash(snow sql:*)) here; the db_write_guard hook still gates destructive statements even when the CLI is allowed.",
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(tree:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(fd:*)",
+      "Bash(find:*)",
+      "Bash(jq:*)",
+      "Bash(yq:*)",
+      "Bash(python3 bin/build_ticket_index.py:*)",
+      "Bash(python3 bin/ingest_index_records.py:*)",
+      "Bash(bash bin/verify_stack.sh:*)",
+      "Bash(bash bin/render.sh:*)",
+      "Bash(bash bin/selftest.sh:*)"
+    ],
+    "deny": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/statusline.sh"
+  }
+}

@@ -1,0 +1,15 @@
+-- {{skill_name}} — step: {{step_name}}
+-- Rendered by the skill: tokens like {{period}}, {{as_of_date}}, {{ticket}} are substituted before run.
+-- Parameterize values at the top; explicit ORDER BY on any export (deterministic_outputs).
+
+-- USE WAREHOUSE {{warehouse}};   -- set inside the SQL so one `-f` run carries its own context
+-- USE ROLE {{role}};
+
+SET period      = '{{period}}';
+SET as_of_date  = '{{as_of_date}}'::DATE;
+
+-- ... step logic ...
+SELECT /* columns, not * */ *
+FROM   {{source_object}}
+WHERE  {{filter}}
+ORDER BY {{order_key}};   -- required for byte-identical golden replays
