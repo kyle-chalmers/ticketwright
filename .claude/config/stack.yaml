@@ -4,7 +4,8 @@
 # Google Drive / GitHub). Replace the values with your own, or run `/configure-workspace`
 # to generate this file by detecting your tooling and interviewing you.
 # Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.yaml
-# A second example (Asana / BigQuery / Teams / SharePoint / GitLab) lives in stack.example.asana-bq.yaml.
+# Two more examples live alongside this file: stack.example.asana-bq.yaml (Asana/BigQuery/Teams/
+# SharePoint/GitLab) and stack.example.azure.yaml (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos).
 
 project:
   key_prefix: ENG                       # ticket-ID prefix; branch names = {key_prefix}-NNNN

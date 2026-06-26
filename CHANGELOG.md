@@ -13,10 +13,14 @@ Initial public release.
   build-ticket-index), 3 prime commands, and a `qc-reviewer` sub-agent — the PIV loop
   (Plan → Implement → Validate) made explicit.
 - **Tool-agnostic config + adapters**: one `stack.yaml` maps five seams (tracker, warehouse,
-  chat, docstore, vcs) to concrete tools via thin per-tool adapters; skills never name a tool.
-  Two worked configs ship (Jira/Snowflake/Slack/Drive/GitHub and Asana/BigQuery/Teams/SharePoint/GitLab).
+  chat, docstore, vcs) to concrete tools via 19 thin per-tool adapters; skills never name a tool.
+  Trackers: Jira, Azure DevOps, Linear, Asana, Monday, GitHub Issues. Warehouses: Snowflake,
+  BigQuery, Databricks, Postgres, Redshift, Synapse/Azure SQL. Three worked configs ship
+  (Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab, and
+  Azure DevOps/Synapse/Teams/SharePoint/Azure Repos).
 - **Policy enforcement hooks** (Claude Code): `db_write_guard` (mechanical approval before
-  destructive warehouse statements), `session_context` (session priming).
+  destructive warehouse statements), `session_context` (session priming), `ticket_index_context`
+  (SessionStart catalog surfacing), `regenerate_ticket_index` (PostToolUse auto-regen).
 - **Self-maintaining ticket index**: `tickets/INDEX.md` — a deterministic, byte-stable renderer
   (`bin/build_ticket_index.py`, `--check` gate) over a model-authored store (`tickets/index_data.json`),
   surfaced at session start and auto-regenerated on ticket-folder changes via hooks; curated at

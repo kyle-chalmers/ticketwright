@@ -16,11 +16,14 @@ filesystem copies; shareable links come from the file's macOS extended attribute
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID** — saved memory).
 ```bash
-rm -rf "{base_path}/<TICKET-ID>"*                      # clean, avoid duplicates
-cp -r "<local ticket dir>" "{base_path}/<TICKET-ID> <Full Ticket Title>"
-ls -la "{base_path}/<TICKET-ID> <Full Ticket Title>"   # verify
+dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
+rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
+cp -r "<local ticket dir>" "$dest"
+ls -la "$dest"                       # verify
 ```
 Requires explicit approval (external side effect) — policy `hard_halt_before_external_posts`.
+**Never** `rm -rf "<ID>"*` — a prefix glob also matches `<ID>0`, `<ID>1234`, etc. If a prior backup
+used a different title, `ls "{base_path}"` and remove that one exact path by name.
 Note: clean `rm`+`cp` mints **new** Drive item-ids, so any previously shared links go stale — repost.
 
 ## verb: link_for

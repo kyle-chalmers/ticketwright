@@ -75,7 +75,7 @@ def main() -> int:
         owner, tid = r.get("owner"), r.get("id")
         loc = dirs.get((owner, tid))
         if not loc:
-            skipped.append(f"{owner}/{tid}")
+            skipped.append(f"{owner or '?'}/{tid or '?'}")
             continue
         owner, tid = str(owner), str(tid)
         readme = loc["readme"]
@@ -94,14 +94,14 @@ def main() -> int:
             "readme_present": bool(readme),
             "readme_hash": sha256_file(readme) if readme else None,
         }
-        url = r.get("jira_url") or ticket_url(url_template, tid)
+        url = r.get("ticket_url") or r.get("jira_url") or ticket_url(url_template, tid)
         if url:
-            rec["jira_url"] = url
+            rec["ticket_url"] = url
         store[(owner, tid)] = rec
         upserted += 1
 
     tickets = sorted(store.values(),
-                     key=lambda t: ((t.get("date") or "0000-00-00"), ref_key(t["id"])[0], t["owner"]),
+                     key=lambda t: ((t.get("date") or "0000-00-00"), ref_key(t["id"]), t["owner"]),
                      reverse=True)
     payload = json.dumps({"schema_version": 1, "tickets": tickets}, indent=2, ensure_ascii=False) + "\n"
     store_path.parent.mkdir(parents=True, exist_ok=True)

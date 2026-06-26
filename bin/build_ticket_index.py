@@ -62,12 +62,27 @@ def load_config(root: Path) -> dict:
     if m:
         cfg["prefixes"] = [p.strip().strip("\"'") for p in m.group(1).split(",") if p.strip()]
     if not cfg["prefixes"]:
-        m = re.search(r"^\s*key_prefix:\s*([A-Za-z0-9_-]+)", text, re.MULTILINE)
+        # block-list form:  key_prefixes:\n  - ENG\n  - OPS
+        lines = text.splitlines()
+        for i, ln in enumerate(lines):
+            if re.match(r"^\s*key_prefixes:\s*$", ln):
+                for nxt in lines[i + 1:]:
+                    mm = re.match(r"^\s*-\s*[\"']?([A-Za-z0-9_-]+)", nxt)
+                    if mm:
+                        cfg["prefixes"].append(mm.group(1))
+                    elif nxt.strip() == "":
+                        continue
+                    else:
+                        break
+                break
+    if not cfg["prefixes"]:
+        m = re.search(r"^\s*key_prefix:\s*[\"']?([A-Za-z0-9_-]+)", text, re.MULTILINE)
         if m:
             cfg["prefixes"] = [m.group(1)]
     m = re.search(r"^\s*ticket_url_template:\s*(.+)$", text, re.MULTILINE)
     if m:
-        v = m.group(1).split("#")[0].strip().strip("\"'")
+        # strip only a whitespace-preceded inline comment (YAML rule), so a '#fragment' in the URL survives
+        v = re.sub(r"\s+#.*$", "", m.group(1)).strip().strip("\"'")
         if v and v.lower() != "null":
             cfg["url_template"] = v
     return cfg
@@ -85,7 +100,11 @@ def title_prefix_regex(prefixes: list[str]) -> re.Pattern:
 
 
 def ticket_url(template: str | None, tid: str) -> str | None:
-    return template.replace("{id}", tid) if template else None
+    # {id} = full key (e.g. ENG-12); {number} = trailing integer (e.g. 12), for trackers whose
+    # native id is a bare number (Azure Boards, GitHub Issues) even when folders use a prefix.
+    if not template:
+        return None
+    return template.replace("{id}", tid).replace("{number}", str(ticket_number(tid)))
 
 
 def ticket_number(tid: str) -> int:
@@ -227,7 +246,7 @@ def build_rows(root: Path) -> list[dict]:
             cross_refs = parsed["cross_refs"]
         else:
             cross_refs = []
-        url = (entry or {}).get("jira_url") or ticket_url(cfg["url_template"], tid)
+        url = (entry or {}).get("ticket_url") or (entry or {}).get("jira_url") or ticket_url(cfg["url_template"], tid)
         rel = d.relative_to(root / "tickets").as_posix()
         link = quote(rel) + "/" + ("README.md" if readme else "")
 
@@ -236,7 +255,7 @@ def build_rows(root: Path) -> list[dict]:
             "summary": summary, "tags": tags, "cross_refs": cross_refs, "url": url,
             "link": link, "enriched": enriched, "stale": stale, "has_readme": bool(readme),
         })
-    rows.sort(key=lambda r: ((r["date"] or "0000-00-00"), ticket_number(r["id"]), r["owner"]), reverse=True)
+    rows.sort(key=lambda r: ((r["date"] or "0000-00-00"), ticket_number(r["id"]), r["id"], r["owner"]), reverse=True)
     return rows
 
 
@@ -321,6 +340,9 @@ def main() -> int:
         return 0
 
     if args.check:
+        if not rows and not index_path.is_file():
+            print("No tickets and no INDEX.md yet — nothing to check.")
+            return 0
         current = index_path.read_text() if index_path.is_file() else None
         if current != fresh:
             print("tickets/INDEX.md is stale — run: python3 bin/build_ticket_index.py", file=sys.stderr)

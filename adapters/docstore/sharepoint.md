@@ -17,9 +17,10 @@ Maps the `docstore` verb contract to SharePoint/OneDrive. Two transports: the **
 **In:** local ticket dir, dest name (**always full title, not just the ID**).
 ```bash
 # Synced transport:
-rm -rf "{base_path}/<TICKET-ID>"*
-cp -r "<local ticket dir>" "{base_path}/<TICKET-ID> <Full Ticket Title>"
-ls -la "{base_path}/<TICKET-ID> <Full Ticket Title>"      # verify
+dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
+rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
+cp -r "<local ticket dir>" "$dest"
+ls -la "$dest"                       # verify
 
 # Graph transport (per file):
 #   PUT https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/<path>/<file>:/content

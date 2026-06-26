@@ -53,15 +53,15 @@ Honor `word_limits.tracker_comment`. **Never post until the human has reviewed**
 
 ## verb: search
 ```bash
-acli jira jql --jql "<JQL>" --limit <N>            # or: acli jira workitem search --jql ...
+acli jira workitem search --jql "<JQL>" --limit <N> --json   # --csv / --fields also supported
 # MCP alt: mcp__atlassian__searchJiraIssuesUsingJql
 ```
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
 
 ## verb: download_attachments
 Pull a ticket's attachments into its `source_materials/` (skip silently when there are none).
-Use `acli`'s attachment support, or a small `curl` script against the REST API that follows the
-303 redirect to the download URL:
+`acli jira workitem attachment list <id>` only LISTS attachments — to DOWNLOAD, use a small `curl`
+script against the REST API that follows the 303 redirect to the download URL:
 ```bash
 # e.g. a helper you keep in bin/: download_jira_attachments.sh <id> <dest_dir>
 ```

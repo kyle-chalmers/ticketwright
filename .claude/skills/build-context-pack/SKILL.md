@@ -19,8 +19,8 @@ works on Snowflake, BigQuery, or Databricks. Generalizes a hand-built ERD / anal
    pack in place (overwrite, don't sprawl).
 
 ## Phase 1 — Introspect (read-only, via adapter)
-2. **Object inventory** — list tables/views/dynamic-tables in scope (use the adapter's discovery
-   approach from `dialect_notes`, e.g. `INFORMATION_SCHEMA.TABLES` / `bq ls`).
+2. **Object inventory** — list tables/views/dynamic-tables in scope, using whatever object-inventory
+   idiom the adapter's `dialect_notes` specifies (e.g. an `INFORMATION_SCHEMA`/`system` query).
 3. **DDL dump** — `warehouse.describe` each object; write authoritative DDL to
    `documentation/erd/ddl_<schema>_<object>.sql`.
 4. **Dependency graph** — derive what-reads-what (lineage views) → an object→object edge list.

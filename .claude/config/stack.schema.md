@@ -63,13 +63,14 @@ and `build-context-pack` degrade gracefully (skip warehouse steps) when it is.
 | `system_evolution` | `true` | `deliver-ticket` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
 | `deterministic_outputs` | `true` | data exports use explicit `ORDER BY`; productized skills ship golden-replay diffs. |
 
-`always_include` (under `seams.chat`) — names always added to a chat message (e.g. `[Kyle]`); the
+`always_include` (under `seams.chat`) — names always added to a chat message (e.g. `[Alice]`); the
 "never solo-DM a stakeholder" rule.
 
 ---
 
 ## Worked example
 
-A complete, real example for this repo lives at [`stack.yaml`](stack.yaml). A second example for a
-hypothetical Asana + BigQuery + Teams repo lives at `stack.example.asana-bq.yaml` (proves the
-abstraction holds with zero skill edits). To validate any config: `bash bin/verify_stack.sh`.
+A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Two more
+prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
+(Asana/BigQuery/Teams/SharePoint/GitLab) and `stack.example.azure.yaml`
+(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos). To validate any config: `bash bin/verify_stack.sh`.

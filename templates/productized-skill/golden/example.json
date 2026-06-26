@@ -1,6 +1,6 @@
 {
   "_comment": "Golden-replay fixture: a known-good prior run the skill asserts against. Replace with real values when you stamp the skill.",
-  "invocation": "--period 2026-Q1 --as-of-date 2026-04-30 --ticket DI-XXXX-GOLDEN",
+  "invocation": "--period 2026-Q1 --as-of-date 2026-04-30 --ticket ENG-XXXX-GOLDEN",
   "expect": {
     "row_count": 0,
     "distinct_keys": 0,
@@ -8,6 +8,6 @@
     "totals": { "example_metric": 0.0 },
     "qc": { "hard_halt_checks": "PASS", "warn_checks": [] }
   },
-  "reference_output": "tickets/<assignee>/DI-XXXX/final_deliverables/<canonical>.csv",
+  "reference_output": "tickets/<assignee>/ENG-XXXX/final_deliverables/<canonical>.csv",
   "assert": "Sorted export is byte-identical (or MD5-equal) to reference_output."
 }

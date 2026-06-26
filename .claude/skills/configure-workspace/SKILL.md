@@ -43,8 +43,8 @@ Honor `reduce_assumptions` — ask, don't guess; allow "no warehouse" for non-da
    `db_write_requires_approval` mechanical — it asks before any destructive warehouse statement, even
    one hidden in a `-f` file. Confirm `.claude/hooks/` and `.claude/statusline.sh` came across.
 7. **Folders:** create `tickets/{assignee_dir}/`, `documentation/`, `resources/`, `specs/`, and (if
-   desired) `ci/` + `.gitignore`. Copy `resources/download_jira_attachments.sh` equivalent only if
-   the tracker is Jira.
+   desired) `ci/` + `.gitignore`. If the chosen tracker adapter ships an attachment-download helper,
+   copy it into `resources/`.
 8. **AI-layer index:** generate `documentation/AI_LAYER_INDEX.md` — a discoverable inventory of the
    installed skills, the `prime-*` commands, the `qc-reviewer` agent, the hooks, and the adapters in
    use (so humans + agents can find them). Keep it one line each.

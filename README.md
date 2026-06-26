@@ -3,9 +3,10 @@
 A **portable, tool-agnostic agentic-engineering harness** for ticket-driven work repos (data
 intelligence, analytics, ops, regulatory reporting…). Drop it into a repo, run
 `/configure-workspace`, and you get a complete **AI layer**: global rules, on-demand context loaders,
-reusable PIV-loop workflows, and a self-maintaining ticket index — bound to *your* tools (Jira **or**
-Asana **or** Monday/Linear; Snowflake **or** BigQuery/Databricks; Slack **or** Teams; Drive **or**
-SharePoint; GitHub **or** GitLab) through one config file and thin adapters.
+reusable PIV-loop workflows, and a self-maintaining ticket index — bound to *your* tools (Jira,
+**Azure DevOps**, Linear, Asana, Monday, or GitHub Issues; Snowflake, BigQuery, Databricks, Postgres,
+Redshift, or Synapse/Azure SQL; Slack or Teams; Drive or SharePoint; GitHub, GitLab, or Azure Repos)
+through one config file and thin adapters. Don't see your tool? Adding one is a single adapter file.
 
 Generalized from a production data-engineering ticket repo; informed by Cole Medin's "agentic
 engineering" / Archon material (the AI-layer model, the PIV loop, context engineering).
@@ -41,10 +42,11 @@ SETUP       /configure-workspace   (once)             ·   /onboard-teammate    
    unreachable ones halt with the adapter's auth notes (the hybrid half).
 
 Skills are written **once against verbs** and never name a tool. Swapping a tool = edit `stack.yaml`
-+ point at a different adapter; **no skill changes.** Proof: two configs ship —
-[`stack.yaml`](.claude/config/stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub) and
-[`stack.example.asana-bq.yaml`](.claude/config/stack.example.asana-bq.yaml)
-(Asana/BigQuery/Teams/SharePoint/GitLab) — the same skills run against both.
++ point at a different adapter; **no skill changes.** Proof: three configs ship —
+[`stack.yaml`](.claude/config/stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub),
+[`stack.example.asana-bq.yaml`](.claude/config/stack.example.asana-bq.yaml) (Asana/BigQuery/Teams/SharePoint/GitLab),
+and [`stack.example.azure.yaml`](.claude/config/stack.example.azure.yaml) (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos)
+— the same skills run against all three.
 
 ## Install into a repo
 
@@ -103,7 +105,9 @@ an existing backlog with `/build-ticket-index --all`. Full details: [`docs/ticke
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — independent-context reviewer `qc-review` delegates to.
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`):
   policy enforcement, session priming, ticket-index surfacing + auto-regen, status line.
-- **Adapters** (`adapters/`): 5 working references + 8 stubs filled to full verb coverage.
+- **Adapters** (`adapters/`): 19 across 5 seams — trackers (Jira, Azure DevOps, Linear, Asana, Monday,
+  GitHub Issues), warehouses (Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse/Azure SQL),
+  chat (Slack, Teams), docstore (Drive, SharePoint), vcs (GitHub, GitLab, Azure Repos) — full verb coverage each.
 - **Templates** (`templates/`): AGENTS.md, ticket README, plan, spec, and the productized-skill skeleton.
 - **`bin/`**: `verify_stack.sh` (hybrid verify), `render.sh` (token renderer), `selftest.sh` (kit
   test suite + hook unit tests), and the ticket-index tools (`build_ticket_index.py`,

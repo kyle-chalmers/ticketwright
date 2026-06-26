@@ -1,11 +1,16 @@
 ---
 seam: warehouse
 tool: databricks
-transport: both        # `databricks` CLI (profiles, e.g. biprod/bidev) + a Databricks SQL MCP
-requires: [profile, catalog, schema]   # stack.yaml seams.warehouse.{profile, catalog, schema, dev_catalog}
+transport: both        # `dbsqlcli` / Statement Execution API for SQL; a Databricks SQL MCP for interactive
+requires: [warehouse_id, catalog, schema]   # stack.yaml seams.warehouse.{warehouse_id, catalog, schema, dev_catalog, profile}
 auth: |
-  databricks CLI profile configured (~/.databrickscfg) or a SQL MCP connected.
-  Verify: `databricks --profile {profile} current-user me`.
+  A Databricks SQL warehouse + a token. Either: `dbsqlcli` (pip install databricks-sql-cli) configured
+  via `~/.dbsqlclirc` or env (`DBSQLCLI_HOST_NAME`, `DBSQLCLI_HTTP_PATH`, `DBSQLCLI_ACCESS_TOKEN`); or
+  the `databricks` CLI profile (~/.databrickscfg) for the Statement Execution API; or a SQL MCP.
+  Verify: `databricks --profile {profile} current-user me` (read-only).
+note: |
+  The `databricks` CLI has NO ad-hoc "run this SQL" command (`databricks sql` is API CRUD, not a query
+  runner). Execute SQL via `dbsqlcli`, the Statement Execution API, or the SQL MCP — all below.
 ---
 
 # Databricks adapter
@@ -16,16 +21,23 @@ unchanged.
 
 ## verb: query
 ```bash
-databricks --profile {profile} sql query --query "<SQL>"          # ad-hoc
-databricks --profile {profile} sql query --file <path/to/file.sql> # bundled
+# Preferred: databricks-sql-cli (returns rows; --csv-friendly via -e + redirection)
+dbsqlcli -e "<SQL>"                                   # ad-hoc
+dbsqlcli -e "$(cat path/to/file.sql)"                 # bundled
+# Or the Statement Execution API (no extra tool; good for CI):
+databricks --profile {profile} api post /api/2.0/sql/statements \
+  --json '{"warehouse_id":"{warehouse_id}","statement":"<SQL>","wait_timeout":"30s"}'
+# Or route through the Databricks SQL MCP for interactive exploration.
 ```
 - Deterministic exports: explicit `ORDER BY` (Spark result order is not guaranteed).
 - Reference objects three-part: `{catalog}.{schema}.<object>`.
+- The Statement API is async beyond `wait_timeout`: poll `GET /api/2.0/sql/statements/<id>` until
+  `status.state=SUCCEEDED`, then read `result`.
 
 ## verb: describe
 ```bash
-databricks --profile {profile} sql query --query "DESCRIBE TABLE EXTENDED {catalog}.{schema}.<obj>"
-databricks --profile {profile} sql query --query "SHOW CREATE TABLE {catalog}.{schema}.<obj>"   # DDL
+dbsqlcli -e "DESCRIBE TABLE EXTENDED {catalog}.{schema}.<obj>"
+dbsqlcli -e "SHOW CREATE TABLE {catalog}.{schema}.<obj>"     # DDL
 ```
 Inventory: `SHOW TABLES IN {catalog}.{schema}`. Lineage: Unity Catalog `system.access.table_lineage`
 / `information_schema` (not a naive `SHOW TABLES`, which misses views' upstreams).
@@ -41,6 +53,6 @@ Inventory: `SHOW TABLES IN {catalog}.{schema}`. Lineage: Unity Catalog `system.a
 
 ## gotchas
 - Non-SELECT / DDL ⇒ policy `db_write_requires_approval` (show SQL, explain, wait).
-- **Pause before any prod job deploy** — saved rule: stop for human confirmation before writing
-  `databricks/job_definitions/prod/*.json` or PR-ing to the jobs repo.
-- Profiles: `biprod` (prod), `bidev` (dev) — pick deliberately.
+- **Pause before any prod job deploy** — stop for human confirmation before writing prod job
+  definitions or PR-ing to a jobs repo.
+- The `databricks` CLI is for workspace/API management; SQL runs through `dbsqlcli` / the SQL API / MCP.

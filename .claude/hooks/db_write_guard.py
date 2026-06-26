@@ -29,14 +29,12 @@ import sys
 from pathlib import Path
 
 # CLIs that talk to a data warehouse / database. Extended from stack.yaml if present.
-DEFAULT_WAREHOUSE_CLIS = ["snow", "snowsql", "bq", "databricks", "psql", "mysql", "sqlcmd", "duckdb"]
+DEFAULT_WAREHOUSE_CLIS = ["snow", "snowsql", "bq", "databricks", "dbsqlcli", "psql", "mysql", "sqlcmd", "duckdb", "redshift-data"]
 
 DESTRUCTIVE = re.compile(
     r"\b(CREATE\s+OR\s+REPLACE|CREATE|ALTER|DROP|DELETE|UPDATE|INSERT|TRUNCATE|MERGE|GRANT|REVOKE|REPLACE\s+INTO)\b",
     re.IGNORECASE,
 )
-# If the only verbs present are these, it's read-only — don't prompt.
-READONLY_ONLY = re.compile(r"^\s*(SELECT|WITH|DESCRIBE|DESC|SHOW|EXPLAIN|LIST|GET_DDL)\b", re.IGNORECASE)
 
 
 def find_stack_yaml(cwd: str) -> Path | None:
@@ -75,15 +73,17 @@ def invokes_warehouse(command: str, clis: list[str]) -> str | None:
     return None
 
 
-# Files passed via -f/--file/--filename: the SQL lives in the file, not the command line.
-_FILE_FLAG = re.compile(r"(?:-f|--file|--filename)[=\s]+([^\s;|&]+)")
+# SQL can live in a file rather than the command line — via -f/--file/--filename, OR via a shell
+# stdin redirect (`psql db < deploy.sql`). Scan both so a destructive statement can't slip past.
+_FILE_FLAG = re.compile(r"(?:-f|-i|--file|--filename|--input-file)[=\s]+([^\s;|&]+)")
+_STDIN_REDIR = re.compile(r"<\s*([^\s;|&<>]+)")
 
 
 def referenced_sql(command: str, cwd: str) -> str:
-    """Concatenate the text of any SQL files the command runs via -f/--filename, so the
-    destructive scan sees `snow sql -f deploy.sql` content too. Best-effort, size-capped."""
+    """Concatenate the text of any SQL files the command runs via -f/--filename or `< file`, so the
+    destructive scan sees `snow sql -f deploy.sql` / `psql < deploy.sql` content too. Size-capped."""
     text = ""
-    for raw in _FILE_FLAG.findall(command):
+    for raw in _FILE_FLAG.findall(command) + _STDIN_REDIR.findall(command):
         p = Path(raw)
         if not p.is_absolute() and cwd:
             p = Path(cwd) / raw

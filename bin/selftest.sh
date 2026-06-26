@@ -20,8 +20,8 @@ hdr "0 · tooling"
 command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
 command -v python3 >/dev/null 2>&1 && ok "python3 present" || bad "python3 missing"
 
-hdr "1 · config parses + every seam resolves to an adapter (both stacks)"
-for s in .claude/config/stack.yaml .claude/config/stack.example.asana-bq.yaml; do
+hdr "1 · config parses + every seam resolves to an adapter (all stacks)"
+for s in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
   if yq -e '.seams|keys' "$s" >/dev/null 2>&1; then ok "parses: $s"; else bad "parse error: $s"; fi
   out="$(bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
   if grep -q "All seams OK" <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
@@ -79,6 +79,9 @@ default_branch=main
 EOF
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
+# zero KEY=VALUE pairs must not crash (bash 3.2 empty-array under set -u)
+bash bin/render.sh templates/spec.md.tmpl >/dev/null 2>"$TMP/rz.err"; rc=$?
+[ "$rc" -eq 0 ] && ok "render.sh with no vars doesn't crash (bash 3.2 empty array)" || bad "render.sh crashes with zero pairs" "$(cat "$TMP/rz.err")"
 
 hdr "6 · db_write_guard hook (PreToolUse policy enforcement)"
 guard() { python3 .claude/hooks/db_write_guard.py; }
@@ -102,6 +105,10 @@ out="$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' | guard)"
 # non-Bash tool → no decision
 out="$(echo '{"tool_name":"Read","tool_input":{"file_path":"x"}}' | guard)"
 [ -z "$out" ] && ok "non-Bash tool passes through" || bad "non-Bash wrongly gated" "$out"
+# destructive SQL via stdin redirect (psql < file.sql) → ask (the strengthened stdin scan)
+echo "DELETE FROM t WHERE 1=1;" > "$TMP/wipe.sql"
+out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"psql mydb < $TMP/wipe.sql\"},\"cwd\":\"/\"}" | guard)"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "psql < wipe.sql (stdin redirect) → ask" || bad "stdin-redirect write not gated" "$out"
 
 hdr "7 · session_context hook (SessionStart priming)"
 out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"

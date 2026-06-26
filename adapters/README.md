@@ -68,12 +68,24 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 
 ---
 
-## Reference adapters shipped
+## Adapters shipped
 
-Working, used-in-production-here references: `tracker/jira.md`, `warehouse/snowflake.md`,
-`chat/slack.md`, `docstore/gdrive.md`, `vcs/github.md`. Documented stubs to fill in for your
-context: `tracker/{asana,monday,linear}.md`, `warehouse/{bigquery,databricks}.md`, `chat/teams.md`,
-`docstore/sharepoint.md`, `vcs/gitlab.md`.
+Pick the one matching your stack (or copy the closest as a starting point). All implement the full
+verb contract for their seam:
+
+- **tracker:** `jira`, `azure-devops` (Azure Boards), `linear`, `asana`, `monday`, `github-issues`
+- **warehouse:** `snowflake`, `bigquery`, `databricks`, `postgres`, `redshift`, `synapse` (also Azure SQL / SQL Server / Fabric)
+- **chat:** `slack`, `teams`
+- **docstore:** `gdrive`, `sharepoint`
+- **vcs:** `github`, `gitlab`, `azure-repos`
+
+Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Three worked
+`stack.yaml` configs ship (Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
+and Azure DevOps/Synapse/Teams/SharePoint/Azure Repos) — the same skills run against all three.
+
+> **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack) reference each operation with a
+> server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on
+> your connected MCP server — confirm them once and adjust the adapter (never the skills).
 
 ## Writing a new adapter
 
@@ -82,7 +94,10 @@ context: `tracker/{asana,monday,linear}.md`, `warehouse/{bigquery,databricks}.md
 3. Implement **every** verb section for that seam — if the tool can't do one, say so and give the
    manual fallback (skills will surface it rather than silently skipping).
 4. Add a `verify` command to your `stack.yaml` seam entry (read-only, exits non-zero when unreachable).
-5. Run `bash bin/verify_stack.sh` — it lists each seam's verb coverage and reachability.
+5. Run `bash bin/verify_stack.sh` — it confirms each seam's adapter file exists and runs the seam's
+   read-only `verify` to check reachability. (`bash bin/selftest.sh` checks verb coverage vs. this contract.)
 
-**Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** A grep for
-`acli|snow|slack|gh ` in `.claude/skills/**` and `.claude/commands/**` should return nothing.
+**Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** `bin/selftest.sh`
+(section 3) enforces this: it greps `.claude/skills/**` + `.claude/commands/**` for tool names, with
+two sanctioned exceptions (the CLI-detection probe in `configure-workspace` and the self-lint line in
+`productize-workflow`).

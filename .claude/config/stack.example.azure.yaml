@@ -1,0 +1,73 @@
+# stack.example.azure.yaml — ABSTRACTION PROOF (hypothetical Microsoft-stack repo).
+# Azure DevOps (Boards) + Synapse + Teams + SharePoint + Azure Repos — the SAME skills and SAME
+# verb contract as the Jira/Snowflake and Asana/BigQuery examples. Only this file + adapters change.
+# Try it: bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run
+
+project:
+  key_prefix: ENG                       # branch/index display convention (ADO ids are bare integers)
+  key_prefixes: [ENG]
+  assignee_dir: dana
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
+  default_epic: 12                      # Azure Boards work-item id (integer) for the parent epic
+  terminal_status: Closed               # Agile process "done" state
+  ticket_url_template: "https://dev.azure.com/acme-corp/Platform/_workitems/edit/{number}"  # ADO ids are integers → use {number}, not {id}
+  word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+
+seams:
+  tracker:
+    tool: azure-devops
+    adapter: adapters/tracker/azure-devops.md
+    transport: cli
+    org: acme-corp
+    project: Platform
+    done_state: Closed
+    verify: "az boards work-item show --id {default_epic}"
+
+  warehouse:
+    tool: synapse
+    adapter: adapters/warehouse/synapse.md
+    transport: cli
+    server: acme-synapse-ondemand.sql.azuresynapse.net
+    database: analytics
+    dev_schema: dev
+    verify: "sqlcmd -S {server} -d {database} -G --authentication-method ActiveDirectoryDefault -Q \"SELECT 1\""
+
+  chat:
+    tool: teams
+    adapter: adapters/chat/teams.md
+    transport: mcp
+    channel: "Data Platform / General"
+    default_mode: draft
+    always_include: [Dana]
+    verify: null
+
+  docstore:
+    tool: sharepoint
+    adapter: adapters/docstore/sharepoint.md
+    transport: cli
+    base_path: "/Users/dana/Library/CloudStorage/OneDrive-AcmeCorp/Data Tickets"
+    verify: "test -d \"{base_path}\""
+
+  vcs:
+    tool: azure-repos
+    adapter: adapters/vcs/azure-repos.md
+    transport: cli
+    org: acme-corp
+    project: Platform
+    repo: analytics
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".worktrees"
+    verify: "az repos list --project {project} --query \"[].name\""
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: true
+  chat_default_draft: true
+  hyperlink_everything: true
+  commandify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

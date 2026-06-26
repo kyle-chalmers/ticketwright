@@ -33,12 +33,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 content="$(cat "$template")"
-for pair in "${pairs[@]}"; do
-  key="${pair%%=*}"
-  val="${pair#*=}"
-  # Replace every {{key}} with val. perl handles arbitrary value chars safely via env passing.
-  content="$(KEY="$key" VAL="$val" perl -pe 's/\{\{\Q$ENV{KEY}\E\}\}/$ENV{VAL}/g' <<< "$content")"
-done
+# Guard the empty-array case: on bash 3.2 under `set -u`, "${pairs[@]}" with zero elements aborts.
+if [[ ${#pairs[@]} -gt 0 ]]; then
+  for pair in "${pairs[@]}"; do
+    key="${pair%%=*}"
+    val="${pair#*=}"
+    # Replace every {{key}} with val. perl handles arbitrary value chars safely via env passing.
+    content="$(KEY="$key" VAL="$val" perl -pe 's/\{\{\Q$ENV{KEY}\E\}\}/$ENV{VAL}/g' <<< "$content")"
+  done
+fi
 
 printf '%s\n' "$content"
 
@@ -47,5 +50,5 @@ leftover="$(grep -oE '\{\{[^}]+\}\}' <<< "$content" | sort -u || true)"
 if [[ -n "$leftover" ]]; then
   echo "render: WARNING unresolved tokens:" >&2
   echo "$leftover" >&2
-  [[ "$strict" -eq 1 ]] && exit 2
+  if [[ "$strict" -eq 1 ]]; then exit 2; fi   # non-strict: warn only, exit 0 (don't fail callers)
 fi

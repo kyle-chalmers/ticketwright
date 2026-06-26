@@ -41,6 +41,7 @@ Commit the **plan/spec artifact before implementing** (policy `commit_plan_befor
 
 ## verb: open_pr
 ```bash
+git push -u origin <TICKET-ID>      # gh pr create is interactive if the branch isn't pushed yet
 gh pr create --title "<type>: <TICKET-ID> <description>" \
   --body "Business Impact / Deliverables / Technical Notes / QC Results"
 ```
@@ -48,5 +49,7 @@ gh pr create --title "<type>: <TICKET-ID> <description>" \
 External action ⇒ requires approval (policy `hard_halt_before_external_posts`).
 
 ## gotchas
-- This is a storage-only repo: CI guards block deployable surfaces; CI-surface edits intentionally
-  fail `storage-only-guard` and need code-owner/admin merge (by design).
+- `gh pr create` prompts interactively (which can hang an agent) unless the branch is already pushed
+  — push first, as above.
+- Branch protection / required status checks may gate the merge — surface the required reviews/checks
+  rather than force-merging.
