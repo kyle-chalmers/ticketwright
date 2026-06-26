@@ -8,7 +8,7 @@ All notable changes to this project are documented here. Format loosely follows
 Initial public release.
 
 ### Added
-- **AI-layer harness**: 9 skills (configure-workspace, onboard-teammate, start-ticket,
+- **AI layer**: 9 skills (configure-workspace, onboard-teammate, start-ticket,
   spec-and-build, qc-review, deliver-ticket, productize-workflow, build-context-pack,
   build-ticket-index), 3 prime commands, and a `qc-reviewer` sub-agent — the PIV loop
   (Plan → Implement → Validate) made explicit.

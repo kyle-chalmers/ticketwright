@@ -1,8 +1,8 @@
-# Agentic Ticket Harness
+# Ticketwright
 
-[![CI](https://github.com/kyle-chalmers/agentic-ticket-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/agentic-ticket-harness/actions/workflows/ci.yml)
+[![CI](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml)
 
-A **portable, tool-agnostic agentic-engineering harness** for ticket-driven work repos (data
+**Ticketwright** is a portable, tool-agnostic **AI layer** for ticket-driven work repos (data
 intelligence, analytics, ops, regulatory reporting…). Drop it into a repo, run
 `/configure-workspace`, and you get a complete **AI layer**: global rules, on-demand context loaders,
 reusable PIV-loop workflows, and a self-maintaining ticket index — bound to *your* tools (Jira,
@@ -73,7 +73,7 @@ Write **one adapter** (copy the closest reference in the same seam; implement ev
 keep the frontmatter), add a `verify` line to your `stack.yaml` seam, and run
 `bash bin/verify_stack.sh`. No skill edits. See `adapters/README.md`.
 
-## Harness enforcement (hooks)
+## Policy enforcement (hooks)
 
 Policies are only as good as the agent's memory unless something enforces them. The kit ships Claude
 Code **hooks** (wired by `configure-workspace` into `.claude/settings.json`):

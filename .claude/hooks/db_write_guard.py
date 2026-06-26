@@ -6,7 +6,7 @@ enforces them. This hook makes the DB-write rule mechanical: when a Bash tool ca
 invokes a configured warehouse CLI with a *destructive* statement (CREATE/ALTER/DROP/
 DELETE/UPDATE/INSERT/TRUNCATE/MERGE/GRANT/REVOKE/REPLACE), it returns an `ask`
 permission decision so the human must confirm — exactly the "show SQL → explain →
-wait for yes" protocol, applied by the harness rather than trusted to the model.
+wait for yes" protocol, applied by the runtime rather than trusted to the model.
 
 Read-only statements (SELECT/DESCRIBE/SHOW/EXPLAIN/WITH/LIST/GET_DDL) pass straight
 through. Non-warehouse Bash and non-Bash tools pass through untouched.

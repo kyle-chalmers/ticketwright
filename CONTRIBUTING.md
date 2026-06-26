@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest! This is a small, self-contained harness — contributions that keep it
+Thanks for your interest! This is a small, self-contained kit — contributions that keep it
 **tool-agnostic** and **dependency-light** (stdlib Python + `yq`/`jq` + standard CLIs) are most welcome.
 
 ## Getting started

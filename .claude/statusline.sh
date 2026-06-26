@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# statusline.sh — compact harness status line for Claude Code.
+# statusline.sh — compact Ticketwright status line for Claude Code.
 # Shows: <key_prefix> · <git branch/ticket> · tracker→warehouse tools.
 # Claude Code pipes session JSON on stdin; we only need cwd/branch + stack.yaml.
 set -uo pipefail

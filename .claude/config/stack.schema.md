@@ -15,7 +15,7 @@ Snowflake→BigQuery means editing this file and pointing at a different adapter
 ```yaml
 project:        # facts about this workspace, tool-independent
 seams:          # one entry per abstract seam → concrete tool + adapter + verify
-policies:       # behavioral rules every skill inherits (the harness "global rules")
+policies:       # behavioral rules every skill inherits (the kit's "global rules")
 ```
 
 ---
@@ -49,7 +49,7 @@ Exactly these five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. Each
 The `warehouse` seam may also be `null`/omitted for non-data repos — `qc-review`, `spec-and-build`,
 and `build-context-pack` degrade gracefully (skip warehouse steps) when it is.
 
-## `policies` (the 9 harness rules — see kit README "AI-layer" section)
+## `policies` (the 9 kit policies — see kit README "AI-layer" section)
 
 | Policy | Default | Enforced by |
 |---|---|---|
