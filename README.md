@@ -1,5 +1,7 @@
 # Agentic Ticket Harness
 
+[![CI](https://github.com/kyle-chalmers/agentic-ticket-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/agentic-ticket-harness/actions/workflows/ci.yml)
+
 A **portable, tool-agnostic agentic-engineering harness** for ticket-driven work repos (data
 intelligence, analytics, ops, regulatory reporting…). Drop it into a repo, run
 `/configure-workspace`, and you get a complete **AI layer**: global rules, on-demand context loaders,
@@ -61,6 +63,9 @@ cd <your-repo>
 /configure-workspace        # detects tooling, interviews, writes stack.yaml + AGENTS.md + settings.json, wires hooks, scaffolds, verifies
 bash bin/selftest.sh        # kit integrity + hook unit tests — expect "0 failed"
 ```
+
+The same self-test runs in CI on every push/PR. A pre-release multi-agent hardening review (subagents
++ Codex, adversarially verified) is recorded in [`docs/REVIEW.md`](docs/REVIEW.md).
 
 ## Add a new tool
 
