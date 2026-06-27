@@ -50,3 +50,42 @@ gap** below were not surfaced by self-review alone.
 - Repo scrub clean (only the intentional `LICENSE` copyright + deliberate `jira_url` back-compat reads).
 
 CI (`.github/workflows/ci.yml`) runs the self-test + index staleness gate on every push and PR.
+
+---
+
+# Hardening review — v1.1 (2026-06-27)
+
+The v1.1 diff (prior-art recall · object reverse-index · deep QC) went through the same two-track
+review before merge: an adversarial **subagent panel** (dimension finders → every finding re-checked
+against the file/CLI before counting) plus an **external-model (Codex)** whole-diff pass, then synthesis.
+
+## Findings (all resolved)
+
+**High**
+- Deep QC (`qc-review --deep`) defaulted *unreproducible* findings to false-positive — for a QC harness
+  that silently drops a Critical/count/reconcile finding. Now ruled **uncertain**, carried into the
+  verdict, and forces REQUEST-CHANGES (or human sign-off) rather than a silent APPROVE.
+- `recall.py` excluded the seed by id alone, dropping a same-id ticket under a *different owner* — a real
+  candidate. Now excludes only the exact (id, owner) seed row.
+
+**Medium**
+- `extract_objects()` ran the SQL regex over `*.py`, indexing `from os.path import join` as object
+  `os.path` → now skips Python import lines.
+- `/recall --object VW_X` matched fully-qualified objects exactly, so an unqualified leaf missed
+  `BI.ANALYTICS.VW_X` → leaf-aware matching.
+- Seed lookup was case-sensitive and silently picked the first of an ambiguous multi-owner match → now
+  case-insensitive and errors listing the owners.
+- PostToolUse hook skipped `index_data.json` as if generated; editing the *source* store didn't
+  re-render → now only the two generated artifacts are skipped.
+- Close/commit docs staged `INDEX.md` + `index_data.json` but not the new `OBJECTS.md`, risking a CI
+  staleness failure on the documented flow → all three staged.
+
+**Low**
+- `recall.py` sort wasn't a strict total order (ties unstable) → id+owner added to the sort key.
+- Recall double-counted tags (as both a tag hit and a keyword) → tags scored once.
+- Default permission allow-list missed `recall.py` / `enrich_ticket.py` → added.
+
+## Verification after fixes
+- `bin/selftest.sh`: **65 checks, 0 failed** on stock macOS **bash 3.2** (adds recall ranking, reverse +
+  leaf-match lookup, OBJECTS.md render/gate, Python-import exclusion, multi-owner seed disambiguation).
+- Targeted regression tests for each confirmed bug ship in §11 of the self-test.

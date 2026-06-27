@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [1.1.0] — 2026-06-27
+
+Make the ticket index *active*.
+
+### Added
+- **Prior-art recall** — `bin/recall.py` ranks prior tickets against a seed/query by a transparent
+  lexical score (object ×4, tag ×3, cross-ref +5, keyword ×1; recency tiebreak), exposed as the
+  `/recall` command and auto-wired into `/prime-ticket` + `spec-and-build` so reuse surfaces in PLAN.
+  Lexical + stdlib (no embeddings); rank → read-top-K scales past the index's context limit.
+- **Object reverse-index** — `tickets/OBJECTS.md` (object → tickets), with each ticket's `objects`
+  from enrichment ∪ a keyword-anchored grep of its SQL. `/recall --object VW_X` for live lookup.
+- **Deep QC** — `qc-review --deep` spawns an adversarial panel (one reviewer per pyramid layer) and
+  verifies every finding against the deliverable before it counts, then synthesizes one verdict.
+
+### Changed
+- The `PostToolUse` hook and `--check` gate now keep `OBJECTS.md` in sync alongside `INDEX.md`.
+- Self-test grows to 65 checks (recall ranking, reverse lookup + leaf match, OBJECTS.md render + gate,
+  Python-import exclusion, multi-owner seed disambiguation).
+
 ## [1.0.0] — 2026-06-25
 
 Initial public release.

@@ -36,8 +36,10 @@ so it works whether the tracker is Jira, Asana, Monday, or Linear.
 ## Phase 3 — Prime & brief
 9. Run the priming commands for this ticket: `/prime-ticket <id>`, then `/prime-domain <topic>` and
    `/prime-warehouse <objects>` once the topic/objects are clear.
-10. **Report** the context brief and propose next step: usually `/spec-and-build spec <id>` for
-    anything non-trivial (research-rich planning), or proceed directly for a small change.
+10. **Recall prior art:** run `/recall <id>` — find the closest prior tickets (by shared object / tag /
+    cross-ref) and note what to reuse before any new work. This is how you avoid rebuilding what's done.
+11. **Report** the context brief (incl. the reuse brief) and propose next step: usually
+    `/spec-and-build spec <id>` for anything non-trivial, or proceed directly for a small change.
 
 ## Stops here
 This skill does **not** write SQL, run analysis, or post anything. It sets the stage and hands off to

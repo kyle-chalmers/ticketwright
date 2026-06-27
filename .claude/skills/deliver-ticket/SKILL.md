@@ -37,8 +37,9 @@ authorization, execute in order:
 7. **chat.draft** to `seams.chat.default_channel` (policy `chat_default_draft` — the human clicks
    send unless they said "send it", in which case `chat.send`). Smart links for ticket id(s),
    files, PR.
-8. **vcs.commit** (stage this ticket's paths **plus `tickets/INDEX.md` + `tickets/index_data.json`**;
-   semantic message + Co-Authored-By) then
+8. **vcs.commit** (stage this ticket's paths **plus `tickets/INDEX.md` + `tickets/OBJECTS.md` +
+   `tickets/index_data.json`** — all three, or `--check` flags drift in CI; semantic message +
+   Co-Authored-By) then
    **vcs.open_pr** (semantic title; body = Business Impact / Deliverables / Technical Notes / QC).
 9. **transition** the ticket toward `project.terminal_status` if appropriate.
 

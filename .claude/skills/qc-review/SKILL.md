@@ -1,8 +1,8 @@
 ---
 name: qc-review
 description: Independent quality review of a ticket's deliverables via an explicit validation pyramid — dialect lint, counts/dedup, cross-source reconcile, independent re-run + anti-pattern sweep, human sign-off. The VALIDATE phase.
-argument-hint: <ticket-id>
-allowed-tools: [Read, Bash, Glob, Grep]
+argument-hint: <ticket-id> [--deep]
+allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 
 # /qc-review
@@ -52,6 +52,25 @@ re-runs, it does not edit code (the build owns fixes).
   REQUEST-CHANGES with structured remediation.
 - **Warn** findings (perf, style) → list but don't block.
 - **Info** (distributions) → record.
+
+## Deep mode (`--deep`) — adversarial panel
+For high-blast-radius work (compliance/regulatory pulls, irreversible writes), replace the single pass
+with a panel, using the host agent's own subagents (the `Agent` tool):
+1. **Fan out** one independent `qc-reviewer` subagent per pyramid layer (① dialect-lint · ② counts&dedup ·
+   ③ cross-source reconcile · ④ re-run + anti-pattern sweep) — each scoped to its layer, re-running its
+   own queries, returning findings only. Run them in parallel.
+2. **Adversarially verify** every reported finding before it counts: a second pass re-reads the cited
+   `file:line` / re-runs the query and rules each finding confirmed / false-positive / **uncertain**.
+   A finding it cannot reproduce is **uncertain, not dismissed** — for a QC harness, silently dropping
+   a Critical / count / reconcile finding is the expensive failure. Only a clear, demonstrated
+   non-issue is ruled false-positive.
+3. **Synthesize** confirmed findings (deduped across layers) into one verdict — and **carry uncertain
+   findings into the verdict too**: any uncertain Critical / count / reconcile finding forces
+   REQUEST-CHANGES (or explicit human sign-off), never a silent APPROVE.
+
+This is the same dimensions → find → adversarially-verify pattern used to harden the kit itself; it
+catches plausible-but-wrong findings a single reviewer would wave through. Default (no flag) is the
+single `qc-reviewer` pass — reach for `--deep` only when the cost of a missed defect is high.
 
 ## Phase N — Verdict
 Emit the structured report (Summary · pyramid results per layer · findings by severity ·

@@ -42,25 +42,28 @@ def main() -> int:
     except (ValueError, OSError):
         return 0  # edit was not under tickets/
 
-    # Don't react to the index artifacts themselves.
-    if changed.name in ("INDEX.md", "index_data.json"):
+    # Don't react to the *generated* artifacts (else the hook's own write re-triggers it).
+    # index_data.json is source, NOT generated — editing the store SHOULD re-render.
+    if changed.name in ("INDEX.md", "OBJECTS.md"):
         return 0
 
     sys.path.insert(0, str(root / "bin"))
     try:
-        from build_ticket_index import build_rows, render  # type: ignore
-        fresh = render(build_rows(root))
+        from build_ticket_index import build_rows, render, render_objects  # type: ignore
+        rows = build_rows(root)
+        fresh = {tickets_dir / "INDEX.md": render(rows), tickets_dir / "OBJECTS.md": render_objects(rows)}
     except SystemExit:
         return 0  # malformed index_data.json — surfaced when the agent runs the renderer
     except Exception:
         return 0  # fail open
 
-    index_path = tickets_dir / "INDEX.md"
     try:
-        current = index_path.read_text() if index_path.is_file() else None
-        if current != fresh:
-            index_path.write_bytes(fresh.encode("utf-8"))
-            print("Auto-regenerated tickets/INDEX.md (ticket folder changed). "
+        changed_any = False
+        for p, txt in fresh.items():
+            if (p.read_text() if p.is_file() else None) != txt:
+                p.write_bytes(txt.encode("utf-8")); changed_any = True
+        if changed_any:
+            print("Auto-regenerated tickets/INDEX.md + OBJECTS.md (ticket folder changed). "
                   "Run bin/ingest_index_records.py to refresh a ticket's curated summary.")
     except OSError:
         pass

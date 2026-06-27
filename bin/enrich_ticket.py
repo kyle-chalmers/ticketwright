@@ -17,7 +17,7 @@ Usage:
   enrich_ticket.py --branch                # enrich the ticket named in the current git branch
   enrich_ticket.py ENG-123 --model opus    # override the model
 
-Then commit tickets/INDEX.md + tickets/index_data.json with the ticket.
+Then commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the ticket.
 """
 from __future__ import annotations
 
@@ -41,6 +41,8 @@ Completed/Deployed/Filed date, else the most recent Update/Follow-up date. Never
 Concrete, no "This ticket...".
 - "tags": 1-4 short kebab-case topic tags describing the work (reuse common ones across tickets).
 - "cross_refs": array of other ticket IDs referenced in the body (dedup, exclude this ticket).
+- "objects": array of fully-qualified data objects the ticket read or wrote (e.g. "SCHEMA.VIEW", \
+"db.schema.table"); [] if none / not a data ticket.
 - "title": the H1 text with any leading "<KEY>-NNN:" stripped.
 
 README for {tid}:
@@ -128,7 +130,7 @@ def main() -> int:
     subprocess.run([sys.executable, str(ingest), "--from-json", "-"],
                    input=json.dumps({"records": records}), text=True, check=True)
     subprocess.run([sys.executable, str(render)], check=True)
-    print("Done. Commit tickets/INDEX.md + tickets/index_data.json with the ticket.", file=sys.stderr)
+    print("Done. Commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the ticket.", file=sys.stderr)
     return 0
 
 

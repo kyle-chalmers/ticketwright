@@ -89,6 +89,7 @@ def main() -> int:
             "date": r.get("date") or None,
             "cross_refs": refs,
             "tags": _as_list(r.get("tags")),
+            "objects": _as_list(r.get("objects")),
             "summary": (r.get("summary") or "").strip(),
             "confidence": r.get("confidence") or "medium",
             "readme_present": bool(readme),

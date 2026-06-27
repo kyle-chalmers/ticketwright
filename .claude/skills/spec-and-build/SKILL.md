@@ -22,7 +22,7 @@ context-engineering core idea: AI fails from missing context, not weak models.
    configured, the spec is code/analysis-only — proceed without warehouse steps.
 2. **Research in parallel, never implement.** Spawn read-only research (Agent/Explore or `/prime-*`):
    - explore the objects via `warehouse.describe` + samples; map dependencies + grain;
-   - read the 2–4 closest prior tickets (the analogs from `/prime-ticket`);
+   - read the 2–4 closest prior tickets (from `/recall <id>`) and reuse their SQL/QC where it fits;
    - pull the business rules via `/prime-domain`.
    Research agents return findings only; **they do not write code.**
 3. **Write the spec** from `templates/spec.md.tmpl` into the ticket's folder

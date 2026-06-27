@@ -21,15 +21,15 @@ guide an agent). You version the AI layer alongside the code. It has three tiers
 | Tier | Here | Loaded |
 |---|---|---|
 | **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`) | always |
-| **On-demand context** | the `documentation/` pack + the `/prime-*` commands + `tickets/INDEX.md` | selectively |
+| **On-demand context** | the `documentation/` pack · `/prime-*` + `/recall` · `tickets/INDEX.md` + `OBJECTS.md` | selectively |
 | **Commands & skills** | `.claude/skills/` + `.claude/commands/` | on invocation |
 
 …driven by the **PIV loop — Plan → Implement → Validate:**
 
 ```
-PLAN        /start-ticket   (+ /prime-ticket, /prime-warehouse, /prime-domain)
+PLAN        /start-ticket   (+ /prime-ticket, /recall, /prime-warehouse, /prime-domain)
 IMPLEMENT   /spec-and-build  spec → (commit) → build      (research-in-parallel, never implement)
-VALIDATE    /qc-review  →  /deliver-ticket                (pyramid; hard-halt before external posts)
+VALIDATE    /qc-review [--deep]  →  /deliver-ticket       (pyramid + adversarial panel; hard-halt before posts)
 META        /productize-workflow  ·  /build-context-pack  ·  /build-ticket-index
 SETUP       /configure-workspace   (once)             ·   /onboard-teammate     (new person)
 ```
@@ -102,11 +102,17 @@ writes — so the catalog is reproducible *and* readable. It self-maintains: the
 it complete on every folder change, and `deliver-ticket` curates a ticket's summary at close. Bootstrap
 an existing backlog with `/build-ticket-index --all`. Full details: [`docs/ticket-index.md`](docs/ticket-index.md).
 
+**Recall & objects.** `/recall <id>` mines the index for the closest prior tickets (ranked by shared
+object / tag / cross-ref / keyword) and writes a *reuse brief* in the PLAN phase — so you don't rebuild
+what's been built. `tickets/OBJECTS.md` is the object → tickets reverse map ("which tickets touched
+`VW_X`?"), populated from enrichment ∪ a deterministic grep of each ticket's SQL. Lexical, stdlib, no
+vector store — the rank → read-top-K shape also scales past the point where the whole index fits in context.
+
 ## What's inside
 
 - **9 skills** (`.claude/skills/`): configure-workspace, onboard-teammate, start-ticket,
   spec-and-build, qc-review, deliver-ticket, productize-workflow, build-context-pack, build-ticket-index.
-- **3 prime commands** (`.claude/commands/`): prime-ticket, prime-warehouse, prime-domain.
+- **4 commands** (`.claude/commands/`): prime-ticket, prime-warehouse, prime-domain, recall (prior-art reuse brief).
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — independent-context reviewer `qc-review` delegates to.
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`):
   policy enforcement, session priming, ticket-index surfacing + auto-regen, status line.
@@ -116,7 +122,7 @@ an existing backlog with `/build-ticket-index --all`. Full details: [`docs/ticke
 - **Templates** (`templates/`): AGENTS.md, ticket README, plan, spec, and the productized-skill skeleton.
 - **`bin/`**: `verify_stack.sh` (hybrid verify), `render.sh` (token renderer), `selftest.sh` (kit
   test suite + hook unit tests), and the ticket-index tools (`build_ticket_index.py`,
-  `ingest_index_records.py`, `enrich_ticket.py`).
+  `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`).
 
 ## Still out of scope (deferred)
 
