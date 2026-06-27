@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "_comment": "EXAMPLE store — copy to tickets/index_data.json in YOUR repo, then let /build-ticket-index + /deliver-ticket fill it from real tickets. The real index_data.json is gitignored in THIS kit so a private store can never be committed upstream. Use only fixture ids (ENG-/DEMO-/TEST-/SAMPLE-) in anything committed to the kit.",
+  "tickets": [
+    {
+      "id": "ENG-1",
+      "owner": "demo",
+      "title": "Backfill loan tape monthly snapshot",
+      "status": "Deployed",
+      "date": "2026-01-15",
+      "summary": "Built MONTHLY snapshot table + view; reconciled 1.2M rows to source within tolerance.",
+      "tags": ["loan-tape", "warehouse-deploy"],
+      "cross_refs": ["ENG-2"],
+      "objects": ["ANALYTICS.VW_LOAN", "ANALYTICS.MONTHLY_SNAPSHOT"],
+      "confidence": "high",
+      "readme_present": true,
+      "readme_hash": null
+    },
+    {
+      "id": "ENG-2",
+      "owner": "demo",
+      "title": "Loan tape follow-up — add delinquency buckets",
+      "status": "Completed",
+      "date": "2026-02-03",
+      "summary": "Added DPD buckets to the monthly snapshot; follow-on to ENG-1.",
+      "tags": ["loan-tape", "data-pull"],
+      "cross_refs": ["ENG-1"],
+      "objects": ["ANALYTICS.MONTHLY_SNAPSHOT"],
+      "confidence": "medium",
+      "readme_present": true,
+      "readme_hash": null
+    }
+  ]
+}

@@ -188,5 +188,29 @@ grep -q 'bob/ENG-5' <<<"$mo" && ok "recall --for keeps same-id ticket under anot
 amb="$(CLAUDE_PROJECT_DIR="$M" python3 bin/recall.py --for ENG-5 2>&1 >/dev/null)"
 grep -q 'multiple owners' <<<"$amb" && ok "recall errors on ambiguous seed (no --owner)" || bad "ambiguous seed not flagged" "$amb"
 
+hdr "12 · privacy guard (no real ticket store committed to the public kit)"
+# The store is per-install PRIVATE business data. It must be gitignored here; if it is ever tracked,
+# it must be empty or fixture-only (ENG-/DEMO-/TEST-/SAMPLE-). This catches an accidental `cp` of a
+# real index_data.json + commit before it reaches the public repo.
+if git ls-files --error-unmatch tickets/index_data.json >/dev/null 2>&1; then
+  realids="$(python3 - <<'PY'
+import json, re
+try:
+    d = json.load(open("tickets/index_data.json"))
+except Exception:
+    d = {}
+ts = d.get("tickets", []) if isinstance(d, dict) else []
+bad = [str(t.get("id", "")) for t in ts if not re.match(r"^(ENG|DEMO|TEST|SAMPLE)-", str(t.get("id", "")))]
+print(" ".join(bad))
+PY
+)"
+  [ -z "$realids" ] && ok "tracked index_data.json is empty/fixture-only" \
+    || bad "REAL ticket ids committed to the public kit — scrub before pushing" "$realids"
+else
+  ok "tickets/index_data.json is gitignored (a private store can't be committed)"
+fi
+[ -f tickets/index_data.example.json ] && ok "index_data.example.json shipped as the schema reference" \
+  || bad "tickets/index_data.example.json missing"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -19,8 +19,14 @@ Make the ticket index *active*.
 
 ### Changed
 - The `PostToolUse` hook and `--check` gate now keep `OBJECTS.md` in sync alongside `INDEX.md`.
-- Self-test grows to 65 checks (recall ranking, reverse lookup + leaf match, OBJECTS.md render + gate,
-  Python-import exclusion, multi-owner seed disambiguation).
+- Self-test grows to 67 checks (recall ranking, reverse lookup + leaf match, OBJECTS.md render + gate,
+  Python-import exclusion, multi-owner seed disambiguation, privacy guard).
+
+### Security
+- The ticket-index store (`tickets/index_data.json`) is **per-install private business data**, so it is
+  now gitignored in the kit itself — a real store can't be committed upstream by accident. The schema is
+  shipped as `tickets/index_data.example.json` (fixture ids only), and self-test §12 fails if a tracked
+  store ever carries non-fixture (`ENG-`/`DEMO-`/`TEST-`/`SAMPLE-`) ticket ids.
 
 ## [1.0.0] — 2026-06-25
 
