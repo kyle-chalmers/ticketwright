@@ -134,6 +134,11 @@ The heavy external "knowledge-base + orchestration" harness (Archon-style retrie
 skipped. Task management is the tracker's job; orchestration is `productize-workflow` + the host
 agent's own subagents. The ticket index covers in-repo recall without any vector store or service.
 
+## Roadmap
+
+See [`ROADMAP.md`](ROADMAP.md) — next up: plugin packaging (one `claude plugin install`) and a tracker
+`id_mode` contract so integer trackers (Azure Boards, GitHub Issues) stop being an abstraction leak.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [Unreleased]
+
+Folding the best of the earlier `crank-tickets`/GDD experiment into Ticketwright (now the canonical line).
+
+### Added
+- **Role-mode templates** (`templates/roles/{generalist,analyst,engineer,scientist}.md`) — `configure-workspace`
+  asks the team's persona, stores `project.role`, and fills a `{{role_focus}}` block in the rendered
+  `AGENTS.md` so the rules emphasize that role's deliverables + QC focus.
+- **`ROADMAP.md`** — versioned plan; next up is plugin packaging + the tracker `id_mode` contract.
+- **Self-test §14 — scrub + structure**: generic secret/PII pattern scan, every command/skill has a
+  `description`, every adapter declares `seam` + `tool` (runs in CI). Self-test now 75 checks.
+
+### Planned (v1.3)
+- **Plugin packaging** — ship as an installable Claude Code plugin (`.claude-plugin/plugin.json`,
+  `${CLAUDE_PLUGIN_ROOT}`-relative scripts, auto-namespaced `/ticketwright:*` commands) so install is
+  `claude plugin install` instead of `cp -r`. Per-repo config still written by `/configure-workspace`.
+
 ## [1.2.0] — 2026-06-27
 
 Sharpen recall and make the index observable — informed by dogfooding against a 139-ticket archive and

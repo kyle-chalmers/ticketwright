@@ -76,6 +76,7 @@ wl_pr=200
 wl_ticket=200
 chat_always_include=Alice
 default_branch=main
+role_focus=**You are a senior engineer** doing ticket-driven work (filled from templates/roles/<role>.md).
 EOF
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
@@ -235,6 +236,28 @@ else
 fi
 [ -f tickets/index_data.example.json ] && ok "index_data.example.json shipped as the schema reference" \
   || bad "tickets/index_data.example.json missing"
+
+hdr "14 · scrub + structure (public-kit hygiene)"
+# scrub: generic secret / PII patterns must not appear in tracked kit files (selftest excluded — it
+# carries the patterns themselves; we deliberately do NOT hardcode any employer name here).
+scrub="$(grep -rIlE 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[0-9]{3}-[0-9]{2}-[0-9]{4}' \
+  --exclude-dir=.git --exclude=selftest.sh . 2>/dev/null || true)"
+[ -z "$scrub" ] && ok "no secret/PII patterns in tracked files" || bad "scrub hit" "$scrub"
+# structure: every command + skill declares a description; every adapter declares seam + tool
+sfail=""
+for f in .claude/commands/*.md .claude/skills/*/SKILL.md; do
+  head -8 "$f" | grep -q '^description:' || sfail="$sfail $f"
+done
+[ -z "$sfail" ] && ok "every command/skill declares a description" || bad "missing description frontmatter" "$sfail"
+afail=""
+for f in adapters/*/*.md; do
+  h="$(head -12 "$f")"; { grep -q '^seam:' <<<"$h" && grep -q '^tool:' <<<"$h"; } || afail="$afail $f"
+done
+[ -z "$afail" ] && ok "every adapter declares seam + tool" || bad "adapter frontmatter incomplete" "$afail"
+# role modes: 4 snippets present + the template token is wired
+roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/roles/$r.md" ] || roles_ok=0; done
+{ [ "$roles_ok" = 1 ] && grep -q '{{role_focus}}' templates/AGENTS.md.tmpl; } \
+  && ok "role-mode snippets present + {{role_focus}} wired into AGENTS.md.tmpl" || bad "role modes incomplete"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

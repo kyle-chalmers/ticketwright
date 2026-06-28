@@ -35,6 +35,9 @@ Honor `reduce_assumptions` — ask, don't guess; allow "no warehouse" for non-da
 ## Phase 4 — Scaffold the repo
 5. **Global rules:** render `templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens from `stack.yaml`:
    tool names, key_prefix, terminal_status, word limits, policies). This is the always-loaded tier.
+   Ask the team's primary **role** (`generalist` / `analyst` / `engineer` / `scientist`; default
+   `generalist`), store it as `project.role` in `stack.yaml`, and fill the `{{role_focus}}` token from
+   `templates/roles/<role>.md` so the rules emphasize that persona's deliverables + QC focus.
 6. **Hooks + settings (policy enforcement):** render `.claude/settings.json.tmpl` → `.claude/settings.json`,
    keeping the `hooks` block (PreToolUse `db_write_guard.py`; SessionStart `session_context.py` +
    `ticket_index_context.py`; PostToolUse `regenerate_ticket_index.py`) and the statusline; then
