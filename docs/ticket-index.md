@@ -18,7 +18,7 @@ human-readable summaries.
 | `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
-| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/recall`. | — |
+| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
 | `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has `claude -p` write the curated summary/status/date/tags/refs, ingests + re-renders. (Claude-Code convenience.) | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
@@ -61,9 +61,10 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
 ## Maintaining it
 
 ```bash
-python3 bin/build_ticket_index.py            # (re)render INDEX.md from the store + live folders
-python3 bin/build_ticket_index.py --check    # staleness gate: exit 1 if INDEX.md != a fresh render
-python3 bin/build_ticket_index.py --stats    # coverage: enriched / un-enriched / stale
+python3 bin/build_ticket_index.py             # (re)render INDEX.md + OBJECTS.md from the store + folders
+python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if either file != a fresh render
+python3 bin/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects
+python3 bin/build_ticket_index.py --recurring --min-tickets 8   # objects touched by many tickets → productize candidates
 ```
 
 A ticket on disk but absent from `index_data.json` still appears in `INDEX.md` — the renderer falls

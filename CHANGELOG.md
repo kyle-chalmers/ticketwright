@@ -3,6 +3,39 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [1.2.0] — 2026-06-27
+
+Sharpen recall and make the index observable — informed by dogfooding against a 139-ticket archive and
+a two-AI (Codex + agent panel) improvement review. Everything stays stdlib-only and tool-agnostic.
+
+### Added
+- **`recall.py --eval [--sweep]`** — read-only recall-quality diagnostic: holds out each ticket's curated
+  cross-refs and reports MRR / P@1 / P@3 / recall@5 (the cross-ref signal is excluded from scoring to
+  avoid label leakage). Never auto-tunes; the `4/3/5/1` weights stay hand-set. `--sweep` shows weight
+  sensitivity for a human to read.
+- **IDF object down-weighting** in recall scoring — a ubiquitous object (e.g. one touched by 55 tickets)
+  contributes less than a rare shared one. Discount-only (floor 0.4), tuned via `--eval` to a strict
+  Pareto gain (MRR .550→.571, P@1 .408→.421, P@3 .618→.671, recall@5 .462→.494). Flat `W_OBJECT` stays
+  the ceiling, so the transparent-weights stance holds.
+- **Advisory verdict line + `--min-score`** on recall — a scale-free "strong / clear-leader / weak /
+  none" read so PLAN can decide whether to open candidates (advisory, never an auto-skip).
+- **`build_ticket_index.py --recurring [--min-tickets N]`** — ranks objects touched by many tickets over
+  a long date span; surfaces productize candidates (feeds the productize-workflow loop).
+- **`build_ticket_index.py --stats` health metrics** — enrichment %, median summary length,
+  under-enriched count (no tags+objects), one-off vs shared object counts, oldest stale ticket.
+- **Scale-aware `OBJECTS.md`** — above ~150 distinct objects, single-ticket objects collapse into a
+  compact appendix so the shared-object table stays scannable (full data preserved).
+
+### Changed
+- **Ingest is now the validation trust boundary** — `ingest_index_records.py` drops malformed dates,
+  filters bare (dot-less) object names, and coerces tags to kebab-case (deduped, capped). Both the enrich
+  path and the build-ticket-index skill funnel through it, so one guard covers both.
+- Self-test grows to 71 checks (IDF ranking, `--eval` smoke, `--recurring`, ingest validators).
+
+### Removed
+- Plural-folding in the recall tokenizer (it had been prototyped) — `--eval` showed it regresses P@1/MRR,
+  so it was dropped rather than shipped. (The harness earning its keep by killing a feature.)
+
 ## [1.1.0] — 2026-06-27
 
 Make the ticket index *active*.

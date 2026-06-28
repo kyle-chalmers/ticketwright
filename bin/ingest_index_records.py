@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+from datetime import date
 from pathlib import Path
 
 from build_ticket_index import discover, repo_root, sha256_file, ref_key, load_config, ticket_url
@@ -33,6 +35,36 @@ def _as_list(v) -> list:
     if isinstance(v, (list, tuple)):
         return [x for x in v if isinstance(x, str)]
     return []
+
+
+# --- validators: this is the single trust boundary for LLM-authored records ---
+def _valid_date(v):
+    """Keep an ISO YYYY-MM-DD date that actually parses; drop anything else (e.g. an invented date)."""
+    s = (v or "").strip() if isinstance(v, str) else ""
+    try:
+        return date.fromisoformat(s).isoformat() if s else None
+    except ValueError:
+        return None
+
+
+def _clean_objects(v) -> list:
+    """Qualified object names only (must contain a dot) — drops bare prose like 'the loan view'."""
+    seen: dict[str, str] = {}
+    for o in _as_list(v):
+        o = o.strip()
+        if "." in o:
+            seen.setdefault(o.lower(), o)
+    return sorted(seen.values(), key=str.lower)
+
+
+def _clean_tags(v, cap: int = 6) -> list:
+    """Coerce to kebab-case, dedup (order-preserving), cap the count."""
+    out = []
+    for t in _as_list(v):
+        k = re.sub(r"[^a-z0-9]+", "-", t.strip().lower()).strip("-")
+        if k and k not in out:
+            out.append(k)
+    return out[:cap]
 
 
 def load_records(spec: str) -> list[dict]:
@@ -86,10 +118,10 @@ def main() -> int:
             "owner": owner,
             "title": (r.get("title") or "").strip(),
             "status": status,
-            "date": r.get("date") or None,
+            "date": _valid_date(r.get("date")),
             "cross_refs": refs,
-            "tags": _as_list(r.get("tags")),
-            "objects": _as_list(r.get("objects")),
+            "tags": _clean_tags(r.get("tags")),
+            "objects": _clean_objects(r.get("objects")),
             "summary": (r.get("summary") or "").strip(),
             "confidence": r.get("confidence") or "medium",
             "readme_present": bool(readme),
