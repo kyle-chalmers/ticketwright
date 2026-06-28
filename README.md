@@ -1,6 +1,10 @@
 # Ticketwright
 
 [![CI](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/tag/kyle-chalmers/ticketwright?label=release&sort=semver&color=blue)](https://github.com/kyle-chalmers/ticketwright/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
+![tool-agnostic](https://img.shields.io/badge/seams-tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docstore%20%C2%B7%20vcs-success)
 
 **Ticketwright** is a portable, tool-agnostic **AI layer** for ticket-driven work repos (data
 intelligence, analytics, ops, regulatory reporting…). Drop it into a repo, run
