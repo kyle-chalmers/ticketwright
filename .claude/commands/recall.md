@@ -17,7 +17,7 @@ PLAN (it's the engine `/prime-ticket` uses for "related prior tickets").
 ## Steps
 1. **Rank candidates** (deterministic, instant — reads `tickets/index_data.json` + ticket SQL):
    ```
-   !python3 bin/recall.py --for <id>          # or: --query "<topic>"  |  --tags a,b  |  --object <NAME>
+   !python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/recall.py" --for <id>          # or: --query "<topic>"  |  --tags a,b  |  --object <NAME>
    ```
    Add `--json` for structured output. Scoring is transparent: object match ×4, tag ×3, cross-ref
    link +5, keyword overlap ×1; recency is a tiebreak. The seed ticket is excluded.

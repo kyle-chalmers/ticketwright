@@ -20,7 +20,7 @@ regardless of the underlying tools.
 3. Tidy: remove redundant/version-sprawl files (overwrite, don't duplicate); confirm filenames carry
    record counts; confirm the README tells the full business + methodology + QC story. Then **refresh
    this ticket's index entry** so its `tickets/INDEX.md` row gets a curated one-line summary:
-   `python3 bin/enrich_ticket.py <id>` (or `/build-ticket-index <id>`). The PostToolUse hook already
+   `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/enrich_ticket.py" <id>` (or `/build-ticket-index <id>`). The PostToolUse hook already
    keeps the row present; this upgrades it from auto-derived (`▱`) to curated.
 4. **Draft the comms artifacts** (don't post yet): render the tracker comment and the chat message
    from the ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first; segmented

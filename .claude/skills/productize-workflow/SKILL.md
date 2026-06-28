@@ -1,7 +1,7 @@
 ---
 name: productize-workflow
 description: Turn a recurring "clone-the-last-ticket" workflow into a productized, parameterized skill — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts. The meta-skill.
-argument-hint: "<workflow name>" (e.g. "monthly vendor reconciliation")
+argument-hint: "<workflow name> (e.g. monthly vendor reconciliation)"
 allowed-tools: [Read, Write, Edit, Bash, Glob, AskUserQuestion]
 ---
 

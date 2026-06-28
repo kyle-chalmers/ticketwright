@@ -243,12 +243,41 @@ hdr "14 · scrub + structure (public-kit hygiene)"
 scrub="$(grep -rIlE 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[0-9]{3}-[0-9]{2}-[0-9]{4}' \
   --exclude-dir=.git --exclude=selftest.sh . 2>/dev/null || true)"
 [ -z "$scrub" ] && ok "no secret/PII patterns in tracked files" || bad "scrub hit" "$scrub"
-# structure: every command + skill declares a description; every adapter declares seam + tool
-sfail=""
-for f in .claude/commands/*.md .claude/skills/*/SKILL.md; do
-  head -8 "$f" | grep -q '^description:' || sfail="$sfail $f"
-done
-[ -z "$sfail" ] && ok "every command/skill declares a description" || bad "missing description frontmatter" "$sfail"
+# structure: every command/skill has PARSEABLE frontmatter (a substring grep false-greens on broken
+# YAML — e.g. `argument-hint: [a] [b]` parses as a flow seq + trailing junk and drops ALL metadata when
+# loaded as a plugin). Validate flow-node values are complete + a description is present. Stdlib only.
+fm_bad="$(python3 - <<'PY'
+import re, glob
+def check(f):
+    m = re.match(r'^---\n(.*?)\n---', open(f, encoding='utf-8').read(), re.S)
+    if not m:
+        return f + " (no frontmatter)"
+    desc = False
+    for ln in m.group(1).splitlines():
+        mm = re.match(r'^([A-Za-z_][\w-]*):\s*(.*)$', ln)
+        if not mm:
+            continue
+        k, v = mm.group(1), mm.group(2).strip()
+        if k == "description" and v:
+            desc = True
+        if v[:1] in '["\'':            # a flow node must be the WHOLE value (only trailing whitespace)
+            if v[0] == "[":
+                depth = idx = 0; idx = -1
+                for i, c in enumerate(v):
+                    if c == "[": depth += 1
+                    elif c == "]":
+                        depth -= 1
+                        if depth == 0: idx = i; break
+            else:
+                idx = v.find(v[0], 1)
+            if idx == -1 or v[idx + 1:].strip():
+                return f + ": invalid YAML flow value for '" + k + "'"
+    return None if desc else f + " (no description)"
+bad = [r for r in (check(f) for f in glob.glob('.claude/commands/*.md') + glob.glob('.claude/skills/*/SKILL.md')) if r]
+print("\n".join(bad))
+PY
+)"
+[ -z "$fm_bad" ] && ok "every command/skill has valid, parseable frontmatter (+ a description)" || bad "frontmatter problem (would drop metadata as a plugin)" "$fm_bad"
 afail=""
 for f in adapters/*/*.md; do
   h="$(head -12 "$f")"; { grep -q '^seam:' <<<"$h" && grep -q '^tool:' <<<"$h"; } || afail="$afail $f"
@@ -258,6 +287,18 @@ done
 roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/roles/$r.md" ] || roles_ok=0; done
 { [ "$roles_ok" = 1 ] && grep -q '{{role_focus}}' templates/AGENTS.md.tmpl; } \
   && ok "role-mode snippets present + {{role_focus}} wired into AGENTS.md.tmpl" || bad "role modes incomplete"
+
+hdr "15 · plugin manifest (Claude Code plugin packaging)"
+python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert m['name']=='ticketwright' and m.get('version') and 'hooks' in m" 2>/dev/null \
+  && ok "plugin.json valid + has name/version/hooks" || bad "plugin.json invalid/missing fields"
+python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); assert any(p.get('name')=='ticketwright' for p in d['plugins'])" 2>/dev/null \
+  && ok "marketplace.json valid + lists ticketwright" || bad "marketplace.json invalid"
+# auto-discovery symlinks must resolve into .claude/* (loader rejected custom .claude paths in the manifest)
+{ [ -L commands ] && [ -L skills ] && [ -L agents ] && [ -d commands ] && [ -d skills ] && [ -d agents ]; } \
+  && ok "component symlinks resolve (commands/skills/agents → .claude/*)" || bad "plugin component symlinks broken"
+# every hook script the plugin manifest declares must exist
+hk=1; for h in db_write_guard regenerate_ticket_index session_context ticket_index_context; do [ -f ".claude/hooks/$h.py" ] || hk=0; done
+[ "$hk" = 1 ] && ok "all plugin-declared hook scripts present" || bad "a plugin-declared hook script is missing"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

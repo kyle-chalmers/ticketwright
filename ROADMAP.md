@@ -20,15 +20,17 @@ Lineage: Ticketwright is the canonical evolution of the earlier `crank-tickets` 
 advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *distribution* ideas
 (plugin packaging, role modes) folded in here.
 
-## Next — v1.3 (distribution + the tracker contract)
+## Shipped — v1.3 (distribution)
 
-| Item | Why | Notes |
-|---|---|---|
-| **Plugin packaging** (`.claude-plugin/plugin.json`) | One `claude plugin install` instead of `cp -r` four dirs. The change that makes "canonical" real. | Per-repo config (`stack.yaml`, `AGENTS.md`, scaffolding) still written by `/configure-workspace`; bundled `bin/`/`adapters/`/`templates/` referenced via `${CLAUDE_PLUGIN_ROOT}`. |
-| **Role-mode AGENTS.md** (analyst / engineer / scientist / generalist) | `/configure-workspace` tailors the rendered rules to the team's persona. | Lightweight: short role-focus snippets, not duplicate templates. |
-| **CI scrub + structure check** | Guard against a leaked identifier or a malformed skill/adapter reaching the public repo. | Folds into the existing self-test / CI. |
+- **Plugin packaging** — installable as a Claude Code plugin (`.claude-plugin/plugin.json` +
+  `marketplace.json`): `claude plugin install ticketwright@ticketwright`. Components auto-discover via
+  top-level symlinks into `.claude/`; bin/ scripts dual-mode (`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}`)
+  so the vendored `cp -r` install still works. Validated with `claude plugin validate` + install.
+- **Role-mode AGENTS.md** (generalist / analyst / engineer / scientist) — `/configure-workspace`
+  tailors the rendered rules to the team's persona via short role-focus snippets.
+- **CI scrub + structure + manifest checks** — self-test §14/§15 (79 checks total).
 
-## Then — v1.4+ (harden the tracker contract)
+## Next — v1.4+ (harden the tracker contract)
 
 Surfaced by a two-AI (Codex + agent-panel) review as the top *coverage* gaps — the abstraction is
 solid for keyed trackers (Jira/Linear) and good-with-caveats for integer/label ones:

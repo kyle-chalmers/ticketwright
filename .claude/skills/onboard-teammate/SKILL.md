@@ -1,7 +1,7 @@
 ---
 name: onboard-teammate
 description: Onboard a new team member to a configured ticket-work repo — install prerequisites, authenticate each configured tool, verify connectivity, read the key docs, then a guided first-ticket dry run.
-argument-hint: [name] (optional, for a personalized checklist)
+argument-hint: "[name] (optional, for a personalized checklist)"
 allowed-tools: [Read, Bash, Glob, AskUserQuestion]
 ---
 
@@ -26,8 +26,8 @@ same AI layer that primes the agent onboards the human (onboarding symmetry).
    vcs `gh/glab auth login`. Pure instructions — the person runs the auth themselves.
 
 ## Phase 3 — Verify connectivity
-5. Run `!bash bin/selftest.sh` first (confirms the kit itself is intact + hooks work), then
-   `!bash bin/verify_stack.sh`. Walk through any ✗/⚠ with the relevant adapter's auth notes until
+5. Run `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` first (confirms the kit itself is intact + hooks work), then
+   `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh"`. Walk through any ✗/⚠ with the relevant adapter's auth notes until
    green (MCP-only seams: confirm the server is connected this session). Mention the `db_write_guard`
    hook so they know destructive warehouse statements will prompt for confirmation by design.
 

@@ -22,7 +22,7 @@ dumping all of `AGENTS.md` + the whole catalog into context. Run this at the sta
 2. **Locate the ticket folder** at the rendered `project.ticket_path`. If it exists, read its
    `README.md` and list `final_deliverables/` — summarize prior progress (resume, don't restart).
 3. **Find related prior tickets** via the adapter's `search` verb (text on the ticket's key nouns)
-   AND locally via the index-ranked recall engine: `!python3 bin/recall.py --for <id>` (scores prior
+   AND locally via the index-ranked recall engine: `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/recall.py" --for <id>` (scores prior
    tickets by shared objects / tags / cross-refs / keywords). Surface the top 2–4 with one line each —
    these are your closest analogs (use `/recall` for a full reuse brief).
 4. **Report a tight context brief** (≤ ~200 words): what the ticket asks, the likely data

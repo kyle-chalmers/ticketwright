@@ -52,12 +52,12 @@ Honor `reduce_assumptions` — ask, don't guess; allow "no warehouse" for non-da
    installed skills, the `prime-*` commands, the `qc-reviewer` agent, the hooks, and the adapters in
    use (so humans + agents can find them). Keep it one line each.
 9. **Ticket index:** seed an empty store `tickets/index_data.json` (`{"schema_version": 1, "tickets": []}`)
-   and run `!python3 bin/build_ticket_index.py` to write the initial `tickets/INDEX.md`. From here it
+   and run `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py"` to write the initial `tickets/INDEX.md`. From here it
    self-maintains (PostToolUse regen on folder changes; SessionStart surfacing; curated summaries at
    close). Bootstrap an existing backlog with `/build-ticket-index --all`.
 
 ## Phase 5 — Verify
-10. Run `!bash bin/selftest.sh` (kit integrity + hook unit tests) and `!bash bin/verify_stack.sh`
+10. Run `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` (kit integrity + hook unit tests) and `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh"`
     (per-seam reachability). Report results. Unreachable seams → point at `/onboard-teammate` (auth
     steps) — don't treat as fatal at config time; a failing self-test IS fatal (the kit is broken).
 11. **Report:** the chosen stack, files written, any stub adapters to finish, and the suggested first

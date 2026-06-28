@@ -54,17 +54,29 @@ Skills are written **once against verbs** and never name a tool. Swapping a tool
 and [`stack.example.azure.yaml`](.claude/config/stack.example.azure.yaml) (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos)
 — the same skills run against all three.
 
-## Install into a repo
+## Install
 
-Copy the four directories into your work repo, then configure:
+**As a Claude Code plugin (recommended).** Skills, commands, the `qc-reviewer` agent, and the policy
+hooks install once and work in any repo:
 
 ```bash
-# from a clone of this repo (or use GitHub's "Use this template")
+claude plugin marketplace add kyle-chalmers/ticketwright
+claude plugin install ticketwright@ticketwright
+```
+
+Then, **per repo**, run `/ticketwright:configure-workspace` once — it writes that repo's `stack.yaml`,
+`AGENTS.md`, and ticket scaffolding. Plugin commands are namespaced: `/ticketwright:recall`,
+`/ticketwright:start-ticket`, `/ticketwright:qc-review`, etc. (Bundled `bin/` scripts run from the
+plugin via `${CLAUDE_PLUGIN_ROOT}` and read the repo via `${CLAUDE_PROJECT_DIR}`.)
+
+**Or vendored into a repo** (commands stay bare — `/recall`, `/start-ticket`):
+
+```bash
 cp -r .claude   <your-repo>/.claude          # skills, commands, hooks, agents, config, settings.tmpl, statusline
 cp -r adapters templates bin   <your-repo>/
 
 cd <your-repo>
-/configure-workspace        # detects tooling, interviews, writes stack.yaml + AGENTS.md + settings.json, wires hooks, scaffolds, verifies
+/configure-workspace        # detects tooling, interviews, writes stack.yaml + AGENTS.md + settings.json, scaffolds, verifies
 bash bin/selftest.sh        # kit integrity + hook unit tests — expect "0 failed"
 ```
 
@@ -136,8 +148,9 @@ agent's own subagents. The ticket index covers in-repo recall without any vector
 
 ## Roadmap
 
-See [`ROADMAP.md`](ROADMAP.md) — next up: plugin packaging (one `claude plugin install`) and a tracker
-`id_mode` contract so integer trackers (Azure Boards, GitHub Issues) stop being an abstraction leak.
+See [`ROADMAP.md`](ROADMAP.md) — next up: a tracker `id_mode` contract so integer trackers (Azure
+Boards, GitHub Issues) stop being an abstraction leak, plus a semantic adapter lint. (Plugin packaging
+shipped in v1.3 — see Install above.)
 
 ## License
 

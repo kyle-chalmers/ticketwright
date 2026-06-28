@@ -1,7 +1,7 @@
 ---
 name: build-context-pack
 description: Bootstrap or refresh the repo's domain knowledge base — object inventory, DDL dump, dependency graph, usage ranking, data catalog, ERD, and business glossary into documentation/. The on-demand-context tier the prime-* commands read.
-argument-hint: [--refresh] [schema-or-scope]
+argument-hint: "[--refresh] [schema-or-scope]"
 allowed-tools: [Read, Write, Bash, Glob, Grep]
 ---
 

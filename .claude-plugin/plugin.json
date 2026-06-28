@@ -1,0 +1,36 @@
+{
+  "name": "ticketwright",
+  "version": "1.3.0",
+  "description": "Tool-agnostic AI layer for ticket-driven work repos: prior-art recall, object reverse-index, deep adversarial QC, and a self-maintaining ticket index. Stdlib-only, no vector store.",
+  "author": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
+  "homepage": "https://github.com/kyle-chalmers/ticketwright",
+  "repository": "https://github.com/kyle-chalmers/ticketwright",
+  "license": "MIT",
+  "keywords": ["tickets", "data", "sql", "snowflake", "bigquery", "jira", "linear", "azure-devops", "qc", "workflow", "recall"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/db_write_guard.py\"" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/regenerate_ticket_index.py\"" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/session_context.py\"" },
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/ticket_index_context.py\"" }
+        ]
+      }
+    ]
+  }
+}

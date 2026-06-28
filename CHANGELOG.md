@@ -3,22 +3,27 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
-## [Unreleased]
+## [1.3.0] — 2026-06-28
 
-Folding the best of the earlier `crank-tickets`/GDD experiment into Ticketwright (now the canonical line).
+Fold the best of the earlier `crank-tickets`/GDD experiment into Ticketwright (now the canonical line),
+and make it installable as a Claude Code plugin.
 
 ### Added
 - **Role-mode templates** (`templates/roles/{generalist,analyst,engineer,scientist}.md`) — `configure-workspace`
   asks the team's persona, stores `project.role`, and fills a `{{role_focus}}` block in the rendered
   `AGENTS.md` so the rules emphasize that role's deliverables + QC focus.
 - **`ROADMAP.md`** — versioned plan; next up is plugin packaging + the tracker `id_mode` contract.
-- **Self-test §14 — scrub + structure**: generic secret/PII pattern scan, every command/skill has a
-  `description`, every adapter declares `seam` + `tool` (runs in CI). Self-test now 75 checks.
-
-### Planned (v1.3)
-- **Plugin packaging** — ship as an installable Claude Code plugin (`.claude-plugin/plugin.json`,
-  `${CLAUDE_PLUGIN_ROOT}`-relative scripts, auto-namespaced `/ticketwright:*` commands) so install is
-  `claude plugin install` instead of `cp -r`. Per-repo config still written by `/configure-workspace`.
+- **Self-test §14/§15 — scrub + structure + manifest**: generic secret/PII scan, every command/skill
+  has a `description`, every adapter declares `seam` + `tool`, plugin manifest valid + symlinks resolve
+  + declared hook scripts present (runs in CI). Self-test now 79 checks.
+- **Plugin packaging** — Ticketwright is now an installable **Claude Code plugin**
+  (`.claude-plugin/plugin.json` + `marketplace.json`): `claude plugin install ticketwright@ticketwright`
+  instead of `cp -r`. Components auto-discover via top-level `commands`/`skills`/`agents` symlinks into
+  `.claude/` (the loader rejects custom `.claude/` paths in the manifest); hooks are declared in the
+  manifest with `${CLAUDE_PLUGIN_ROOT}`; bin/ scripts are referenced dual-mode
+  (`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/…`) so the vendored `cp -r` install still works
+  unchanged. Plugin commands are namespaced (`/ticketwright:recall`); per-repo config still via
+  `/configure-workspace`. Validated end-to-end with `claude plugin validate` + install + `details`.
 
 ## [1.2.0] — 2026-06-27
 
