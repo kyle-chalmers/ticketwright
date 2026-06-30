@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [1.3.1] — 2026-06-30
+
+`pip install ticketwright`.
+
+### Added
+- **PyPI distribution** via GitHub Trusted Publishing (OIDC, no tokens) — `.github/workflows/publish.yml`
+  fires on a `v*` tag, builds with `uv`, verifies tag == version, uploads via `pypa/gh-action-pypi-publish`.
+- **`ticketwright` CLI** (zero runtime deps, stdlib-only): `init` scaffolds the kit into a repo (a
+  versioned, upgrade-safe `cp -r` that preserves existing per-repo config), and `recall` / `index` /
+  `enrich` run the bundled tools against `$PWD` standalone (no Claude Code needed).
+- The kit assets are bundled into the wheel under `ticketwright/_kit/` via hatchling `force-include`,
+  so the Claude Code **plugin** and `cp -r` paths (which reference `bin/` at the repo root) are unchanged.
+- Setup + release flow documented in [`docs/pypi-setup.md`](docs/pypi-setup.md).
+
 ## [1.3.0] — 2026-06-28
 
 Fold the best of the earlier `crank-tickets`/GDD experiment into Ticketwright (now the canonical line),

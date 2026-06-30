@@ -25,3 +25,8 @@ venv/
 # The ticket-index store is PRIVATE per consuming repo — never commit a real one to the kit.
 # Ship tickets/index_data.example.json as the schema reference instead. (selftest §12 guards this.)
 tickets/index_data.json
+
+# Python build artifacts (PyPI packaging)
+/dist/
+/build/
+*.egg-info/

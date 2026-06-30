@@ -300,5 +300,25 @@ python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); a
 hk=1; for h in db_write_guard regenerate_ticket_index session_context ticket_index_context; do [ -f ".claude/hooks/$h.py" ] || hk=0; done
 [ "$hk" = 1 ] && ok "all plugin-declared hook scripts present" || bad "a plugin-declared hook script is missing"
 
+hdr "16 · PyPI package (manifest + version sync + CLI)"
+{ [ -f pyproject.toml ] && [ -f ticketwright/__init__.py ] && [ -f ticketwright/cli.py ]; } \
+  && ok "package files present (pyproject + ticketwright/)" || bad "package files missing"
+# pyproject sources its version dynamically from __init__.py, so __init__ is the ONE source of truth;
+# plugin.json + marketplace.json must agree with it (release bumps these three in lockstep).
+grep -q 'dynamic = \["version"\]' pyproject.toml \
+  && ok "pyproject version is dynamic (single source: ticketwright/__init__.py)" \
+  || bad "pyproject should declare dynamic = [\"version\"] (no static version)"
+iv="$(grep '__version__' ticketwright/__init__.py | sed 's/[^0-9.]//g')"
+jv="$(grep -m1 '"version"' .claude-plugin/plugin.json | sed 's/[^0-9.]//g')"
+mv="$(grep -m1 '"version"' .claude-plugin/marketplace.json | sed 's/[^0-9.]//g')"
+{ [ -n "$iv" ] && [ "$iv" = "$jv" ] && [ "$iv" = "$mv" ]; } \
+  && ok "version synced across __init__/plugin/marketplace ($iv)" \
+  || bad "version drift" "init=$iv plugin=$jv market=$mv"
+# the CLI module imports + exposes main(); console-script entry point declared
+python3 -c "import sys; sys.path.insert(0,'.'); import ticketwright.cli as c; raise SystemExit(0 if callable(c.main) else 1)" 2>/dev/null \
+  && ok "ticketwright.cli imports + exposes main()" || bad "ticketwright.cli broken"
+grep -q 'ticketwright = "ticketwright.cli:main"' pyproject.toml \
+  && ok "console_script entry point declared" || bad "console_script entry point missing"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

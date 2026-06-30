@@ -69,18 +69,27 @@ Then, **per repo**, run `/ticketwright:configure-workspace` once — it writes t
 `/ticketwright:start-ticket`, `/ticketwright:qc-review`, etc. (Bundled `bin/` scripts run from the
 plugin via `${CLAUDE_PLUGIN_ROOT}` and read the repo via `${CLAUDE_PROJECT_DIR}`.)
 
-**Or vendored into a repo** (commands stay bare — `/recall`, `/start-ticket`):
+**Or via pip** (vendors the kit into a repo, versioned + upgrade-safe — the better `cp -r`):
+
+```bash
+pip install ticketwright
+cd <your-repo> && ticketwright init      # scaffolds .claude/ + adapters/ + templates/ + bin/ (preserves existing config)
+/configure-workspace                     # writes stack.yaml + AGENTS.md + the index
+```
+`ticketwright init` is the pip-native install; the same wheel also runs the tools standalone —
+`ticketwright recall --for <id>`, `ticketwright index --stats`, etc. — no Claude Code required.
+(Zero runtime dependencies; stdlib only.)
+
+**Or raw `cp -r`** (last resort — no version tracking):
 
 ```bash
 cp -r .claude   <your-repo>/.claude          # skills, commands, hooks, agents, config, settings.tmpl, statusline
 cp -r adapters templates bin   <your-repo>/
-
-cd <your-repo>
-/configure-workspace        # detects tooling, interviews, writes stack.yaml + AGENTS.md + settings.json, scaffolds, verifies
-bash bin/selftest.sh        # kit integrity + hook unit tests — expect "0 failed"
+cd <your-repo> && /configure-workspace
 ```
 
-The same self-test runs in CI on every push/PR. A pre-release multi-agent hardening review (subagents
+The self-test runs in CI on every push/PR; PyPI publish is OIDC Trusted Publishing
+([`docs/pypi-setup.md`](docs/pypi-setup.md)). A pre-release multi-agent hardening review (subagents
 + Codex, adversarially verified) is recorded in [`docs/REVIEW.md`](docs/REVIEW.md).
 
 ## Add a new tool

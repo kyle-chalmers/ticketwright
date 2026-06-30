@@ -1,0 +1,39 @@
+name: publish
+
+# Tag a release (e.g. `git tag v1.3.1 && git push origin v1.3.1`) to build and publish to PyPI via
+# Trusted Publishing (OIDC — no stored token). One-time setup (Part A): add a PyPI pending publisher
+# for project `ticketwright`, owner kyle-chalmers, repo `ticketwright`, workflow `publish.yml`,
+# environment `pypi`. See docs/pypi-setup.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # required for PyPI Trusted Publishing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Verify the git tag matches the package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          # Read the canonical version from the single source of truth (handles rc/post/dev cleanly).
+          PKG="$(python3 -c "import re,pathlib; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('ticketwright/__init__.py').read_text())[1])")"
+          echo "tag=$TAG version=$PKG"
+          test "$TAG" = "$PKG" || { echo "::error::tag v$TAG != ticketwright/__init__.py version $PKG — bump __init__.py to match the tag"; exit 1; }
+          ls -l dist/
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1

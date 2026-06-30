@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ticketwright"
+dynamic = ["version"]  # single source of truth: ticketwright/__init__.py (read by [tool.hatch.version])
+description = "Tool-agnostic AI layer for ticket-driven work repos: prior-art recall, object reverse-index, deep QC, and a self-maintaining ticket index. Stdlib-only, no vector store."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Kyle Chalmers" }]
+keywords = ["tickets", "claude-code", "recall", "ticket-index", "qc", "workflow", "jira", "linear", "snowflake"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Code Generators",
+]
+# Zero runtime dependencies — the kit is deliberately stdlib-only.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "build>=1", "twine>=5"]
+
+[project.urls]
+Homepage = "https://github.com/kyle-chalmers/ticketwright"
+Repository = "https://github.com/kyle-chalmers/ticketwright"
+Issues = "https://github.com/kyle-chalmers/ticketwright/issues"
+
+[project.scripts]
+ticketwright = "ticketwright.cli:main"
+
+[tool.hatch.version]
+path = "ticketwright/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ticketwright"]
+
+# Bundle the kit assets into the wheel under ticketwright/_kit/ WITHOUT moving them in the repo —
+# the Claude Code plugin (.claude-plugin/) and `cp -r` install still reference bin/ at the repo root.
+[tool.hatch.build.targets.wheel.force-include]
+"bin" = "ticketwright/_kit/bin"
+".claude/commands" = "ticketwright/_kit/.claude/commands"
+".claude/skills" = "ticketwright/_kit/.claude/skills"
+".claude/agents" = "ticketwright/_kit/.claude/agents"
+".claude/hooks" = "ticketwright/_kit/.claude/hooks"
+".claude/config" = "ticketwright/_kit/.claude/config"
+".claude/settings.json.tmpl" = "ticketwright/_kit/.claude/settings.json.tmpl"
+".claude/statusline.sh" = "ticketwright/_kit/.claude/statusline.sh"
+"adapters" = "ticketwright/_kit/adapters"
+"templates" = "ticketwright/_kit/templates"
+
+[tool.hatch.build.targets.sdist]
+include = ["ticketwright", "bin", ".claude", "adapters", "templates", "README.md", "LICENSE", "CHANGELOG.md"]
