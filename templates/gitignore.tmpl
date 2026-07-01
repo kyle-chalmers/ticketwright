@@ -1,0 +1,35 @@
+# .gitignore — rendered into a ticket-work repo by /configure-workspace (from templates/gitignore.tmpl).
+# Edit the kit template, not this file, if you want the change to propagate to other repos.
+
+# ── Ticket exports are customer data → they go to the docstore (Drive/SharePoint), NOT git ──
+# Anchored with **/ so it matches at ANY depth (tickets/<assignee>/<id>/final_deliverables/).
+# An UN-anchored `final_deliverables/*.csv` matches only a top-level dir and silently commits every
+# nested ticket export — the exact PII leak this pattern prevents. Enforces "exports → Drive, not git".
+**/final_deliverables/*.csv
+**/final_deliverables/*.tsv
+**/final_deliverables/*.xlsx
+**/final_deliverables/*.parquet
+# Deliverable SQL, QC SQL, and READMEs are reviewable artifacts — keep committing those.
+
+# Downloaded attachments are inputs you didn't author and often carry PII — keep them local.
+# Uncomment to enforce (you can still `git add -f` a specific small input you mean to track):
+# **/source_materials/*
+# !**/source_materials/.gitkeep
+
+# ── Per-user / per-install (never shared); the team-shared .claude/settings.json IS committed ──
+.claude/settings.local.json
+.claude/worktrees/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# ── OS / editor ──
+.DS_Store
+*.swp
+*~
+.idea/
+*.iml

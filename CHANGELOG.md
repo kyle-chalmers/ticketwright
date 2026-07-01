@@ -3,6 +3,43 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [1.3.2] — 2026-06-30
+
+Author-time hardening for `/productize-workflow`, surfaced by dogfooding a productized quarterly pull
+in the wild. Six generalizable defect classes, all stdlib-only and tool-agnostic.
+
+### Added
+- **`bin/render_and_validate.sh`** — a render gate wrapping `render.sh` that catches the two authoring
+  defects that caused a hard compile failure and a silent wrong-result run:
+  - **No token inside a SQL comment.** The renderer expands tokens everywhere; a multi-line value
+    (e.g. a 75-row `VALUES` list) spills past the `--` and the continuation rows become bare SQL.
+    The gate **errors** on any `{{token}}` in a `--` / `/* */` comment.
+  - **Quote SQL string/date literals in the template.** `SET d = {{asof}}` renders to `= 2026-06-30`,
+    read as arithmetic (=1990), not a date — silent wrong results. The gate **warns** on an unquoted
+    token adjacent to `=`/`<=`/… (errors under `--strict`).
+  - Post-render it asserts **zero leftover tokens** and **balanced single-quotes / parens**.
+- **`bin/split_and_export.sh`** — the export-phase helper multi-deliverable skills kept re-improvising:
+  splits one multi-`SELECT` file (delimited by `-- Query N` markers) into N runnable files — each
+  carrying the shared `USE …`/`SET …` preamble — and `--run` executes each via *your* warehouse verb;
+  `--strip-only` robustly drops the multi-statement CLI preamble (through the last
+  `Statement executed successfully.`, then leading blanks, or `--header` to anchor on a known row).
+- **`templates/gitignore.tmpl`** — shipped by `/configure-workspace`, with the **anchored**
+  `**/final_deliverables/*.csv` rule. The un-anchored `final_deliverables/*.csv` matches only a
+  top-level dir and silently commits every *nested* ticket export — a PII leak. Enforces
+  *exports → docstore, not git* while keeping deliverable SQL / READMEs tracked.
+
+### Changed
+- **`/productize-workflow`** documents the two SQL-template authoring rules, wires the render gate and
+  the export helper into the stamped phases, and adds a runbook note: **heavy/long pulls run in the
+  background, not the foreground** (they exceed the 2-minute foreground limit), with a warning when a
+  phase is expected to be slow.
+- **Productized-skill template** (`SKILL.md.tmpl`, `sql/step.sql.tmpl`, `sql/qc.sql.tmpl`) now models
+  both rules: params described in prose (no tokens in comments), literals quoted in the template, and
+  Phase 1/3 route through the two helpers. The shipped SQL templates pass their own gate under `--strict`.
+- **Snowflake adapter** points the preamble-strip note at the robust `split_and_export.sh --strip-only`.
+- Self-test grows to **95 checks** (§17 render gate, §18 export helpers, §19 gitignore anchoring),
+  still on stock macOS **bash 3.2**.
+
 ## [1.3.1] — 2026-06-30
 
 `pip install ticketwright`.

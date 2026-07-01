@@ -320,5 +320,73 @@ python3 -c "import sys; sys.path.insert(0,'.'); import ticketwright.cli as c; ra
 grep -q 'ticketwright = "ticketwright.cli:main"' pyproject.toml \
   && ok "console_script entry point declared" || bad "console_script entry point missing"
 
+hdr "17 · render-validation gate (render_and_validate.sh) — items 1+2"
+RV="bin/render_and_validate.sh"
+cat > "$TMP/clean.sql.tmpl" <<'EOF'
+-- step SQL — params described in prose, never as tokens
+SET d = '{{asof}}'::DATE;
+SELECT id FROM {{src}} WHERE dt <= '{{asof}}' ORDER BY id;
+EOF
+bash "$RV" "$TMP/clean.sql.tmpl" asof=2026-06-30 src=T >/dev/null 2>&1 \
+  && ok "passes a clean template (quoted literal, no comment tokens)" || bad "clean template wrongly rejected"
+cat > "$TMP/cmt.sql.tmpl" <<'EOF'
+-- NOTE: substitutes {{vals}} before the run
+SELECT * FROM t WHERE x IN ({{vals}}) ORDER BY 1;
+EOF
+bash "$RV" "$TMP/cmt.sql.tmpl" vals="1,2" >/dev/null 2>&1 \
+  && bad "token-in-comment NOT caught (the Fortress hard-failure class)" || ok "rejects a {{token}} inside a SQL comment"
+cat > "$TMP/unq.sql.tmpl" <<'EOF'
+SET d = {{asof}};
+SELECT 1 AS x ORDER BY 1;
+EOF
+bash "$RV" "$TMP/unq.sql.tmpl" asof=2026-06-30 >/dev/null 2>&1 \
+  && ok "unquoted SQL literal is a warning (non-strict passes)" || bad "unquoted literal wrongly failed non-strict"
+bash "$RV" "$TMP/unq.sql.tmpl" asof=2026-06-30 --strict >/dev/null 2>&1 \
+  && bad "unquoted literal NOT escalated under --strict" || ok "unquoted literal fails under --strict"
+cat > "$TMP/par.sql.tmpl" <<'EOF'
+SELECT count(* FROM {{src}} ORDER BY 1;
+EOF
+bash "$RV" "$TMP/par.sql.tmpl" src=T >/dev/null 2>&1 \
+  && bad "unbalanced parens NOT caught" || ok "rejects unbalanced parens in rendered SQL"
+# the SHIPPED productized templates must obey their own rules (render clean under --strict)
+bash "$RV" templates/productized-skill/sql/step.sql.tmpl --strict \
+  period=Q src=T as_of_date=2026-06-30 select_columns=id source_object=T filter="1=1" order_key=id >/dev/null 2>&1 \
+  && ok "shipped step.sql.tmpl passes its own gate (--strict)" || bad "step.sql.tmpl fails the render gate"
+bash "$RV" templates/productized-skill/sql/qc.sql.tmpl --strict \
+  grain_key=id output_object=O source_object=S filter="1=1" required_col=id >/dev/null 2>&1 \
+  && ok "shipped qc.sql.tmpl passes its own gate (--strict)" || bad "qc.sql.tmpl fails the render gate"
+
+hdr "18 · export helpers (split_and_export.sh) — items 3+4"
+SE="bin/split_and_export.sh"
+cat > "$TMP/multi.sql" <<'EOF'
+USE WAREHOUSE WH;
+-- Query 1: alpha
+SELECT 1 AS a ORDER BY 1;
+-- Query 2: beta
+SELECT 2 AS b ORDER BY 1;
+EOF
+bash "$SE" "$TMP/multi.sql" "$TMP/mout" >/dev/null 2>&1
+n="$(ls "$TMP/mout"/*.sql 2>/dev/null | wc -l | tr -d ' ')"
+{ [ "$n" = "2" ] && grep -q 'USE WAREHOUSE WH' "$TMP/mout/02-beta.sql"; } \
+  && ok "split on -- Query N markers → N files, shared preamble replicated into each" \
+  || bad "split/preamble wrong (n=$n)" "$(ls "$TMP/mout" 2>/dev/null)"
+printf 'status\nStatement executed successfully.\nStatement executed successfully.\n\nID,X\n1,a\n' > "$TMP/raw.csv"
+bash "$SE" --strip-only "$TMP/raw.csv" >/dev/null 2>&1
+[ "$(head -1 "$TMP/raw.csv")" = "ID,X" ] \
+  && ok "--strip-only drops the multi-statement CLI preamble (header is row 1)" \
+  || bad "strip-only left preamble" "$(head -1 "$TMP/raw.csv")"
+
+hdr "19 · gitignore template (PII leak fix) — item 6"
+grep -q '^\*\*/final_deliverables/\*\.csv' templates/gitignore.tmpl \
+  && ok "gitignore.tmpl ships the anchored **/final_deliverables/*.csv rule" || bad "gitignore.tmpl missing anchored export rule"
+GI="$TMP/gi"; mkdir -p "$GI/tickets/d/ENG-1/final_deliverables"
+git -C "$GI" init -q 2>/dev/null
+cp templates/gitignore.tmpl "$GI/.gitignore"
+: > "$GI/tickets/d/ENG-1/final_deliverables/x.csv"; : > "$GI/tickets/d/ENG-1/final_deliverables/x.sql"
+{ git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.csv \
+  && ! git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.sql; } \
+  && ok "anchored pattern ignores a NESTED export CSV but keeps the deliverable SQL" \
+  || bad "gitignore anchoring wrong (nested CSV not ignored, or SQL ignored)"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

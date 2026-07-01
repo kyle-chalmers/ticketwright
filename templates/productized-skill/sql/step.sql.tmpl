@@ -1,15 +1,20 @@
--- {{skill_name}} — step: {{step_name}}
--- Rendered by the skill: tokens like {{period}}, {{as_of_date}}, {{ticket}} are substituted before run.
--- Parameterize values at the top; explicit ORDER BY on any export (deterministic_outputs).
-
--- USE WAREHOUSE {{warehouse}};   -- set inside the SQL so one `-f` run carries its own context
--- USE ROLE {{role}};
+-- Step SQL — the skill renders this (substituting tokens) before each run.
+-- Authoring rules (enforced by bin/render_and_validate.sh):
+--   1. Describe params in PROSE here, never as mustache tokens. The renderer expands tokens even
+--      inside a comment, so a multi-line value spills past the `--` and the continuation rows become
+--      bare SQL → compile error.
+--   2. Wrap any token used as a SQL string/date literal in single quotes in the template (see the SET
+--      lines below). Unquoted, `= 2026-06-30` reads as arithmetic (=1990), not a date.
+--   3. Explicit ORDER BY on every export (deterministic_outputs / byte-identical golden replays).
+-- Add `USE WAREHOUSE` / `USE ROLE` at the top if your warehouse needs it, so one `-f` run carries
+-- its own context.
 
 SET period      = '{{period}}';
 SET as_of_date  = '{{as_of_date}}'::DATE;
 
--- ... step logic ...
-SELECT /* columns, not * */ *
+-- step logic below
+SELECT /* name the columns, not * */
+       {{select_columns}}
 FROM   {{source_object}}
 WHERE  {{filter}}
-ORDER BY {{order_key}};   -- required for byte-identical golden replays
+ORDER BY {{order_key}};   -- deterministic: required for byte-identical golden replays

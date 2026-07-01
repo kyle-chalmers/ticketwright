@@ -20,7 +20,10 @@ snow sql -q "<SQL>" --format csv          # ad-hoc
 snow sql -f <path/to/file.sql>            # bundled multi-statement (minimizes MFA prompts)
 ```
 - **Bundle** multi-step work into one `.sql` run via `-f` (one MFA prompt, not many).
-- CSV: always `--format csv`; **strip** the `status\nStatement executed successfully.\n` preamble.
+- CSV: always `--format csv`; **strip** the `status` / `Statement executed successfully.` preamble
+  the multi-statement `-f` run prints ahead of the result. Robust, documented norm:
+  `bin/split_and_export.sh --strip-only <csv>` (drops through the *last* "Statement executed
+  successfully." then leading blanks) — and its split mode turns one multi-`SELECT` file into N CSVs.
 - Set warehouse/role inside the SQL: `USE WAREHOUSE {default_warehouse}; USE ROLE {pii_role};`.
 - **Deterministic exports:** always end exports with explicit `ORDER BY` (Snowflake doesn't preserve
   insertion order on `SELECT *`) — required for byte-identical golden replays.

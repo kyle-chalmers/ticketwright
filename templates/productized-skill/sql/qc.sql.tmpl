@@ -1,5 +1,7 @@
--- {{skill_name}} — QC checkpoint. Each check is conditional (no hardcoded pass/fail).
+-- QC checkpoint — each check is conditional (no hardcoded pass/fail).
 -- Title format: --N: Description. Hard-halt checks must return 0; warn checks surface a list.
+-- Authoring rule: no mustache tokens inside comments (the renderer expands them); quote any token
+-- used as a string/date literal in the template. Gate with bin/render_and_validate.sh.
 
 --1: Duplicate detection on the grain key (PRIMARY hard-halt test)
 SELECT COUNT(*) AS total_rows,
