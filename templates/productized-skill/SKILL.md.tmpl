@@ -24,10 +24,13 @@ resolves all I/O through adapters (no hardcoded tools).
 
 ## Phase 1 — Render & run steps
 {{render_run_steps}}
-Render each `sql/*.sql` (or `bin/*`) by substituting tokens, write to the ticket's
-`final_deliverables/`, execute via the warehouse adapter. Capture the metrics each step emits.
-Any DB write ⇒ policy `db_write_requires_approval` (show SQL, explain, wait). Record a **rollback
-key** for any write.
+Render each `sql/*.sql.tmpl` (or `bin/*`) through `bin/render_and_validate.sh` — it substitutes
+tokens **and** gates the result (zero leftover tokens, no token inside a comment, balanced
+single-quotes / parens, unquoted SQL literals flagged); **halt on any error**. Write the validated SQL
+to the ticket's `final_deliverables/`, then execute via the warehouse adapter. Capture the metrics
+each step emits. Any DB write ⇒ policy `db_write_requires_approval` (show SQL, explain, wait). Record a
+**rollback key** for any write. **Heavy / long pulls run in the background, not the foreground** (they
+routinely exceed a 2-minute foreground limit) — launch detached and poll.
 
 ## Phase 2 — QC (atomic checkpoint)
 Render `sql/qc.sql`, execute, parse per check:
@@ -35,8 +38,12 @@ Render `sql/qc.sql`, execute, parse per check:
 Hard-halt checks non-zero → halt with structured remediation. Warn checks → surface, don't block.
 
 ## Phase 3 — Export (deterministic)
-Export with explicit `ORDER BY` (byte-identical replays); strip the CLI preamble; verify headers row 1.
-Canonical filenames: {{output_filenames}}.
+Export with explicit `ORDER BY` (byte-identical replays); verify the header is row 1. Strip the
+multi-statement CLI preamble with `bin/split_and_export.sh --strip-only <csv>` (drops through the last
+`Statement executed successfully.` then leading blanks). For a multi-result-set deliverable (several
+independent `SELECT`s in one file, delimited by `-- Query N` markers), `bin/split_and_export.sh
+<file> <outdir> --run '<your warehouse query verb> {sql}'` writes one runnable file per query (each
+carrying the shared preamble), runs each, and strips every CSV. Canonical filenames: {{output_filenames}}.
 
 ## Phase 4 — Render docs & HARD HALT
 Render `templates/README.md.tmpl` → ticket README and `templates/tracker_comment.txt.tmpl` → draft.

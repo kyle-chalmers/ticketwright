@@ -14,7 +14,7 @@ The ticket index is **active**, not just browsable, and observable.
 - **Deep QC** (`qc-review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
-- 19 adapters across 5 seams; 3 worked stacks; **71-check self-test**; GitHub Actions CI.
+- 19 adapters across 5 seams; 3 worked stacks; **95-check self-test**; GitHub Actions CI.
 
 Lineage: Ticketwright is the canonical evolution of the earlier `crank-tickets` / GDD experiment — the
 advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *distribution* ideas
@@ -29,6 +29,21 @@ advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *
 - **Role-mode AGENTS.md** (generalist / analyst / engineer / scientist) — `/configure-workspace`
   tailors the rendered rules to the team's persona via short role-focus snippets.
 - **CI scrub + structure + manifest checks** — self-test §14/§15 (79 checks total).
+
+## Shipped — v1.3.2 (author-time hardening)
+
+Generalized from dogfooding a productized quarterly pull. All stdlib-only, tool-agnostic; none changes
+the lightweight stance.
+
+- **Render gate** (`bin/render_and_validate.sh`) for `/productize-workflow` — errors on a `{{token}}`
+  inside a SQL comment (a multi-line value would break out of the `--`), warns on an unquoted SQL
+  string/date literal (`= {{asof}}` reads as arithmetic), and asserts zero leftover tokens + balanced
+  quotes/parens on the rendered SQL.
+- **Export helper** (`bin/split_and_export.sh`) — robust multi-statement-preamble strip + split a
+  multi-`SELECT` file on `-- Query N` markers into N runnable, preamble-carrying files.
+- **gitignore template** with the **anchored** `**/final_deliverables/*.csv` rule — closes a real
+  PII-leak vector (the un-anchored form silently commits nested ticket exports).
+- Runbook note: heavy/long pulls run in the background. Self-test now **95 checks** (§17–§19).
 
 ## Next — v1.4+ (harden the tracker contract)
 

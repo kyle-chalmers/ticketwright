@@ -144,10 +144,13 @@ vector store — the rank → read-top-K shape also scales past the point where 
 - **Adapters** (`adapters/`): 19 across 5 seams — trackers (Jira, Azure DevOps, Linear, Asana, Monday,
   GitHub Issues), warehouses (Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse/Azure SQL),
   chat (Slack, Teams), docstore (Drive, SharePoint), vcs (GitHub, GitLab, Azure Repos) — full verb coverage each.
-- **Templates** (`templates/`): AGENTS.md, ticket README, plan, spec, and the productized-skill skeleton.
-- **`bin/`**: `verify_stack.sh` (hybrid verify), `render.sh` (token renderer), `selftest.sh` (kit
-  test suite + hook unit tests), and the ticket-index tools (`build_ticket_index.py`,
-  `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`).
+- **Templates** (`templates/`): AGENTS.md, ticket README, plan, spec, `.gitignore` (ships the anchored
+  `**/final_deliverables/*.csv` PII-leak guard), and the productized-skill skeleton.
+- **`bin/`**: `verify_stack.sh` (hybrid verify), `render.sh` (token renderer) + `render_and_validate.sh`
+  (render gate: no tokens in comments, quoted literals, balanced quotes/parens), `split_and_export.sh`
+  (split a multi-`SELECT` file + strip the CLI preamble), `selftest.sh` (kit test suite + hook unit
+  tests), and the ticket-index tools (`build_ticket_index.py`, `ingest_index_records.py`,
+  `enrich_ticket.py`, `recall.py`).
 
 ## Still out of scope (deferred)
 
