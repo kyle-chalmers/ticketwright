@@ -5,7 +5,7 @@ and for the project facts the skills need. Skills never hardcode `acli`, `snow`,
 IDs, epics, or paths — those live **here** and in the per-tool adapters. Swapping Jira→Asana or
 Snowflake→BigQuery means editing this file and pointing at a different adapter; **no skill changes.**
 
-`configure-workspace` writes this file by interviewing you and detecting installed tooling.
+The `setup` skill writes this file by interviewing you and detecting installed tooling.
 `bin/verify_stack.sh` reads it to smoke-test every seam. Every skill reads it at preflight.
 
 ---
@@ -46,21 +46,21 @@ Exactly these five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. Each
 | `transport` | enum | `cli` \| `mcp` \| `both` — how the adapter talks to the tool. Drives the verify fallback. |
 | *(extra keys)* | any | Tool-specific config the adapter reads (site, warehouse, role, channel, base_path, …). |
 
-The `warehouse` seam may also be `null`/omitted for non-data repos — `qc-review`, `spec-and-build`,
-and `build-context-pack` degrade gracefully (skip warehouse steps) when it is.
+The `warehouse` seam may also be `null`/omitted for non-data repos — `review`, `spec-and-build`,
+and `refresh context` degrade gracefully (skip warehouse steps) when it is.
 
 ## `policies` (the 9 kit policies — see kit README "AI-layer" section)
 
 | Policy | Default | Enforced by |
 |---|---|---|
-| `hard_halt_before_external_posts` | `true` | `deliver-ticket`, every productized skill — pause for human go before any tracker/chat/docstore write. |
+| `hard_halt_before_external_posts` | `true` | `ship`, every productized skill — pause for human go before any tracker/chat/docstore write. |
 | `db_write_requires_approval` | `true` | any skill issuing a non-SELECT — show SQL, explain, wait for `yes`. |
 | `chat_default_draft` | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
 | `hyperlink_everything` | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
-| `commandify_everything` | `true` | recurring work → `productize-workflow`, not a one-off. |
+| `commandify_everything` | `true` | recurring work → `productize`, not a one-off. |
 | `reduce_assumptions` | `true` | ask before building; still document every assumption in the ticket README. |
 | `commit_plan_before_implement` | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
-| `system_evolution` | `true` | `deliver-ticket` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
+| `system_evolution` | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
 | `deterministic_outputs` | `true` | data exports use explicit `ORDER BY`; productized skills ship golden-replay diffs. |
 
 `always_include` (under `seams.chat`) — names always added to a chat message (e.g. `[Alice]`); the

@@ -2,7 +2,7 @@
 """SessionStart hook — prime every session with the configured stack + AI-layer index.
 
 Prints a compact summary (becomes session additionalContext) so the agent always knows
-which tools are wired, which skills/commands exist, and the PIV loop — without anyone
+which tools are wired, which skills/commands exist, and the lifecycle — without anyone
 having to load all of AGENTS.md. This is the always-on, *tiny* slice of context; the
 `/prime-*` commands load the rest on demand.
 
@@ -52,15 +52,17 @@ def main() -> int:
 
     skills = sorted(p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")) \
         if (root / ".claude/skills").is_dir() else []
-    commands = sorted(p.stem for p in (root / ".claude/commands").glob("*.md")) \
-        if (root / ".claude/commands").is_dir() else []
+    # Hide deprecated v1 alias stubs — they route to v2 skills and shouldn't re-clutter the surface.
+    commands = sorted(
+        p.stem for p in (root / ".claude/commands").glob("*.md")
+        if "Deprecated" not in p.read_text(errors="replace")[:200]
+    ) if (root / ".claude/commands").is_dir() else []
 
     lines = [
         "## Ticketwright — session context",
         f"Stack ({s['key_prefix']}-tickets): tracker={s['tracker']} · warehouse={s['warehouse']} · "
         f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}.",
-        "PIV loop: /start-ticket → /spec-and-build → /qc-review → /deliver-ticket "
-        "(+ /prime-ticket /prime-warehouse /prime-domain for scoped context).",
+        "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",
     ]
     if skills:
         lines.append("Skills: " + ", ".join(skills) + ".")

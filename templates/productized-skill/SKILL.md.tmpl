@@ -48,7 +48,7 @@ carrying the shared preamble), runs each, and strips every CSV. Canonical filena
 ## Phase 4 — Render docs & HARD HALT
 Render `templates/README.md.tmpl` → ticket README and `templates/tracker_comment.txt.tmpl` → draft.
 Print the summary and **exit** — no tracker post, no docstore backup, no commit. To ship after review:
-`/{{skill_name}}-post-review --ticket <ticket>` (or `/deliver-ticket <ticket>`).
+`/{{skill_name}}-post-review --ticket <ticket>` (or `/ship <ticket>`).
 
 ## Phase 5 — Post-review (separate invocation)
 Honors `hard_halt_before_external_posts`: docstore backup → tracker comment (smart links) → chat

@@ -1,6 +1,6 @@
 # AI Agent Instructions — {{repo_name}}
 
-> Rendered from the starter kit by `/configure-workspace`. Edit the kit template, not this file, if
+> Rendered from the starter kit by `/setup`. Edit the kit template, not this file, if
 > you want changes to propagate to other repos. Tool specifics live in `.claude/config/stack.yaml`
 > + `adapters/`; this file is the always-loaded **global rules** tier of the AI layer.
 
@@ -10,10 +10,10 @@ ticket under `{{ticket_path}}`.
 
 {{role_focus}}
 
-## The PIV loop (how work flows)
-**Plan → Implement → Validate.** `/start-ticket` (+ `/prime-ticket`, `/prime-warehouse`,
-`/prime-domain`) → `/spec-and-build` → `/qc-review` → `/deliver-ticket`. Recurring work →
-`/productize-workflow`. Domain knowledge base → `/build-context-pack`.
+## How work flows (plan → build → check → ship)
+`/ticket <id>` (opens the ticket + auto-loads its context and prior art) → `/spec-and-build`
+(blueprint, then build) → `/review` (independent check) → `/ship` (gated delivery). Recurring work
+→ `/productize`. Knowledge maintenance → `/refresh` (ticket catalog + domain pack).
 
 ## The stack (this repo)
 | Seam | Tool | Adapter |
@@ -43,7 +43,7 @@ the agent forgets it.
 2. **db_write_requires_approval** — show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
-5. **commandify_everything** — recurring work becomes a `/productize-workflow` skill.
+5. **commandify_everything** — recurring work becomes a `/productize` skill.
 6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
 7. **commit_plan_before_implement** — `/spec-and-build` commits the spec before building (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
@@ -55,7 +55,7 @@ the agent forgets it.
 ├── README.md            # business context + ALL assumptions + QC results
 ├── source_materials/    # attachments / inputs
 ├── final_deliverables/  # numbered in review order; filenames carry record counts
-├── qc_queries/          # numbered QC + the /qc-review verdict
+├── qc_queries/          # numbered QC + the /review verdict
 └── exploratory_analysis/
 ```
 
@@ -67,7 +67,7 @@ docstore file. Chat: include {{chat_always_include}}; hyperlink everything; defa
 ## Quality control (the validation pyramid)
 Every deliverable: ① dialect lint → ② counts & dedup (duplicate detection is the primary test) →
 ③ cross-source reconciliation → ④ independent re-run + anti-pattern sweep → ⑤ human sign-off.
-Run `/qc-review` before `/deliver-ticket`.
+Run `/review` before `/ship`.
 
 ## Git
 Branch = ticket id off `{{default_branch}}`. Semantic commits/PRs (`feat|fix|docs|refactor|chore|

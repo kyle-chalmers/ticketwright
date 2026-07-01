@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_comment": "EXAMPLE store — copy to tickets/index_data.json in YOUR repo, then let /build-ticket-index + /deliver-ticket fill it from real tickets. The real index_data.json is gitignored in THIS kit so a private store can never be committed upstream. Use only fixture ids (ENG-/DEMO-/TEST-/SAMPLE-) in anything committed to the kit.",
+  "_comment": "EXAMPLE store — copy to tickets/index_data.json in YOUR repo, then let /refresh index + /ship fill it from real tickets. The real index_data.json is gitignored in THIS kit so a private store can never be committed upstream. Use only fixture ids (ENG-/DEMO-/TEST-/SAMPLE-) in anything committed to the kit.",
   "tickets": [
     {
       "id": "ENG-1",

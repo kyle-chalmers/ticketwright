@@ -11,7 +11,7 @@ The ticket index is **active**, not just browsable, and observable.
 - **Prior-art recall** (`/recall`, `bin/recall.py`) with **IDF object down-weighting** (eval-tuned),
   an advisory verdict line, and a read-only **`--eval`** recall-quality diagnostic.
 - **Object reverse-index** (`tickets/OBJECTS.md`), scale-aware above ~150 objects.
-- **Deep QC** (`qc-review --deep`) — adversarial reviewer panel.
+- **Deep QC** (`review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
 - 19 adapters across 5 seams; 3 worked stacks; **95-check self-test**; GitHub Actions CI.
@@ -26,7 +26,7 @@ advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *
   `marketplace.json`): `claude plugin install ticketwright@ticketwright`. Components auto-discover via
   top-level symlinks into `.claude/`; bin/ scripts dual-mode (`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}`)
   so the vendored `cp -r` install still works. Validated with `claude plugin validate` + install.
-- **Role-mode AGENTS.md** (generalist / analyst / engineer / scientist) — `/configure-workspace`
+- **Role-mode AGENTS.md** (generalist / analyst / engineer / scientist) — `/setup`
   tailors the rendered rules to the team's persona via short role-focus snippets.
 - **CI scrub + structure + manifest checks** — self-test §14/§15 (79 checks total).
 
@@ -35,7 +35,7 @@ advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *
 Generalized from dogfooding a productized quarterly pull. All stdlib-only, tool-agnostic; none changes
 the lightweight stance.
 
-- **Render gate** (`bin/render_and_validate.sh`) for `/productize-workflow` — errors on a `{{token}}`
+- **Render gate** (`bin/render_and_validate.sh`) for `/productize` — errors on a `{{token}}`
   inside a SQL comment (a multi-line value would break out of the `--`), warns on an unquoted SQL
   string/date literal (`= {{asof}}` reads as arithmetic), and asserts zero leftover tokens + balanced
   quotes/parens on the rendered SQL.

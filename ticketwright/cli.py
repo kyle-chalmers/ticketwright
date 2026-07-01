@@ -69,7 +69,7 @@ def cmd_init(args) -> int:
             copied.append(rel)
     print(f"ticketwright {__version__}: scaffolded into {dest}")
     print(f"  copied {len(copied)} files · preserved {len(preserved)} existing")
-    print("  next: run `/configure-workspace` (writes stack.yaml + AGENTS.md + the index), then `/start-ticket`")
+    print("  next: run `/setup` (writes stack.yaml + AGENTS.md + the index), then `/ticket <id>`")
     return 0
 
 

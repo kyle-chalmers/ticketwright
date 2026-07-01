@@ -16,7 +16,7 @@ note: |
 # Databricks adapter
 
 Maps the `warehouse` verb contract to Databricks (Unity Catalog, Spark SQL). Same verbs as Snowflake;
-only commands + `dialect_notes` differ, so `qc-review` / `spec-and-build` / `build-context-pack` run
+only commands + `dialect_notes` differ, so `review` / `spec-and-build` / `refresh context` run
 unchanged.
 
 ## verb: query
@@ -42,7 +42,7 @@ dbsqlcli -e "SHOW CREATE TABLE {catalog}.{schema}.<obj>"     # DDL
 Inventory: `SHOW TABLES IN {catalog}.{schema}`. Lineage: Unity Catalog `system.access.table_lineage`
 / `information_schema` (not a naive `SHOW TABLES`, which misses views' upstreams).
 
-## verb: dialect_notes  (read by qc-review)
+## verb: dialect_notes  (read by the review skill)
 - **Functions:** `coalesce`/`nvl`, `try_divide(a,b)` (div-by-zero → NULL), `try_cast`, `collect_list`
   / `array_agg` (vs LISTAGG), `date_trunc`. `= NULL` never matches — use `IS NULL`.
 - **Sizing:** SQL warehouse / cluster size + **partitioning / Z-ORDER / liquid clustering**; pruning

@@ -1,7 +1,7 @@
 {
   "name": "ticketwright",
-  "version": "1.3.2",
-  "description": "Tool-agnostic AI layer for ticket-driven work repos: prior-art recall, object reverse-index, deep adversarial QC, and a self-maintaining ticket index. Stdlib-only, no vector store.",
+  "version": "2.0.0",
+  "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
   "author": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
   "homepage": "https://github.com/kyle-chalmers/ticketwright",
   "repository": "https://github.com/kyle-chalmers/ticketwright",

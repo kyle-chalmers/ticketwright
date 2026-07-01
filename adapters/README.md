@@ -42,7 +42,7 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 |---|---|---|
 | `query` | SQL, optional `--format csv` | rows / CSV (header row 1, no preamble) |
 | `describe` | object name | columns + types (and DDL when supported) |
-| `dialect_notes` | — | *static section*: function names, sizing model, dedup idiom, type-cast rules, the warehouse-specific anti-patterns `qc-review` checks |
+| `dialect_notes` | — | *static section*: function names, sizing model, dedup idiom, type-cast rules, the warehouse-specific anti-patterns the `review` skill checks |
 
 ### `chat` — team messaging
 | Verb | Inputs | Returns |
@@ -99,5 +99,5 @@ and Azure DevOps/Synapse/Teams/SharePoint/Azure Repos) — the same skills run a
 
 **Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** `bin/selftest.sh`
 (section 3) enforces this: it greps `.claude/skills/**` + `.claude/commands/**` for tool names, with
-two sanctioned exceptions (the CLI-detection probe in `configure-workspace` and the self-lint line in
-`productize-workflow`).
+two sanctioned exceptions (the CLI-detection probe in `setup` and the self-lint line in
+`productize`).
