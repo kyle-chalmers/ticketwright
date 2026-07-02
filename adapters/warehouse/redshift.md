@@ -34,7 +34,7 @@ aws redshift-data get-statement-result --id "$id"                 # JSON rows
 ```
 Inventory via `svv_tables` / `svv_columns`.
 
-## verb: dialect_notes  (read by qc-review)
+## verb: dialect_notes  (read by the review skill)
 - **Functions:** `NVL`/`COALESCE`, `NULLIF`, `LISTAGG(x, ',') WITHIN GROUP (ORDER BY …)`,
   `DATE_TRUNC`. Postgres-derived SQL, but a reduced function set vs Postgres.
 - **Sizing/perf:** the real levers are **DISTKEY** (join co-location) and **SORTKEY** (range-scan
