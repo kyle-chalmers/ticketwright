@@ -9,7 +9,7 @@ upserts that into `tickets/index_data.json`, and re-renders — turning `▱` in
 It runs the model headlessly via `claude -p` (default model: sonnet, plenty for a one-liner),
 so it works whether invoked by an agent at close or by a human at the terminal. id/owner are
 always taken from disk, never from the model. This is a Claude-Code-specific convenience (like
-the kit's hooks); the agent-agnostic path is the build-ticket-index skill, where the host agent
+the kit's hooks); the agent-agnostic path is the refresh skill (index mode), where the host agent
 writes the record itself and pipes it to `ingest_index_records.py --from-json -`.
 
 Usage:

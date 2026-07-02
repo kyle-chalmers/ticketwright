@@ -28,7 +28,7 @@ psql "{conn}" -c "SELECT pg_get_viewdef('<schema.view>', true)"   # view DDL
 ```
 Inventory: `\dt <schema>.*`; lineage via `information_schema` / `pg_depend`.
 
-## verb: dialect_notes  (read by qc-review)
+## verb: dialect_notes  (read by the review skill)
 - **Functions:** `COALESCE`, `NULLIF(a,0)` (div-by-zero guard), `string_agg(x, ',')` (vs LISTAGG),
   `array_agg`, `date_trunc`. `= NULL` never matches — use `IS NULL`. Cast with `::type` or `CAST()`.
 - **Sizing:** no "warehouse size" — performance is **indexes** + query plans. Use `EXPLAIN (ANALYZE,

@@ -113,13 +113,13 @@ grep -q '"permissionDecision": "ask"' <<<"$out" && ok "psql < wipe.sql (stdin re
 
 hdr "7 · session_context hook (SessionStart priming)"
 out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
-grep -q "ENG" <<<"$out" && grep -qi "PIV loop" <<<"$out" && ok "emits stack + PIV summary" || bad "session context missing/empty" "$out"
+grep -q "ENG" <<<"$out" && grep -qi "Lifecycle" <<<"$out" && ok "emits stack + lifecycle summary" || bad "session context missing/empty" "$out"
 
 hdr "8 · statusline renders"
 out="$(echo '{}' | CLAUDE_PROJECT_DIR="$KIT" bash .claude/statusline.sh 2>&1)"
 grep -q "ENG" <<<"$out" && ok "statusline: $out" || bad "statusline empty/broken" "$out"
 
-hdr "9 · productize-workflow stamp smoke (SKILL.md.tmpl → 0 leftover tokens)"
+hdr "9 · productize stamp smoke (SKILL.md.tmpl → 0 leftover tokens)"
 err="$(bash bin/render.sh templates/productized-skill/SKILL.md.tmpl \
   skill_name=x one_line_description=x argument_hint=x workflow_name=x params_table=x \
   param_validation=x precondition=x render_run_steps=x qc_table=x output_filenames=x \
@@ -178,7 +178,7 @@ ul="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --object VW_LOAN --json 2>/d
 [ "$ul" = "['ENG-1', 'ENG-2']" ] && ok "recall --object leaf match (unqualified VW_LOAN → ENG-1, ENG-2)" || bad "leaf-match lookup wrong" "$ul"
 # regression: Python `from os.path import` must not be indexed as a data object
 grep -qi 'os\.path\|collections\.abc' "$R/tickets/OBJECTS.md" 2>/dev/null && bad "Python import indexed as object" "$(grep -i 'os.path\|collections' "$R/tickets/OBJECTS.md")" || ok "Python import lines excluded from object index"
-head -6 .claude/commands/recall.md | grep -q 'allowed-tools' && ok "/recall command has frontmatter" || bad "/recall frontmatter missing"
+grep -q 'recall.py' .claude/skills/ticket/priming.md && ok "/ticket priming wires the recall engine" || bad "/ticket priming missing recall wiring"
 # --eval diagnostic: ENG-2's README references ENG-1, so there's one labeled seed to score
 ev="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --eval 2>/dev/null)"
 grep -q 'MRR=' <<<"$ev" && ok "recall --eval reports recall-quality metrics" || bad "recall --eval produced no metrics" "$ev"
@@ -287,6 +287,22 @@ done
 roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/roles/$r.md" ] || roles_ok=0; done
 { [ "$roles_ok" = 1 ] && grep -q '{{role_focus}}' templates/AGENTS.md.tmpl; } \
   && ok "role-mode snippets present + {{role_focus}} wired into AGENTS.md.tmpl" || bad "role modes incomplete"
+
+hdr "14b · v2 skill surface (7 skills + deprecated aliases route correctly)"
+sk_missing=""
+for s in setup ticket spec-and-build review ship productize refresh; do
+  [ -f ".claude/skills/$s/SKILL.md" ] || sk_missing="$sk_missing $s"
+done
+[ -z "$sk_missing" ] && ok "all 7 v2 skills present (setup ticket spec-and-build review ship productize refresh)" \
+  || bad "v2 skill missing:$sk_missing"
+extra="$(ls -d .claude/skills/*/ | grep -Ev '/(setup|ticket|spec-and-build|review|ship|productize|refresh)/$' || true)"
+[ -z "$extra" ] && ok "no stray skill folders beyond the 7" || bad "unexpected skill folder (v1 leftover?)" "$extra"
+al_bad=""
+for a in configure-workspace onboard-teammate start-ticket qc-review deliver-ticket productize-workflow \
+         build-ticket-index build-context-pack prime-ticket prime-warehouse prime-domain recall; do
+  { [ -f ".claude/commands/$a.md" ] && grep -q 'Deprecated' ".claude/commands/$a.md"; } || al_bad="$al_bad $a"
+done
+[ -z "$al_bad" ] && ok "all 12 v1 names ship as deprecated alias stubs" || bad "alias stub missing/unmarked:$al_bad"
 
 hdr "15 · plugin manifest (Claude Code plugin packaging)"
 python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert m['name']=='ticketwright' and m.get('version') and 'hooks' in m" 2>/dev/null \

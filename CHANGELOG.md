@@ -3,6 +3,53 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [2.0.0] — 2026-07-01
+
+The UX release: **13 invokables → 7 skills**, one front door, ≤5-question setup, plain language on
+every user-facing surface. No engine changes — `bin/`, adapters, hooks, and templates carry over;
+this is a surface-area consolidation.
+
+### Changed — the rename map (v1 → v2)
+| v1 | v2 |
+|---|---|
+| `configure-workspace` + `onboard-teammate` | **`setup`** (one skill; `--teammate` mode; adds single seams via `/setup chat` etc.) |
+| `start-ticket` + `prime-ticket` + `prime-warehouse` + `prime-domain` + `recall` | **`ticket`** (the front door — priming + recall now run automatically; `--recall` for standalone lookups; `--worktree` for isolation) |
+| `qc-review` | **`review`** |
+| `deliver-ticket` | **`ship`** |
+| `productize-workflow` | **`productize`** |
+| `build-ticket-index` + `build-context-pack` | **`refresh`** (`index` / `context` / `all` modes) |
+| `spec-and-build` | unchanged |
+
+All 12 v1 names still work as deprecated alias stubs (`.claude/commands/`); they will be removed
+in v3.
+
+### Added
+- **Adopt mode** (`skills/setup/adopt.md`) — `/setup` on a repo with existing ticket history maps
+  onto the observed layout instead of scaffolding, classifies custom commands as
+  shadows/extends/unrelated against the plugin's skills, and writes a `MIGRATION.md` checklist.
+  Existing `AGENTS.md` is never overwritten (renders to `AGENTS.ticketwright.md` for manual merge).
+- **≤5-question setup** — detection first (CLIs, MCP servers, repo layout); only tracker,
+  warehouse, VCS, key prefix, and assignee dir are asked. Chat/docstore, policies, word limits,
+  and role ship as commented defaults in `stack.yaml`, editable later.
+- **Graceful degradation** — `/ticket` continues local-only when the tracker is down; `/ship`
+  skips chat/docstore artifacts when unconfigured and names the enabler instead of blocking.
+- **`/ticket --worktree`** — worktree isolation as a first-class option (upstreamed from
+  production usage).
+- **Richer assumption categories** in `templates/ticket-README.md.tmpl` (Business Definition,
+  Status/Population Filter, Data Interpretation, Scope/Time Window, Methodology, Source Selection,
+  Output Format — upstreamed from production usage).
+- **Docs:** `docs/architecture.md` (the AI-layer model, seams/verb contract — moved out of the
+  README, which is now a 5-minute quickstart) and `docs/troubleshooting.md` (resume paths, auth
+  fixes, upgrade table, the v1→v2 rename map).
+- **Self-test 14b** — asserts the 7-skill surface, no stray v1 folders, and all 12 alias stubs.
+
+### Changed (language)
+- User-facing jargon retired: "PIV loop" → **plan → build → check → ship**; "seams" stays in
+  contributor docs only. `session_context` hook, `AGENTS.md.tmpl`, adapters, and templates updated.
+- Skill descriptions rewritten to lead with the trigger use-case; long skills split into
+  SKILL.md + reference files (`ticket/priming.md`, `productize/authoring.md`,
+  `refresh/index.md` + `refresh/context-pack.md`, `setup/{scaffold,teammate,adopt}.md`).
+
 ## [1.3.2] — 2026-06-30
 
 Author-time hardening for `/productize-workflow`, surfaced by dogfooding a productized quarterly pull

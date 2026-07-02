@@ -37,7 +37,7 @@ snow sql -q "SELECT GET_DDL('VIEW','<schema.object>')" --format csv
 Discover objects via `INFORMATION_SCHEMA.TABLES` + `ACCOUNT_USAGE.OBJECT_DEPENDENCIES` (NOT
 `SHOW VIEWS` — it misses dynamic tables / base tables).
 
-## verb: dialect_notes  (read by qc-review's anti-pattern sweep)
+## verb: dialect_notes  (read by the review skill's anti-pattern sweep)
 - **Functions:** `IFF`, `NVL/COALESCE`, `NULLIF` (div-by-zero guard), `LISTAGG` (many-to-many),
   `DATE_TRUNC`. `=NULL` never matches — use `IS NULL`.
 - **Sizing:** use a named virtual warehouse for heavy QC (e.g. `{default_warehouse}`), not slots.

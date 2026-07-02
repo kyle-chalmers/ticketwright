@@ -11,7 +11,7 @@ auth: |
 # BigQuery adapter (reference for the abstraction proof)
 
 Maps the `warehouse` verb contract to Google BigQuery via `bq`. Same verbs as Snowflake — only the
-commands and `dialect_notes` differ, so `qc-review`/`spec-and-build`/`build-context-pack` run
+commands and `dialect_notes` differ, so `review`/`spec-and-build`/`refresh context` run
 unchanged.
 
 ## verb: query
@@ -29,7 +29,7 @@ bq show --format=prettyjson {project}:{dataset}.<view>     # has the view DDL ("
 ```
 Object inventory: `bq ls {dataset}`; lineage via `INFORMATION_SCHEMA.*` views.
 
-## verb: dialect_notes  (read by qc-review)
+## verb: dialect_notes  (read by the review skill)
 - **Functions:** `IFNULL`/`COALESCE`, `SAFE_DIVIDE(a,b)` (div-by-zero), `SAFE_CAST`,
   `STRING_AGG` (vs LISTAGG), `ARRAY_AGG`. Standard SQL (`--use_legacy_sql=false`) always.
 - **Sizing:** on-demand (bytes scanned) or slots — partition + cluster columns to prune scans;

@@ -1,6 +1,6 @@
 ---
 name: qc-reviewer
-description: Independent, read-only quality reviewer for a ticket's deliverables. Re-runs queries via the configured warehouse adapter, walks the validation pyramid, sweeps anti-patterns, and returns an APPROVE / REQUEST-CHANGES verdict. Spawn from /qc-review (or before any delivery) for a true second-context pass. Tool-agnostic via stack.yaml.
+description: Independent, read-only quality reviewer for a ticket's deliverables. Re-runs queries via the configured warehouse adapter, walks the validation pyramid, sweeps anti-patterns, and returns an APPROVE / REQUEST-CHANGES verdict. Spawn from /review (or before any ship) for a true second-context pass. Tool-agnostic via stack.yaml.
 tools: Read, Bash, Glob, Grep
 ---
 

@@ -4,165 +4,111 @@
 [![release](https://img.shields.io/github/v/tag/kyle-chalmers/ticketwright?label=release&sort=semver&color=blue)](https://github.com/kyle-chalmers/ticketwright/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
-![tool-agnostic](https://img.shields.io/badge/seams-tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docstore%20%C2%B7%20vcs-success)
+![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20git-success)
 
-**Ticketwright** is a portable, tool-agnostic **AI layer** for ticket-driven work repos (data
-intelligence, analytics, ops, regulatory reporting…). Drop it into a repo, run
-`/configure-workspace`, and you get a complete **AI layer**: global rules, on-demand context loaders,
-reusable PIV-loop workflows, and a self-maintaining ticket index — bound to *your* tools (Jira,
-**Azure DevOps**, Linear, Asana, Monday, or GitHub Issues; Snowflake, BigQuery, Databricks, Postgres,
-Redshift, or Synapse/Azure SQL; Slack or Teams; Drive or SharePoint; GitHub, GitLab, or Azure Repos)
-through one config file and thin adapters. Don't see your tool? Adding one is a single adapter file.
+**Ticketwright turns a Claude Code session into a careful data analyst.** Point it at a
+ticket-driven work repo (data intelligence, analytics, ops, regulatory reporting…) and it opens
+tickets, loads exactly the context each one needs, remembers every past ticket so you never rebuild
+what's been built, QC-reviews its own work against a validation pyramid, and never posts anything
+externally without your explicit go.
 
-Generalized from a production data-engineering ticket repo; informed by Cole Medin's "agentic
-engineering" / Archon material (the AI-layer model, the PIV loop, context engineering).
+It works with **your** tools — Jira, Azure DevOps, Linear, Asana, Monday, or GitHub Issues;
+Snowflake, BigQuery, Databricks, Postgres, Redshift, or Synapse; Slack or Teams; Drive or
+SharePoint; GitHub, GitLab, or Azure Repos — through one config file. Don't see yours? Adding it is
+[a single adapter file](adapters/README.md).
 
-## The idea: the "AI layer"
-
-Every repo has a **code layer** (the work) and an **AI layer** (the rules + context + workflows that
-guide an agent). You version the AI layer alongside the code. It has three tiers:
-
-| Tier | Here | Loaded |
-|---|---|---|
-| **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`) | always |
-| **On-demand context** | the `documentation/` pack · `/prime-*` + `/recall` · `tickets/INDEX.md` + `OBJECTS.md` | selectively |
-| **Commands & skills** | `.claude/skills/` + `.claude/commands/` | on invocation |
-
-…driven by the **PIV loop — Plan → Implement → Validate:**
-
-```
-PLAN        /start-ticket   (+ /prime-ticket, /recall, /prime-warehouse, /prime-domain)
-IMPLEMENT   /spec-and-build  spec → (commit) → build      (research-in-parallel, never implement)
-VALIDATE    /qc-review [--deep]  →  /deliver-ticket       (pyramid + adversarial panel; hard-halt before posts)
-META        /productize-workflow  ·  /build-context-pack  ·  /build-ticket-index
-SETUP       /configure-workspace   (once)             ·   /onboard-teammate     (new person)
-```
-
-## How tooling is wired (hybrid: config + verify)
-
-1. **`.claude/config/stack.yaml`** names which tool fills each *seam* (tracker, warehouse, chat,
-   docstore, vcs) + project facts + the 9 policies. (Schema: `.claude/config/stack.schema.md`.)
-2. **`adapters/<seam>/<tool>.md`** maps the abstract **verb contract** (`fetch_ticket`, `query`,
-   `draft`, `backup`, `commit`, …) to that tool's concrete commands. (Contract: `adapters/README.md`.)
-3. **`bin/verify_stack.sh`** pings each seam's read-only `verify` before use — reachable seams run,
-   unreachable ones halt with the adapter's auth notes (the hybrid half).
-
-Skills are written **once against verbs** and never name a tool. Swapping a tool = edit `stack.yaml`
-+ point at a different adapter; **no skill changes.** Proof: three configs ship —
-[`stack.yaml`](.claude/config/stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub),
-[`stack.example.asana-bq.yaml`](.claude/config/stack.example.asana-bq.yaml) (Asana/BigQuery/Teams/SharePoint/GitLab),
-and [`stack.example.azure.yaml`](.claude/config/stack.example.azure.yaml) (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos)
-— the same skills run against all three.
-
-## Install
-
-**As a Claude Code plugin (recommended).** Skills, commands, the `qc-reviewer` agent, and the policy
-hooks install once and work in any repo:
+## Quickstart (5 minutes)
 
 ```bash
 claude plugin marketplace add kyle-chalmers/ticketwright
 claude plugin install ticketwright@ticketwright
 ```
 
-Then, **per repo**, run `/ticketwright:configure-workspace` once — it writes that repo's `stack.yaml`,
-`AGENTS.md`, and ticket scaffolding. Plugin commands are namespaced: `/ticketwright:recall`,
-`/ticketwright:start-ticket`, `/ticketwright:qc-review`, etc. (Bundled `bin/` scripts run from the
-plugin via `${CLAUDE_PLUGIN_ROOT}` and read the repo via `${CLAUDE_PROJECT_DIR}`.)
+Then, in your repo:
 
-**Or via pip** (vendors the kit into a repo, versioned + upgrade-safe — the better `cp -r`):
-
-```bash
-pip install ticketwright
-cd <your-repo> && ticketwright init      # scaffolds .claude/ + adapters/ + templates/ + bin/ (preserves existing config)
-/configure-workspace                     # writes stack.yaml + AGENTS.md + the index
 ```
-`ticketwright init` is the pip-native install; the same wheel also runs the tools standalone —
-`ticketwright recall --for <id>`, `ticketwright index --stats`, etc. — no Claude Code required.
-(Zero runtime dependencies; stdlib only.)
-
-**Or raw `cp -r`** (last resort — no version tracking):
-
-```bash
-cp -r .claude   <your-repo>/.claude          # skills, commands, hooks, agents, config, settings.tmpl, statusline
-cp -r adapters templates bin   <your-repo>/
-cd <your-repo> && /configure-workspace
+/ticketwright:setup          # detects your tools, asks ≤5 questions, writes the config — once per repo
+/ticketwright:ticket ENG-123 # start working
 ```
 
-The self-test runs in CI on every push/PR; PyPI publish is OIDC Trusted Publishing
-([`docs/pypi-setup.md`](docs/pypi-setup.md)). A pre-release multi-agent hardening review (subagents
-+ Codex, adversarially verified) is recorded in [`docs/REVIEW.md`](docs/REVIEW.md).
+That's it. `setup` also handles repos that **already have** ticket history — it maps onto your
+existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
+[Adopting an existing repo](#adopting-an-existing-repo)).
 
-## Add a new tool
+## How work flows
 
-Write **one adapter** (copy the closest reference in the same seam; implement every verb section;
-keep the frontmatter), add a `verify` line to your `stack.yaml` seam, and run
-`bash bin/verify_stack.sh`. No skill edits. See `adapters/README.md`.
+Four steps — **plan → build → check → ship** — and one command to remember:
 
-## Policy enforcement (hooks)
+```
+/ticket <id>        opens or resumes the ticket, auto-loads its context + closest prior work,
+                    and routes you to the right next step ↓
+/spec-and-build     spec mode writes the blueprint (committed first); build mode executes it
+/review [--deep]    independent QC pass: re-runs queries, walks the validation pyramid → APPROVE / REQUEST-CHANGES
+/ship [--go]        backup → tracker comment → chat draft → commit + PR — HARD HALT before anything external
+```
 
-Policies are only as good as the agent's memory unless something enforces them. The kit ships Claude
-Code **hooks** (wired by `configure-workspace` into `.claude/settings.json`):
+Three supporting skills you'll reach for occasionally:
 
-- **`db_write_guard.py`** (PreToolUse/Bash) — turns `db_write_requires_approval` into a *mechanical*
-  ask: it inspects warehouse-CLI commands and **asks before any destructive statement**
-  (CREATE/ALTER/DROP/DELETE/UPDATE/INSERT/TRUNCATE/MERGE/GRANT/REVOKE), **including SQL hidden in a
-  `-f` file** — read-only `SELECT`/`DESCRIBE`/`SHOW` pass straight through.
-- **`session_context.py`** (SessionStart) — primes every session with the configured stack, the
-  available skills/commands, and the PIV loop (the always-on context slice).
-- **`ticket_index_context.py`** (SessionStart) — surfaces the ticket catalog: counts + the most
-  recent tickets + a pointer to grep `tickets/INDEX.md` before starting related work.
-- **`regenerate_ticket_index.py`** (PostToolUse/Write·Edit) — re-renders `tickets/INDEX.md` whenever
-  a ticket folder changes, so the catalog is never stale.
+| Skill | What it does |
+|---|---|
+| `/setup` | Configure the repo (once) · add a tool later (`/setup chat`) · onboard a person (`/setup --teammate`) |
+| `/refresh` | Rebuild the ticket catalog (`index`) or the domain knowledge pack (`context`) — day-to-day, hooks keep these fresh automatically |
+| `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
-Hooks are the one Claude-Code-specific layer; the rest of the kit is agent-agnostic. Other agents
-enforce the same policies via the skill-level hard-halts.
+Plugin skills are namespaced (`/ticketwright:ticket`); inside a configured repo the short names
+work too. v1 command names (`/start-ticket`, `/qc-review`, …) still route to their v2 equivalents
+for this release.
 
-## Ticket index — recall before you rebuild
+## Never rebuild what's been built
 
-`tickets/INDEX.md` is an auto-maintained catalog of **every** ticket (status, one-line summary, tags,
-cross-references) that the agent reads at session start, so prior work is recalled before new work
-begins. It's split into a **deterministic renderer** (`bin/build_ticket_index.py`, stdlib-only,
-byte-stable, `--check` gate) and a **curated store** (`tickets/index_data.json`) that the model
-writes — so the catalog is reproducible *and* readable. It self-maintains: the PostToolUse hook keeps
-it complete on every folder change, and `deliver-ticket` curates a ticket's summary at close. Bootstrap
-an existing backlog with `/build-ticket-index --all`. Full details: [`docs/ticket-index.md`](docs/ticket-index.md).
+`tickets/INDEX.md` is an auto-maintained catalog of **every** ticket — status, one-line summary,
+tags, objects touched, cross-references — surfaced at the start of every session. When you open a
+ticket, `/ticket` ranks your prior work by shared objects/tags/keywords (deterministic, stdlib, no
+vector store) and writes a *reuse brief*: what to copy, which gotchas carry over, what's different
+this time. `tickets/OBJECTS.md` answers the reverse question — "which tickets touched `VW_X`?"
+Details: [docs/ticket-index.md](docs/ticket-index.md).
 
-**Recall & objects.** `/recall <id>` mines the index for the closest prior tickets (ranked by shared
-object / tag / cross-ref / keyword) and writes a *reuse brief* in the PLAN phase — so you don't rebuild
-what's been built. `tickets/OBJECTS.md` is the object → tickets reverse map ("which tickets touched
-`VW_X`?"), populated from enrichment ∪ a deterministic grep of each ticket's SQL. Lexical, stdlib, no
-vector store — the rank → read-top-K shape also scales past the point where the whole index fits in context.
+## Safety rails (on by default)
 
-## What's inside
+- **DB writes ask first** — a hook inspects every warehouse command and prompts before anything
+  destructive (`UPDATE`/`DROP`/`CREATE OR REPLACE`/…), *even SQL hidden in a `-f` file*.
+- **External posts hard-halt** — `/ship` prints exactly what it's about to post (tracker comment,
+  chat message, PR) and waits for your explicit go.
+- **Chat defaults to draft** — you click send.
+- **Exports can't leak into git** — the shipped `.gitignore` blocks `final_deliverables/*.csv` at
+  any depth; deliverables go to your docstore, not the repo.
+- **Every assumption is written down** — the ticket README template enumerates them by category.
 
-- **9 skills** (`.claude/skills/`): configure-workspace, onboard-teammate, start-ticket,
-  spec-and-build, qc-review, deliver-ticket, productize-workflow, build-context-pack, build-ticket-index.
-- **4 commands** (`.claude/commands/`): prime-ticket, prime-warehouse, prime-domain, recall (prior-art reuse brief).
-- **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — independent-context reviewer `qc-review` delegates to.
-- **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`):
-  policy enforcement, session priming, ticket-index surfacing + auto-regen, status line.
-- **Adapters** (`adapters/`): 19 across 5 seams — trackers (Jira, Azure DevOps, Linear, Asana, Monday,
-  GitHub Issues), warehouses (Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse/Azure SQL),
-  chat (Slack, Teams), docstore (Drive, SharePoint), vcs (GitHub, GitLab, Azure Repos) — full verb coverage each.
-- **Templates** (`templates/`): AGENTS.md, ticket README, plan, spec, `.gitignore` (ships the anchored
-  `**/final_deliverables/*.csv` PII-leak guard), and the productized-skill skeleton.
-- **`bin/`**: `verify_stack.sh` (hybrid verify), `render.sh` (token renderer) + `render_and_validate.sh`
-  (render gate: no tokens in comments, quoted literals, balanced quotes/parens), `split_and_export.sh`
-  (split a multi-`SELECT` file + strip the CLI preamble), `selftest.sh` (kit test suite + hook unit
-  tests), and the ticket-index tools (`build_ticket_index.py`, `ingest_index_records.py`,
-  `enrich_ticket.py`, `recall.py`).
+## Adopting an existing repo
 
-## Still out of scope (deferred)
+Already have years of ticket folders and your own conventions? Run `/setup` — it detects the
+existing layout, infers the config from evidence (folders, CI, CLIs, MCP servers), classifies any
+custom commands you've built as *shadows / extends / unrelated* against the plugin's skills, and
+writes a `MIGRATION.md` checklist instead of overwriting anything. Adoption is incremental: run one
+real ticket through `/ticket → /review → /ship` before deleting anything custom.
 
-The heavy external "knowledge-base + orchestration" harness (Archon-style retrieval over MCP):
-skipped. Task management is the tracker's job; orchestration is `productize-workflow` + the host
-agent's own subagents. The ticket index covers in-repo recall without any vector store or service.
+## Also a standalone CLI
 
-## Roadmap
+The pip package runs the deterministic engines without Claude Code:
 
-See [`ROADMAP.md`](ROADMAP.md) — next up: a tracker `id_mode` contract so integer trackers (Azure
-Boards, GitHub Issues) stop being an abstraction leak, plus a semantic adapter lint. (Plugin packaging
-shipped in v1.3 — see Install above.)
+```bash
+pip install ticketwright                 # zero runtime dependencies; stdlib only
+ticketwright recall --for ENG-123       # prior-art ranking
+ticketwright index --stats              # catalog coverage
+ticketwright init                       # vendor the kit into a repo (plugin-free installs)
+```
+
+## Learn more
+
+- [docs/architecture.md](docs/architecture.md) — how it's built: the AI-layer model, seams,
+  adapters and the verb contract, and how to add a new tool.
+- [docs/troubleshooting.md](docs/troubleshooting.md) — a skill failed mid-way, a tool is
+  unreachable, the index looks stale, upgrade paths.
+- [docs/ticket-index.md](docs/ticket-index.md) — the ticket catalog + recall engine in depth.
+- [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
+
+CI runs the 95-check self-test on every push; PyPI publishing is OIDC Trusted Publishing (no stored
+tokens) — see [docs/pypi-setup.md](docs/pypi-setup.md).
 
 ## License
 

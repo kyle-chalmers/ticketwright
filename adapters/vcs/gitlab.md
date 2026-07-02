@@ -35,7 +35,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
-Types: feat, fix, docs, refactor, chore, test, ci. Small atomic commits per PIV step. Commit the
+Types: feat, fix, docs, refactor, chore, test, ci. Small atomic commits per build step. Commit the
 plan/spec artifact before implementing (policy `commit_plan_before_implement`).
 
 ## verb: open_pr

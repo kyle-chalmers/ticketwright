@@ -14,7 +14,7 @@ human-readable summaries.
 
 | File | Role | Authored by |
 |---|---|---|
-| `tickets/index_data.json` | Enrichment store: per-ticket `title`, `status`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time. | model (build-ticket-index skill / close step) |
+| `tickets/index_data.json` | Enrichment store: per-ticket `title`, `status`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time. | model (refresh skill / ship step) |
 | `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
@@ -50,7 +50,7 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
 - **`/recall <id>`** (engine `bin/recall.py`) ranks prior tickets against a seed ticket (or
   `--query` / `--tags` / `--object`) by a transparent lexical score — **object match ×4, tag ×3,
   cross-ref link +5, keyword ×1**, recency as a tiebreak — then reads the top few READMEs and writes a
-  *reuse brief* (what to copy, gotchas, what's different). Wired into `/prime-ticket` + `spec-and-build`
+  *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `spec-and-build`
   so prior art surfaces automatically in PLAN. Lexical + stdlib (no embeddings); the rank → read-top-K
   shape is the retrieval path that scales past the point where the whole `INDEX.md` fits in context.
 - **`tickets/OBJECTS.md`** — reverse map: each data object → tickets that touched it
@@ -70,7 +70,7 @@ python3 bin/build_ticket_index.py --recurring --min-tickets 8   # objects touche
 A ticket on disk but absent from `index_data.json` still appears in `INDEX.md` — the renderer falls
 back to the README's H1 + first paragraph and marks the row `▱` (not yet curated). If a README
 changes after enrichment, the row is marked `⚠` (summary may be stale). Neither breaks `--check`;
-both are cues to re-enrich. Use the **`/build-ticket-index`** skill to bootstrap or re-enrich.
+both are cues to re-enrich. Use **`/refresh index`** to bootstrap or re-enrich.
 
 **Auto-regeneration.** The `PostToolUse` hook re-renders `INDEX.md` whenever the agent writes/edits
 any file under `tickets/` — a new ticket shows up the moment its README is written (`▱`), and an
@@ -90,7 +90,7 @@ Then commit `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json
 (all three — `--check` gates the two generated files). An agent closing the
 ticket already has full context and may instead write the record itself and pipe it to
 `bin/ingest_index_records.py --from-json -`; `enrich_ticket.py` is the hands-off path that also works
-for a human at the terminal. This is wired into the `deliver-ticket` skill.
+for a human at the terminal. This is wired into the `ship` skill.
 
 ## Why markdown, not a vector DB
 

@@ -3,7 +3,7 @@
 
 `build_ticket_index.py` renders INDEX.md but never invents summaries — the LLM-authored
 fields (summary / status / best-date / tags / cross_refs) live in tickets/index_data.json.
-This helper takes records produced by the build-ticket-index skill (or a single hand-written
+This helper takes records produced by the refresh skill (index mode) (or a single hand-written
 record at ticket close), stamps each with the live README's content hash (so the renderer can
 flag stale summaries), upserts by (owner, id), and writes the store.
 

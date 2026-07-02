@@ -4,7 +4,7 @@
 Deterministic and LLM-free: safe to run in CI / a pre-commit hook, byte-identical for the
 same on-disk state (no timestamps). Good one-line summaries aren't something regex can
 write, so the LLM-authored fields (summary / status / best-date / tags) live in
-`tickets/index_data.json` — produced by the build-ticket-index skill / enrich step and
+`tickets/index_data.json` — produced by the refresh skill (index mode) / enrich step and
 refreshed per ticket at close. This script only *renders* that data and keeps the catalog
 complete: every ticket folder on disk gets a row, enriched or not.
 
@@ -327,7 +327,7 @@ def render(rows: list[dict]) -> str:
         if stale:
             notes.append(f"{stale} summary may be stale (⚠)")
         out.append("")
-        out.append("Coverage: " + " · ".join(notes) + ". Run the build-ticket-index skill to refresh.")
+        out.append("Coverage: " + " · ".join(notes) + ". Run /refresh index to update.")
     out.append("")
     out.append("> **For the agent:** this is the catalog of all prior ticket work in this repo. Before "
                "starting a ticket, grep here for earlier work on the same object / stakeholder / report — "

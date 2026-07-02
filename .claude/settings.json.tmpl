@@ -1,5 +1,5 @@
 {
-  "_README": "Rendered to .claude/settings.json by /configure-workspace. Wires the kit's hooks (policy enforcement + session priming + ticket-index surfacing/auto-regen), a conservative read-only permission baseline (configure-workspace appends stack-specific query/CLI allows), and the stack statusline. The db_write_guard hook turns 'db_write_requires_approval' into a mechanical ask before any destructive warehouse statement.",
+  "_README": "Rendered to .claude/settings.json by /setup. Wires the kit's hooks (policy enforcement + session priming + ticket-index surfacing/auto-regen), a conservative read-only permission baseline (setup appends stack-specific query/CLI allows), and the stack statusline. The db_write_guard hook turns 'db_write_requires_approval' into a mechanical ask before any destructive warehouse statement.",
   "hooks": {
     "PreToolUse": [
       {
@@ -27,7 +27,7 @@
     ]
   },
   "permissions": {
-    "_README": "Read-only baseline that is safe in any stack. configure-workspace appends the chosen warehouse/tracker/vcs read verbs (e.g. Bash(snow sql:*)) here; the db_write_guard hook still gates destructive statements even when the CLI is allowed.",
+    "_README": "Read-only baseline that is safe in any stack. setup appends the chosen warehouse/tracker/vcs read verbs (e.g. Bash(snow sql:*)) here; the db_write_guard hook still gates destructive statements even when the CLI is allowed.",
     "allow": [
       "Bash(git status:*)",
       "Bash(git diff:*)",

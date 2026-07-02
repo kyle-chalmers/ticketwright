@@ -34,7 +34,7 @@ sqlcmd -S {server} -d {database} -G --authentication-method ActiveDirectoryDefau
 ```
 Inventory via `information_schema.tables` / `sys.objects`.
 
-## verb: dialect_notes  (read by qc-review)
+## verb: dialect_notes  (read by the review skill)
 - **Functions:** `ISNULL`/`COALESCE`, `NULLIF`, `TRY_CAST`/`TRY_CONVERT`, `STRING_AGG(x, ',')`
   (2017+/Synapse), `TOP n` (not `LIMIT`), `GETDATE()`/`SYSDATETIME()`. `[bracketed]` identifiers.
 - **Sizing/perf (Synapse dedicated):** table **distribution** (`HASH` on the join key / `ROUND_ROBIN`

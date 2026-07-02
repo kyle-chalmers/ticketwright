@@ -17,8 +17,8 @@ Skills and commands are written **once against the verb contract** and must neve
 concrete tool — no `acli`/`snow`/`gh`/`psql`/MCP commands in their orchestration. Tool specifics live
 in **`adapters/<seam>/<tool>.md`** and in **`.claude/config/stack.yaml`**. The self-test (section 3)
 greps skills/commands for tool *commands* and fails on a leak. Two sanctioned exceptions: the
-CLI-**detection** probe in `configure-workspace` (which must name CLIs to detect what's installed)
-and the self-lint line in `productize-workflow`. Naming a tool in illustrative prose is fine; calling
+CLI-**detection** probe in `setup` (which must name CLIs to detect what's installed)
+and the self-lint line in `productize`. Naming a tool in illustrative prose is fine; calling
 one is not.
 
 ## Adding a tool (the common contribution)
