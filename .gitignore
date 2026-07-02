@@ -30,3 +30,6 @@ tickets/index_data.json
 /dist/
 /build/
 *.egg-info/
+
+# AI friend review artifacts (local review reports + prompts)
+.ai-friend-review/
