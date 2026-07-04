@@ -56,8 +56,8 @@ Three supporting skills you'll reach for occasionally:
 | `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
 Plugin skills are namespaced (`/ticketwright:ticket`); inside a configured repo the short names
-work too. v1 command names (`/start-ticket`, `/qc-review`, …) still route to their v2 equivalents
-for this release.
+work too. (The v1 command names — `/start-ticket`, `/qc-review`, … — were retired in v3; see the
+rename map in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
 
 ## Never rebuild what's been built
 

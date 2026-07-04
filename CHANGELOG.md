@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [3.0.0] — 2026-07-04
+
+Breaking: removed the 12 deprecated v1 alias stubs. The v2.0 release kept the old command names
+(`/start-ticket`, `/qc-review`, …) working as thin routers to their v2 skills, with a documented
+"removed in v3" lifecycle. That removal is this release. No engine, adapter, template, or skill
+behavior changed — purely the scheduled drop of the compatibility layer.
+
+### Removed
+- **12 v1 alias stubs** (`.claude/commands/`). Use the v2 names instead:
+  `start-ticket` / `prime-ticket` / `prime-domain` / `prime-warehouse` / `recall` → **`/ticket`**
+  (`--recall` for standalone lookups) · `qc-review` → **`/review`** · `deliver-ticket` →
+  **`/ship`** · `configure-workspace` / `onboard-teammate` → **`/setup`** (`--teammate`) ·
+  `productize-workflow` → **`/productize`** · `build-ticket-index` / `build-context-pack` →
+  **`/refresh`** (`index` / `context` / `all`). Full map: `docs/troubleshooting.md`.
+
+### Changed
+- `bin/selftest.sh` check 14b now asserts the 12 stubs are absent (was: asserts all present).
+- `.claude/hooks/session_context.py` dropped the now-unneeded deprecated-alias filter.
+
 ## [2.0.0] — 2026-07-01
 
 The UX release: **13 invokables → 7 skills**, one front door, ≤5-question setup, plain language on

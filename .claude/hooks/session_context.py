@@ -52,10 +52,8 @@ def main() -> int:
 
     skills = sorted(p.parent.name for p in (root / ".claude/skills").glob("*/SKILL.md")) \
         if (root / ".claude/skills").is_dir() else []
-    # Hide deprecated v1 alias stubs — they route to v2 skills and shouldn't re-clutter the surface.
     commands = sorted(
         p.stem for p in (root / ".claude/commands").glob("*.md")
-        if "Deprecated" not in p.read_text(errors="replace")[:200]
     ) if (root / ".claude/commands").is_dir() else []
 
     lines = [

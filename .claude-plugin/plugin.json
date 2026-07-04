@@ -1,6 +1,6 @@
 {
   "name": "ticketwright",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
   "author": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
   "homepage": "https://github.com/kyle-chalmers/ticketwright",
