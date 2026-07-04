@@ -288,7 +288,7 @@ roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/r
 { [ "$roles_ok" = 1 ] && grep -q '{{role_focus}}' templates/AGENTS.md.tmpl; } \
   && ok "role-mode snippets present + {{role_focus}} wired into AGENTS.md.tmpl" || bad "role modes incomplete"
 
-hdr "14b · v2 skill surface (7 skills + deprecated aliases route correctly)"
+hdr "14b · v2 skill surface (7 skills; v1 alias stubs removed in v3)"
 sk_missing=""
 for s in setup ticket spec-and-build review ship productize refresh; do
   [ -f ".claude/skills/$s/SKILL.md" ] || sk_missing="$sk_missing $s"
@@ -300,9 +300,9 @@ extra="$(ls -d .claude/skills/*/ | grep -Ev '/(setup|ticket|spec-and-build|revie
 al_bad=""
 for a in configure-workspace onboard-teammate start-ticket qc-review deliver-ticket productize-workflow \
          build-ticket-index build-context-pack prime-ticket prime-warehouse prime-domain recall; do
-  { [ -f ".claude/commands/$a.md" ] && grep -q 'Deprecated' ".claude/commands/$a.md"; } || al_bad="$al_bad $a"
+  [ -f ".claude/commands/$a.md" ] && al_bad="$al_bad $a"
 done
-[ -z "$al_bad" ] && ok "all 12 v1 names ship as deprecated alias stubs" || bad "alias stub missing/unmarked:$al_bad"
+[ -z "$al_bad" ] && ok "12 deprecated v1 alias stubs removed (v3)" || bad "v1 alias stub still present:$al_bad"
 
 hdr "15 · plugin manifest (Claude Code plugin packaging)"
 python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert m['name']=='ticketwright' and m.get('version') and 'hooks' in m" 2>/dev/null \

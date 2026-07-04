@@ -51,14 +51,14 @@ statement. If it *missed* a destructive pattern for your warehouse CLI, that's a
 
 | Install method | Upgrade | Notes |
 |---|---|---|
-| Claude Code plugin | `claude plugin update ticketwright` | v1 command names keep working via aliases through v2.x |
+| Claude Code plugin | `claude plugin update ticketwright` | v1 command names were removed in v3.0.0; use the v2 names (rename map below) |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
 | vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
 
 **v1 → v2 rename map:** `configure-workspace`+`onboard-teammate` → `setup` ·
 `start-ticket`+`prime-*`+`recall` → `ticket` · `qc-review` → `review` · `deliver-ticket` → `ship` ·
 `productize-workflow` → `productize` · `build-ticket-index`+`build-context-pack` → `refresh`.
-The old names route automatically in v2 and are removed in v3.
+The old names routed automatically through v2.x as deprecated aliases; they were removed in v3.0.0.
 
 ## Something else went wrong
 

@@ -31,12 +31,13 @@ and uploads via `pypa/gh-action-pypi-publish`.
 
 ## Part B — cut a release (each version)
 
-1. Bump the version in **all four** places (keep them in lockstep): `pyproject.toml`,
-   `ticketwright/__init__.py`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`. Add a
-   `CHANGELOG.md` entry.
+1. Bump the version in **all three** hardcoded places (keep them in lockstep):
+   `ticketwright/__init__.py` (the source of truth — `pyproject.toml` reads it dynamically via
+   Hatch, so there is nothing to edit there), `.claude-plugin/plugin.json`, and
+   `.claude-plugin/marketplace.json`. Add a `CHANGELOG.md` entry.
 2. Commit, then tag and push the tag:
    ```bash
-   git tag v1.3.1 && git push origin v1.3.1
+   git tag v3.0.0 && git push origin v3.0.0
    ```
 3. The `publish` workflow runs, verifies `tag == package version`, builds, and publishes. Watch it in
    the repo's Actions tab. Done — `pip install ticketwright` now serves the new version.

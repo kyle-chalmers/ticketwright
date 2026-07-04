@@ -12,7 +12,7 @@ that guide an agent), versioned together. The AI layer has three tiers:
 |---|---|---|
 | **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`) | always |
 | **On-demand context** | the `documentation/` pack · `/ticket`'s priming slices · `tickets/INDEX.md` + `OBJECTS.md` | selectively |
-| **Skills** | `.claude/skills/` (7) + deprecated v1 aliases in `.claude/commands/` | on invocation |
+| **Skills** | `.claude/skills/` (7) | on invocation |
 
 The lifecycle the skills implement — plan → build → check → ship — descends from the PIV loop
 (Plan → Implement → Validate) in Cole Medin's "agentic engineering" / Archon material, which also
@@ -69,8 +69,6 @@ enforce the same policies via the skill-level hard-halts.
 - **7 skills** (`.claude/skills/`): setup, ticket, spec-and-build, review, ship, productize,
   refresh — each SKILL.md is short, with depth in per-skill reference files
   (`ticket/priming.md`, `setup/adopt.md`, `productize/authoring.md`, …).
-- **12 deprecated aliases** (`.claude/commands/`): the v1 names, each a stub routing to its v2
-  skill; removed in v3.
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`
   delegates to (one per pyramid layer in `--deep` mode).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
