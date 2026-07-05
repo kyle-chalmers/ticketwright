@@ -19,7 +19,11 @@ dry=0
 
 command -v yq >/dev/null 2>&1 || { echo "verify_stack: 'yq' required (brew install yq)" >&2; exit 1; }
 [[ -f "$stack" ]] || { echo "verify_stack: stack file not found: $stack" >&2; exit 1; }
-kit_root="$(cd "$(dirname "$stack")/../.." && pwd)"
+# Adapters are KIT assets (they ship with the plugin); stack.yaml is PROJECT data. On a plugin/pip
+# install those roots diverge, so resolve adapters against the kit ($CLAUDE_PLUGIN_ROOT, else this
+# script's own dir) and keep the project root as a fallback for repo-vendored/custom adapters.
+kit_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+proj_root="$(cd "$(dirname "$stack")/../.." && pwd)"
 
 # Flatten project.* into a token file (key<TAB>value) so verify strings like "{default_epic}" /
 # "{base_path}" resolve. Plain file + loop (no associative arrays) keeps this bash 3.2-compatible.
@@ -49,8 +53,13 @@ for seam in $(yq -r '.seams | keys | .[]' "$stack"); do
 
   printf "▸ %-10s tool=%-10s" "$seam" "$tool"
 
-  # 1) adapter present?
-  if [[ -z "$adapter" || ! -f "$kit_root/$adapter" ]]; then
+  # 1) adapter present? (kit first, then repo-vendored/custom adapters under the project)
+  adapter_path=""
+  if [[ -n "$adapter" ]]; then
+    [[ -f "$kit_root/$adapter" ]] && adapter_path="$kit_root/$adapter"
+    [[ -z "$adapter_path" && -f "$proj_root/$adapter" ]] && adapter_path="$proj_root/$adapter"
+  fi
+  if [[ -z "$adapter_path" ]]; then
     echo "  ✗ adapter missing ($adapter)"; fail=1; rm -f "$seamtok"; continue
   fi
 

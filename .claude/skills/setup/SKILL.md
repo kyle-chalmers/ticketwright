@@ -46,10 +46,11 @@ include the key commented with a `# TODO` and keep going — `verify` will point
 4. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen seams live; optional seams as
    commented blocks; the 9 policies with a one-line "when to change this" comment each). Warn if a
    chosen adapter is `status: stub`.
-5. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus),
-   `.claude/settings.json` (hooks + read-only CLI allows), folders, `.gitignore` (with the
-   anchored `**/final_deliverables/*.csv` export guard), the AI-layer index, and the seeded ticket
-   index.
+5. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
+   `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules),
+   `.claude/settings.json` (hooks — omitted on a plugin install — + read-only CLI allows), folders,
+   `.gitignore` (deliverable CSVs committed by default; PII opts out via `*.private.csv` / a
+   `private/` subfolder), the AI-layer index, and the seeded ticket index.
 
 ### Phase 4 — Verify & hand off
 6. Run `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` (kit integrity — a failure here is fatal) and
@@ -57,3 +58,10 @@ include the key commented with a `# TODO` and keep going — `verify` will point
    **not** fatal at setup time; print its adapter's auth notes as the fix).
 7. **Report:** the chosen stack, files written, any `# TODO` keys or stub adapters, and the next
    step — `/ticket <id>` to start work, or `/setup --teammate` for a new person.
+8. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
+   `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
+   index — plus, on a vendored install, the kit itself) is untracked; if it isn't committed, a later
+   ticket PR references rules/adapters absent from the repo's history. Offer a commit (e.g.
+   `chore: initialize ticketwright workspace`). First flag that `stack.yaml` may hold internal
+   identifiers (tracker site, warehouse project/dataset) — config, not secrets, but worth a glance
+   before committing to a public repo.

@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 # /productize
 
-The meta-skill (`commandify_everything`). When a task recurs (quarterly sale, monthly report,
+The meta-skill (`skillify_everything`). When a task recurs (quarterly sale, monthly report,
 periodic reconciliation), this stamps out a new **folder skill** with the productized skeleton:
 a phased pipeline with hard halts, parameterized SQL/steps, a QC checkpoint, a golden-replay
 regression test, and a hard halt before any external post. `/refresh index` + the `--recurring`
@@ -25,7 +25,7 @@ Ask (AskUserQuestion) for:
   to assert; the byte-identical output file to diff against).
 
 ## Phase 2 — Stamp from the template
-1. Copy `templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
+1. Copy `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).
 2. Render `SKILL.md.tmpl` with the interview answers into the canonical phase shape:
    **Phase 0** pre-flight (validate params + `verify_stack` for touched seams + an object drift

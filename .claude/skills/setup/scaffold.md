@@ -1,28 +1,40 @@
 # Scaffold details — what `/setup` writes into a fresh repo
 
 ## Global rules (`AGENTS.md`)
-Render `templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens from `stack.yaml`: tool names, key_prefix,
-terminal_status, word limits, policies). Fill `{{role_focus}}` from `templates/roles/<role>.md`
-using `project.role` (`generalist` unless the user changed it). This is the always-loaded tier —
+Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens
+from `stack.yaml`: tool names, key_prefix, terminal_status, word limits, policies). Fill
+`{{role_focus}}` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/roles/<role>.md` using
+`project.role` (`generalist` unless the user changed it). This is the always-loaded tier —
 keep it the rendered template; repo-specific rules get added by humans over time.
 
+Also write `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/CLAUDE.md.tmpl` — a
+one-line `@AGENTS.md` import so **Claude Code** auto-loads these rules (it reads `CLAUDE.md`; other
+agents read `AGENTS.md` directly). Keep it to that single import line.
+
 ## Hooks + settings (`.claude/settings.json`)
-Render `.claude/settings.json.tmpl` → `.claude/settings.json`, keeping the `hooks` block:
-- **PreToolUse** `db_write_guard.py` — makes `db_write_requires_approval` mechanical: asks before
-  any destructive warehouse statement, even one hidden in a `-f` file;
-- **SessionStart** `session_context.py` + `ticket_index_context.py` — primes each session with the
-  stack + the ticket catalog;
-- **PostToolUse** `regenerate_ticket_index.py` — keeps `tickets/INDEX.md` fresh on folder changes;
-plus the statusline. Then append the chosen warehouse/tracker/vcs **read-only** CLI allows to
-`permissions.allow` (e.g. `Bash(<warehouse_cli> …:*)`). Confirm `.claude/hooks/` and
-`.claude/statusline.sh` are present (plugin installs run them from `${CLAUDE_PLUGIN_ROOT}`).
+Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/.claude/settings.json.tmpl` → `.claude/settings.json`.
+**The `hooks` block is install-mode-dependent:**
+- **Plugin install** (`${CLAUDE_PLUGIN_ROOT}` set): `.claude-plugin/plugin.json` already wires the
+  kit's hooks from the plugin dir — **OMIT the `hooks` block** here, or they double-fire (double
+  db-write prompts, double index regen). Keep `permissions` + `statusLine`.
+- **Vendored install** (`cp -r`, no `${CLAUDE_PLUGIN_ROOT}`): **keep the `hooks` block** — nothing
+  else wires it: `db_write_guard.py` (PreToolUse) makes `db_write_requires_approval` mechanical;
+  `session_context.py` + `ticket_index_context.py` (SessionStart) prime the stack + ticket catalog;
+  `regenerate_ticket_index.py` (PostToolUse) keeps `tickets/INDEX.md` fresh on folder changes.
+
+Then append the chosen warehouse/tracker/vcs **read-only** CLI allows to `permissions.allow` (e.g.
+`Bash(<warehouse_cli> …:*)`). **Statusline:** the template's `statusLine.command` is the
+project-relative `.claude/statusline.sh`, so on a plugin install **copy
+`${CLAUDE_PLUGIN_ROOT}/.claude/statusline.sh` → `.claude/statusline.sh`** so it resolves (on a
+vendored install it's already there).
 
 ## Folders + `.gitignore`
 Create `tickets/{assignee_dir}/`, `documentation/`, `resources/`, `specs/` (and `ci/` if wanted).
-Render `templates/gitignore.tmpl` → `.gitignore` (merge if one exists). It ships the **anchored**
-`**/final_deliverables/*.csv` rule so ticket exports (customer data) can't be silently committed at
-any depth — *exports go to the docstore, not git*. If the tracker adapter ships an
-attachment-download helper, copy it into `resources/`.
+Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/gitignore.tmpl` → `.gitignore` (merge if
+one exists). Deliverable exports (`final_deliverables/*.csv` etc.) are **committed by default** so
+results live with the ticket and show in the PR; PII/customer data opts out via a `*.private.csv`
+name or a `private/` subfolder (both gitignored). If the tracker adapter ships an attachment-download
+helper, copy it into `resources/`.
 
 ## AI-layer index (`documentation/AI_LAYER_INDEX.md`)
 A one-line-each inventory of the installed skills (`setup`, `ticket`, `spec-and-build`, `review`,

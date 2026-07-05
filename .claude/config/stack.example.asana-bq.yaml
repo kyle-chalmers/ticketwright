@@ -17,6 +17,7 @@ seams:
     tool: asana
     adapter: adapters/tracker/asana.md
     transport: mcp
+    mcp: asana                          # your Asana MCP server name (adapter calls resolve as mcp__{mcp}__…)
     workspace_gid: "1122334455"
     default_project_gid: "9988776655"
     verify: null                        # MCP-only
@@ -60,7 +61,7 @@ policies:
   db_write_requires_approval: true
   chat_default_draft: true
   hyperlink_everything: true
-  commandify_everything: true
+  skillify_everything: true
   reduce_assumptions: true
   commit_plan_before_implement: true
   system_evolution: true

@@ -50,6 +50,7 @@ Inventory: `SHOW TABLES IN {catalog}.{schema}`. Lineage: Unity Catalog `system.a
   costly anti-pattern — list columns.
 - **Joins:** type-match keys with `cast`/`try_cast`; mind `STRING` vs `BIGINT`. Broadcast small dims.
 - **Dev/deploy:** dev objects in `{dev_catalog}`; promote with scripted `CREATE OR REPLACE`.
+- **Portable params:** prefer a CTE params row (`WITH params AS (SELECT DATE '2026-06-30' AS anchor) … CROSS JOIN params`) over a session `DECLARE VARIABLE`/`SET VAR` when the SQL must run as one portable, export-clean statement.
 
 ## gotchas
 - Non-SELECT / DDL ⇒ policy `db_write_requires_approval` (show SQL, explain, wait).

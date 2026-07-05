@@ -75,8 +75,9 @@ Details: [docs/ticket-index.md](docs/ticket-index.md).
 - **External posts hard-halt** — `/ship` prints exactly what it's about to post (tracker comment,
   chat message, PR) and waits for your explicit go.
 - **Chat defaults to draft** — you click send.
-- **Exports can't leak into git** — the shipped `.gitignore` blocks `final_deliverables/*.csv` at
-  any depth; deliverables go to your docstore, not the repo.
+- **Deliverables commit with the ticket, PII opts out** — exports are committed by default so results
+  show in the PR; keep customer data out of git by naming it `*.private.csv` or dropping it in a
+  `private/` subfolder, and `/ship` lists what it's about to commit so nothing sensitive slips in.
 - **Every assumption is written down** — the ticket README template enumerates them by category.
 
 ## Adopting an existing repo

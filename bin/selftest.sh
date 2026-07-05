@@ -392,17 +392,93 @@ bash "$SE" --strip-only "$TMP/raw.csv" >/dev/null 2>&1
   && ok "--strip-only drops the multi-statement CLI preamble (header is row 1)" \
   || bad "strip-only left preamble" "$(head -1 "$TMP/raw.csv")"
 
-hdr "19 · gitignore template (PII leak fix) — item 6"
-grep -q '^\*\*/final_deliverables/\*\.csv' templates/gitignore.tmpl \
-  && ok "gitignore.tmpl ships the anchored **/final_deliverables/*.csv rule" || bad "gitignore.tmpl missing anchored export rule"
-GI="$TMP/gi"; mkdir -p "$GI/tickets/d/ENG-1/final_deliverables"
+hdr "19 · gitignore template (deliverables committed by default; PII opt-out) — item 6"
+# Policy: deliverable exports are COMMITTED by default (results live with the ticket / show in the PR);
+# PII opts out via a *.private.csv name or a private/ subfolder. Assert the blanket ignore is gone and
+# the opt-out patterns are present + functional.
+grep -Eq '^\*\*/final_deliverables/\*\.csv' templates/gitignore.tmpl \
+  && bad "gitignore.tmpl still ACTIVELY ignores all deliverable CSVs (policy is commit-by-default)" \
+  || ok "gitignore.tmpl no longer blanket-ignores deliverable CSVs"
+{ grep -q '^\*\*/\*\.private\.csv' templates/gitignore.tmpl \
+  && grep -q '^\*\*/final_deliverables/\*\*/private/' templates/gitignore.tmpl; } \
+  && ok "gitignore.tmpl ships the PII opt-out patterns (*.private.csv + private/)" \
+  || bad "gitignore.tmpl missing a PII opt-out pattern"
+GI="$TMP/gi"; mkdir -p "$GI/tickets/d/ENG-1/final_deliverables/private"
 git -C "$GI" init -q 2>/dev/null
 cp templates/gitignore.tmpl "$GI/.gitignore"
-: > "$GI/tickets/d/ENG-1/final_deliverables/x.csv"; : > "$GI/tickets/d/ENG-1/final_deliverables/x.sql"
-{ git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.csv \
-  && ! git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.sql; } \
-  && ok "anchored pattern ignores a NESTED export CSV but keeps the deliverable SQL" \
-  || bad "gitignore anchoring wrong (nested CSV not ignored, or SQL ignored)"
+: > "$GI/tickets/d/ENG-1/final_deliverables/x.csv"
+: > "$GI/tickets/d/ENG-1/final_deliverables/x.sql"
+: > "$GI/tickets/d/ENG-1/final_deliverables/secret.private.csv"
+: > "$GI/tickets/d/ENG-1/final_deliverables/private/rows.csv"
+csv_committed=1; git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.csv && csv_committed=0
+sql_committed=1; git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.sql && sql_committed=0
+priv_named=0;    git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/secret.private.csv && priv_named=1
+priv_dir=0;      git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/private/rows.csv && priv_dir=1
+{ [ "$csv_committed" = 1 ] && [ "$sql_committed" = 1 ] && [ "$priv_named" = 1 ] && [ "$priv_dir" = 1 ]; } \
+  && ok "plain CSV + deliverable SQL committed; *.private.csv and private/ ignored" \
+  || bad "gitignore policy wrong" "csv=$csv_committed sql=$sql_committed private_named=$priv_named private_dir=$priv_dir"
+
+hdr "20 · path resolution + adapter hygiene (regressions from real-session bugs)"
+# E1 — sibling scripts resolve to the KIT, not the project root (the /ship enrich crash).
+grep -Eq 'root[[:space:]]*/[[:space:]]*"bin"[[:space:]]*/[[:space:]]*"(ingest_index_records|build_ticket_index)' bin/enrich_ticket.py \
+  && bad "enrich_ticket.py resolves sibling scripts off the project root (breaks on a plugin install)" \
+  || ok "enrich_ticket.py resolves sibling scripts from its own kit dir, not the project root"
+# E2 — the two index hooks import the renderer from the kit, not the project's bin/.
+hook_bad=""
+for h in regenerate_ticket_index ticket_index_context; do
+  grep -q 'root / "bin"' ".claude/hooks/$h.py" && hook_bad="$hook_bad $h"
+done
+[ -z "$hook_bad" ] && ok "index hooks import the renderer from the kit (CLAUDE_PLUGIN_ROOT/__file__)" \
+  || bad "hook inserts project-root/bin on sys.path (renderer won't import on a plugin install):$hook_bad"
+# E3 — verify_stack resolves adapters against the kit even when the stack lives OUTSIDE the kit.
+VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
+vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
+grep -q 'adapter missing' <<<"$vout" \
+  && bad "verify_stack can't find adapters when the stack is outside the kit" "$vout" \
+  || ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)"
+# E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
+lit="$(grep -REn 'mcp__[A-Za-z0-9]' adapters/ | grep -v 'mcp__{mcp}__' || true)"
+[ -z "$lit" ] && ok "adapters use the {mcp} token (no hardcoded MCP server names)" \
+  || bad "adapter hardcodes an MCP server name (should be mcp__{mcp}__…)" "$lit"
+# E5 — no seam verify depends on the nullable {default_epic}.
+ve="$(grep -REn 'verify.*\{default_epic\}' .claude/config/*.yaml 2>/dev/null || true)"
+va="$(sed -n '/^auth:/,/^---/p' adapters/tracker/jira.md | grep -c 'default_epic' || true)"
+{ [ -z "$ve" ] && [ "$va" = "0" ]; } && ok "no seam verify references the nullable {default_epic}" \
+  || bad "a verify depends on {default_epic} (fails when a project has no required epic)" "$ve"
+# E6 — no org-specific business vocabulary leaked into an adapter (public plugin).
+leak="$(grep -REn 'Data Pull|Data Engineering Task|Data Engineering Bug|every DI type' adapters/ || true)"
+[ -z "$leak" ] && ok "no org-specific Jira vocabulary in adapters" \
+  || bad "org-specific business content leaked into an adapter (public plugin!)" "$leak"
+# E7 — the DECLARE→CTE-params portability guardrail shipped where scripting is common.
+wq_bad=""
+for w in bigquery snowflake synapse; do
+  grep -qiE 'CTE param|CROSS JOIN params' "adapters/warehouse/$w.md" || wq_bad="$wq_bad $w"
+done
+[ -z "$wq_bad" ] && ok "bigquery/snowflake/synapse carry the CTE-params (vs session DECLARE) note" \
+  || bad "a warehouse adapter is missing the portable-params guardrail:$wq_bad"
+grep -qiE 'DECLARE|session-variable' .claude/skills/review/SKILL.md \
+  && ok "/review lints session-DECLARE parameterization" || bad "/review missing the DECLARE lint"
+# E8 — /ticket renders the index in its scaffold path (a new ticket shows immediately).
+grep -q 'build_ticket_index.py' .claude/skills/ticket/SKILL.md \
+  && ok "/ticket runs build_ticket_index.py after scaffolding (new ticket appears in INDEX.md)" \
+  || bad "/ticket never renders the index — a new ticket won't show until a manual run"
+# E9 — CSV cell-value ASCII-punctuation rule (no em dashes, which don't render in CSV) documented + enforced.
+{ grep -q 'ASCII punctuation only in cell values' templates/AGENTS.md.tmpl \
+  && grep -q 'ASCII punctuation only in cell values' .claude/skills/review/SKILL.md; } \
+  && ok "CSV cell-value ASCII-punctuation rule documented (AGENTS.md) + enforced (/review)" \
+  || bad "CSV ASCII-punctuation rule missing from AGENTS.md.tmpl or /review"
+# E10 — the 'commandify_everything' policy was renamed to 'skillify_everything' (skills-first framing).
+cf="$(grep -REn 'commandify' .claude/config .claude/skills templates 2>/dev/null || true)"
+{ [ -z "$cf" ] && grep -q 'skillify_everything' .claude/config/stack.yaml; } \
+  && ok "policy is skillify_everything (no legacy 'commandify' left)" \
+  || bad "legacy 'commandify' policy name still present (rename to skillify_everything)" "$cf"
+# E11 — the scaffolded CLAUDE.md import (Claude Code → AGENTS.md) ships as a bare one-line template.
+{ [ -f templates/CLAUDE.md.tmpl ] \
+  && [ "$(grep -cvE '^[[:space:]]*$' templates/CLAUDE.md.tmpl)" = "1" ] \
+  && grep -q '^@AGENTS.md' templates/CLAUDE.md.tmpl; } \
+  && ok "CLAUDE.md.tmpl is a bare @AGENTS.md import (Claude Code auto-loads the rules)" \
+  || bad "templates/CLAUDE.md.tmpl must be exactly one line: @AGENTS.md"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

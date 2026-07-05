@@ -22,7 +22,7 @@ seams:
     org: acme-corp
     project: Platform
     done_state: Closed
-    verify: "az boards work-item show --id {default_epic}"
+    verify: "az devops project show --project {project}"
 
   warehouse:
     tool: synapse
@@ -66,7 +66,7 @@ policies:
   db_write_requires_approval: true
   chat_default_draft: true
   hyperlink_everything: true
-  commandify_everything: true
+  skillify_everything: true
   reduce_assumptions: true
   commit_plan_before_implement: true
   system_evolution: true

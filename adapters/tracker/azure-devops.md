@@ -7,7 +7,7 @@ auth: |
   `az login` + the devops extension: `az extension add --name azure-devops`.
   Set defaults: `az devops configure --defaults organization=https://dev.azure.com/{org} project={project}`.
   A PAT (env `AZURE_DEVOPS_EXT_PAT`) works for non-interactive/CI.
-  Verify: `az boards work-item show --id {default_epic}` (read-only) or `az devops project show`.
+  Verify: `az devops project show --project {project}` (read-only; no epic needed).
 note: |
   Azure Boards "work items" are the tickets; ids are plain integers (e.g. 1234), so `key_prefix` is a
   display convention, not part of the id. "Epic" is a work-item type (Epic→Feature→User Story→Task)
@@ -32,7 +32,7 @@ Description is `fields."System.Description"` (HTML). Relations (parents, attachm
 ```bash
 az boards work-item create --title "<summary>" --type "User Story" \
   --assigned-to "<email>" --fields "System.Description=<html/desc>" --output json
-# link to an epic/feature parent:
+# link to an epic/feature parent (only when default_epic is set):
 az boards work-item relation add --id <new-id> --relation-type parent --target-id {default_epic}
 ```
 Returns the new integer id + `_links.html.href` (the URL).

@@ -47,7 +47,11 @@ def main() -> int:
     if changed.name in ("INDEX.md", "OBJECTS.md"):
         return 0
 
-    sys.path.insert(0, str(root / "bin"))
+    # The renderer module ships with the kit (bin/), not the user's project — resolve it against
+    # CLAUDE_PLUGIN_ROOT (else this hook's own kit dir). `root` stays the project for the data.
+    kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+    sys.path.insert(0, str(bindir))
     try:
         from build_ticket_index import build_rows, render, render_objects  # type: ignore
         rows = build_rows(root)

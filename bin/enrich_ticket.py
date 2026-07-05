@@ -25,6 +25,7 @@ import argparse
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from build_ticket_index import discover, repo_root, load_config, key_regex
 
@@ -125,8 +126,12 @@ def main() -> int:
         print("Nothing enriched.", file=sys.stderr)
         return 1
 
-    ingest = root / "bin" / "ingest_index_records.py"
-    render = root / "bin" / "build_ticket_index.py"
+    # Sibling helpers live beside THIS script (the kit's bin/), not in the user's project.
+    # Resolving them off repo_root() breaks on a plugin/pip install, where the kit and the
+    # project dir diverge (repo_root() == $CLAUDE_PROJECT_DIR, but the scripts ship with the kit).
+    bindir = Path(__file__).resolve().parent
+    ingest = bindir / "ingest_index_records.py"
+    render = bindir / "build_ticket_index.py"
     subprocess.run([sys.executable, str(ingest), "--from-json", "-"],
                    input=json.dumps({"records": records}), text=True, check=True)
     subprocess.run([sys.executable, str(render)], check=True)

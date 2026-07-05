@@ -28,6 +28,7 @@ import json
 import os
 import re
 import statistics
+import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -49,7 +50,14 @@ STATUS_ORDER = ["Deployed", "Completed", "In Review", "In Progress", "Blocked", 
 def repo_root() -> Path:
     if os.environ.get("CLAUDE_PROJECT_DIR"):
         return Path(os.environ["CLAUDE_PROJECT_DIR"]).resolve()
-    return Path(__file__).resolve().parent.parent  # bin/ -> repo root
+    try:  # run by hand from inside a repo (no env var) → prefer the actual repo, not the kit dir
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True).stdout.strip()
+        if top:
+            return Path(top).resolve()
+    except OSError:
+        pass
+    return Path(__file__).resolve().parent.parent  # bin/ -> repo root (last resort)
 
 
 def load_config(root: Path) -> dict:

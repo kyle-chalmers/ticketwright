@@ -57,7 +57,7 @@ and `refresh context` degrade gracefully (skip warehouse steps) when it is.
 | `db_write_requires_approval` | `true` | any skill issuing a non-SELECT — show SQL, explain, wait for `yes`. |
 | `chat_default_draft` | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
 | `hyperlink_everything` | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
-| `commandify_everything` | `true` | recurring work → `productize`, not a one-off. |
+| `skillify_everything` | `true` | recurring work → a `/productize` skill the agent can invoke, not a one-off. |
 | `reduce_assumptions` | `true` | ask before building; still document every assumption in the ticket README. |
 | `commit_plan_before_implement` | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
 | `system_evolution` | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |

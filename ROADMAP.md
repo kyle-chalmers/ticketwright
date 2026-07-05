@@ -41,9 +41,10 @@ the lightweight stance.
   quotes/parens on the rendered SQL.
 - **Export helper** (`bin/split_and_export.sh`) — robust multi-statement-preamble strip + split a
   multi-`SELECT` file on `-- Query N` markers into N runnable, preamble-carrying files.
-- **gitignore template** with the **anchored** `**/final_deliverables/*.csv` rule — closes a real
-  PII-leak vector (the un-anchored form silently commits nested ticket exports).
-- Runbook note: heavy/long pulls run in the background. Self-test now **95 checks** (§17–§19).
+- **gitignore template** — deliverables commit with the ticket by default (results show in the PR);
+  PII/customer data opts out via a `*.private.csv` name or a `private/` subfolder. *(3.1.0 flipped
+  this from the earlier "all exports gitignored" default.)*
+- Runbook note: heavy/long pulls run in the background. Self-test now **109 checks** (§17–§20).
 
 ## Next — v1.4+ (harden the tracker contract)
 
