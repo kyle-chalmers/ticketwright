@@ -419,17 +419,18 @@ def object_filename(obj: str) -> str:
     return re.sub(r"[:\\/]", ".", obj) + ".md"
 
 
-def graph_stub(tid: str, rows: list) -> str:
+def graph_stub(tid: str, rows: list, valid_ids: set, canon: dict) -> str:
     """One id-labeled Obsidian graph node per ticket. rows = all rows sharing this id (usually one)."""
     r0 = rows[0]
     owners = ", ".join(sorted({r["owner"] for r in rows}))
-    objects = sorted({o for r in rows for o in r["objects"]}, key=str.lower)
+    objects = sorted({canon.get(o.lower(), o) for r in rows for o in r["objects"]}, key=str.lower)
     refs = sorted({x for r in rows for x in r["cross_refs"]}, key=ref_key)
+    obj_cells = ", ".join(f"[`{o}`](../objects/{object_filename(o)})" for o in objects) or "(none)"
     out = [f"# {tid}: {md_escape(r0['title'])}", "",
            f"`{owners}` · {r0['status']} · {r0['date'] or '—'}", "",
-           "- **Objects:** " + (", ".join(f"`{o}`" for o in objects) or "(none)")]
-    if refs:
-        out.append("- **Builds on:** " + ", ".join(f"[{x}]({x}.md)" for x in refs))
+           f"- **Objects:** {obj_cells}"]
+    if refs:  # link refs that are real tickets; show any others as plain text (no dangling links)
+        out.append("- **Builds on:** " + ", ".join(f"[{x}]({x}.md)" if x in valid_ids else x for x in refs))
     for r in rows:
         if r["has_readme"]:
             label = "README" if len(rows) == 1 else f"README ({r['owner']})"
@@ -457,15 +458,20 @@ def render_graph_layer(rows: list, root: Path) -> dict:
     by_tid: dict = {}
     for r in rows:
         by_tid.setdefault(r["id"], []).append(r)
-    fresh: dict = {}
-    for tid, rs in by_tid.items():
-        fresh[gdir / f"{tid}.md"] = graph_stub(tid, rs)
-    objmap: dict = {}  # obj -> {tid: (tid, title, date)} — dedup ids across owners
+    valid_ids = set(by_tid)
+    # Case-fold objects globally (like render_objects) so a mixed-case ref makes ONE note, not two,
+    # and so stub↔object filenames agree on a case-insensitive filesystem (macOS).
+    objmap: dict = {}  # lower(obj) -> {"label": first-seen form, "tids": {tid: (tid, title, date)}}
     for r in rows:
         for o in r["objects"]:
-            objmap.setdefault(o, {}).setdefault(r["id"], (r["id"], r["title"], r["date"]))
-    for obj, tmap in objmap.items():
-        fresh[odir / object_filename(obj)] = graph_object_note(obj, list(tmap.values()))
+            slot = objmap.setdefault(o.lower(), {"label": o, "tids": {}})
+            slot["tids"].setdefault(r["id"], (r["id"], r["title"], r["date"]))
+    canon = {k: v["label"] for k, v in objmap.items()}  # lower(obj) -> canonical display label
+    fresh: dict = {}
+    for tid, rs in by_tid.items():
+        fresh[gdir / f"{tid}.md"] = graph_stub(tid, rs, valid_ids, canon)
+    for slot in objmap.values():
+        fresh[odir / object_filename(slot["label"])] = graph_object_note(slot["label"], list(slot["tids"].values()))
     return fresh
 
 
@@ -485,10 +491,9 @@ def main() -> int:
     tickets_dir = root / "tickets"
     index_path, objects_path = tickets_dir / "INDEX.md", tickets_dir / "OBJECTS.md"
     fresh = {index_path: render(rows), objects_path: render_objects(rows)}
-    graph_dirs = []
+    graph_dirs = [tickets_dir / "graph", tickets_dir / "objects"]  # always tracked, so disabling cleans up the old layer
     if cfg.get("graph_notes", True):
         fresh.update(render_graph_layer(rows, root))
-        graph_dirs = [tickets_dir / "graph", tickets_dir / "objects"]
 
     if args.recurring:
         agg: dict[str, dict] = {}  # ci key -> {label, tickets, dates}
@@ -548,10 +553,10 @@ def main() -> int:
             print("No tickets and no index files yet — nothing to check.")
             return 0
         stale = [p.name for p, txt in fresh.items() if (p.read_text() if p.is_file() else None) != txt]
-        fresh_keys = set(fresh)
+        fresh_keys_ci = {str(p).lower() for p in fresh}  # case-insensitive (macOS): a current file may differ only in case
         for gd in graph_dirs:  # orphan detection: generated files on disk no longer in the fresh set
             if gd.is_dir():
-                stale += [str(p.relative_to(root)) for p in sorted(gd.glob("*.md")) if p not in fresh_keys]
+                stale += [str(p.relative_to(root)) for p in sorted(gd.glob("*.md")) if str(p).lower() not in fresh_keys_ci]
         if stale:
             print(f"stale: {', '.join(stale)} — run: python3 bin/build_ticket_index.py", file=sys.stderr)
             return 1
@@ -564,12 +569,14 @@ def main() -> int:
     for p, txt in fresh.items():
         p.parent.mkdir(parents=True, exist_ok=True)  # graph/ + objects/ may not exist yet
         p.write_bytes(txt.encode("utf-8"))  # write_bytes => stable \n line endings everywhere
-    fresh_keys = set(fresh)  # orphan cleanup: drop generated graph-layer files no longer current
+    fresh_keys_ci = {str(p).lower() for p in fresh}  # orphan cleanup (case-insensitive for macOS)
     for gd in graph_dirs:
         if gd.is_dir():
             for existing in gd.glob("*.md"):
-                if existing not in fresh_keys:
+                if str(existing).lower() not in fresh_keys_ci:
                     existing.unlink()
+            if not any(gd.iterdir()):  # tidy the empty generated dir (e.g. after disabling graph_notes)
+                gd.rmdir()
     un = sum(1 for r in rows if not r["enriched"])
     n_obj = len({o.lower() for r in rows for o in r.get("objects", [])})
     print(f"Wrote INDEX.md ({len(rows)} tickets, {un} un-enriched) + OBJECTS.md ({n_obj} objects).", file=sys.stderr)

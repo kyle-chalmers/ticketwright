@@ -523,6 +523,32 @@ printf '# ENG-1: x\n\nx.\n' > "$GO/tickets/alice/ENG-1/README.md"
 CLAUDE_PROJECT_DIR="$GO" python3 bin/build_ticket_index.py >/dev/null 2>&1
 { [ ! -d "$GO/tickets/graph" ] && [ ! -d "$GO/tickets/objects" ]; } \
   && ok "graph_notes: false disables the layer" || bad "graph_notes flag not honored"
+grep -q '(../objects/ANALYTICS.VW_LOAN.md)' "$GX/tickets/graph/ENG-1.md" \
+  && ok "stub links its object notes (../objects/...)" || bad "stub does not link objects"
+mkdir -p "$GX/tickets/alice/ENG-20"
+printf '# ENG-20: hook test\n\nx.\n' > "$GX/tickets/alice/ENG-20/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-20/q.sql"
+echo "{\"tool_input\":{\"file_path\":\"$GX/tickets/alice/ENG-20/README.md\"},\"cwd\":\"$GX\"}" \
+  | CLAUDE_PROJECT_DIR="$GX" python3 .claude/hooks/regenerate_ticket_index.py >/dev/null 2>&1
+[ -f "$GX/tickets/graph/ENG-20.md" ] \
+  && ok "PostToolUse hook regenerates the graph layer (ENG-20 stub appeared)" || bad "hook did not regenerate the graph layer"
+CF="$TMP/graphcf"; mkdir -p "$CF/.claude/config" "$CF/tickets/a/ENG-1" "$CF/tickets/a/ENG-2"
+printf 'project:\n  key_prefix: ENG\n' > "$CF/.claude/config/stack.yaml"
+printf '# ENG-1: x\n\nx.\n' > "$CF/tickets/a/ENG-1/README.md"; printf 'SELECT * FROM S.VW_MIXED;\n' > "$CF/tickets/a/ENG-1/q.sql"
+printf '# ENG-2: x\n\nx.\n' > "$CF/tickets/a/ENG-2/README.md"; printf 'select * from s.vw_mixed;\n' > "$CF/tickets/a/ENG-2/q.sql"
+CLAUDE_PROJECT_DIR="$CF" python3 bin/build_ticket_index.py >/dev/null 2>&1
+[ "$(ls "$CF/tickets/objects" 2>/dev/null | grep -ic 'vw_mixed')" = "1" ] \
+  && ok "mixed-case object folds to ONE note (macOS case-insensitive safe)" || bad "mixed-case object split into multiple notes"
+printf 'project:\n  key_prefix: ENG\n  graph_notes: false\n' > "$CF/.claude/config/stack.yaml"
+CLAUDE_PROJECT_DIR="$CF" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ ! -d "$CF/tickets/graph" ] && [ ! -d "$CF/tickets/objects" ]; } \
+  && ok "disabling graph_notes removes the existing layer" || bad "stale graph layer left after disabling"
+DR="$TMP/graphdr"; mkdir -p "$DR/.claude/config" "$DR/tickets/a/ENG-1"
+printf 'project:\n  key_prefix: ENG\n' > "$DR/.claude/config/stack.yaml"
+printf '# ENG-1: x\n\nRelated: ENG-999\n' > "$DR/tickets/a/ENG-1/README.md"
+CLAUDE_PROJECT_DIR="$DR" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ grep -q 'ENG-999' "$DR/tickets/graph/ENG-1.md" && ! grep -q '(ENG-999.md)' "$DR/tickets/graph/ENG-1.md"; } \
+  && ok "dangling cross-ref shown as text, not a broken link" || bad "cross-ref to a nonexistent ticket was linked"
 grep -q 'graph_notes' .claude/config/stack.schema.md \
   && ok "graph_notes documented in stack.schema.md" || bad "graph_notes not documented in stack.schema.md"
 grep -qi 'Obsidian' README.md \
