@@ -1,10 +1,10 @@
 ---
 seam: tracker
 tool: linear
-transport: mcp         # mcp__plugin_productivity_linear__*
-requires: [team_id]    # stack.yaml seams.tracker.{team_id, done_state_id}
+transport: mcp         # MCP; server name = seams.tracker.mcp ({mcp})
+requires: [team_id, mcp]    # stack.yaml seams.tracker.{team_id, done_state_id, mcp}
 auth: |
-  The `linear` MCP server (plugin_productivity_linear) must be connected (OAuth).
+  The Linear MCP server (`{mcp}`) must be connected (OAuth).
   Verify: a read-only issue/team query returns without error.
 note: |
   Linear has first-class issue identifiers (e.g. ENG-123) — a natural fit for project.key_prefix and
@@ -20,7 +20,7 @@ Maps the `tracker` verb contract to Linear via its MCP.
 **In:** issue id (e.g. `ENG-123`). **Out:** title, description (markdown), state, assignee, labels,
 attachments, parent/project.
 ```
-mcp__plugin_productivity_linear__* get-issue(id=<id>)
+mcp__{mcp}__get-issue(id=<id>)
 ```
 
 ## verb: create_ticket

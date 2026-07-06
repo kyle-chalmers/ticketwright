@@ -68,6 +68,17 @@ vector store) and writes a *reuse brief*: what to copy, which gotchas carry over
 this time. `tickets/OBJECTS.md` answers the reverse question — "which tickets touched `VW_X`?"
 Details: [docs/ticket-index.md](docs/ticket-index.md).
 
+## See it as a graph (Obsidian)
+
+Ticketwright also writes a small, auto-maintained graph layer under `tickets/` — `graph/<id>.md`
+(a node per ticket) and `objects/<object>.md` (a node per data object) — so you can open the repo as
+an [Obsidian](https://obsidian.md) vault and *browse* your work: open a table like `ANALYTICS.VW_LOAN`
+and its local graph is every ticket that touched it; open a ticket and you see the objects it touched
+plus the tickets it built on. Point Obsidian at the repo (or `tickets/`), open Graph view, and for the
+cleanest picture set the filter to `-README -INDEX -OBJECTS -AGENTS -CLAUDE` and add a color Group on
+`path:objects`. It's plain markdown (no plugins, no wikilinks) and renders on GitHub too. On by
+default; set `project.graph_notes: false` in `stack.yaml` to turn it off.
+
 ## Safety rails (on by default)
 
 - **DB writes ask first** — a hook inspects every warehouse command and prompts before anything
@@ -75,8 +86,9 @@ Details: [docs/ticket-index.md](docs/ticket-index.md).
 - **External posts hard-halt** — `/ship` prints exactly what it's about to post (tracker comment,
   chat message, PR) and waits for your explicit go.
 - **Chat defaults to draft** — you click send.
-- **Exports can't leak into git** — the shipped `.gitignore` blocks `final_deliverables/*.csv` at
-  any depth; deliverables go to your docstore, not the repo.
+- **Deliverables commit with the ticket, PII opts out** — exports are committed by default so results
+  show in the PR; keep customer data out of git by naming it `*.private.csv` or dropping it in a
+  `private/` subfolder, and `/ship` lists what it's about to commit so nothing sensitive slips in.
 - **Every assumption is written down** — the ticket README template enumerates them by category.
 
 ## Adopting an existing repo
@@ -107,7 +119,7 @@ ticketwright init                       # vendor the kit into a repo (plugin-fre
 - [docs/ticket-index.md](docs/ticket-index.md) — the ticket catalog + recall engine in depth.
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 
-CI runs the 95-check self-test on every push; PyPI publishing is OIDC Trusted Publishing (no stored
+CI runs the full self-test on every push; PyPI publishing is OIDC Trusted Publishing (no stored
 tokens) — see [docs/pypi-setup.md](docs/pypi-setup.md).
 
 ## License

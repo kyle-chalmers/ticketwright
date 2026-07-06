@@ -38,7 +38,11 @@ def discovered_total(root: Path) -> int | None:
     """True ticket count from the renderer's discovery (cheap globs, no README reads)."""
     try:
         import sys
-        sys.path.insert(0, str(root / "bin"))
+        # The renderer module ships with the kit (bin/), not the project — resolve via
+        # CLAUDE_PLUGIN_ROOT (else this hook's own kit dir); `root` stays the project for discover().
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        sys.path.insert(0, str(bindir))
         from build_ticket_index import discover  # type: ignore
         return len(discover(root))
     except Exception:

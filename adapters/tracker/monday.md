@@ -1,10 +1,10 @@
 ---
 seam: tracker
 tool: monday
-transport: mcp         # mcp__plugin_productivity_monday__*  (GraphQL under the hood)
-requires: [board_id]   # stack.yaml seams.tracker.{board_id, status_column_id, done_label}
+transport: mcp         # MCP ({mcp}); GraphQL under the hood
+requires: [board_id, mcp]   # stack.yaml seams.tracker.{board_id, status_column_id, done_label, mcp}
 auth: |
-  The `monday` MCP server (plugin_productivity_monday) must be connected (OAuth).
+  The monday MCP server (`{mcp}`) must be connected (OAuth).
   Verify: a read-only board/items query returns without error.
 note: |
   monday models work as **items** on **boards**. "Status" is a status **column** (set by label),
@@ -20,7 +20,7 @@ Maps the `tracker` verb contract to monday.com via its MCP (GraphQL items API).
 ## verb: fetch_ticket
 **In:** item id. **Out:** name, column values (incl. status), updates, assignee, file-column assets.
 ```
-mcp__plugin_productivity_monday__* get-item(item_id=<id>)
+mcp__{mcp}__get-item(item_id=<id>)
 # or GraphQL: items(ids:[<id>]){ name column_values{ id text value } updates{ body } assets{ url } }
 ```
 

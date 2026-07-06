@@ -392,17 +392,167 @@ bash "$SE" --strip-only "$TMP/raw.csv" >/dev/null 2>&1
   && ok "--strip-only drops the multi-statement CLI preamble (header is row 1)" \
   || bad "strip-only left preamble" "$(head -1 "$TMP/raw.csv")"
 
-hdr "19 · gitignore template (PII leak fix) — item 6"
-grep -q '^\*\*/final_deliverables/\*\.csv' templates/gitignore.tmpl \
-  && ok "gitignore.tmpl ships the anchored **/final_deliverables/*.csv rule" || bad "gitignore.tmpl missing anchored export rule"
-GI="$TMP/gi"; mkdir -p "$GI/tickets/d/ENG-1/final_deliverables"
+hdr "19 · gitignore template (deliverables committed by default; PII opt-out) — item 6"
+# Policy: deliverable exports are COMMITTED by default (results live with the ticket / show in the PR);
+# PII opts out via a *.private.csv name or a private/ subfolder. Assert the blanket ignore is gone and
+# the opt-out patterns are present + functional.
+grep -Eq '^\*\*/final_deliverables/\*\.csv' templates/gitignore.tmpl \
+  && bad "gitignore.tmpl still ACTIVELY ignores all deliverable CSVs (policy is commit-by-default)" \
+  || ok "gitignore.tmpl no longer blanket-ignores deliverable CSVs"
+{ grep -q '^\*\*/\*\.private\.csv' templates/gitignore.tmpl \
+  && grep -q '^\*\*/final_deliverables/\*\*/private/' templates/gitignore.tmpl; } \
+  && ok "gitignore.tmpl ships the PII opt-out patterns (*.private.csv + private/)" \
+  || bad "gitignore.tmpl missing a PII opt-out pattern"
+GI="$TMP/gi"; mkdir -p "$GI/tickets/d/ENG-1/final_deliverables/private"
 git -C "$GI" init -q 2>/dev/null
 cp templates/gitignore.tmpl "$GI/.gitignore"
-: > "$GI/tickets/d/ENG-1/final_deliverables/x.csv"; : > "$GI/tickets/d/ENG-1/final_deliverables/x.sql"
-{ git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.csv \
-  && ! git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.sql; } \
-  && ok "anchored pattern ignores a NESTED export CSV but keeps the deliverable SQL" \
-  || bad "gitignore anchoring wrong (nested CSV not ignored, or SQL ignored)"
+: > "$GI/tickets/d/ENG-1/final_deliverables/x.csv"
+: > "$GI/tickets/d/ENG-1/final_deliverables/x.sql"
+: > "$GI/tickets/d/ENG-1/final_deliverables/secret.private.csv"
+: > "$GI/tickets/d/ENG-1/final_deliverables/private/rows.csv"
+csv_committed=1; git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.csv && csv_committed=0
+sql_committed=1; git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/x.sql && sql_committed=0
+priv_named=0;    git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/secret.private.csv && priv_named=1
+priv_dir=0;      git -C "$GI" check-ignore -q tickets/d/ENG-1/final_deliverables/private/rows.csv && priv_dir=1
+{ [ "$csv_committed" = 1 ] && [ "$sql_committed" = 1 ] && [ "$priv_named" = 1 ] && [ "$priv_dir" = 1 ]; } \
+  && ok "plain CSV + deliverable SQL committed; *.private.csv and private/ ignored" \
+  || bad "gitignore policy wrong" "csv=$csv_committed sql=$sql_committed private_named=$priv_named private_dir=$priv_dir"
+
+hdr "20 · path resolution + adapter hygiene (regressions from real-session bugs)"
+# E1 — sibling scripts resolve to the KIT, not the project root (the /ship enrich crash).
+grep -Eq 'root[[:space:]]*/[[:space:]]*"bin"[[:space:]]*/[[:space:]]*"(ingest_index_records|build_ticket_index)' bin/enrich_ticket.py \
+  && bad "enrich_ticket.py resolves sibling scripts off the project root (breaks on a plugin install)" \
+  || ok "enrich_ticket.py resolves sibling scripts from its own kit dir, not the project root"
+# E2 — the two index hooks import the renderer from the kit, not the project's bin/.
+hook_bad=""
+for h in regenerate_ticket_index ticket_index_context; do
+  grep -q 'root / "bin"' ".claude/hooks/$h.py" && hook_bad="$hook_bad $h"
+done
+[ -z "$hook_bad" ] && ok "index hooks import the renderer from the kit (CLAUDE_PLUGIN_ROOT/__file__)" \
+  || bad "hook inserts project-root/bin on sys.path (renderer won't import on a plugin install):$hook_bad"
+# E3 — verify_stack resolves adapters against the kit even when the stack lives OUTSIDE the kit.
+VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
+vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
+# Require positive success ("All seams OK"), not just the absence of "adapter missing" — else a
+# fixture that failed to create would falsely pass (the seam here has verify:null, so success prints).
+{ grep -q 'All seams OK' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
+  && ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)" \
+  || bad "verify_stack failed on a project-external stack (adapter missing / no success line)" "$vout"
+# E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
+lit="$(grep -REn 'mcp__[A-Za-z0-9]' adapters/ | grep -v 'mcp__{mcp}__' || true)"
+[ -z "$lit" ] && ok "adapters use the {mcp} token (no hardcoded MCP server names)" \
+  || bad "adapter hardcodes an MCP server name (should be mcp__{mcp}__…)" "$lit"
+# E5 — no seam verify depends on the nullable {default_epic}.
+ve="$(grep -REn 'verify.*\{default_epic\}' .claude/config/*.yaml 2>/dev/null || true)"
+va="$(sed -n '/^auth:/,/^---/p' adapters/tracker/jira.md | grep -c 'default_epic' || true)"
+{ [ -z "$ve" ] && [ "$va" = "0" ]; } && ok "no seam verify references the nullable {default_epic}" \
+  || bad "a verify depends on {default_epic} (fails when a project has no required epic)" "$ve"
+# E6 — no org-specific business vocabulary leaked into an adapter (public plugin).
+leak="$(grep -REn 'Data Pull|Data Engineering Task|Data Engineering Bug|every DI type' adapters/ || true)"
+[ -z "$leak" ] && ok "no org-specific Jira vocabulary in adapters" \
+  || bad "org-specific business content leaked into an adapter (public plugin!)" "$leak"
+# E7 — the DECLARE→CTE-params portability guardrail shipped where scripting is common.
+wq_bad=""
+for w in bigquery snowflake synapse; do
+  grep -qiE 'CTE param|CROSS JOIN params' "adapters/warehouse/$w.md" || wq_bad="$wq_bad $w"
+done
+[ -z "$wq_bad" ] && ok "bigquery/snowflake/synapse carry the CTE-params (vs session DECLARE) note" \
+  || bad "a warehouse adapter is missing the portable-params guardrail:$wq_bad"
+grep -qiE 'DECLARE|session-variable' .claude/skills/review/SKILL.md \
+  && ok "/review lints session-DECLARE parameterization" || bad "/review missing the DECLARE lint"
+# E8 — /ticket renders the index in its scaffold path (a new ticket shows immediately).
+grep -q 'build_ticket_index.py' .claude/skills/ticket/SKILL.md \
+  && ok "/ticket runs build_ticket_index.py after scaffolding (new ticket appears in INDEX.md)" \
+  || bad "/ticket never renders the index — a new ticket won't show until a manual run"
+# E9 — CSV cell-value ASCII-punctuation rule (no em dashes, which don't render in CSV) documented + enforced.
+{ grep -q 'ASCII punctuation only in cell values' templates/AGENTS.md.tmpl \
+  && grep -q 'ASCII punctuation only in cell values' .claude/skills/review/SKILL.md; } \
+  && ok "CSV cell-value ASCII-punctuation rule documented (AGENTS.md) + enforced (/review)" \
+  || bad "CSV ASCII-punctuation rule missing from AGENTS.md.tmpl or /review"
+# E10 — the 'commandify_everything' policy was renamed to 'skillify_everything' (skills-first framing).
+cf="$(grep -REn 'commandify' .claude/config .claude/skills templates 2>/dev/null || true)"
+{ [ -z "$cf" ] && grep -q 'skillify_everything' .claude/config/stack.yaml; } \
+  && ok "policy is skillify_everything (no legacy 'commandify' left)" \
+  || bad "legacy 'commandify' policy name still present (rename to skillify_everything)" "$cf"
+# E11 — the scaffolded CLAUDE.md import (Claude Code → AGENTS.md) ships as a bare one-line template.
+{ [ -f templates/CLAUDE.md.tmpl ] \
+  && [ "$(grep -cvE '^[[:space:]]*$' templates/CLAUDE.md.tmpl)" = "1" ] \
+  && grep -q '^@AGENTS.md' templates/CLAUDE.md.tmpl; } \
+  && ok "CLAUDE.md.tmpl is a bare @AGENTS.md import (Claude Code auto-loads the rules)" \
+  || bad "templates/CLAUDE.md.tmpl must be exactly one line: @AGENTS.md"
+
+hdr "21 · Obsidian graph layer (tickets/graph/ + tickets/objects/)"
+GX="$TMP/graph"; mkdir -p "$GX/.claude/config" "$GX/tickets/alice/ENG-1" "$GX/tickets/alice/ENG-2" "$GX/tickets/bob/ENG-3"
+printf 'project:\n  key_prefix: ENG\n' > "$GX/.claude/config/stack.yaml"
+printf '# ENG-1: Loan tape base\n\nbase.\n' > "$GX/tickets/alice/ENG-1/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-1/q.sql"
+printf '# ENG-2: Loan tape follow-up to ENG-1\n\nsee ENG-1.\n' > "$GX/tickets/alice/ENG-2/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-2/q.sql"
+printf '# ENG-3: Unrelated\n\nx.\n' > "$GX/tickets/bob/ENG-3/README.md"
+printf 'SELECT * FROM OPS.VW_CALL;\n' > "$GX/tickets/bob/ENG-3/q.sql"
+CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ -f "$GX/tickets/graph/ENG-1.md" ] && [ -f "$GX/tickets/graph/ENG-2.md" ] && [ -f "$GX/tickets/graph/ENG-3.md" ]; } \
+  && ok "graph stubs generated (one per ticket)" || bad "graph stubs missing"
+{ [ -f "$GX/tickets/objects/ANALYTICS.VW_LOAN.md" ] && [ -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
+  && ok "object notes generated (one per object)" || bad "object notes missing"
+{ grep -q '(../graph/ENG-1.md)' "$GX/tickets/objects/ANALYTICS.VW_LOAN.md" \
+  && grep -q '(../graph/ENG-2.md)' "$GX/tickets/objects/ANALYTICS.VW_LOAN.md"; } \
+  && ok "object note links the ticket stubs (VW_LOAN -> ENG-1, ENG-2)" || bad "object note not linking stubs"
+grep -q '](ENG-1.md)' "$GX/tickets/graph/ENG-2.md" \
+  && ok "stub carries the cross-ref link (ENG-2 -> ENG-1)" || bad "stub missing cross-ref link"
+if python3 - "$GX" <<'PY'
+import re, sys, pathlib
+root = pathlib.Path(sys.argv[1]); broken = 0
+for sub in ("graph", "objects"):
+    for md in (root/"tickets"/sub).glob("*.md"):
+        for m in re.finditer(r"\]\(([^)]+\.md)\)", md.read_text()):
+            if not (md.parent/m.group(1)).resolve().exists(): broken += 1
+sys.exit(1 if broken else 0)
+PY
+then ok "all graph-layer links resolve"; else bad "graph-layer has broken links"; fi
+CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
+  && ok "--check clean after render (graph layer deterministic)" || bad "--check stale right after render"
+rm -rf "$GX/tickets/bob/ENG-3"
+CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ ! -f "$GX/tickets/graph/ENG-3.md" ] && [ ! -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
+  && ok "orphan cleanup removes the stale stub + object note" || bad "orphan cleanup failed"
+GO="$TMP/graphoff"; mkdir -p "$GO/.claude/config" "$GO/tickets/alice/ENG-1"
+printf 'project:\n  key_prefix: ENG\n  graph_notes: false\n' > "$GO/.claude/config/stack.yaml"
+printf '# ENG-1: x\n\nx.\n' > "$GO/tickets/alice/ENG-1/README.md"
+CLAUDE_PROJECT_DIR="$GO" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ ! -d "$GO/tickets/graph" ] && [ ! -d "$GO/tickets/objects" ]; } \
+  && ok "graph_notes: false disables the layer" || bad "graph_notes flag not honored"
+grep -q '(../objects/ANALYTICS.VW_LOAN.md)' "$GX/tickets/graph/ENG-1.md" \
+  && ok "stub links its object notes (../objects/...)" || bad "stub does not link objects"
+mkdir -p "$GX/tickets/alice/ENG-20"
+printf '# ENG-20: hook test\n\nx.\n' > "$GX/tickets/alice/ENG-20/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-20/q.sql"
+echo "{\"tool_input\":{\"file_path\":\"$GX/tickets/alice/ENG-20/README.md\"},\"cwd\":\"$GX\"}" \
+  | CLAUDE_PROJECT_DIR="$GX" python3 .claude/hooks/regenerate_ticket_index.py >/dev/null 2>&1
+[ -f "$GX/tickets/graph/ENG-20.md" ] \
+  && ok "PostToolUse hook regenerates the graph layer (ENG-20 stub appeared)" || bad "hook did not regenerate the graph layer"
+CF="$TMP/graphcf"; mkdir -p "$CF/.claude/config" "$CF/tickets/a/ENG-1" "$CF/tickets/a/ENG-2"
+printf 'project:\n  key_prefix: ENG\n' > "$CF/.claude/config/stack.yaml"
+printf '# ENG-1: x\n\nx.\n' > "$CF/tickets/a/ENG-1/README.md"; printf 'SELECT * FROM S.VW_MIXED;\n' > "$CF/tickets/a/ENG-1/q.sql"
+printf '# ENG-2: x\n\nx.\n' > "$CF/tickets/a/ENG-2/README.md"; printf 'select * from s.vw_mixed;\n' > "$CF/tickets/a/ENG-2/q.sql"
+CLAUDE_PROJECT_DIR="$CF" python3 bin/build_ticket_index.py >/dev/null 2>&1
+[ "$(ls "$CF/tickets/objects" 2>/dev/null | grep -ic 'vw_mixed')" = "1" ] \
+  && ok "mixed-case object folds to ONE note (macOS case-insensitive safe)" || bad "mixed-case object split into multiple notes"
+printf 'project:\n  key_prefix: ENG\n  graph_notes: false\n' > "$CF/.claude/config/stack.yaml"
+CLAUDE_PROJECT_DIR="$CF" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ ! -d "$CF/tickets/graph" ] && [ ! -d "$CF/tickets/objects" ]; } \
+  && ok "disabling graph_notes removes the existing layer" || bad "stale graph layer left after disabling"
+DR="$TMP/graphdr"; mkdir -p "$DR/.claude/config" "$DR/tickets/a/ENG-1"
+printf 'project:\n  key_prefix: ENG\n' > "$DR/.claude/config/stack.yaml"
+printf '# ENG-1: x\n\nRelated: ENG-999\n' > "$DR/tickets/a/ENG-1/README.md"
+CLAUDE_PROJECT_DIR="$DR" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ grep -q 'ENG-999' "$DR/tickets/graph/ENG-1.md" && ! grep -q '(ENG-999.md)' "$DR/tickets/graph/ENG-1.md"; } \
+  && ok "dangling cross-ref shown as text, not a broken link" || bad "cross-ref to a nonexistent ticket was linked"
+grep -q 'graph_notes' .claude/config/stack.schema.md \
+  && ok "graph_notes documented in stack.schema.md" || bad "graph_notes not documented in stack.schema.md"
+grep -qi 'Obsidian' README.md \
+  && ok "README documents the Obsidian graph view" || bad "README missing the Obsidian section"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

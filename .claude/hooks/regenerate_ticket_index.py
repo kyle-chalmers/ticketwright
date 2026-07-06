@@ -46,12 +46,23 @@ def main() -> int:
     # index_data.json is source, NOT generated — editing the store SHOULD re-render.
     if changed.name in ("INDEX.md", "OBJECTS.md"):
         return 0
+    # generated graph layer (tickets/graph/, tickets/objects/) — regenerated below; never react to it
+    if any(part in ("graph", "objects") for part in changed.relative_to(tickets_dir).parts[:-1]):
+        return 0
 
-    sys.path.insert(0, str(root / "bin"))
+    # The renderer module ships with the kit (bin/), not the user's project — resolve it against
+    # CLAUDE_PLUGIN_ROOT (else this hook's own kit dir). `root` stays the project for the data.
+    kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+    sys.path.insert(0, str(bindir))
     try:
-        from build_ticket_index import build_rows, render, render_objects  # type: ignore
+        from build_ticket_index import build_rows, render, render_objects, render_graph_layer, load_config  # type: ignore
         rows = build_rows(root)
+        cfg = load_config(root)
         fresh = {tickets_dir / "INDEX.md": render(rows), tickets_dir / "OBJECTS.md": render_objects(rows)}
+        graph_dirs = [tickets_dir / "graph", tickets_dir / "objects"]  # always tracked so disabling cleans up
+        if cfg.get("graph_notes", True):
+            fresh.update(render_graph_layer(rows, root))
     except SystemExit:
         return 0  # malformed index_data.json — surfaced when the agent runs the renderer
     except Exception:
@@ -61,9 +72,18 @@ def main() -> int:
         changed_any = False
         for p, txt in fresh.items():
             if (p.read_text() if p.is_file() else None) != txt:
+                p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(txt.encode("utf-8")); changed_any = True
+        fresh_keys_ci = {str(p).lower() for p in fresh}  # orphan cleanup (case-insensitive for macOS)
+        for gd in graph_dirs:
+            if gd.is_dir():
+                for existing in gd.glob("*.md"):
+                    if str(existing).lower() not in fresh_keys_ci:
+                        existing.unlink(); changed_any = True
+                if not any(gd.iterdir()):
+                    gd.rmdir()
         if changed_any:
-            print("Auto-regenerated tickets/INDEX.md + OBJECTS.md (ticket folder changed). "
+            print("Auto-regenerated tickets/INDEX.md + OBJECTS.md + graph layer (ticket folder changed). "
                   "Run bin/ingest_index_records.py to refresh a ticket's curated summary.")
     except OSError:
         pass

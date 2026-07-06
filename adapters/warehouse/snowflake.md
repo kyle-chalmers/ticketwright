@@ -48,6 +48,12 @@ Discover objects via `INFORMATION_SCHEMA.TABLES` + `ACCOUNT_USAGE.OBJECT_DEPENDE
   legacy/raw schemas and point-in-time snapshot tables unless the work is compliance/historical.
 - **Dynamic-table chains:** never interpose a regular view between dynamic tables (`target_lag='DOWNSTREAM'`).
 - **Dev/deploy:** build dev objects in `{dev_db}`; promote with your multi-env deploy template (COPY GRANTS).
+- **Portable params — prefer CTE params over session variables / Scripting `DECLARE`.** A `SET v=…; $v`
+  session variable (or a Snowflake Scripting `DECLARE`) is script/session-scoped: it doesn't survive
+  into a separate JDBC/ODBC statement (DataGrip, Simba), and multi-statement `snow -f` runs emit the
+  "Statement executed successfully." preamble you then have to strip. Prefer a self-contained CTE
+  params row — `WITH params AS (SELECT '2026-06-30'::DATE AS anchor) SELECT … CROSS JOIN params` — so
+  the query is one portable, export-clean statement.
 
 ## gotchas
 - Non-SELECT (UPDATE/CREATE/DELETE/DDL) ⇒ policy `db_write_requires_approval`: show the SQL, explain,

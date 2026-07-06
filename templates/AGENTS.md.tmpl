@@ -5,7 +5,9 @@
 > + `adapters/`; this file is the always-loaded **global rules** tier of the AI layer.
 
 ## Role
-Ticket-driven {{domain}} work — analysis-first, quality-first. **KISS / YAGNI.** One folder per
+Ticket-driven {{domain}} work — analysis-first, quality-first. **KISS (Keep It Simple, Stupid) and
+YAGNI (You Aren't Gonna Need It): build only what the ticket needs, not speculative structure or
+gold-plating.** One folder per
 ticket under `{{ticket_path}}`.
 
 {{role_focus}}
@@ -14,6 +16,10 @@ ticket under `{{ticket_path}}`.
 `/ticket <id>` (opens the ticket + auto-loads its context and prior art) → `/spec-and-build`
 (blueprint, then build) → `/review` (independent check) → `/ship` (gated delivery). Recurring work
 → `/productize`. Knowledge maintenance → `/refresh` (ticket catalog + domain pack).
+
+**Reuse prior work:** `tickets/INDEX.md` catalogs every past ticket and `tickets/OBJECTS.md` maps data
+objects → the tickets that touched them. `/ticket` surfaces the closest matches automatically — grep
+the index before starting, and never rebuild what's already been built.
 
 ## The stack (this repo)
 | Seam | Tool | Adapter |
@@ -43,7 +49,7 @@ the agent forgets it.
 2. **db_write_requires_approval** — show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
-5. **commandify_everything** — recurring work becomes a `/productize` skill.
+5. **skillify_everything** — recurring work becomes a `/productize` skill the agent can invoke itself.
 6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
 7. **commit_plan_before_implement** — `/spec-and-build` commits the spec before building (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
@@ -58,6 +64,12 @@ the agent forgets it.
 ├── qc_queries/          # numbered QC + the /review verdict
 └── exploratory_analysis/
 ```
+
+## Deliverable exports (CSV)
+**ASCII punctuation only in cell values** — no em/en dashes, smart quotes, or ellipsis characters;
+they render as mojibake in Excel and many CSV viewers (use a plain `-`, or "to" for ranges). Header
+row first (no preamble/blank rows), filename carries the record count, explicit `ORDER BY` so re-runs
+are byte-identical.
 
 ## Communication (limits)
 Tracker comment <{{wl_tracker_comment}} words · chat <{{wl_chat}} · PR <{{wl_pr}} · new ticket

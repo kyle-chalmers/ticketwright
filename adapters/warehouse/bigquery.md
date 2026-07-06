@@ -38,6 +38,12 @@ Object inventory: `bq ls {dataset}`; lineage via `INFORMATION_SCHEMA.*` views.
 - **Partition pruning** is the analog of clustered-column filtering; `SELECT *` on wide tables is
   the expensive anti-pattern (scans all columns) — list columns.
 - **Dev/deploy:** dev objects in `{dev_dataset}`; promote via scripted `CREATE OR REPLACE`.
+- **Portable params — prefer CTE params over session `DECLARE`.** Don't parameterize with scripting
+  (`DECLARE d DATE DEFAULT '…'; … WHERE dt <= d`): a `bq --format=csv` run echoes each statement's
+  status into the CSV (polluting the export), and a `DECLARE`d variable is out of scope for the next
+  statement in single-statement JDBC/ODBC clients (DataGrip, Simba). Use a self-contained CTE params
+  row instead — one statement, export-clean, portable:
+  `WITH params AS (SELECT DATE '2026-06-30' AS anchor) SELECT … FROM t CROSS JOIN params WHERE dt <= params.anchor`.
 
 ## gotchas
 - Non-SELECT/DDL ⇒ policy `db_write_requires_approval`.

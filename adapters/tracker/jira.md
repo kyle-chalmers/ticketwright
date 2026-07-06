@@ -5,8 +5,8 @@ transport: both        # acli (CLI) for reads/creates/transitions; Atlassian MCP
 requires: [site, cli]  # stack.yaml seams.tracker.{site, cli, mcp, default_epic, terminal_status}
 auth: |
   CLI:  acli jira auth   (token in ~/.config/acli/token.txt; site/email in jira_config.yaml)
-  MCP:  the `atlassian` MCP server must be connected (OAuth). Used for comment rendering.
-  Verify: `acli jira workitem view {default_epic}` (read-only).
+  MCP:  the tracker's MCP server (`{mcp}`, e.g. an Atlassian connector) must be connected (OAuth). Used for comment rendering.
+  Verify: `acli jira workitem search --jql "project = {key_prefix}" --limit 1` (read-only; no epic needed).
 ---
 
 # Jira adapter
@@ -23,29 +23,33 @@ acli jira workitem view <id>
 For structured fields: `acli jira workitem view <id> --json`.
 
 ## verb: create_ticket
-**In:** type, summary, description, assignee (email), parent/epic.
+**In:** type, summary, description, assignee (email), optional parent/epic.
 ```bash
 acli jira workitem create \
   --project "{key_prefix}" --type "<TYPE>" \
   --summary "<SUMMARY>" --description "<DESC>" \
-  --assignee "<email>" --parent "<epic or {default_epic}>"
+  --assignee "<email>"
+# add --parent "{default_epic}" only when default_epic is set (some projects require a parent Epic; many don't)
 ```
-Notes: **every DI type needs `--parent` (an Epic)** or create fails. Assignee is the **email**, not
-username. Valid types: Reporting, Data Pull, Automation, Dashboard, Research, Data Engineering Task,
-Data Engineering Bug, Epic.
+Notes: assignee is the **email**, not the username. `--type` must match your project's issue-type
+scheme (common defaults: Task, Story, Bug, Epic) — list yours from the project's issue-type metadata.
+If your project *requires* a parent Epic, `create` fails without `--parent`; set `default_epic` in
+stack.yaml so it's passed automatically.
 
 ## verb: transition
 ```bash
 acli jira workitem transition --key "<id>" --status "<status>"
 ```
-The done state is `{terminal_status}` (here `Deployed`, not "Done"). Common: Backlog, In Spec,
-In-Progress, Blocked, Deployed.
+The done state is `{terminal_status}` (defaults to `Done`; set it to your workflow's terminal state).
+Status names are workflow-specific — don't assume a fixed ladder; resolve the valid target statuses
+from your Jira workflow (the project's board columns / transitions).
 
 ## verb: comment
-Use the **Atlassian MCP**, not acli — ADF format renders links/mentions.
+Use the tracker's **MCP** (`{mcp}`), not acli — the MCP renders ADF (clickable links/mentions); acli posts plain text.
 ```
-mcp__atlassian__addCommentToJiraIssue(cloudId, issueIdOrKey=<id>, commentBody=<ADF>)
+mcp__{mcp}__addCommentToJiraIssue(cloudId, issueIdOrKey=<id>, commentBody=<ADF>)
 ```
+Tool/param names vary by MCP server — confirm once against your connected server (its name is `{mcp}` in stack.yaml).
 For a clickable Google-Drive Smart Link, embed an `inlineCard` ADF node with the file URL (see
 docstore/gdrive.md `link_for`). Plain text only otherwise — Jira has its own formatter (no markdown).
 Honor `word_limits.tracker_comment`. **Never post until the human has reviewed** (policy
@@ -54,7 +58,7 @@ Honor `word_limits.tracker_comment`. **Never post until the human has reviewed**
 ## verb: search
 ```bash
 acli jira workitem search --jql "<JQL>" --limit <N> --json   # --csv / --fields also supported
-# MCP alt: mcp__atlassian__searchJiraIssuesUsingJql
+# MCP alt: mcp__{mcp}__searchJiraIssuesUsingJql
 ```
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
 
@@ -68,4 +72,4 @@ script against the REST API that follows the 303 redirect to the download URL:
 
 ## gotchas
 - `acli` Duo/MFA: an instant `250001/370001` = lockout (wait 15 min, don't retry); a hang = push pending.
-- Epic link errors ⇒ you forgot `--parent`. "User not found" ⇒ use the exact email.
+- If your project requires a parent Epic, a link error means `--parent` was missing (set `default_epic`). "User not found" ⇒ use the exact email.

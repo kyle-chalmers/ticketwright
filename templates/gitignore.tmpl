@@ -1,15 +1,26 @@
 # .gitignore — rendered into a ticket-work repo by /setup (from templates/gitignore.tmpl).
 # Edit the kit template, not this file, if you want the change to propagate to other repos.
 
-# ── Ticket exports are customer data → they go to the docstore (Drive/SharePoint), NOT git ──
-# Anchored with **/ so it matches at ANY depth (tickets/<assignee>/<id>/final_deliverables/).
-# An UN-anchored `final_deliverables/*.csv` matches only a top-level dir and silently commits every
-# nested ticket export — the exact PII leak this pattern prevents. Enforces "exports → Drive, not git".
-**/final_deliverables/*.csv
-**/final_deliverables/*.tsv
-**/final_deliverables/*.xlsx
-**/final_deliverables/*.parquet
-# Deliverable SQL, QC SQL, and READMEs are reviewable artifacts — keep committing those.
+# ── Ticket deliverables (CSV/TSV/XLSX/Parquet) ARE committed by default ──
+# Results live with the ticket and show up in the PR for review. To keep a specific export OUT of git
+# (customer data / PII), either name it `*.private.csv` (`.tsv`/`.xlsx`/`.parquet`) OR drop it in a
+# `private/` subfolder of the ticket's final_deliverables — both are ignored at any depth (rules below).
+# Deliverable SQL, QC SQL, and READMEs are always committed (reviewable artifacts).
+#   Prefer the strict "no deliverable ever committed → docstore only" default? Uncomment these four:
+#   # **/final_deliverables/*.csv
+#   # **/final_deliverables/*.tsv
+#   # **/final_deliverables/*.xlsx
+#   # **/final_deliverables/*.parquet
+**/*.private.csv
+**/*.private.tsv
+**/*.private.xlsx
+**/*.private.parquet
+**/final_deliverables/**/private/
+
+# ── The Obsidian graph layer (tickets/graph/, tickets/objects/) is generated + committed by default,
+# shared with the team like INDEX.md/OBJECTS.md. To keep it out of git, uncomment:
+#   # tickets/graph/
+#   # tickets/objects/
 
 # Downloaded attachments are inputs you didn't author and often carry PII — keep them local.
 # Uncomment to enforce (you can still `git add -f` a specific small input you mean to track):

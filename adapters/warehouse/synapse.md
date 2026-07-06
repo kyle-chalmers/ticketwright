@@ -45,6 +45,11 @@ Inventory via `information_schema.tables` / `sys.objects`.
 - **Dev/deploy:** dev objects in `{dev_schema}`; promote views with `CREATE OR ALTER VIEW`. For
   tables: `CTAS` (`CREATE TABLE … AS SELECT`) on Synapse dedicated / Fabric; on Azure SQL DB /
   SQL Server use `SELECT … INTO` instead (they don't support CTAS).
+- **Portable params — prefer a CTE params row over a batch `DECLARE`.** `DECLARE @d date = '…';` is
+  batch-scoped — it dies at the next `GO` / statement boundary, so it's out of scope in
+  single-statement JDBC/ODBC clients (DataGrip, Simba). When the SQL must run as one statement or
+  export clean, put the parameter in a CTE:
+  `WITH params AS (SELECT CAST('2026-06-30' AS date) AS anchor) SELECT … FROM t CROSS JOIN params WHERE t.dt <= params.anchor`.
 
 ## gotchas
 - Non-SELECT/DDL ⇒ policy `db_write_requires_approval`.

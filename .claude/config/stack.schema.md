@@ -33,6 +33,7 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
 | `word_limits` | map | `{tracker_comment: 100, chat: 100, pr: 200, ticket: 200}` | Hard caps the comms skills enforce. |
+| `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 
 ## `seams`
 
@@ -57,7 +58,7 @@ and `refresh context` degrade gracefully (skip warehouse steps) when it is.
 | `db_write_requires_approval` | `true` | any skill issuing a non-SELECT — show SQL, explain, wait for `yes`. |
 | `chat_default_draft` | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
 | `hyperlink_everything` | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
-| `commandify_everything` | `true` | recurring work → `productize`, not a one-off. |
+| `skillify_everything` | `true` | recurring work → a `/productize` skill the agent can invoke, not a one-off. |
 | `reduce_assumptions` | `true` | ask before building; still document every assumption in the ticket README. |
 | `commit_plan_before_implement` | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
 | `system_evolution` | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |

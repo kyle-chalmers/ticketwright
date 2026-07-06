@@ -38,4 +38,4 @@ External side effect ⇒ policy `hard_halt_before_external_posts` (approval firs
 ## gotchas
 - Sync can lag — confirm the file appears in the library before generating a link.
 - Org sharing policy may force "people in your org only"; pick the `scope` your stakeholders can open.
-- Large *exports* live here and are linked; committed git holds only inputs/provenance.
+- Deliverables commit with the ticket by default — use this docstore for durable external sharing / smart links; PII exports opt out of git (`*.private.csv` or a `final_deliverables/**/private/` subfolder) and get backed up here instead.

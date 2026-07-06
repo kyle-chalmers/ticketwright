@@ -24,7 +24,10 @@ Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 - `= NULL` → must be `IS NULL`; missing div-by-zero guard; `SELECT *` in deliverables; functions on
   filtered columns; implicit cross-source type mismatches (missing `CAST`); hardcoded values that
   should be parameters; missing required schema/instance filters; `LEFT JOIN` predicate in `WHERE`
-  that silently becomes an inner join; `NOT IN` with nullable columns; `UNION` vs `UNION ALL`.
+  that silently becomes an inner join; `NOT IN` with nullable columns; `UNION` vs `UNION ALL`;
+  session-variable/`DECLARE` parameterization in a shipped or exported query (prefer a CTE params
+  row — portable, single-statement, export-clean; session vars pollute `--format csv` output and
+  don't survive into single-statement JDBC/ODBC clients).
 
 **② Counts & dedup** (re-run independently)
 - Re-run the row-count; compare to the documented count. **Duplicate detection is the primary test:**
@@ -42,7 +45,9 @@ Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
   maintainability). Classify each finding Critical / Should-fix / Review.
 
 **⑤ Human sign-off**
-- Output format check (CSV headers row 1, no preamble/blank rows; filenames carry record counts).
+- Output format check (CSV headers row 1, no preamble/blank rows; filenames carry record counts;
+  **ASCII punctuation only in cell values** — no em/en dashes, smart quotes, or ellipsis chars, which
+  render as mojibake in Excel/CSV viewers).
 - README completeness (assumptions enumerated, QC results, business context). Flag for the human.
 
 ## Tiers & halting

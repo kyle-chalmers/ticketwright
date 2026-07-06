@@ -17,6 +17,7 @@ project:
   terminal_status: Done                 # the workflow's "done" state (not always "Done")
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+  graph_notes: true                     # Obsidian graph layer (tickets/graph + tickets/objects); false to disable
 
 seams:
   tracker:
@@ -26,7 +27,7 @@ seams:
     site: acme.atlassian.net
     cli: acli
     mcp: atlassian
-    verify: "acli jira workitem view {default_epic}"
+    verify: 'acli jira workitem search --jql "project = {key_prefix}" --limit 1'
 
   warehouse:
     tool: snowflake
@@ -69,7 +70,7 @@ policies:
   db_write_requires_approval: true
   chat_default_draft: true
   hyperlink_everything: true
-  commandify_everything: true
+  skillify_everything: true
   reduce_assumptions: true
   commit_plan_before_implement: true
   system_evolution: true

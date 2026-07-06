@@ -40,9 +40,13 @@ authorization, execute in order:
 7. **chat.draft** to `seams.chat.default_channel` (policy `chat_default_draft` — the human clicks
    send unless they said "send it", in which case `chat.send`). Smart links for ticket id(s),
    files, PR.
-8. **vcs.commit** (stage this ticket's paths **plus `tickets/INDEX.md` + `tickets/OBJECTS.md` +
-   `tickets/index_data.json`** — all three, or `--check` flags drift in CI; semantic message +
-   Co-Authored-By) then **vcs.open_pr** (semantic title; body = Business Impact / Deliverables /
+8. **vcs.commit** — stage this ticket's paths (deliverable files included: they're committed by
+   default so results live with the ticket and show in the PR) **plus `tickets/INDEX.md` +
+   `tickets/OBJECTS.md` + `tickets/index_data.json`** (all three, or `--check` flags drift in CI;
+   semantic message + Co-Authored-By). **Before staging, list the `final_deliverables/` files that
+   will be committed and confirm none carry PII/customer data that shouldn't be in git** — if any do,
+   have the user rename them `*.private.csv` (etc.) or move them under a `private/` subfolder (both
+   gitignored) first. Then **vcs.open_pr** (semantic title; body = Business Impact / Deliverables /
    Technical Notes / QC).
 9. **transition** the ticket toward `project.terminal_status` if appropriate.
 

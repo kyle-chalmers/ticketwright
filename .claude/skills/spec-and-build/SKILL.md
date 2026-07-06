@@ -27,7 +27,7 @@ context-engineering core idea: AI fails from missing context, not weak models.
      `bin/recall.py --for <id>`) and reuse their SQL/QC where it fits;
    - pull the business rules from the `documentation/` glossary (the domain slice).
    Research agents return findings only; **they do not write code.**
-3. **Write the spec** from `templates/spec.md.tmpl` into the ticket's folder
+3. **Write the spec** from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/spec.md.tmpl` into the ticket's folder
    (`specs/<id>-<slug>.md` or `final_deliverables/`): operation type (new/alter), data grain,
    sources + join/cast rules, transformation logic, **validation gates** (the exact QC the build must
    pass), downstream impact, dev-env target (`seams.warehouse.dev_db`), and a **confidence score
@@ -41,7 +41,9 @@ context-engineering core idea: AI fails from missing context, not weak models.
 6. **Load** the committed spec (path arg or newest in the ticket's `specs/`). Treat it as the source
    of truth, but **validate each step independently** — don't blindly follow; the spec can be wrong.
 7. **Implement in small build-and-check sub-loops:** one object/step at a time. Develop against
-   `seams.warehouse.dev_db` first; parameterize values at the top; explicit `ORDER BY` on any export
+   `seams.warehouse.dev_db` first; parameterize values at the top **via a CTE params row
+   (`WITH params AS (SELECT … AS anchor) … CROSS JOIN params`), not a session `DECLARE`/`SET`** —
+   CTE params stay portable and keep CSV exports clean; explicit `ORDER BY` on any export
    (deterministic outputs).
 8. **Embed validation between steps** — after each, run the relevant gate from the spec; self-correct.
 9. **Any non-SELECT / DDL** ⇒ policy `db_write_requires_approval`: show the exact SQL, explain the

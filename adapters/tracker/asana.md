@@ -1,10 +1,10 @@
 ---
 seam: tracker
 tool: asana
-transport: mcp         # mcp__plugin_productivity_asana__*
-requires: [workspace_gid]   # stack.yaml seams.tracker.{workspace_gid, default_project_gid}
+transport: mcp         # MCP; server name = seams.tracker.mcp ({mcp})
+requires: [workspace_gid, mcp]   # stack.yaml seams.tracker.{workspace_gid, default_project_gid, mcp}
 auth: |
-  The `asana` MCP server (plugin_productivity_asana) must be connected (OAuth).
+  The Asana MCP server (`{mcp}`) must be connected (OAuth).
   Verify: an Asana MCP "list workspaces" / "typeahead search" call returns without error.
 note: |
   Asana has no "Epic" concept — `default_epic` maps to a parent task or a project section.
@@ -20,7 +20,7 @@ Maps the `tracker` verb contract to Asana via its MCP. Demonstrates that swappin
 ## verb: fetch_ticket
 **In:** task GID. **Out:** name, notes, status (section/custom field), assignee, links, attachments.
 ```
-mcp__plugin_productivity_asana__* get-task(task_gid=<id>)
+mcp__{mcp}__get-task(task_gid=<id>)
 ```
 
 ## verb: create_ticket

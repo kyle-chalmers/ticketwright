@@ -14,7 +14,7 @@ Maps the `docstore` verb contract to a mounted Google Drive shared drive. Backup
 filesystem copies; shareable links come from the file's macOS extended attribute.
 
 ## verb: backup
-**In:** local ticket dir, dest name (**always full title, not just the ID** — saved memory).
+**In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).
 ```bash
 dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
 rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
@@ -35,5 +35,5 @@ xattr -l "<gdrive file path>" | grep item-id          # NOT xattr -p (zsh eats t
 Item-id is blank for a few minutes after an in-place copy — wait, or use the clean rm+cp path.
 
 ## gotchas
-- Stakeholder CSV *inputs/provenance* are committed to git; large *exports* go here, linked from Drive — never committed.
-- Jira/Slack must link the **specific Drive file**, never a PR or folder link (saved memory).
+- Deliverables (incl. export CSVs) commit with the ticket by default — this docstore is for durable external sharing / smart links. Keep PII exports out of git via a `*.private.csv` name or a `final_deliverables/**/private/` subfolder, and back those up here instead.
+- Jira/Slack must link the **specific Drive file**, never a PR or folder link (recommended convention).

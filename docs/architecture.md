@@ -10,7 +10,7 @@ that guide an agent), versioned together. The AI layer has three tiers:
 
 | Tier | Here | Loaded |
 |---|---|---|
-| **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`) | always |
+| **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`; Claude Code loads it via a one-line `CLAUDE.md` `@AGENTS.md` import) | always |
 | **On-demand context** | the `documentation/` pack · `/ticket`'s priming slices · `tickets/INDEX.md` + `OBJECTS.md` | selectively |
 | **Skills** | `.claude/skills/` (7) | on invocation |
 
@@ -73,8 +73,9 @@ enforce the same policies via the skill-level hard-halts.
   delegates to (one per pyramid layer in `--deep` mode).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
 - **19 adapters** (`adapters/`) across 5 seams — full verb coverage each.
-- **Templates** (`templates/`): AGENTS.md, ticket README, plan, spec, `.gitignore` (anchored
-  `**/final_deliverables/*.csv` PII guard), role snippets, and the productized-skill skeleton.
+- **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
+  README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via
+  `*.private.csv` / a `private/` subfolder), role snippets, and the productized-skill skeleton.
 - **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `selftest.sh` (the CI suite + hook unit tests), and the index/recall
   engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`) —
