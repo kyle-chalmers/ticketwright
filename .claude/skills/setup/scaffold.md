@@ -22,6 +22,31 @@ Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/.claude/settings.json.tmpl` �
   `session_context.py` + `ticket_index_context.py` (SessionStart) prime the stack + ticket catalog;
   `regenerate_ticket_index.py` (PostToolUse) keeps `tickets/INDEX.md` fresh on folder changes.
 
+**On a plugin install, also make the plugin project-scoped + self-updating.** Merge these two keys
+into the rendered `.claude/settings.json` so the plugin is enabled *for this repo* (committed →
+travels with the repo, works for every teammate, survives the original author leaving) and refreshes
+itself:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "ticketwright": {
+      "source": { "source": "github", "repo": "kyle-chalmers/ticketwright" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "ticketwright@ticketwright": true
+  }
+}
+```
+
+`autoUpdate` re-installs **only when the plugin's version string changes** — i.e. only on a formal
+release (the release commit bumps `plugin.json`/`marketplace.json`/`__init__.py` in lockstep and tags
+`v*`). Between releases, ordinary commits to the default branch leave the version untouched, so
+teammates are never pulled onto un-released mid-flight work. Do **not** add these keys on a vendored
+(`cp -r`/pip) install — there's no marketplace to enable from; the kit is already in-repo.
+
 Then append the chosen warehouse/tracker/vcs **read-only** CLI allows to `permissions.allow` (e.g.
 `Bash(<warehouse_cli> …:*)`). **Statusline:** the template's `statusLine.command` is the
 project-relative `.claude/statusline.sh`, so on a plugin install **copy

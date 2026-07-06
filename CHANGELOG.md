@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [3.2.0] — 2026-07-06
+
+Makes a plugin install **project-scoped by default**, so the plugin travels with the repo and stays
+current for a whole team with no per-person setup.
+
+### Added
+- **Project-scoped enablement is the default on plugin installs.** On a plugin install, `/setup` now
+  also writes an `extraKnownMarketplaces` (ticketwright github source, `autoUpdate: true`) +
+  `enabledPlugins` (`ticketwright@ticketwright`) block into the repo's committed
+  `.claude/settings.json`. The plugin travels with the repo — every teammate who opens it is enabled
+  automatically, and it keeps working after the person who set it up moves on. `autoUpdate` re-installs
+  **only on a formal release**: Claude Code refreshes when the version string changes, and the version
+  only moves in a tagged release commit, so ordinary `main` commits never pull teammates onto
+  un-released work. Not written on vendored (`cp -r`/pip) installs — there's no marketplace to enable
+  from. README documents it as the recommended team install; `scaffold.md` + the `settings.json.tmpl`
+  `_README` carry the rationale.
+- **`bin/selftest.sh` §21** asserts the enablement block is documented, is valid JSON, targets the
+  real marketplace repo, and is release-gated (`autoUpdate`).
+
 ## [3.1.0] — 2026-07-06
 
 Hardening release from two real end-to-end runs (a `/setup` session and a full analysis ticket). Fixes
