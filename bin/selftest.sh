@@ -554,5 +554,28 @@ grep -q 'graph_notes' .claude/config/stack.schema.md \
 grep -qi 'Obsidian' README.md \
   && ok "README documents the Obsidian graph view" || bad "README missing the Obsidian section"
 
+hdr "21 · project-scoped enablement is the default on plugin installs"
+sc=".claude/skills/setup/scaffold.md"
+scflat="$(tr '\n' ' ' < "$sc")"   # flatten so word-wrapped phrases still match
+{ grep -q 'extraKnownMarketplaces' "$sc" && grep -q 'enabledPlugins' "$sc" \
+  && grep -q '"ticketwright@ticketwright": true' "$sc" && grep -q '"autoUpdate": true' "$sc" \
+  && grep -qi 'formal release' <<<"$scflat"; } \
+  && ok "setup/scaffold.md documents the project-scoped enablement block (autoUpdate, release-gated)" \
+  || bad "setup/scaffold.md must document extraKnownMarketplaces + enabledPlugins + autoUpdate (release-gated)"
+python3 - "$sc" <<'PY' && ok "enablement snippet is valid JSON, targets kyle-chalmers/ticketwright, autoUpdate on" || bad "enablement snippet in scaffold.md is malformed / wrong repo"
+import json, re, sys
+t = open(sys.argv[1]).read()
+m = re.search(r'```json\s*(\{.*?"enabledPlugins".*?\})\s*```', t, re.S)
+if not m: sys.exit(1)
+d = json.loads(m.group(1))
+mk = d["extraKnownMarketplaces"]["ticketwright"]
+ok = (mk["source"] == {"source": "github", "repo": "kyle-chalmers/ticketwright"}
+      and mk["autoUpdate"] is True
+      and d["enabledPlugins"]["ticketwright@ticketwright"] is True)
+sys.exit(0 if ok else 1)
+PY
+grep -qi 'project-scoped' README.md \
+  && ok "README documents the project-scoped install as the team default" || bad "README missing the project-scoped section"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

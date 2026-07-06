@@ -6,7 +6,7 @@
     {
       "name": "ticketwright",
       "source": ".",
-      "version": "3.1.0",
+      "version": "3.2.0",
       "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
       "license": "MIT",
       "keywords": ["tickets", "data", "qc", "workflow", "recall"]

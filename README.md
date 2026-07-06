@@ -35,6 +35,26 @@ That's it. `setup` also handles repos that **already have** ticket history — i
 existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
 [Adopting an existing repo](#adopting-an-existing-repo)).
 
+**Project-scoped by default.** A plugin can't set its own install scope — so instead, `setup` commits
+the enablement into the repo's `.claude/settings.json`. That's the *repo* opting in at project scope:
+it travels *with the repo*, so every teammate who opens (and trusts) the repo is prompted to install
+Ticketwright (no marketplace to add, no config to write), and it keeps working after the person who
+set it up moves on:
+
+```jsonc
+{
+  "extraKnownMarketplaces": {
+    "ticketwright": { "source": { "source": "github", "repo": "kyle-chalmers/ticketwright" }, "autoUpdate": true }
+  },
+  "enabledPlugins": { "ticketwright@ticketwright": true }
+}
+```
+
+`autoUpdate` re-installs **only on a formal release** — Claude Code refreshes when the plugin's
+*version* changes, and the version only moves in a tagged release commit, so day-to-day commits to
+`main` never pull teammates onto un-released work. (Prefer the user-level `/plugin install` above for
+personal, cross-repo use; use the committed block when you want the whole team on it.)
+
 ## How work flows
 
 Four steps — **plan → build → check → ship** — and one command to remember:
