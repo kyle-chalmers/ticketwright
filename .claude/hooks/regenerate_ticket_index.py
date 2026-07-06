@@ -46,6 +46,9 @@ def main() -> int:
     # index_data.json is source, NOT generated — editing the store SHOULD re-render.
     if changed.name in ("INDEX.md", "OBJECTS.md"):
         return 0
+    # generated graph layer (tickets/graph/, tickets/objects/) — regenerated below; never react to it
+    if any(part in ("graph", "objects") for part in changed.relative_to(tickets_dir).parts[:-1]):
+        return 0
 
     # The renderer module ships with the kit (bin/), not the user's project — resolve it against
     # CLAUDE_PLUGIN_ROOT (else this hook's own kit dir). `root` stays the project for the data.
