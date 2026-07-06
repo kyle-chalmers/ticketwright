@@ -434,9 +434,11 @@ done
 VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
 vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -q 'adapter missing' <<<"$vout" \
-  && bad "verify_stack can't find adapters when the stack is outside the kit" "$vout" \
-  || ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)"
+# Require positive success ("All seams OK"), not just the absence of "adapter missing" — else a
+# fixture that failed to create would falsely pass (the seam here has verify:null, so success prints).
+{ grep -q 'All seams OK' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
+  && ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)" \
+  || bad "verify_stack failed on a project-external stack (adapter missing / no success line)" "$vout"
 # E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
 lit="$(grep -REn 'mcp__[A-Za-z0-9]' adapters/ | grep -v 'mcp__{mcp}__' || true)"
 [ -z "$lit" ] && ok "adapters use the {mcp} token (no hardcoded MCP server names)" \

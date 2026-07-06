@@ -23,7 +23,7 @@ command -v yq >/dev/null 2>&1 || { echo "verify_stack: 'yq' required (brew insta
 # install those roots diverge, so resolve adapters against the kit ($CLAUDE_PLUGIN_ROOT, else this
 # script's own dir) and keep the project root as a fallback for repo-vendored/custom adapters.
 kit_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-proj_root="$(cd "$(dirname "$stack")/../.." && pwd)"
+proj_root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$stack")/../.." && pwd)}"
 
 # Flatten project.* into a token file (key<TAB>value) so verify strings like "{default_epic}" /
 # "{base_path}" resolve. Plain file + loop (no associative arrays) keeps this bash 3.2-compatible.

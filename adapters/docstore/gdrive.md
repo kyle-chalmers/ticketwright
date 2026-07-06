@@ -35,5 +35,5 @@ xattr -l "<gdrive file path>" | grep item-id          # NOT xattr -p (zsh eats t
 Item-id is blank for a few minutes after an in-place copy — wait, or use the clean rm+cp path.
 
 ## gotchas
-- Stakeholder CSV *inputs/provenance* are committed to git; large *exports* go here, linked from Drive — never committed.
+- Deliverables (incl. export CSVs) commit with the ticket by default — this docstore is for durable external sharing / smart links. Keep PII exports out of git via a `*.private.csv` name or a `final_deliverables/**/private/` subfolder, and back those up here instead.
 - Jira/Slack must link the **specific Drive file**, never a PR or folder link (recommended convention).

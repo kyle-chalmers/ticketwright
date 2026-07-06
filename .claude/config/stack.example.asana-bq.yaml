@@ -35,6 +35,7 @@ seams:
     tool: teams
     adapter: adapters/chat/teams.md
     transport: mcp
+    mcp: teams                          # your Teams MCP server name (adapter calls resolve as mcp__{mcp}__…)
     channel: "Data Team / General"
     default_mode: draft
     always_include: [Ana]
