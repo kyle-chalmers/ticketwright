@@ -35,9 +35,11 @@ That's it. `setup` also handles repos that **already have** ticket history — i
 existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
 [Adopting an existing repo](#adopting-an-existing-repo)).
 
-**Project-scoped by default.** On a plugin install, `setup` commits the enablement into the repo's
-`.claude/settings.json`, so the plugin travels *with the repo* — every teammate who opens it gets
-Ticketwright automatically, and it keeps working after the person who set it up moves on:
+**Project-scoped by default.** A plugin can't set its own install scope — so instead, `setup` commits
+the enablement into the repo's `.claude/settings.json`. That's the *repo* opting in at project scope:
+it travels *with the repo*, so every teammate who opens (and trusts) the repo is prompted to install
+Ticketwright (no marketplace to add, no config to write), and it keeps working after the person who
+set it up moves on:
 
 ```jsonc
 {

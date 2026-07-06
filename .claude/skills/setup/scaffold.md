@@ -22,9 +22,11 @@ Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/.claude/settings.json.tmpl` �
   `session_context.py` + `ticket_index_context.py` (SessionStart) prime the stack + ticket catalog;
   `regenerate_ticket_index.py` (PostToolUse) keeps `tickets/INDEX.md` fresh on folder changes.
 
-**On a plugin install, also make the plugin project-scoped + self-updating.** Merge these two keys
+**On a plugin install, also commit a project-scoped enablement.** A plugin can't set its own install
+scope — the *repo* opts in. Merge these two keys
 into the rendered `.claude/settings.json` so the plugin is enabled *for this repo* (committed →
-travels with the repo, works for every teammate, survives the original author leaving) and refreshes
+travels with the repo; teammates who open and trust it are prompted to install it; it survives the
+original author leaving) and refreshes
 itself:
 
 ```json
