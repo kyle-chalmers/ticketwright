@@ -3,12 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
-## [3.1.0] — 2026-07-05
+## [3.1.0] — 2026-07-06
 
 Hardening release from two real end-to-end runs (a `/setup` session and a full analysis ticket). Fixes
 the plugin/pip install path bugs those runs surfaced, de-hardcodes the shipped adapters for a clean
 first run on any stack, adds a SQL-portability guardrail, and flips the deliverable-CSV default to
-commit-by-default with a PII opt-out.
+commit-by-default with a PII opt-out. Also adds an **Obsidian graph layer** for browsing the ticket
+archive as a knowledge graph.
 
 ### Fixed
 - **Kit-root vs project-root resolution** (the class behind a `/ship` crash on plugin/pip installs).
@@ -47,6 +48,11 @@ commit-by-default with a PII opt-out.
   always-loaded rules so a human reviewer knows exactly what they mean.
 
 ### Added
+- **Obsidian graph layer.** `build_ticket_index.py` now also generates `tickets/graph/<id>.md`
+  (a node per ticket) and `tickets/objects/<object>.md` (a node per data object), so the repo opens as
+  an Obsidian vault: object clusters show every ticket that touched a table, and cross-refs show as
+  direct build-on lines. Plain markdown (no plugins/wikilinks), auto-maintained on the index hook, on
+  by default (`project.graph_notes: false` to disable). README convention untouched.
 - **Portable-params guardrail (CTE vs session `DECLARE`).** BigQuery/Snowflake/Synapse `dialect_notes`,
   the `/review` dialect-lint tier, and `/spec-and-build` now steer to a `WITH params AS (…) … CROSS
   JOIN params` row — a `DECLARE` script pollutes `--format csv` exports and breaks in single-statement
@@ -58,7 +64,7 @@ commit-by-default with a PII opt-out.
   rules (it reads `CLAUDE.md`; other agents read `AGENTS.md`). `AGENTS.md` now also points at
   `tickets/INDEX.md` / `OBJECTS.md`, putting the reuse-prior-work habit in the always-loaded tier.
 - **`bin/selftest.sh` §20** (path resolution + adapter hygiene) locks each fix above; §19 updated for
-  the new CSV default. Suite is at **109 checks**.
+  the new CSV default. Suite is at **119 checks**.
 
 ## [3.0.0] — 2026-07-04
 
