@@ -482,5 +482,47 @@ cf="$(grep -REn 'commandify' .claude/config .claude/skills templates 2>/dev/null
   && ok "CLAUDE.md.tmpl is a bare @AGENTS.md import (Claude Code auto-loads the rules)" \
   || bad "templates/CLAUDE.md.tmpl must be exactly one line: @AGENTS.md"
 
+hdr "21 · Obsidian graph layer (tickets/graph/ + tickets/objects/)"
+GX="$TMP/graph"; mkdir -p "$GX/.claude/config" "$GX/tickets/alice/ENG-1" "$GX/tickets/alice/ENG-2" "$GX/tickets/bob/ENG-3"
+printf 'project:\n  key_prefix: ENG\n' > "$GX/.claude/config/stack.yaml"
+printf '# ENG-1: Loan tape base\n\nbase.\n' > "$GX/tickets/alice/ENG-1/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-1/q.sql"
+printf '# ENG-2: Loan tape follow-up to ENG-1\n\nsee ENG-1.\n' > "$GX/tickets/alice/ENG-2/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-2/q.sql"
+printf '# ENG-3: Unrelated\n\nx.\n' > "$GX/tickets/bob/ENG-3/README.md"
+printf 'SELECT * FROM OPS.VW_CALL;\n' > "$GX/tickets/bob/ENG-3/q.sql"
+CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ -f "$GX/tickets/graph/ENG-1.md" ] && [ -f "$GX/tickets/graph/ENG-2.md" ] && [ -f "$GX/tickets/graph/ENG-3.md" ]; } \
+  && ok "graph stubs generated (one per ticket)" || bad "graph stubs missing"
+{ [ -f "$GX/tickets/objects/ANALYTICS.VW_LOAN.md" ] && [ -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
+  && ok "object notes generated (one per object)" || bad "object notes missing"
+{ grep -q '(../graph/ENG-1.md)' "$GX/tickets/objects/ANALYTICS.VW_LOAN.md" \
+  && grep -q '(../graph/ENG-2.md)' "$GX/tickets/objects/ANALYTICS.VW_LOAN.md"; } \
+  && ok "object note links the ticket stubs (VW_LOAN -> ENG-1, ENG-2)" || bad "object note not linking stubs"
+grep -q '](ENG-1.md)' "$GX/tickets/graph/ENG-2.md" \
+  && ok "stub carries the cross-ref link (ENG-2 -> ENG-1)" || bad "stub missing cross-ref link"
+if python3 - "$GX" <<'PY'
+import re, sys, pathlib
+root = pathlib.Path(sys.argv[1]); broken = 0
+for sub in ("graph", "objects"):
+    for md in (root/"tickets"/sub).glob("*.md"):
+        for m in re.finditer(r"\]\(([^)]+\.md)\)", md.read_text()):
+            if not (md.parent/m.group(1)).resolve().exists(): broken += 1
+sys.exit(1 if broken else 0)
+PY
+then ok "all graph-layer links resolve"; else bad "graph-layer has broken links"; fi
+CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
+  && ok "--check clean after render (graph layer deterministic)" || bad "--check stale right after render"
+rm -rf "$GX/tickets/bob/ENG-3"
+CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ ! -f "$GX/tickets/graph/ENG-3.md" ] && [ ! -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
+  && ok "orphan cleanup removes the stale stub + object note" || bad "orphan cleanup failed"
+GO="$TMP/graphoff"; mkdir -p "$GO/.claude/config" "$GO/tickets/alice/ENG-1"
+printf 'project:\n  key_prefix: ENG\n  graph_notes: false\n' > "$GO/.claude/config/stack.yaml"
+printf '# ENG-1: x\n\nx.\n' > "$GO/tickets/alice/ENG-1/README.md"
+CLAUDE_PROJECT_DIR="$GO" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ ! -d "$GO/tickets/graph" ] && [ ! -d "$GO/tickets/objects" ]; } \
+  && ok "graph_notes: false disables the layer" || bad "graph_notes flag not honored"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
