@@ -58,6 +58,23 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
   **∪** a **deterministic grep** of its `*.sql`/`*.py`, keyword-anchored (`FROM`/`JOIN`/… `schema.object`,
   so `os.path.join` isn't a false positive). Rendered + `--check`-gated alongside `INDEX.md`.
 
+## Graph layer (Obsidian)
+
+Alongside `INDEX.md`/`OBJECTS.md`, the renderer writes an Obsidian-navigable graph layer under
+`tickets/` (on by default; `project.graph_notes: false` disables it):
+
+- `tickets/graph/<id>.md` — one small id-labeled node per ticket (its objects, the tickets it
+  **builds on** as links, and a link to its README).
+- `tickets/objects/<object>.md` — one node per data object, linking the ticket stubs that touched it.
+
+Object notes link the ticket stubs (so tickets cluster around shared objects) and stubs link their
+cross-refs (direct build-on lines). Plain relative markdown links — the graph works in stock Obsidian
+(no plugins/wikilinks) and the files render on GitHub. The layer is deterministic and `--check`-gated
+like `INDEX.md`, regenerated on the same PostToolUse hook (which ignores its own `graph/`/`objects/`
+output), with orphan cleanup removing nodes for deleted tickets/objects. Human `README.md` tickets are
+untouched. To browse: open the repo (or `tickets/`) in Obsidian → Graph view → filter
+`-README -INDEX -OBJECTS -AGENTS -CLAUDE`, color-group `path:objects`.
+
 ## Maintaining it
 
 ```bash

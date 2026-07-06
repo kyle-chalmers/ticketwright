@@ -48,3 +48,6 @@ Seed an empty curated store — `tickets/index_data.json` with
 initial `tickets/INDEX.md`. From here it self-maintains (PostToolUse regen on folder changes,
 SessionStart surfacing, curated summaries at ship time). An existing backlog gets bootstrapped with
 `/refresh index --all`.
+
+That renderer also writes the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`) when
+`project.graph_notes` is on (the default), committed alongside `INDEX.md`/`OBJECTS.md`.

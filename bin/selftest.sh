@@ -523,6 +523,10 @@ printf '# ENG-1: x\n\nx.\n' > "$GO/tickets/alice/ENG-1/README.md"
 CLAUDE_PROJECT_DIR="$GO" python3 bin/build_ticket_index.py >/dev/null 2>&1
 { [ ! -d "$GO/tickets/graph" ] && [ ! -d "$GO/tickets/objects" ]; } \
   && ok "graph_notes: false disables the layer" || bad "graph_notes flag not honored"
+grep -q 'graph_notes' .claude/config/stack.schema.md \
+  && ok "graph_notes documented in stack.schema.md" || bad "graph_notes not documented in stack.schema.md"
+grep -qi 'Obsidian' README.md \
+  && ok "README documents the Obsidian graph view" || bad "README missing the Obsidian section"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

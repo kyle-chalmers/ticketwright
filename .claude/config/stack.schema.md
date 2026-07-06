@@ -33,6 +33,7 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
 | `word_limits` | map | `{tracker_comment: 100, chat: 100, pr: 200, ticket: 200}` | Hard caps the comms skills enforce. |
+| `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 
 ## `seams`
 
