@@ -16,7 +16,7 @@ you.
   `build_ticket_index.py` now writes `.obsidian/graph.json` with a positive filter
   (`path:"tickets/graph/" OR path:"tickets/objects/"`) so the Graph view opens on **only** the
   tickets↔objects web (READMEs, `INDEX`/`OBJECTS`, and other notes hidden), plus two color groups —
-  ticket nodes indigo, object nodes amber. Zero manual setup.
+  ticket nodes lime, object nodes coral (the kclabs.ai brand palette). Zero manual setup.
 - **Non-clobber write policy.** The renderer owns exactly the `search` filter and its two color groups
   (keyed by their query strings): it creates the file if missing and re-creates those pieces if you
   delete them, but preserves every other key — forces, zoom, display toggles — and any color group you

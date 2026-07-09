@@ -58,8 +58,8 @@ OBSIDIAN_MANAGED_QUERIES = {OBSIDIAN_TICKET_QUERY, OBSIDIAN_OBJECT_QUERY}
 # Search values we authored and may refresh; any other non-empty `search` is a user edit we leave.
 # On a future filter change, add the old value here so upgrades migrate cleanly (not treated as manual).
 OBSIDIAN_KNOWN_SEARCHES = {OBSIDIAN_SEARCH}
-OBSIDIAN_TICKET_RGB = 6056896    # #5C6BC0 indigo — ticket nodes
-OBSIDIAN_OBJECT_RGB = 14722136   # #E0A458 amber  — object nodes
+OBSIDIAN_TICKET_RGB = 12910336   # #C4FF00 lime  — ticket nodes (kclabs.ai brand green)
+OBSIDIAN_OBJECT_RGB = 14974299   # #E47D5B coral — object nodes (kclabs.ai accent)
 
 
 def repo_root() -> Path:
@@ -495,7 +495,7 @@ def render_graph_layer(rows: list, root: Path) -> dict:
 
 
 def obsidian_color_groups() -> list:
-    """The two ticketwright-managed color groups: ticket nodes (indigo), object nodes (amber)."""
+    """The two ticketwright-managed color groups: ticket nodes (lime), object nodes (coral)."""
     return [
         {"query": OBSIDIAN_TICKET_QUERY, "color": {"a": 1, "rgb": OBSIDIAN_TICKET_RGB}},
         {"query": OBSIDIAN_OBJECT_QUERY, "color": {"a": 1, "rgb": OBSIDIAN_OBJECT_RGB}},

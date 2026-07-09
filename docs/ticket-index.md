@@ -83,8 +83,8 @@ independently of the node layer). It sets:
 - **Filter** `path:"tickets/graph/" OR path:"tickets/objects/"` — the Graph view shows **only** the
   tickets↔objects web (READMEs, `INDEX`/`OBJECTS`, and any other notes are hidden; clear the search
   box to see everything again — your edit is preserved, see below).
-- **Color groups** — ticket nodes (`path:"tickets/graph/"`) in indigo, object nodes
-  (`path:"tickets/objects/"`) in amber, so the two node types read apart at a glance.
+- **Color groups** — ticket nodes (`path:"tickets/graph/"`) in lime, object nodes
+  (`path:"tickets/objects/"`) in coral, so the two node types read apart at a glance.
 
 **It never clobbers your manual graph tweaks.** The renderer owns exactly those two things (keyed by
 their query strings): it creates the file if missing and re-creates the filter/groups if you delete
