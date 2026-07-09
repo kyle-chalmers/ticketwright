@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [3.3.0] — 2026-07-09
+
+Makes the Obsidian graph **look right the moment you open it**. The graph layer already generated the
+tickets↔objects node web, but the README-hiding filter and the tickets-vs-objects coloring were
+documented as *manual* steps you had to type into Obsidian's UI — so an unconfigured vault opened as an
+undifferentiated blob dominated by per-ticket READMEs. Now the renderer configures the Graph view for
+you.
+
+### Added
+- **Auto-configured Obsidian Graph view (`.obsidian/graph.json`).** Alongside the node layer,
+  `build_ticket_index.py` now writes `.obsidian/graph.json` with a positive filter
+  (`path:"tickets/graph/" OR path:"tickets/objects/"`) so the Graph view opens on **only** the
+  tickets↔objects web (READMEs, `INDEX`/`OBJECTS`, and other notes hidden), plus two color groups —
+  ticket nodes indigo, object nodes amber. Zero manual setup.
+- **Non-clobber write policy.** The renderer owns exactly the `search` filter and its two color groups
+  (keyed by their query strings): it creates the file if missing and re-creates those pieces if you
+  delete them, but preserves every other key — forces, zoom, display toggles — and any color group you
+  add; a custom `search` you type is left alone. Keyed off constant query strings, so no state file.
+  Deliberately **not** `--check`-gated (Obsidian rewrites the file on every zoom/pan).
+- **`project.graph_config` config field** (bool, default `true`) — an independent opt-out for writing
+  `.obsidian/graph.json` that keeps the node layer. Ignored when `graph_notes` is `false`.
+- **`.gitignore`** now commits the shared graph config and ignores per-user `.obsidian/workspace*.json`.
+- **`bin/selftest.sh` §22** covers create-if-missing, non-clobber merge (user forces + custom filter +
+  custom color group preserved), empty-value fill, re-create-on-delete, the `graph_config: false`
+  opt-out, and that an unparseable file is never overwritten.
+
 ## [3.2.0] — 2026-07-06
 
 Makes a plugin install **project-scoped by default** — the *repo* commits the enablement (a plugin

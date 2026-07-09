@@ -6,4 +6,4 @@ This package is the PyPI distribution: a stdlib-only CLI that scaffolds the kit 
 bundled under `ticketwright/_kit/`. The Claude Code plugin and `cp -r` install paths are unchanged.
 """
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"

@@ -77,4 +77,7 @@ SessionStart surfacing, curated summaries at ship time). An existing backlog get
 `/refresh index --all`.
 
 That renderer also writes the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`) when
-`project.graph_notes` is on (the default), committed alongside `INDEX.md`/`OBJECTS.md`.
+`project.graph_notes` is on (the default), committed alongside `INDEX.md`/`OBJECTS.md`. It then seeds
+`.obsidian/graph.json` (unless `project.graph_config: false`) with the tickets↔objects filter + color
+groups so the Graph view opens ready-to-read — create/merge-only, so it never clobbers a user's manual
+graph tweaks.
