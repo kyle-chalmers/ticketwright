@@ -18,6 +18,7 @@ project:
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
   graph_notes: true                     # Obsidian graph layer (tickets/graph + tickets/objects); false to disable
+  graph_config: true                    # also write .obsidian/graph.json (tickets↔objects filter + colors); create/merge-only, never clobbers manual tweaks
 
 seams:
   tracker:

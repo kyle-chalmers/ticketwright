@@ -72,8 +72,26 @@ cross-refs (direct build-on lines). Plain relative markdown links — the graph 
 (no plugins/wikilinks) and the files render on GitHub. The layer is deterministic and `--check`-gated
 like `INDEX.md`, regenerated on the same PostToolUse hook (which ignores its own `graph/`/`objects/`
 output), with orphan cleanup removing nodes for deleted tickets/objects. Human `README.md` tickets are
-untouched. To browse: open the repo (or `tickets/`) in Obsidian → Graph view → filter
-`-README -INDEX -OBJECTS -AGENTS -CLAUDE`, color-group `path:objects`.
+untouched.
+
+### Auto-configured Graph view (`.obsidian/graph.json`)
+
+So the graph looks right the moment you open it — no manual filtering or color-grouping — the renderer
+also **writes `.obsidian/graph.json`** (on by default; `project.graph_config: false` opts out
+independently of the node layer). It sets:
+
+- **Filter** `path:"tickets/graph/" OR path:"tickets/objects/"` — the Graph view shows **only** the
+  tickets↔objects web (READMEs, `INDEX`/`OBJECTS`, and any other notes are hidden; clear the search
+  box to see everything again — your edit is preserved, see below).
+- **Color groups** — ticket nodes (`path:"tickets/graph/"`) in lime, object nodes
+  (`path:"tickets/objects/"`) in coral, so the two node types read apart at a glance.
+
+**It never clobbers your manual graph tweaks.** The renderer owns exactly those two things (keyed by
+their query strings): it creates the file if missing and re-creates the filter/groups if you delete
+them, but preserves every other key — forces, zoom, display toggles — and any color group you add. If
+you type your own `search` filter, it's left alone. Because Obsidian rewrites this file on every
+zoom/pan, it's deliberately **not** `--check`-gated (unlike the node layer). Committed by default so the
+graph looks right for the whole team; per-user `.obsidian/workspace.json` is gitignored.
 
 ## Maintaining it
 

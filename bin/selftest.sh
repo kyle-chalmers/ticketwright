@@ -577,5 +577,73 @@ PY
 grep -qi 'project-scoped' README.md \
   && ok "README documents the project-scoped install as the team default" || bad "README missing the project-scoped section"
 
+hdr "22 · Obsidian graph config (.obsidian/graph.json)"
+GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"
+printf 'project:\n  key_prefix: ENG\n' > "$GC/.claude/config/stack.yaml"
+printf '# ENG-1: base\n\nx.\n' > "$GC/tickets/a/ENG-1/README.md"; printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GC/tickets/a/ENG-1/q.sql"
+printf '# ENG-2: follow-up to ENG-1\n\nx.\n' > "$GC/tickets/a/ENG-2/README.md"; printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GC/tickets/a/ENG-2/q.sql"
+CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
+python3 - "$GC/.obsidian/graph.json" <<'PY' && ok "graph.json created: valid JSON, tickets↔objects filter + 2 color groups" || bad "graph.json missing/malformed on create"
+import json, sys
+c = json.load(open(sys.argv[1]))
+assert c["search"] == 'path:"tickets/graph/" OR path:"tickets/objects/"', c["search"]
+qs = [g["query"] for g in c["colorGroups"]]
+assert 'path:"tickets/graph/"' in qs and 'path:"tickets/objects/"' in qs, qs
+for g in c["colorGroups"]:
+    assert isinstance(g["color"].get("rgb"), int) and "a" in g["color"], g
+PY
+# non-clobber merge: user forces + custom filter + custom color group all survive; ours stay present
+python3 - "$GC/.obsidian/graph.json" <<'PY'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p))
+c["search"] = "tag:#important"; c["scale"] = 0.1234; c["repelStrength"] = 42
+c["colorGroups"].append({"query": "path:docs/", "color": {"a": 1, "rgb": 111}})
+json.dump(c, open(p, "w"), indent=2)
+PY
+CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
+python3 - "$GC/.obsidian/graph.json" <<'PY' && ok "merge preserves user filter/forces + their color group (nothing clobbered)" || bad "merge clobbered a manual graph customization"
+import json, sys
+c = json.load(open(sys.argv[1]))
+assert c["search"] == "tag:#important", c["search"]
+assert c["scale"] == 0.1234 and c["repelStrength"] == 42
+qs = [g["query"] for g in c["colorGroups"]]
+assert "path:docs/" in qs, qs
+assert 'path:"tickets/graph/"' in qs and 'path:"tickets/objects/"' in qs, qs
+PY
+# re-create: user clears the filter + deletes our groups → renderer restores them, keeps user's group
+python3 - "$GC/.obsidian/graph.json" <<'PY'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p))
+c["search"] = ""
+c["colorGroups"] = [g for g in c["colorGroups"] if g["query"] == "path:docs/"]
+json.dump(c, open(p, "w"), indent=2)
+PY
+CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
+python3 - "$GC/.obsidian/graph.json" <<'PY' && ok "re-creates the filter + color groups when cleared/deleted (keeps user's group)" || bad "did not re-create managed filter/groups"
+import json, sys
+c = json.load(open(sys.argv[1]))
+assert c["search"] == 'path:"tickets/graph/" OR path:"tickets/objects/"', c["search"]
+qs = [g["query"] for g in c["colorGroups"]]
+assert 'path:"tickets/graph/"' in qs and 'path:"tickets/objects/"' in qs and "path:docs/" in qs, qs
+PY
+cp "$GC/.obsidian/graph.json" "$TMP/gc_before"
+CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
+cmp -s "$TMP/gc_before" "$GC/.obsidian/graph.json" \
+  && ok "graph.json write is idempotent (no churn on a no-op re-run)" || bad "graph.json changed on a no-op re-run"
+cp "$GC/.obsidian/graph.json" "$TMP/gc_off_before"
+printf 'project:\n  key_prefix: ENG\n  graph_config: false\n' > "$GC/.claude/config/stack.yaml"
+CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
+cmp -s "$TMP/gc_off_before" "$GC/.obsidian/graph.json" \
+  && ok "graph_config: false leaves .obsidian/graph.json untouched" || bad "graph_config: false still wrote graph.json"
+printf 'project:\n  key_prefix: ENG\n' > "$GC/.claude/config/stack.yaml"
+printf 'not json {{{' > "$GC/.obsidian/graph.json"
+CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q 'not json' "$GC/.obsidian/graph.json" \
+  && ok "never overwrites an unparseable graph.json (it's the user's)" || bad "overwrote an unparseable graph.json"
+grep -q 'graph_config' .claude/config/stack.schema.md \
+  && ok "graph_config documented in stack.schema.md" || bad "graph_config not documented in stack.schema.md"
+grep -q '\.obsidian/graph\.json' docs/ticket-index.md \
+  && ok "docs/ticket-index.md documents the auto-configured Graph view" || bad "docs/ticket-index.md missing .obsidian/graph.json"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -94,10 +94,12 @@ Ticketwright also writes a small, auto-maintained graph layer under `tickets/` �
 (a node per ticket) and `objects/<object>.md` (a node per data object) — so you can open the repo as
 an [Obsidian](https://obsidian.md) vault and *browse* your work: open a table like `ANALYTICS.VW_LOAN`
 and its local graph is every ticket that touched it; open a ticket and you see the objects it touched
-plus the tickets it built on. Point Obsidian at the repo (or `tickets/`), open Graph view, and for the
-cleanest picture set the filter to `-README -INDEX -OBJECTS -AGENTS -CLAUDE` and add a color Group on
-`path:objects`. It's plain markdown (no plugins, no wikilinks) and renders on GitHub too. On by
-default; set `project.graph_notes: false` in `stack.yaml` to turn it off.
+plus the tickets it built on. It **also writes `.obsidian/graph.json`**, so the Graph view opens
+already focused on the tickets↔objects web — READMEs and other notes filtered out, ticket nodes and
+object nodes color-coded — with **zero manual setup**. It never clobbers your own graph tweaks (forces,
+zoom, custom filter/groups are all preserved). It's plain markdown (no plugins, no wikilinks) and
+renders on GitHub too. On by default; set `project.graph_notes: false` to turn off the whole layer, or
+`project.graph_config: false` to keep the nodes but stop managing `.obsidian/graph.json`.
 
 ## Safety rails (on by default)
 

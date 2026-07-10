@@ -46,6 +46,21 @@ EMOJI_STATUS = {"☑️": "Completed", "\U0001f6e0️": "In Progress"}  # ☑️
 SUMMARY_MAX = 180
 STATUS_ORDER = ["Deployed", "Completed", "In Review", "In Progress", "Blocked", "Unknown"]
 
+# ── Obsidian graph-view auto-config (.obsidian/graph.json) ─────────────────────────────────────
+# The renderer owns exactly two things in graph.json: the `search` filter and its two color groups
+# (keyed by these constant query strings). It creates the file if missing and re-creates those
+# managed pieces if deleted, but preserves every other key (forces, zoom, display toggles) and any
+# color group the user adds. Positive filter → the Graph view opens on JUST the tickets↔objects web.
+OBSIDIAN_TICKET_QUERY = 'path:"tickets/graph/"'      # ticket nodes live here
+OBSIDIAN_OBJECT_QUERY = 'path:"tickets/objects/"'    # object nodes live here (trailing / ≠ tickets/OBJECTS.md)
+OBSIDIAN_SEARCH = f"{OBSIDIAN_TICKET_QUERY} OR {OBSIDIAN_OBJECT_QUERY}"
+OBSIDIAN_MANAGED_QUERIES = {OBSIDIAN_TICKET_QUERY, OBSIDIAN_OBJECT_QUERY}
+# Search values we authored and may refresh; any other non-empty `search` is a user edit we leave.
+# On a future filter change, add the old value here so upgrades migrate cleanly (not treated as manual).
+OBSIDIAN_KNOWN_SEARCHES = {OBSIDIAN_SEARCH}
+OBSIDIAN_TICKET_RGB = 12910336   # #C4FF00 lime  — ticket nodes (kclabs.ai brand green)
+OBSIDIAN_OBJECT_RGB = 14974299   # #E47D5B coral — object nodes (kclabs.ai accent)
+
 
 def repo_root() -> Path:
     if os.environ.get("CLAUDE_PROJECT_DIR"):
@@ -62,7 +77,7 @@ def repo_root() -> Path:
 
 def load_config(root: Path) -> dict:
     """Read the few fields the index needs from stack.yaml (stdlib regex; no YAML dep)."""
-    cfg = {"prefixes": [], "url_template": None, "graph_notes": True}
+    cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True}
     f = root / ".claude" / "config" / "stack.yaml"
     if not f.is_file():
         return cfg
@@ -97,6 +112,10 @@ def load_config(root: Path) -> dict:
     m = re.search(r"^\s*graph_notes:\s*(\S+)", text, re.MULTILINE)
     if m and m.group(1).strip().strip("\"'").lower() in ("false", "no", "off", "0"):
         cfg["graph_notes"] = False
+    # graph_config: whether to also write/merge .obsidian/graph.json (default on; independent opt-out)
+    m = re.search(r"^\s*graph_config:\s*(\S+)", text, re.MULTILINE)
+    if m and m.group(1).strip().strip("\"'").lower() in ("false", "no", "off", "0"):
+        cfg["graph_config"] = False
     return cfg
 
 
@@ -475,6 +494,82 @@ def render_graph_layer(rows: list, root: Path) -> dict:
     return fresh
 
 
+def obsidian_color_groups() -> list:
+    """The two ticketwright-managed color groups: ticket nodes (lime), object nodes (coral)."""
+    return [
+        {"query": OBSIDIAN_TICKET_QUERY, "color": {"a": 1, "rgb": OBSIDIAN_TICKET_RGB}},
+        {"query": OBSIDIAN_OBJECT_QUERY, "color": {"a": 1, "rgb": OBSIDIAN_OBJECT_RGB}},
+    ]
+
+
+def default_graph_config() -> dict:
+    """Full .obsidian/graph.json for a first-time create: our filter + color groups, plus tame
+    defaults for the rest. Any later user tweak to a non-managed key is kept by merge_graph_config."""
+    return {
+        "collapse-filter": True,
+        "search": OBSIDIAN_SEARCH,
+        "showTags": False,
+        "showAttachments": False,
+        "hideUnresolved": False,
+        "showOrphans": True,
+        "collapse-color-groups": False,
+        "colorGroups": obsidian_color_groups(),
+        "collapse-display": True,
+        "showArrow": False,
+        "textFadeMultiplier": 0,
+        "nodeSizeMultiplier": 1,
+        "lineSizeMultiplier": 1,
+        "collapse-forces": True,
+        "centerStrength": 0.518713248970312,
+        "repelStrength": 10,
+        "linkStrength": 1,
+        "linkDistance": 250,
+        "scale": 1,
+        "close": True,
+    }
+
+
+def merge_graph_config(existing: dict) -> dict:
+    """Non-clobber merge into an existing graph.json: refresh only the search filter and our two
+    color groups; preserve every other key (forces, zoom, display) and any user-added group.
+    Idempotent — running twice on its own output is a no-op."""
+    cfg = dict(existing)
+    # search: apply ours only if empty or a value we authored; a user's custom filter stays.
+    cur = str(cfg.get("search", "")).strip()
+    if cur == "" or cur in OBSIDIAN_KNOWN_SEARCHES:
+        cfg["search"] = OBSIDIAN_SEARCH
+    # colorGroups: our two groups first (keep the user's copy if present — e.g. a recolor — else the
+    # default), then every group the user added under a different query.
+    groups = cfg.get("colorGroups")
+    groups = groups if isinstance(groups, list) else []
+    mine = {g.get("query"): g for g in groups if isinstance(g, dict) and g.get("query") in OBSIDIAN_MANAGED_QUERIES}
+    others = [g for g in groups if not (isinstance(g, dict) and g.get("query") in OBSIDIAN_MANAGED_QUERIES)]
+    cfg["colorGroups"] = [mine.get(g["query"], g) for g in obsidian_color_groups()] + others
+    return cfg
+
+
+def write_obsidian_graph(root: Path) -> bool:
+    """Create or non-clobber-merge .obsidian/graph.json so the Graph view opens on the color-coded
+    tickets↔objects web. Writes only when content changes. Returns True if it wrote."""
+    path = root / ".obsidian" / "graph.json"
+    if path.is_file():
+        try:
+            existing = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return False  # unparseable → it's the user's; never overwrite blind
+        if not isinstance(existing, dict):
+            return False
+        cfg = merge_graph_config(existing)
+    else:
+        cfg = default_graph_config()
+    new_text = json.dumps(cfg, indent=2)  # match Obsidian's 2-space, no trailing newline (less churn)
+    if path.is_file() and path.read_text() == new_text:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new_text, encoding="utf-8")
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render tickets/INDEX.md + OBJECTS.md")
     ap.add_argument("--check", action="store_true", help="exit 1 if INDEX.md/OBJECTS.md are stale vs a fresh render")
@@ -577,6 +672,10 @@ def main() -> int:
                     existing.unlink()
             if not any(gd.iterdir()):  # tidy the empty generated dir (e.g. after disabling graph_notes)
                 gd.rmdir()
+    # Auto-configure the Obsidian Graph view (create/merge; never clobbers manual tweaks). Not in
+    # `fresh`/`--check`: Obsidian rewrites this file on every zoom/pan, so it isn't staleness-gated.
+    if cfg.get("graph_notes", True) and cfg.get("graph_config", True):
+        write_obsidian_graph(root)
     un = sum(1 for r in rows if not r["enriched"])
     n_obj = len({o.lower() for r in rows for o in r.get("objects", [])})
     print(f"Wrote INDEX.md ({len(rows)} tickets, {un} un-enriched) + OBJECTS.md ({n_obj} objects).", file=sys.stderr)
