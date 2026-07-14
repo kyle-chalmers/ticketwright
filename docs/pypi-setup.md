@@ -1,6 +1,6 @@
 # Publishing to PyPI
 
-Ticketwright publishes to PyPI via **GitHub Trusted Publishing** (OIDC — no API tokens stored
+Workwright publishes to PyPI via **GitHub Trusted Publishing** (OIDC — no API tokens stored
 anywhere). The workflow is [`.github/workflows/publish.yml`](../.github/workflows/publish.yml): it
 fires on a `v*` tag, builds the sdist + wheel with `uv`, checks the tag matches the package version,
 and uploads via `pypa/gh-action-pypi-publish`.
@@ -16,9 +16,9 @@ and uploads via `pypa/gh-action-pypi-publish`.
 
    | Field | Value |
    |---|---|
-   | PyPI Project Name | `ticketwright` |
+   | PyPI Project Name | `workwright` |
    | Owner | `kyle-chalmers` |
-   | Repository name | `ticketwright` |
+   | Repository name | `workwright` |
    | Workflow name | `publish.yml` |
    | Environment name | `pypi` |
 
@@ -32,7 +32,7 @@ and uploads via `pypa/gh-action-pypi-publish`.
 ## Part B — cut a release (each version)
 
 1. Bump the version in **all three** hardcoded places (keep them in lockstep):
-   `ticketwright/__init__.py` (the source of truth — `pyproject.toml` reads it dynamically via
+   `workwright/__init__.py` (the source of truth — `pyproject.toml` reads it dynamically via
    Hatch, so there is nothing to edit there), `.claude-plugin/plugin.json`, and
    `.claude-plugin/marketplace.json`. Add a `CHANGELOG.md` entry.
 2. Commit, then tag and push the tag:
@@ -40,18 +40,18 @@ and uploads via `pypa/gh-action-pypi-publish`.
    git tag v3.0.0 && git push origin v3.0.0
    ```
 3. The `publish` workflow runs, verifies `tag == package version`, builds, and publishes. Watch it in
-   the repo's Actions tab. Done — `pip install ticketwright` now serves the new version.
+   the repo's Actions tab. Done — `pip install workwright` now serves the new version.
 
 > Note: `v1.3.0` was tagged before this workflow existed, so the **first** publish is `v1.3.1`.
 
 ## What ships
 
-`pip install ticketwright` installs a zero-dependency, stdlib-only CLI:
+`pip install workwright` installs a zero-dependency, stdlib-only CLI:
 
-- `ticketwright init [path]` — scaffold the kit into a repo (a versioned, upgrade-safe `cp -r`).
-- `ticketwright recall …` / `index …` / `enrich …` — run the prior-art recall + ticket-index tools
+- `workwright init [path]` — scaffold the kit into a repo (a versioned, upgrade-safe `cp -r`).
+- `workwright recall …` / `index …` / `enrich …` — run the prior-art recall + ticket-index tools
   against the repo at `$PWD`.
 
 The kit assets (`bin/`, `.claude/`, `adapters/`, `templates/`) are bundled into the wheel under
-`ticketwright/_kit/` via hatchling `force-include`, so the Claude Code **plugin** and `cp -r` install
+`workwright/_kit/` via hatchling `force-include`, so the Claude Code **plugin** and `cp -r` install
 paths (which reference `bin/` at the repo root) are unchanged.

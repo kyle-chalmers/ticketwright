@@ -1,4 +1,4 @@
-# Adopt mode — set up Ticketwright on a repo that already has ticket work
+# Adopt mode — set up Workwright on a repo that already has ticket work
 
 Triggered automatically when Phase 1 detection finds an existing repo: ticket-looking folders
 (`tickets/**` or similar), an existing `INDEX.md`, an `AGENTS.md`/`CLAUDE.md`, or custom
@@ -23,7 +23,7 @@ layout. Skip any scaffold step whose target already exists (folders, `.gitignore
 in, never replace).
 
 ## 3 · Non-destructive scaffold
-- `AGENTS.md` exists → render the template to `AGENTS.ticketwright.md` instead and note the diff
+- `AGENTS.md` exists → render the template to `AGENTS.workwright.md` instead and note the diff
   worth merging (the stack table, the policies, the lifecycle line). The human merges.
 - Ticket index: seed `index_data.json` only if absent; then `/refresh index --all` to bootstrap
   the catalog over the existing backlog (deterministic render first, curated enrichment after).

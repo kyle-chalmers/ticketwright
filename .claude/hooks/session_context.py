@@ -57,7 +57,7 @@ def main() -> int:
     ) if (root / ".claude/commands").is_dir() else []
 
     lines = [
-        "## Ticketwright — session context",
+        "## Workwright — session context",
         f"Stack ({s['key_prefix']}-tickets): tracker={s['tracker']} · warehouse={s['warehouse']} · "
         f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}.",
         "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",

@@ -32,13 +32,13 @@ itself:
 ```json
 {
   "extraKnownMarketplaces": {
-    "ticketwright": {
-      "source": { "source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git" },
+    "workwright": {
+      "source": { "source": "url", "url": "https://github.com/kyle-chalmers/workwright.git" },
       "autoUpdate": true
     }
   },
   "enabledPlugins": {
-    "ticketwright@ticketwright": true
+    "workwright@workwright": true
   }
 }
 ```

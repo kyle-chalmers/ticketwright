@@ -35,7 +35,7 @@ login, `config.toml`, MCP server connect). For a personalized walk-through, run
 ## Hooks don't seem to be running
 
 - Plugin install: hooks are declared in the plugin manifest — check `claude plugin list` shows
-  ticketwright enabled, then start a fresh session.
+  workwright enabled, then start a fresh session.
 - Repo install (pip/vendored): hooks are wired in `.claude/settings.json` — confirm the `hooks`
   block exists (rendered from `.claude/settings.json.tmpl` by `/setup`).
 - Quick test: `bash bin/selftest.sh` unit-tests all four hooks directly.
@@ -51,8 +51,8 @@ statement. If it *missed* a destructive pattern for your warehouse CLI, that's a
 
 | Install method | Upgrade | Notes |
 |---|---|---|
-| Claude Code plugin | `claude plugin update ticketwright` | v1 command names were removed in v3.0.0; use the v2 names (rename map below) |
-| pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
+| Claude Code plugin | `claude plugin update workwright` | v1 command names were removed in v3.0.0; use the v2 names (rename map below) |
+| pip | `pip install --upgrade workwright`, then `workwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
 | vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
 
 **v1 → v2 rename map:** `configure-workspace`+`onboard-teammate` → `setup` ·

@@ -1,10 +1,10 @@
 {
-  "name": "ticketwright",
-  "version": "3.3.0",
+  "name": "workwright",
+  "version": "4.0.0",
   "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
   "author": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
-  "homepage": "https://github.com/kyle-chalmers/ticketwright",
-  "repository": "https://github.com/kyle-chalmers/ticketwright",
+  "homepage": "https://github.com/kyle-chalmers/workwright",
+  "repository": "https://github.com/kyle-chalmers/workwright",
   "license": "MIT",
   "keywords": ["tickets", "data", "sql", "snowflake", "bigquery", "jira", "linear", "azure-devops", "qc", "workflow", "recall"],
   "hooks": {

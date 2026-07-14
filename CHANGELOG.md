@@ -3,10 +3,23 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
-## [Unreleased]
+## [4.0.0] — 2026-07-14
 
-Field-report fixes from two real adopt/install sessions (2026-07-06). Tool-agnostic and stdlib-only;
-no version bump here — the release that ships these bumps the three version files in lockstep and tags.
+**Renamed: Ticketwright → Workwright.** The kit was never really about tickets — it's a *team brain* that
+pools a team's collective work and makes any agent smarter over time by connecting what it learns. The new
+name keeps the `-wright` craft heritage while shedding the ticket-centric framing (and its baggage). A hard
+rename with no compatibility shim — there was no install base to protect.
+
+**Breaking:**
+- Plugin id `ticketwright@ticketwright` → **`workwright@workwright`**; skill namespace `/ticketwright:*` →
+  **`/workwright:*`** (e.g. `/workwright:setup`, `/workwright:ticket`).
+- Marketplace source → `https://github.com/kyle-chalmers/workwright.git`; pip package `ticketwright` →
+  **`workwright`**.
+- Any existing install must re-add the marketplace and re-enable the plugin (one line in the repo's
+  `.claude/settings.json`). The kit still operates on *tickets* — only the product name changed.
+
+This release also lands the field-report fixes from two real adopt/install sessions (2026-07-06),
+tool-agnostic and stdlib-only:
 
 ### Added
 - **`build_ticket_index.py --prune`** — drops *orphan* curated records (present in

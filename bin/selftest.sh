@@ -305,10 +305,10 @@ done
 [ -z "$al_bad" ] && ok "12 deprecated v1 alias stubs removed (v3)" || bad "v1 alias stub still present:$al_bad"
 
 hdr "15 · plugin manifest (Claude Code plugin packaging)"
-python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert m['name']=='ticketwright' and m.get('version') and 'hooks' in m" 2>/dev/null \
+python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert m['name']=='workwright' and m.get('version') and 'hooks' in m" 2>/dev/null \
   && ok "plugin.json valid + has name/version/hooks" || bad "plugin.json invalid/missing fields"
-python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); assert any(p.get('name')=='ticketwright' for p in d['plugins'])" 2>/dev/null \
-  && ok "marketplace.json valid + lists ticketwright" || bad "marketplace.json invalid"
+python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); assert any(p.get('name')=='workwright' for p in d['plugins'])" 2>/dev/null \
+  && ok "marketplace.json valid + lists workwright" || bad "marketplace.json invalid"
 # auto-discovery symlinks must resolve into .claude/* (loader rejected custom .claude paths in the manifest)
 { [ -L commands ] && [ -L skills ] && [ -L agents ] && [ -d commands ] && [ -d skills ] && [ -d agents ]; } \
   && ok "component symlinks resolve (commands/skills/agents → .claude/*)" || bad "plugin component symlinks broken"
@@ -317,23 +317,23 @@ hk=1; for h in db_write_guard regenerate_ticket_index session_context ticket_ind
 [ "$hk" = 1 ] && ok "all plugin-declared hook scripts present" || bad "a plugin-declared hook script is missing"
 
 hdr "16 · PyPI package (manifest + version sync + CLI)"
-{ [ -f pyproject.toml ] && [ -f ticketwright/__init__.py ] && [ -f ticketwright/cli.py ]; } \
-  && ok "package files present (pyproject + ticketwright/)" || bad "package files missing"
+{ [ -f pyproject.toml ] && [ -f workwright/__init__.py ] && [ -f workwright/cli.py ]; } \
+  && ok "package files present (pyproject + workwright/)" || bad "package files missing"
 # pyproject sources its version dynamically from __init__.py, so __init__ is the ONE source of truth;
 # plugin.json + marketplace.json must agree with it (release bumps these three in lockstep).
 grep -q 'dynamic = \["version"\]' pyproject.toml \
-  && ok "pyproject version is dynamic (single source: ticketwright/__init__.py)" \
+  && ok "pyproject version is dynamic (single source: workwright/__init__.py)" \
   || bad "pyproject should declare dynamic = [\"version\"] (no static version)"
-iv="$(grep '__version__' ticketwright/__init__.py | sed 's/[^0-9.]//g')"
+iv="$(grep '__version__' workwright/__init__.py | sed 's/[^0-9.]//g')"
 jv="$(grep -m1 '"version"' .claude-plugin/plugin.json | sed 's/[^0-9.]//g')"
 mv="$(grep -m1 '"version"' .claude-plugin/marketplace.json | sed 's/[^0-9.]//g')"
 { [ -n "$iv" ] && [ "$iv" = "$jv" ] && [ "$iv" = "$mv" ]; } \
   && ok "version synced across __init__/plugin/marketplace ($iv)" \
   || bad "version drift" "init=$iv plugin=$jv market=$mv"
 # the CLI module imports + exposes main(); console-script entry point declared
-python3 -c "import sys; sys.path.insert(0,'.'); import ticketwright.cli as c; raise SystemExit(0 if callable(c.main) else 1)" 2>/dev/null \
-  && ok "ticketwright.cli imports + exposes main()" || bad "ticketwright.cli broken"
-grep -q 'ticketwright = "ticketwright.cli:main"' pyproject.toml \
+python3 -c "import sys; sys.path.insert(0,'.'); import workwright.cli as c; raise SystemExit(0 if callable(c.main) else 1)" 2>/dev/null \
+  && ok "workwright.cli imports + exposes main()" || bad "workwright.cli broken"
+grep -q 'workwright = "workwright.cli:main"' pyproject.toml \
   && ok "console_script entry point declared" || bad "console_script entry point missing"
 
 hdr "17 · render-validation gate (render_and_validate.sh) — items 1+2"
@@ -558,20 +558,20 @@ hdr "21 · project-scoped enablement is the default on plugin installs"
 sc=".claude/skills/setup/scaffold.md"
 scflat="$(tr '\n' ' ' < "$sc")"   # flatten so word-wrapped phrases still match
 { grep -q 'extraKnownMarketplaces' "$sc" && grep -q 'enabledPlugins' "$sc" \
-  && grep -q '"ticketwright@ticketwright": true' "$sc" && grep -q '"autoUpdate": true' "$sc" \
+  && grep -q '"workwright@workwright": true' "$sc" && grep -q '"autoUpdate": true' "$sc" \
   && grep -qi 'formal release' <<<"$scflat"; } \
   && ok "setup/scaffold.md documents the project-scoped enablement block (autoUpdate, release-gated)" \
   || bad "setup/scaffold.md must document extraKnownMarketplaces + enabledPlugins + autoUpdate (release-gated)"
-python3 - "$sc" <<'PY' && ok "enablement snippet is valid JSON, targets kyle-chalmers/ticketwright, autoUpdate on" || bad "enablement snippet in scaffold.md is malformed / wrong repo"
+python3 - "$sc" <<'PY' && ok "enablement snippet is valid JSON, targets kyle-chalmers/workwright, autoUpdate on" || bad "enablement snippet in scaffold.md is malformed / wrong repo"
 import json, re, sys
 t = open(sys.argv[1]).read()
 m = re.search(r'```json\s*(\{.*?"enabledPlugins".*?\})\s*```', t, re.S)
 if not m: sys.exit(1)
 d = json.loads(m.group(1))
-mk = d["extraKnownMarketplaces"]["ticketwright"]
-ok = (mk["source"] == {"source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git"}
+mk = d["extraKnownMarketplaces"]["workwright"]
+ok = (mk["source"] == {"source": "url", "url": "https://github.com/kyle-chalmers/workwright.git"}
       and mk["autoUpdate"] is True
-      and d["enabledPlugins"]["ticketwright@ticketwright"] is True)
+      and d["enabledPlugins"]["workwright@workwright"] is True)
 sys.exit(0 if ok else 1)
 PY
 grep -qi 'project-scoped' README.md \

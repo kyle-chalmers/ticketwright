@@ -1,4 +1,4 @@
-# Ticketwright Roadmap
+# Workwright Roadmap
 
 > What's next for the kit. Subject to change; issues and PRs welcome. The principle that gates every
 > item: stay **lightweight** (stdlib-only Python, bash-3.2-safe, no embeddings / vector DB / servers)
@@ -16,14 +16,14 @@ The ticket index is **active**, not just browsable, and observable.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
 - 19 adapters across 5 seams; 3 worked stacks; **95-check self-test**; GitHub Actions CI.
 
-Lineage: Ticketwright is the canonical evolution of the earlier `crank-tickets` / GDD experiment — the
+Lineage: Workwright is the canonical evolution of the earlier `crank-tickets` / GDD experiment — the
 advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *distribution* ideas
 (plugin packaging, role modes) folded in here.
 
 ## Shipped — v1.3 (distribution)
 
 - **Plugin packaging** — installable as a Claude Code plugin (`.claude-plugin/plugin.json` +
-  `marketplace.json`): `claude plugin install ticketwright@ticketwright`. Components auto-discover via
+  `marketplace.json`): `claude plugin install workwright@workwright`. Components auto-discover via
   top-level symlinks into `.claude/`; bin/ scripts dual-mode (`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}`)
   so the vendored `cp -r` install still works. Validated with `claude plugin validate` + install.
 - **Role-mode AGENTS.md** (generalist / analyst / engineer / scientist) — `/setup`

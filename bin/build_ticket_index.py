@@ -544,7 +544,7 @@ def render_graph_layer(rows: list, root: Path) -> dict:
 
 
 def obsidian_color_groups() -> list:
-    """The two ticketwright-managed color groups: ticket nodes (lime), object nodes (coral)."""
+    """The two workwright-managed color groups: ticket nodes (lime), object nodes (coral)."""
     return [
         {"query": OBSIDIAN_TICKET_QUERY, "color": {"a": 1, "rgb": OBSIDIAN_TICKET_RGB}},
         {"query": OBSIDIAN_OBJECT_QUERY, "color": {"a": 1, "rgb": OBSIDIAN_OBJECT_RGB}},

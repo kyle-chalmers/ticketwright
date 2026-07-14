@@ -1,4 +1,4 @@
-# Architecture — how Ticketwright is built
+# Architecture — how Workwright is built
 
 This is the contributor-facing map. Users don't need any of this; [the README](../README.md)
 quickstart is enough to work tickets.
@@ -80,7 +80,7 @@ enforce the same policies via the skill-level hard-halts.
   `split_and_export.sh`, `selftest.sh` (the CI suite + hook unit tests), and the index/recall
   engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`) —
   all stdlib-only.
-- **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via
+- **`workwright/`**: the pip package; the wheel bundles the kit under `workwright/_kit/` via
   `pyproject.toml` force-includes, so the repo layout is the single source.
 
 ## Design stances

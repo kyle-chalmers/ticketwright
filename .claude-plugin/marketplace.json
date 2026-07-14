@@ -1,12 +1,12 @@
 {
-  "name": "ticketwright",
-  "description": "Ticketwright — a tool-agnostic AI layer for ticket-driven work repos (recall, object index, deep QC, self-maintaining catalog).",
+  "name": "workwright",
+  "description": "Workwright — a tool-agnostic AI layer for ticket-driven work repos (recall, object index, deep QC, self-maintaining catalog).",
   "owner": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
   "plugins": [
     {
-      "name": "ticketwright",
+      "name": "workwright",
       "source": ".",
-      "version": "3.3.0",
+      "version": "4.0.0",
       "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
       "license": "MIT",
       "keywords": ["tickets", "data", "qc", "workflow", "recall"]

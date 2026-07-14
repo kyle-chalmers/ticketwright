@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo — detect your tools, ask at most 5 questions, write the config, scaffold folders. Also onboards a teammate (--teammate) and adopts existing repos.
+description: Set up Workwright in a repo — detect your tools, ask at most 5 questions, write the config, scaffold folders. Also onboards a teammate (--teammate) and adopts existing repos.
 argument-hint: "(none) | --teammate [name] | <seam-to-add: chat|docstore|warehouse>"
 allowed-tools: [Read, Write, Edit, Bash, Glob, AskUserQuestion]
 disable-model-invocation: true
@@ -68,6 +68,6 @@ include the key commented with a `# TODO` and keep going — `verify` will point
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
    index — plus, on a vendored install, the kit itself) is untracked; if it isn't committed, a later
    ticket PR references rules/adapters absent from the repo's history. Offer a commit (e.g.
-   `chore: initialize ticketwright workspace`). First flag that `stack.yaml` may hold internal
+   `chore: initialize workwright workspace`). First flag that `stack.yaml` may hold internal
    identifiers (tracker site, warehouse project/dataset) — config, not secrets, but worth a glance
    before committing to a public repo.

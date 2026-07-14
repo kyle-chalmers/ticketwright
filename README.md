@@ -1,12 +1,12 @@
-# Ticketwright
+# Workwright
 
-[![CI](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/tag/kyle-chalmers/ticketwright?label=release&sort=semver&color=blue)](https://github.com/kyle-chalmers/ticketwright/releases)
+[![CI](https://github.com/kyle-chalmers/workwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/workwright/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/tag/kyle-chalmers/workwright?label=release&sort=semver&color=blue)](https://github.com/kyle-chalmers/workwright/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
 ![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20git-success)
 
-**Ticketwright turns a Claude Code session into a careful data analyst.** Point it at a
+**Workwright turns a Claude Code session into a careful data analyst.** Point it at a
 ticket-driven work repo (data intelligence, analytics, ops, regulatory reporting…) and it opens
 tickets, loads exactly the context each one needs, remembers every past ticket so you never rebuild
 what's been built, QC-reviews its own work against a validation pyramid, and never posts anything
@@ -20,15 +20,15 @@ SharePoint; GitHub, GitLab, or Azure Repos — through one config file. Don't se
 ## Quickstart (5 minutes)
 
 ```bash
-claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git
-claude plugin install ticketwright@ticketwright
+claude plugin marketplace add https://github.com/kyle-chalmers/workwright.git
+claude plugin install workwright@workwright
 ```
 
 Then, in your repo:
 
 ```
-/ticketwright:setup          # detects your tools, asks ≤5 questions, writes the config — once per repo
-/ticketwright:ticket ENG-123 # start working
+/workwright:setup          # detects your tools, asks ≤5 questions, writes the config — once per repo
+/workwright:ticket ENG-123 # start working
 ```
 
 That's it. `setup` also handles repos that **already have** ticket history — it maps onto your
@@ -38,15 +38,15 @@ existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (s
 **Project-scoped by default.** A plugin can't set its own install scope — so instead, `setup` commits
 the enablement into the repo's `.claude/settings.json`. That's the *repo* opting in at project scope:
 it travels *with the repo*, so every teammate who opens (and trusts) the repo is prompted to install
-Ticketwright (no marketplace to add, no config to write), and it keeps working after the person who
+Workwright (no marketplace to add, no config to write), and it keeps working after the person who
 set it up moves on:
 
 ```jsonc
 {
   "extraKnownMarketplaces": {
-    "ticketwright": { "source": { "source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git" }, "autoUpdate": true }
+    "workwright": { "source": { "source": "url", "url": "https://github.com/kyle-chalmers/workwright.git" }, "autoUpdate": true }
   },
-  "enabledPlugins": { "ticketwright@ticketwright": true }
+  "enabledPlugins": { "workwright@workwright": true }
 }
 ```
 
@@ -80,7 +80,7 @@ Three supporting skills you'll reach for occasionally:
 | `/refresh` | Rebuild the ticket catalog (`index`) or the domain knowledge pack (`context`) — day-to-day, hooks keep these fresh automatically |
 | `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
-Plugin skills are namespaced (`/ticketwright:ticket`); inside a configured repo the short names
+Plugin skills are namespaced (`/workwright:ticket`); inside a configured repo the short names
 work too. (The v1 command names — `/start-ticket`, `/qc-review`, … — were retired in v3; see the
 rename map in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
 
@@ -95,7 +95,7 @@ Details: [docs/ticket-index.md](docs/ticket-index.md).
 
 ## See it as a graph (Obsidian)
 
-Ticketwright also writes a small, auto-maintained graph layer under `tickets/` — `graph/<id>.md`
+Workwright also writes a small, auto-maintained graph layer under `tickets/` — `graph/<id>.md`
 (a node per ticket) and `objects/<object>.md` (a node per data object) — so you can open the repo as
 an [Obsidian](https://obsidian.md) vault and *browse* your work: open a table like `ANALYTICS.VW_LOAN`
 and its local graph is every ticket that touched it; open a ticket and you see the objects it touched
@@ -131,10 +131,10 @@ real ticket through `/ticket → /review → /ship` before deleting anything cus
 The pip package runs the deterministic engines without Claude Code:
 
 ```bash
-pip install ticketwright                 # zero runtime dependencies; stdlib only
-ticketwright recall --for ENG-123       # prior-art ranking
-ticketwright index --stats              # catalog coverage
-ticketwright init                       # vendor the kit into a repo (plugin-free installs)
+pip install workwright                 # zero runtime dependencies; stdlib only
+workwright recall --for ENG-123       # prior-art ranking
+workwright index --stats              # catalog coverage
+workwright init                       # vendor the kit into a repo (plugin-free installs)
 ```
 
 ## Learn more
