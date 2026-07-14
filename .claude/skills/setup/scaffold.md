@@ -33,7 +33,7 @@ itself:
 {
   "extraKnownMarketplaces": {
     "ticketwright": {
-      "source": { "source": "github", "repo": "kyle-chalmers/ticketwright" },
+      "source": { "source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git" },
       "autoUpdate": true
     }
   },
@@ -42,6 +42,10 @@ itself:
   }
 }
 ```
+
+The source is an explicit `https://…git` URL, not the `owner/repo` shorthand — the shorthand can
+resolve to SSH and fail for users without GitHub SSH keys, whereas the URL clones over HTTPS via the
+git credential helper. A fork edits just this URL.
 
 `autoUpdate` re-installs **only when the plugin's version string changes** — i.e. only on a formal
 release (the release commit bumps `plugin.json`/`marketplace.json`/`__init__.py` in lockstep and tags

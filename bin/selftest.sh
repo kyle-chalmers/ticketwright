@@ -20,12 +20,12 @@ hdr "0 · tooling"
 command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
 command -v python3 >/dev/null 2>&1 && ok "python3 present" || bad "python3 missing"
 
-hdr "1 · config parses + every seam resolves to an adapter (all stacks)"
+hdr "1 · config parses + every seam resolves to an adapter (kit example stacks)"
 for s in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
   if yq -e '.seams|keys' "$s" >/dev/null 2>&1; then ok "parses: $s"; else bad "parse error: $s"; fi
   out="$(bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
   if grep -q "All seams OK" <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
-    ok "all seams resolve: $s"
+    ok "kit example stack resolves: $s"
   else bad "seam resolution failed: $s" "$(grep -E 'missing|UNREACHABLE' <<<"$out" | head -2)"; fi
 done
 
@@ -569,7 +569,7 @@ m = re.search(r'```json\s*(\{.*?"enabledPlugins".*?\})\s*```', t, re.S)
 if not m: sys.exit(1)
 d = json.loads(m.group(1))
 mk = d["extraKnownMarketplaces"]["ticketwright"]
-ok = (mk["source"] == {"source": "github", "repo": "kyle-chalmers/ticketwright"}
+ok = (mk["source"] == {"source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git"}
       and mk["autoUpdate"] is True
       and d["enabledPlugins"]["ticketwright@ticketwright"] is True)
 sys.exit(0 if ok else 1)
@@ -644,6 +644,39 @@ grep -q 'graph_config' .claude/config/stack.schema.md \
   && ok "graph_config documented in stack.schema.md" || bad "graph_config not documented in stack.schema.md"
 grep -q '\.obsidian/graph\.json' docs/ticket-index.md \
   && ok "docs/ticket-index.md documents the auto-configured Graph view" || bad "docs/ticket-index.md missing .obsidian/graph.json"
+
+hdr "23 · README locator (nested) + orphan store hygiene"
+# (A) A ticket whose README lives in a configured subdir (final_deliverables/) — not the root — must
+# still be located, enriched-capable, and LINKED at its real path (was falsely reported un-enriched).
+NR="$TMP/nested"; mkdir -p "$NR/.claude/config" "$NR/tickets/alice/ENG-1/final_deliverables" "$NR/tickets/alice/ENG-2"
+cat > "$NR/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries]
+EOF
+printf '# ENG-1: Nested readme\n\nDelivered in a subfolder; the README is not at the ticket root.\n' > "$NR/tickets/alice/ENG-1/final_deliverables/README.md"
+CLAUDE_PROJECT_DIR="$NR" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q '(alice/ENG-1/final_deliverables/README.md)' "$NR/tickets/INDEX.md" 2>/dev/null \
+  && ok "locates a README nested in a configured subdir + links its real path" \
+  || bad "nested README not located/linked" "$(grep 'ENG-1' "$NR/tickets/INDEX.md" 2>/dev/null)"
+nrl="$(CLAUDE_PROJECT_DIR="$NR" python3 bin/build_ticket_index.py --stats 2>&1 | grep -i 'no README')"
+{ grep -q 'ENG-2' <<<"$nrl" && ! grep -q 'ENG-1' <<<"$nrl"; } \
+  && ok "--stats flags 'no README anywhere' (ENG-2) but not the nested-README ticket (ENG-1)" \
+  || bad "--stats no-README classification wrong" "$nrl"
+# (E) A curated record with no folder on disk must stay out of INDEX.md, be surfaced by --stats, and
+# be removed by --prune (silent store<->disk drift otherwise erodes the catalog).
+OR="$TMP/orphan"; mkdir -p "$OR/.claude/config" "$OR/tickets/dana/ENG-1"
+printf 'project:\n  key_prefix: ENG\n' > "$OR/.claude/config/stack.yaml"
+printf '# ENG-1: real\n\nreal ticket.\n' > "$OR/tickets/dana/ENG-1/README.md"
+printf '%s' '{"schema_version":1,"tickets":[{"id":"ENG-1","owner":"dana","title":"real","status":"Completed","summary":"real ticket."},{"id":"ENG-99","owner":"dana","title":"ghost","status":"Completed","summary":"folder gone."}]}' > "$OR/tickets/index_data.json"
+CLAUDE_PROJECT_DIR="$OR" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q 'ENG-99' "$OR/tickets/INDEX.md" 2>/dev/null && bad "orphan record leaked into INDEX.md" || ok "orphan record stays out of INDEX.md (folder-driven catalog)"
+sto="$(CLAUDE_PROJECT_DIR="$OR" python3 bin/build_ticket_index.py --stats 2>&1)"
+{ grep -qi 'orphan' <<<"$sto" && grep -q 'ENG-99' <<<"$sto"; } \
+  && ok "--stats surfaces the orphan record" || bad "--stats did not surface the orphan" "$sto"
+CLAUDE_PROJECT_DIR="$OR" python3 bin/build_ticket_index.py --prune >/dev/null 2>&1
+pr="$(python3 -c "import json; print(','.join(x['id'] for x in json.load(open('$OR/tickets/index_data.json'))['tickets']))")"
+[ "$pr" = "ENG-1" ] && ok "--prune drops the orphan record, keeps the real one" || bad "--prune result wrong" "kept=$pr"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

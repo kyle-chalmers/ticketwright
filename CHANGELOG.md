@@ -3,6 +3,41 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+## [Unreleased]
+
+Field-report fixes from two real adopt/install sessions (2026-07-06). Tool-agnostic and stdlib-only;
+no version bump here — the release that ships these bumps the three version files in lockstep and tags.
+
+### Added
+- **`build_ticket_index.py --prune`** — drops *orphan* curated records (present in
+  `tickets/index_data.json` but with no ticket folder on disk, e.g. a folder renamed/deleted after its
+  record was written). Such drift was previously invisible and permanent.
+- **Multi-location README locator.** The renderer now finds a ticket's README at the ticket root, then
+  in any configured `project.ticket_subdirs` (e.g. `final_deliverables/`), then the nearest `README*.md`
+  within bounded depth — so a repo whose README convention isn't "root `README.md`" is no longer
+  falsely reported un-enriched, and the `INDEX.md` link points at the README's real path.
+- **`--stats` surfaces drift** — now reports **orphan records** and tickets with **no README anywhere**
+  (a real gap, distinct from "README not at root," which the locator now resolves).
+- **`bin/selftest.sh` §23** — fixtures for the nested-README locator and the orphan-record
+  `--stats`/`--prune` path.
+
+### Fixed
+- **Marketplace source clones over HTTPS.** The committed `extraKnownMarketplaces` block and the
+  Quickstart command now use an explicit `https://…git` **`url`** source instead of the `owner/repo` /
+  `github` shorthand, which could resolve to SSH and fail (`git@github.com: Permission denied`) for
+  anyone without GitHub SSH keys. HTTPS clones via the git credential helper (keychain /
+  `gh auth login`), matching how the rest of git already authenticates.
+- **SessionStart vs `--stats` count drift** — the ticket-index hook now flags when the curated store
+  holds more records than there are folders on disk and points at `/refresh index --prune`.
+
+### Changed
+- **`/refresh index` scope is explicit.** `--all` now means "cover every ticket **but skip already
+  enriched + fresh** ones" (the bootstrap scope); a new `--force`/`--reenrich-all` is the rare full
+  rewrite. Default stays the un-enriched/stale set. Curated summaries are never rewritten silently.
+- **Setup Phase 4 labels its two checks** — `selftest.sh` = kit integrity (validates the plugin's own
+  bundled example stacks); `verify_stack.sh .claude/config/stack.yaml` = *your repo's* seam
+  reachability. Removes the "did it check my config or the kit's?" ambiguity.
+
 ## [3.3.0] — 2026-07-09
 
 Makes the Obsidian graph **look right the moment you open it**. The graph layer already generated the
