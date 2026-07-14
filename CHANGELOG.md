@@ -29,6 +29,10 @@ no version bump here — the release that ships these bumps the three version fi
   `gh auth login`), matching how the rest of git already authenticates.
 - **SessionStart vs `--stats` count drift** — the ticket-index hook now flags when the curated store
   holds more records than there are folders on disk and points at `/refresh index --prune`.
+- **Retired stale `/recall` command references** — the standalone `/recall` command folded into
+  `/ticket --recall` back in v2, but several live docs still showed the old form. Updated
+  `docs/ticket-index.md`, the `bin/recall.py` docstring, and `ROADMAP.md` to `/ticket --recall`
+  (CHANGELOG history left intact).
 
 ### Changed
 - **`/refresh index` scope is explicit.** `--all` now means "cover every ticket **but skip already
