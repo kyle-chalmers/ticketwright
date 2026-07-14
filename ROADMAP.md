@@ -8,7 +8,7 @@
 
 The ticket index is **active**, not just browsable, and observable.
 
-- **Prior-art recall** (`/recall`, `bin/recall.py`) with **IDF object down-weighting** (eval-tuned),
+- **Prior-art recall** (`/ticket --recall`, engine `bin/recall.py`) with **IDF object down-weighting** (eval-tuned),
   an advisory verdict line, and a read-only **`--eval`** recall-quality diagnostic.
 - **Object reverse-index** (`tickets/OBJECTS.md`), scale-aware above ~150 objects.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.

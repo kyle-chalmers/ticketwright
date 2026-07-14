@@ -18,7 +18,7 @@ human-readable summaries.
 | `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
-| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
+| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
 | `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has `claude -p` write the curated summary/status/date/tags/refs, ingests + re-renders. (Claude-Code convenience.) | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
@@ -47,14 +47,14 @@ come from `stack.yaml` (`key_prefixes`, else `key_prefix`; e.g. `ENG-12`). Emoji
 
 The index is only valuable if it's *mined*. Two capabilities turn the passive catalog into active reuse:
 
-- **`/recall <id>`** (engine `bin/recall.py`) ranks prior tickets against a seed ticket (or
+- **Prior-art recall** (engine `bin/recall.py`, surfaced as `/ticket --recall`) ranks prior tickets against a seed ticket (or
   `--query` / `--tags` / `--object`) by a transparent lexical score — **object match ×4, tag ×3,
   cross-ref link +5, keyword ×1**, recency as a tiebreak — then reads the top few READMEs and writes a
   *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `spec-and-build`
   so prior art surfaces automatically in PLAN. Lexical + stdlib (no embeddings); the rank → read-top-K
   shape is the retrieval path that scales past the point where the whole `INDEX.md` fits in context.
 - **`tickets/OBJECTS.md`** — reverse map: each data object → tickets that touched it
-  (`/recall --object VW_X` queries it live). A ticket's `objects` = **enrichment** (the model names them)
+  (`/ticket --recall --object VW_X` queries it live). A ticket's `objects` = **enrichment** (the model names them)
   **∪** a **deterministic grep** of its `*.sql`/`*.py`, keyword-anchored (`FROM`/`JOIN`/… `schema.object`,
   so `os.path.join` isn't a false positive). Rendered + `--check`-gated alongside `INDEX.md`.
 

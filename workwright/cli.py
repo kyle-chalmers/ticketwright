@@ -55,7 +55,7 @@ def cmd_init(args) -> int:
         for f in sorted(p for p in src.rglob("*") if p.is_file()):
             if "__pycache__" in f.parts or f.suffix in (".pyc", ".pyo"):
                 continue  # pip byte-compiles the bundled scripts at install time — don't scaffold cruft
-            rel = f.relative_to(KIT).as_posix()              # e.g. ".claude/skills/recall/..."
+            rel = f.relative_to(KIT).as_posix()              # e.g. ".claude/skills/ticket/..."
             out = dest / rel
             if rel in PRESERVE and out.exists():
                 preserved.append(rel)
