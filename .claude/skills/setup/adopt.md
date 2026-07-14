@@ -39,5 +39,7 @@ Include: what was auto-configured, what needs a human decision, and the suggeste
 real ticket through `/ticket → /review → /ship` before deleting anything custom.
 
 ## 5 · Verify & report
-Same as Phase 4 of the default mode (selftest + verify_stack). The report leads with the
-MIGRATION.md path and the trial-ticket suggestion — adoption is incremental by design.
+Same as Phase 4 of the default mode: `selftest.sh` (**kit integrity** — the plugin's own example
+stacks) then `verify_stack.sh .claude/config/stack.yaml` (**your repo's** seams). Label the two in
+the report so the kit's example stack is never mistaken for the repo's config. The report leads with
+the MIGRATION.md path and the trial-ticket suggestion — adoption is incremental by design.

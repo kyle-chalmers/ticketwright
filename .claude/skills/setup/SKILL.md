@@ -53,11 +53,17 @@ include the key commented with a `# TODO` and keep going — `verify` will point
    `private/` subfolder), the AI-layer index, and the seeded ticket index.
 
 ### Phase 4 — Verify & hand off
-6. Run `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` (kit integrity — a failure here is fatal) and
-   `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh"` (per-seam reachability — an unreachable seam is
-   **not** fatal at setup time; print its adapter's auth notes as the fix).
-7. **Report:** the chosen stack, files written, any `# TODO` keys or stub adapters, and the next
-   step — `/ticket <id>` to start work, or `/setup --teammate` for a new person.
+6. **Two distinct checks — keep them labeled as such in the report:**
+   - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` — **kit integrity**. It
+     validates the plugin's *own bundled example* stacks, **not** your repo's config. A failure here
+     is fatal.
+   - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh" .claude/config/stack.yaml`
+     — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
+     which config was checked). An unreachable seam is **not** fatal at setup time; print its
+     adapter's auth notes as the fix.
+7. **Report:** name which check is which (selftest = kit integrity; verify_stack = *your* seams), then
+   the chosen stack, files written, any `# TODO` keys or stub adapters, and the next step —
+   `/ticket <id>` to start work, or `/setup --teammate` for a new person.
 8. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
    index — plus, on a vendored install, the kit itself) is untracked; if it isn't committed, a later

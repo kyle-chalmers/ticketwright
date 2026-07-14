@@ -46,6 +46,40 @@ the lightweight stance.
   this from the earlier "all exports gitignored" default.)*
 - Runbook note: heavy/long pulls run in the background. Self-test now **109 checks** (§17–§20).
 
+## Field report — deferred (from adopt sessions)
+
+Surfaced by two real installs (2026-07-06); the highest-value, lowest-risk fixes landed in the
+[core bundle](CHANGELOG.md) (HTTPS marketplace source, multi-location README locator, orphan
+`--prune`, verify labeling, `--all`/`--force`). These remain — each issue-ready and named by the
+artifact it touches:
+
+- **Per-user chat identity** — `seams.chat.always_include` is substituted literally, so a committed
+  name is wrong for every teammate but the author. Add a first-class `self` / `{current_user}` token
+  resolved at compose time (`git config user.name` → `$USER` → tracker profile). *(adapters/chat/
+  {slack,teams}.md + stack.schema.md)*
+- **`/ship` handles an existing/draft PR** — the `open_pr` verb assumes `gh pr create`; it should
+  `gh pr list --head` first and edit + `gh pr ready` when a PR (especially a draft) already exists.
+  *(adapters/vcs/{github,gitlab,azure-repos}.md)*
+- **Announce the graph layer on adopt** — a first render over a large backlog can add hundreds of
+  `tickets/graph/` + `tickets/objects/` files that regenerate on every ticket change. Announce the
+  file count (and offer an opt-out) during adopt / `refresh index`. *(setup/adopt.md, refresh/index.md)*
+- **Config-driven co-author trailer** — the `Co-Authored-By` line is hardcoded (with a model name that
+  ages) in three vcs adapters; make it a `project`/vcs-seam field so every skill emits the same, correct
+  trailer. *(adapters/vcs/*.md, stack.schema.md)*
+- **Detect `terminal_status`** — adopt defaults it to `Done`; offer to detect the real terminal state
+  from the tracker workflow or the most-common status among already-shipped folders. *(setup/adopt.md)*
+- **Full count reconciliation** — beyond the `--prune` pointer, make the SessionStart hook and `--stats`
+  agree on one basis when store and disk diverge. *(hooks/ticket_index_context.py)*
+- **Nits** — `verify: null` prints `⚠`; use a distinct glyph for "MCP-only, not shell-verifiable." An
+  adopted repo's `resources/*.py` vs the plugin's `bin/` doc-references should reconcile.
+  *(verify_stack.sh, MIGRATION template)*
+- **Out of scope here (sibling `git-ship` skill, not this repo)** — squash-merge branch cleanup edges
+  (`git branch -D` after a squash; stash/restore an unrelated dirty tree before `checkout main`), and
+  its stale co-author trailer.
+- **Upstream caveat to verify** — GitHub-repo marketplaces reportedly don't always `autoUpdate`
+  (anthropics/claude-code#44276); confirm the "self-updates on release" promise holds, else document the
+  manual `/plugin marketplace update`.
+
 ## Next — v1.4+ (harden the tracker contract)
 
 Surfaced by a two-AI (Codex + agent-panel) review as the top *coverage* gaps — the abstraction is

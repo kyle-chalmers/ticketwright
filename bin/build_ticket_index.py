@@ -16,7 +16,8 @@ with no tracker key (adhoc-*, scratch-*, ℹ️ …) are reference/scratch work 
 Usage:
   build_ticket_index.py            # (re)write tickets/INDEX.md
   build_ticket_index.py --check    # exit 1 if INDEX.md is stale vs a fresh render (gate)
-  build_ticket_index.py --stats    # print coverage: enriched / un-enriched / stale; exit 0
+  build_ticket_index.py --stats    # print coverage: enriched / un-enriched / stale / orphans; exit 0
+  build_ticket_index.py --prune    # drop orphan curated records (no folder on disk) from the store
 
 Stdlib only.
 """
@@ -75,9 +76,29 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent  # bin/ -> repo root (last resort)
 
 
+def _yaml_list(text: str, key: str) -> list[str]:
+    """Parse a scalar YAML list (inline `[a, b]` or block `- a`) for one key. Regex-only (stdlib)."""
+    m = re.search(rf"^\s*{re.escape(key)}:\s*\[([^\]]*)\]", text, re.MULTILINE)
+    if m:
+        return [p.strip().strip("\"'") for p in m.group(1).split(",") if p.strip()]
+    out, lines = [], text.splitlines()
+    for i, ln in enumerate(lines):
+        if re.match(rf"^\s*{re.escape(key)}:\s*$", ln):
+            for nxt in lines[i + 1:]:
+                mm = re.match(r"^\s*-\s*[\"']?([^\"'#\s][^\"'#]*?)[\"']?\s*(?:#.*)?$", nxt)
+                if mm:
+                    out.append(mm.group(1).strip())
+                elif nxt.strip() == "":
+                    continue
+                else:
+                    break
+            break
+    return out
+
+
 def load_config(root: Path) -> dict:
     """Read the few fields the index needs from stack.yaml (stdlib regex; no YAML dep)."""
-    cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True}
+    cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True, "ticket_subdirs": []}
     f = root / ".claude" / "config" / "stack.yaml"
     if not f.is_file():
         return cfg
@@ -116,6 +137,7 @@ def load_config(root: Path) -> dict:
     m = re.search(r"^\s*graph_config:\s*(\S+)", text, re.MULTILINE)
     if m and m.group(1).strip().strip("\"'").lower() in ("false", "no", "off", "0"):
         cfg["graph_config"] = False
+    cfg["ticket_subdirs"] = _yaml_list(text, "ticket_subdirs")
     return cfg
 
 
@@ -183,10 +205,31 @@ def extract_objects(ticket_dir: Path, cap: int = 40) -> list[str]:
     return sorted(found.values(), key=str.lower)[:cap]
 
 
-def discover(root: Path, key_re: re.Pattern | None = None) -> list[dict]:
-    """Every tracker-keyed ticket folder, one level under tickets/<owner>/. Cheap (no file reads)."""
-    if key_re is None:
-        key_re = key_regex(load_config(root)["prefixes"])
+def find_readme(ticket_dir: Path, subdirs: list[str] | None = None) -> Path | None:
+    """Locate a ticket's README. A repo's convention may differ from "root README.md" (e.g. the
+    README lives in final_deliverables/) — coverage + enrichment must follow the same rule
+    everywhere. Order: ticket root -> each configured `project.ticket_subdirs` -> the first
+    README*.md within bounded depth (<=2). Deterministic (sorted). None if the folder has none."""
+    root = ticket_dir / "README.md"
+    if root.is_file():
+        return root
+    for sub in (subdirs or []):
+        cand = ticket_dir / sub / "README.md"
+        if cand.is_file():
+            return cand
+    hits = sorted(p for p in ticket_dir.rglob("README*.md")
+                  if p.is_file() and len(p.relative_to(ticket_dir).parts) <= 2)
+    return hits[0] if hits else None
+
+
+def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | None = None) -> list[dict]:
+    """Every tracker-keyed ticket folder, one level under tickets/<owner>/. Cheap (few file reads)."""
+    if key_re is None or subdirs is None:
+        cfg = load_config(root)
+        if key_re is None:
+            key_re = key_regex(cfg["prefixes"])
+        if subdirs is None:
+            subdirs = cfg["ticket_subdirs"]
     out: dict[tuple[str, str], dict] = {}
     tickets = root / "tickets"
     if not tickets.is_dir():
@@ -198,11 +241,10 @@ def discover(root: Path, key_re: re.Pattern | None = None) -> list[dict]:
             if not m:
                 continue
             tid = m.group(0)
-            readme = d / "README.md"
             emoji = next((v for k, v in EMOJI_STATUS.items() if d.name.startswith(k)), None)
             out[(owner, tid)] = {
                 "owner": owner, "id": tid, "dir": d,
-                "readme": readme if readme.is_file() else None, "emoji_status": emoji,
+                "readme": find_readme(d, subdirs), "emoji_status": emoji,
             }
     return list(out.values())
 
@@ -271,13 +313,20 @@ def load_data(root: Path) -> dict[tuple[str, str], dict]:
     return out
 
 
+def find_orphans(root: Path, rows: list[dict]) -> list[str]:
+    """Curated store records (index_data.json) with no ticket folder on disk — silent drift the
+    catalog otherwise hides (a folder renamed/deleted after its record was written)."""
+    on_disk = {(r["owner"], r["id"]) for r in rows}
+    return sorted(f"{o}/{i}" for (o, i) in load_data(root) if (o, i) not in on_disk)
+
+
 def build_rows(root: Path) -> list[dict]:
     cfg = load_config(root)
     key_re = key_regex(cfg["prefixes"])
     title_re = title_prefix_regex(cfg["prefixes"])
     data = load_data(root)
     rows = []
-    for t in discover(root, key_re):
+    for t in discover(root, key_re, cfg["ticket_subdirs"]):
         owner, tid, d, readme = t["owner"], t["id"], t["dir"], t["readme"]
         entry = data.get((owner, tid))
         parsed = parse_readme(readme, tid, key_re, title_re) if readme else {"title": None, "date": None, "summary": None, "cross_refs": []}
@@ -313,7 +362,7 @@ def build_rows(root: Path) -> list[dict]:
         objects = sorted(obj_map.values(), key=str.lower)
         url = (entry or {}).get("ticket_url") or (entry or {}).get("jira_url") or ticket_url(cfg["url_template"], tid)
         rel = d.relative_to(root / "tickets").as_posix()
-        link = quote(rel) + "/" + ("README.md" if readme else "")
+        link = quote(readme.relative_to(root / "tickets").as_posix()) if readme else quote(rel) + "/"
 
         rows.append({
             "owner": owner, "id": tid, "title": title, "status": status, "date": date_val,
@@ -578,6 +627,8 @@ def main() -> int:
                     help="list objects touched by many tickets over a long span (productize candidates)")
     ap.add_argument("--min-tickets", dest="min_tickets", type=int, default=3,
                     help="with --recurring: minimum tickets for an object to be listed")
+    ap.add_argument("--prune", action="store_true",
+                    help="drop orphan curated records (in index_data.json but no folder on disk) from the store")
     args = ap.parse_args()
 
     root = repo_root()
@@ -589,6 +640,26 @@ def main() -> int:
     graph_dirs = [tickets_dir / "graph", tickets_dir / "objects"]  # always tracked, so disabling cleans up the old layer
     if cfg.get("graph_notes", True):
         fresh.update(render_graph_layer(rows, root))
+
+    if args.prune:
+        orph = find_orphans(root, rows)
+        store_path = tickets_dir / "index_data.json"
+        if not store_path.is_file():
+            print("No index_data.json — nothing to prune.")
+            return 0
+        if not orph:
+            print("No orphan records to prune.")
+            return 0
+        on_disk = {(r["owner"], r["id"]) for r in rows}
+        data = json.loads(store_path.read_text())
+        kept = [t for t in data.get("tickets", [])
+                if isinstance(t, dict) and (t.get("owner"), t.get("id")) in on_disk]
+        payload = json.dumps({"schema_version": data.get("schema_version", 1), "tickets": kept},
+                             indent=2, ensure_ascii=False) + "\n"
+        store_path.write_bytes(payload.encode("utf-8"))
+        print(f"Pruned {len(orph)} orphan record(s): {', '.join(orph)}")
+        print("Now re-render: python3 bin/build_ticket_index.py")
+        return 0
 
     if args.recurring:
         agg: dict[str, dict] = {}  # ci key -> {label, tickets, dates}
@@ -618,6 +689,8 @@ def main() -> int:
     if args.stats:
         un = [f"{r['owner']}/{r['id']}" for r in rows if not r["enriched"]]
         st = [f"{r['owner']}/{r['id']}" for r in rows if r["stale"]]
+        no_readme = [f"{r['owner']}/{r['id']}" for r in rows if not r["has_readme"]]
+        orph = find_orphans(root, rows)
         obj_counts: dict[str, int] = {}
         for r in rows:
             for o in {x.lower() for x in r.get("objects", [])}:
@@ -639,6 +712,10 @@ def main() -> int:
                   + (f" · oldest stale: {min(stale_dates)}" if stale_dates else ""))
         if un:
             print("un-enriched: " + ", ".join(un))
+        if no_readme:
+            print("no README anywhere: " + ", ".join(no_readme))
+        if orph:
+            print("orphan records (in index_data.json, no folder): " + ", ".join(orph))
         if st:
             print("stale: " + ", ".join(st))
         return 0

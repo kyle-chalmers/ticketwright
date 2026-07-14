@@ -20,7 +20,7 @@ SharePoint; GitHub, GitLab, or Azure Repos — through one config file. Don't se
 ## Quickstart (5 minutes)
 
 ```bash
-claude plugin marketplace add kyle-chalmers/ticketwright
+claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git
 claude plugin install ticketwright@ticketwright
 ```
 
@@ -44,11 +44,16 @@ set it up moves on:
 ```jsonc
 {
   "extraKnownMarketplaces": {
-    "ticketwright": { "source": { "source": "github", "repo": "kyle-chalmers/ticketwright" }, "autoUpdate": true }
+    "ticketwright": { "source": { "source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git" }, "autoUpdate": true }
   },
   "enabledPlugins": { "ticketwright@ticketwright": true }
 }
 ```
+
+The marketplace source is an explicit `https://…git` URL, not the `owner/repo` shorthand: the
+shorthand can resolve to SSH and fail for anyone without GitHub SSH keys, while the URL clones over
+HTTPS through your existing git credential helper (keychain / `gh auth login`). A fork edits just
+this one URL.
 
 `autoUpdate` re-installs **only on a formal release** — Claude Code refreshes when the plugin's
 *version* changes, and the version only moves in a tagged release commit, so day-to-day commits to

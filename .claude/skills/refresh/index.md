@@ -22,8 +22,16 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
    marked `▱`).
 
 ## Phase 2 — Enrich (the model half)
-4. Decide scope: the given ticket id(s); `--all` for the whole backlog; or default to the
-   un-enriched/stale set from `--stats`.
+4. Decide scope (enrichment is the model (re)writing curated summaries — **never rewrite curated
+   summaries silently**):
+   - a **specific ticket id (or ids)** — enrich just those;
+   - **default** (no flag): only the **un-enriched + stale** set from `--stats` — the safe day-to-day
+     scope;
+   - **`--all`**: cover every ticket **but skip those already enriched and fresh** — the bootstrap
+     scope for a new or newly-adopted backlog (render everything, then enrich only what's missing or
+     changed);
+   - **`--force`** (a.k.a. `--reenrich-all`): genuinely re-enrich **everything**, rewriting even
+     hand-curated, non-stale summaries. Rare, and destructive to curation — only on an explicit ask.
 5. For each target ticket, read its `README.md` and write ONE record:
    `{id, owner, title, status, date, summary (<=180 chars, lead with what was delivered + key
    numbers), tags (1-4 kebab-case), cross_refs (other ticket ids), objects (qualified data objects

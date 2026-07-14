@@ -95,6 +95,8 @@ def main() -> int:
         lines.append(f"- {t.get('owner')}/{t.get('id')} ({d}) — {title}")
     if total > len(tickets):
         lines.append(f"({total - len(tickets)} newer ticket(s) on disk not yet enriched — run the index workflow.)")
+    elif len(tickets) > total:
+        lines.append(f"({len(tickets) - total} record(s) have no folder on disk — run /refresh index --prune.)")
     print("\n".join(lines))
     return 0
 
