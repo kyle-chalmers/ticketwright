@@ -4,7 +4,7 @@
 Deterministic, lexical, stdlib-only (NO embeddings/vector DB — see the kit's KISS stance). Scores
 every ticket (from tickets/index_data.json, falling back to README-derived fields for un-enriched
 ones) against a query built from a seed ticket and/or free text / tags / object, with a transparent
-score breakdown. The `/recall` command runs this, then reads the top hits and writes a reuse brief.
+score breakdown. The `/ticket --recall` command runs this, then reads the top hits and writes a reuse brief.
 
 Usage:
   recall.py --for ENG-12 [--top 5] [--min-score N] [--json]   # query = that ticket's fields
