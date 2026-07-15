@@ -100,6 +100,26 @@ solid for keyed trackers (Jira/Linear) and good-with-caveats for integer/label o
 YouTrack / Plane (key-prefix → copy Linear/Jira) · Shortcut (integer → copy GitHub Issues) ·
 ClickUp / Height (label-status → copy Monday) · Trello (list-as-status → copy Asana).
 
+## Ecosystem hardening — deferred (from the 2026-07 family-wide pass)
+
+Identified while cross-pollinating lessons across the plugin family (jobwright, streamsnow,
+ai-data-security); apply here first since ticketwright is the design ancestor:
+
+- **Skill trigger evals.** None of the family tests that skills actually *trigger* on the
+  phrases their descriptions promise. The official skill-creator plugin ships an eval harness
+  (isolated runs, should/should-not-trigger hit rates, description tuning); a headless
+  `claude -p` activation harness is the community pattern. Descriptions across all four
+  plugins total ~6.6k chars (audited 2026-07-15) — inside the ~15k skill-list budget, but the
+  budget is shared with everything else a user installs, so keep descriptions keyword-dense.
+- **Community marketplace submission** (`claude-plugins-community`): the biggest
+  trust+discovery lever — auto-registered distribution plus Anthropic's security scanning.
+  Pre-checks: version files in lockstep (already enforced), no file access outside the plugin
+  dir, hooks documented (README "Hooks, in full" section shipped 2026-07-15).
+- **Multi-harness install docs** (Cursor/Codex/Copilot CLI) — what the widest-adopted skill
+  packs do; the Agent Skills spec makes skills increasingly portable.
+- **autoUpdate hook caveat** to carry in every release note: bundled hook changes do not reach
+  installed copies via autoUpdate (claude-code #52218) — reinstall + relaunch.
+
 ## Deliberately out of scope
 
 Embeddings / vector retrieval (lexical rank→read-top-K scales to ~500 tickets), weight auto-tuning

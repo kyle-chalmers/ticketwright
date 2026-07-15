@@ -1,18 +1,38 @@
 {
   "name": "ticketwright",
+  "displayName": "Ticketwright",
   "version": "3.3.0",
   "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
-  "author": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
+  "author": {
+    "name": "Kyle Chalmers",
+    "url": "https://github.com/kyle-chalmers"
+  },
   "homepage": "https://github.com/kyle-chalmers/ticketwright",
   "repository": "https://github.com/kyle-chalmers/ticketwright",
   "license": "MIT",
-  "keywords": ["tickets", "data", "sql", "snowflake", "bigquery", "jira", "linear", "azure-devops", "qc", "workflow", "recall"],
+  "keywords": [
+    "tickets",
+    "data",
+    "sql",
+    "snowflake",
+    "bigquery",
+    "jira",
+    "linear",
+    "azure-devops",
+    "qc",
+    "workflow",
+    "recall"
+  ],
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/db_write_guard.py\"" }
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/db_write_guard.py\"",
+            "timeout": 10
+          }
         ]
       }
     ],
@@ -20,15 +40,27 @@
       {
         "matcher": "Write|Edit",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/regenerate_ticket_index.py\"" }
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/regenerate_ticket_index.py\"",
+            "timeout": 30
+          }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/session_context.py\"" },
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/ticket_index_context.py\"" }
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/session_context.py\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/ticket_index_context.py\"",
+            "timeout": 10
+          }
         ]
       }
     ]

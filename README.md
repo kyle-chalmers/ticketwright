@@ -118,6 +118,23 @@ renders on GitHub too. On by default; set `project.graph_notes: false` to turn o
   `private/` subfolder, and `/ship` lists what it's about to commit so nothing sensitive slips in.
 - **Every assumption is written down** — the ticket README template enumerates them by category.
 
+## Hooks, in full
+
+Trust demands transparency: this plugin runs hooks, so here is every one of them. All are
+Python stdlib-only, make **no network calls**, never write outside the repo, and fail open —
+a hook error never blocks your session; a guard only ever *adds* a confirmation.
+
+| Event | Script | What it does |
+|---|---|---|
+| PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying destructive SQL (including SQL hidden in `-f` files / stdin redirects) |
+| PostToolUse (Write\|Edit) | `.claude/hooks/regenerate_ticket_index.py` | Regenerates `tickets/INDEX.md` / `OBJECTS.md` when the curated store changes |
+| SessionStart | `.claude/hooks/session_context.py`, `ticket_index_context.py` | Emits a short repo/catalog banner inside a ticketwright repo; silent elsewhere |
+
+Every hook is repo-gated: zero cost (and zero output) in repos that aren't set up for
+ticketwright. Explicit timeouts are declared so a hung hook can never stall a session. To turn
+them all off, disable the plugin (`claude plugin disable ticketwright`); the skills can still
+be vendored without hooks via the kit install.
+
 ## Adopting an existing repo
 
 Already have years of ticket folders and your own conventions? Run `/setup` — it detects the
