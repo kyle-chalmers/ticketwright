@@ -84,3 +84,14 @@ Run `/review` before `/ship`.
 ## Git
 Branch = ticket id off `{{default_branch}}`. Semantic commits/PRs (`feat|fix|docs|refactor|chore|
 test|ci`). Stage only files you changed. Co-Authored-By trailer on commits.
+
+**Repo-setup / AI-layer files get their own commit — never folded into a ticket's feature commit.**
+These belong to the *repo's* plugin setup, not to any one ticket: `.claude/settings.json`,
+`.claude/config/stack.yaml`, `.claude/statusline.sh`, `AGENTS.md`/`CLAUDE.md`,
+`documentation/AI_LAYER_INDEX.md`, and `.gitignore`. When `/setup` or a plugin `autoUpdate` leaves
+any of them dirty while a ticket is in flight, give them a separate `chore(plugins): …` commit **on
+the same branch as the ticket** — a distinct commit (clean history, easy revert) that rides the
+ticket's **one** PR, so there's never a second PR to merge. (A standalone setup change with no ticket
+open is its own small PR to `{{default_branch}}`.) The enablement travels with the repo, so teammates
+who trust it are prompted to install the plugin. Personal / machine-local config stays gitignored and
+is never committed: `.claude/settings.local.json`, `.claude/worktrees/`.
