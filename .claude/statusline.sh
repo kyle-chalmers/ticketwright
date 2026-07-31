@@ -14,7 +14,19 @@ prefix="?"; tracker="—"; warehouse="—"
 if [[ -f "$stack" ]]; then
   prefix=$(grep -m1 -E '^\s*key_prefix:' "$stack" | sed -E 's/.*key_prefix:[[:space:]]*//; s/[[:space:]#].*//')
   tracker=$(awk '/^  tracker:/{f=1} f&&/tool:/{print $2; exit}' "$stack")
-  warehouse=$(awk '/^  warehouse:/{f=1} f&&/tool:/{print $2; exit}' "$stack")
+  # A multi-target warehouse seam renders "a+b", capped at two names plus a count so one extra
+  # warehouse can't push the statusline over a terminal width.
+  warehouse=$(awk '
+    /^[[:space:]]*#/     { next }                       # comments are not config
+    /^[^[:space:]]/      { inw=0 }                      # dedent to column 0 ends the seam
+    /^  [A-Za-z0-9_-]+:/ { k=$1; sub(":","",k); inw=(k=="warehouse") }
+    # matches both `tool: x` on its own line and `p: {tool: x, …}` in flow style
+    inw && /[ {,]tool:/ {
+      s=$0; sub(/^.*[ {,]tool:[ \t]*/,"",s); sub(/[ \t,}#].*$/,"",s)
+      n++; out=(n==1 ? s : (n<=2 ? out"+"s : out))
+    }
+    END { if (n>2) out=out"+"(n-2); print out }
+  ' "$stack")
 fi
 
 branch=$(git -C "$root" branch --show-current 2>/dev/null || echo "-")

@@ -30,8 +30,8 @@ context-engineering core idea: AI fails from missing context, not weak models.
 3. **Write the spec** from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/spec.md.tmpl` into the ticket's folder
    (`specs/<id>-<slug>.md` or `final_deliverables/`): operation type (new/alter), data grain,
    sources + join/cast rules, transformation logic, **validation gates** (the exact QC the build must
-   pass), downstream impact, dev-env target (`seams.warehouse.dev_db`), and a **confidence score
-   (1–10)**.
+   pass), downstream impact, the **dev target** (`seams.warehouse.dev_target`, else the key the
+   warehouse adapter names in its `dev_key:` frontmatter), and a **confidence score (1–10)**.
 4. **Reduce assumptions:** before finalizing, list open questions and **ask the user** (don't guess).
 5. **Commit the spec** via vcs `commit` (`docs: <id> spec for <thing>`) — policy
    `commit_plan_before_implement` enables blame-free retry if the build later reveals a gap.
@@ -41,7 +41,7 @@ context-engineering core idea: AI fails from missing context, not weak models.
 6. **Load** the committed spec (path arg or newest in the ticket's `specs/`). Treat it as the source
    of truth, but **validate each step independently** — don't blindly follow; the spec can be wrong.
 7. **Implement in small build-and-check sub-loops:** one object/step at a time. Develop against
-   `seams.warehouse.dev_db` first; parameterize values at the top **via a CTE params row
+   the warehouse's **dev target** first; parameterize values at the top **via a CTE params row
    (`WITH params AS (SELECT … AS anchor) … CROSS JOIN params`), not a session `DECLARE`/`SET`** —
    CTE params stay portable and keep CSV exports clean; explicit `ORDER BY` on any export
    (deterministic outputs).

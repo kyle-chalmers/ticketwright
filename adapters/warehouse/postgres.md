@@ -2,7 +2,8 @@
 seam: warehouse
 tool: postgres
 transport: cli         # `psql`
-requires: [conn]       # stack.yaml seams.warehouse.{conn, dev_schema}  (conn = libpq URL or service name)
+requires: [conn]       # stack.yaml seams.warehouse.{conn, dev_target}  (conn = libpq URL or service name)
+dev_key: dev_schema     # legacy spelling of dev_target, still honored
 auth: |
   libpq env (`PGHOST`/`PGUSER`/`PGPASSWORD`/`PGDATABASE`) or a connection URL in `{conn}`; `~/.pgpass`
   for non-interactive. Verify: `psql "{conn}" -c "SELECT 1"` (read-only).
@@ -36,7 +37,7 @@ Inventory: `\dt <schema>.*`; lineage via `information_schema` / `pg_depend`.
 - **Joins:** type-match keys (`int` vs `text` won't use an index); `CAST` explicitly.
 - **Anti-patterns:** `SELECT *` in shipped queries; functions on indexed columns in `WHERE` (kills
   index use); missing `ORDER BY` on exports.
-- **Dev/deploy:** build dev objects in `{dev_schema}` (or set `search_path`); promote with scripted
+- **Dev/deploy:** build dev objects in `{dev_target}` (or set `search_path`); promote with scripted
   `CREATE OR REPLACE` / migrations.
 
 ## gotchas

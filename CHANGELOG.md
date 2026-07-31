@@ -9,6 +9,37 @@ Field-report fixes from two real adopt/install sessions (2026-07-06). Tool-agnos
 no version bump here — the release that ships these bumps the three version files in lockstep and tags.
 
 ### Added
+- **Multiple warehouses per repo (named targets).** `seams.warehouse` is now *either* today's single
+  mapping *or* a multi-target mapping — `default: <name>` plus a `targets:` map. The presence of
+  `targets:` is the discriminator (deliberately not `default:`, since other seams already use
+  `default_channel` / `default_mode` / `default_branch`). Seam-level scalars are inherited by every
+  target, including `tool` / `adapter` / `verify`, with a target's own key winning; inheritance is
+  keyed on key *absence*, so an explicit `verify: null` still means "skip". `bin/verify_stack.sh`
+  checks each target independently, marks the default with `*`, and fails closed when `default:` is
+  missing or names an unknown target. Fourth worked config:
+  `.claude/config/stack.example.multi-warehouse.yaml` (Snowflake + Databricks).
+  **Existing single-warehouse configs need no edits** — all three shipped stacks produce
+  byte-identical `verify_stack.sh`, `session_context.py`, and `statusline.sh` output.
+- **`dev_target` as the canonical dev-environment key**, with each warehouse adapter declaring its
+  legacy spelling in new `dev_key:` frontmatter (`dev_db` / `dev_dataset` / `dev_catalog` /
+  `dev_schema`). Configs written before this keep working through that fallback.
+
+### Fixed
+- **`db_write_guard` no longer harvests another seam's CLI.** The `cli:` scan was an unanchored
+  `re.DOTALL` regex starting at `warehouse:`, so a warehouse seam with no `cli:` of its own (only
+  Snowflake requires one) that was listed *before* the tracker captured the tracker's CLI — making an
+  ordinary `<tracker-cli> … create …` raise a spurious `db_write_requires_approval` prompt. The scan is
+  now scoped to the warehouse seam block. It does not reproduce on any shipped stack, which all list
+  `tracker` first, but nothing forbade the other order. The rewrite also stopped the scan from
+  narrowing on valid YAML it previously read: non-two-space indentation, a comment before the first
+  seam, anchors/tags on a key, flow mappings, and prose inside a block scalar.
+- **`spec-and-build` no longer names a Snowflake-only config key.** It referenced
+  `seams.warehouse.dev_db` twice inside a deliberately tool-neutral skill, so its dev-target guidance
+  was simply wrong on BigQuery (`dev_dataset`), Databricks (`dev_catalog`), and
+  Postgres/Redshift/Synapse (`dev_schema`). `bin/selftest.sh` now fails if any skill, command, or agent
+  names a warehouse-specific dev key again.
+
+### Added (2026-07-06 field report)
 - **`build_ticket_index.py --prune`** — drops *orphan* curated records (present in
   `tickets/index_data.json` but with no ticket folder on disk, e.g. a folder renamed/deleted after its
   record was written). Such drift was previously invisible and permanent.

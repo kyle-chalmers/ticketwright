@@ -2,7 +2,8 @@
 seam: warehouse
 tool: databricks
 transport: both        # `dbsqlcli` / Statement Execution API for SQL; a Databricks SQL MCP for interactive
-requires: [warehouse_id, catalog, schema]   # stack.yaml seams.warehouse.{warehouse_id, catalog, schema, dev_catalog, profile}
+requires: [warehouse_id, catalog, schema]   # stack.yaml seams.warehouse.{warehouse_id, catalog, schema, dev_target, profile}
+dev_key: dev_catalog    # legacy spelling of dev_target, still honored
 auth: |
   A Databricks SQL warehouse + a token. Either: `dbsqlcli` (pip install databricks-sql-cli) configured
   via `~/.dbsqlclirc` or env (`DBSQLCLI_HOST_NAME`, `DBSQLCLI_HTTP_PATH`, `DBSQLCLI_ACCESS_TOKEN`); or
@@ -49,7 +50,7 @@ Inventory: `SHOW TABLES IN {catalog}.{schema}`. Lineage: Unity Catalog `system.a
   the partition (or clustered) column is the main scan lever. `SELECT *` on wide Delta tables is the
   costly anti-pattern — list columns.
 - **Joins:** type-match keys with `cast`/`try_cast`; mind `STRING` vs `BIGINT`. Broadcast small dims.
-- **Dev/deploy:** dev objects in `{dev_catalog}`; promote with scripted `CREATE OR REPLACE`.
+- **Dev/deploy:** dev objects in `{dev_target}`; promote with scripted `CREATE OR REPLACE`.
 - **Portable params:** prefer a CTE params row (`WITH params AS (SELECT DATE '2026-06-30' AS anchor) … CROSS JOIN params`) over a session `DECLARE VARIABLE`/`SET VAR` when the SQL must run as one portable, export-clean statement.
 
 ## gotchas

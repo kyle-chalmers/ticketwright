@@ -2,7 +2,8 @@
 seam: warehouse
 tool: synapse
 transport: cli         # `sqlcmd` (go-sqlcmd) — also covers Azure SQL / SQL Server / Fabric Warehouse
-requires: [server, database]   # stack.yaml seams.warehouse.{server, database, dev_schema}
+requires: [server, database]   # stack.yaml seams.warehouse.{server, database, dev_target}
+dev_key: dev_schema     # legacy spelling of dev_target, still honored
 auth: |
   `sqlcmd` (go-sqlcmd) with Azure AD: `-G --authentication-method ActiveDirectoryDefault` after
   `az login` (or a service principal / `ActiveDirectoryInteractive`). Verify:
@@ -42,7 +43,7 @@ Inventory via `information_schema.tables` / `sys.objects`.
   Resource classes govern memory. Serverless: cost = bytes scanned (partition/prune).
 - **Joins:** type-match keys (`TRY_CAST`); matching HASH distribution avoids shuffles.
 - **Anti-patterns:** `SELECT *` (columnstore scans all columns); row-by-row cursors; missing `ORDER BY`.
-- **Dev/deploy:** dev objects in `{dev_schema}`; promote views with `CREATE OR ALTER VIEW`. For
+- **Dev/deploy:** dev objects in `{dev_target}`; promote views with `CREATE OR ALTER VIEW`. For
   tables: `CTAS` (`CREATE TABLE … AS SELECT`) on Synapse dedicated / Fabric; on Azure SQL DB /
   SQL Server use `SELECT … INTO` instead (they don't support CTAS).
 - **Portable params — prefer a CTE params row over a batch `DECLARE`.** `DECLARE @d date = '…';` is
