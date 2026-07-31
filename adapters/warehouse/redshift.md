@@ -2,7 +2,8 @@
 seam: warehouse
 tool: redshift
 transport: cli         # `aws redshift-data` (Data API) or `psql` (Redshift speaks the pg wire protocol)
-requires: [database]   # stack.yaml seams.warehouse.{database, workgroup_name | cluster_identifier, dev_schema}
+requires: [database]   # stack.yaml seams.warehouse.{database, workgroup_name | cluster_identifier, dev_target}
+dev_key: dev_schema     # legacy spelling of dev_target, still honored
 auth: |
   Data API: AWS creds (`aws sts get-caller-identity`) + Secrets Manager/IAM for the DB. **Serverless**
   passes `--workgroup-name {workgroup_name}`; **provisioned** passes `--cluster-identifier
@@ -41,7 +42,7 @@ Inventory via `svv_tables` / `svv_columns`.
   pruning) + column compression (ENCODE). Columnar store ⇒ `SELECT *` scans every column — list them.
   Run `VACUUM`/`ANALYZE` after big loads; check `EXPLAIN`.
 - **Joins:** matching DISTKEY avoids data redistribution (the main cost); type-match keys.
-- **Dev/deploy:** dev objects in `{dev_schema}`; promote with scripted `CREATE TABLE AS` / `CREATE OR
+- **Dev/deploy:** dev objects in `{dev_target}`; promote with scripted `CREATE TABLE AS` / `CREATE OR
   REPLACE VIEW`.
 
 ## gotchas

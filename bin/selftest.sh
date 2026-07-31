@@ -49,6 +49,13 @@ leaks="$(grep -REn -i 'acli|\bsnow \b|snow sql|mcp__slack|slack_send|\bgh pr\b|\
           | grep -v 'for c in snow acli gh' \
           | grep -v 'grep -REn "acli|snow ' || true)"
 [ -z "$leaks" ] && ok "skills/commands are tool-neutral" || bad "tool name leaked into a skill" "$leaks"
+# A warehouse-specific *config key* is the same leak wearing a different hat: `dev_db` is Snowflake's
+# spelling, and naming it in a skill silently breaks that skill on BigQuery/Databricks/Postgres.
+# The tool-neutral reference is `dev_target` (with the adapter's `dev_key:` as the legacy fallback).
+devleaks="$(grep -REn 'dev_db|dev_dataset|dev_catalog|dev_schema' \
+             .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
+[ -z "$devleaks" ] && ok "no warehouse-specific dev key named in a skill/command/agent" \
+  || bad "a skill names a tool-specific dev key (use the symbolic dev target)" "$devleaks"
 
 hdr "4 · frontmatter valid (skills + agents)"
 for f in .claude/skills/*/SKILL.md .claude/agents/*.md; do
@@ -110,6 +117,113 @@ out="$(echo '{"tool_name":"Read","tool_input":{"file_path":"x"}}' | guard)"
 echo "DELETE FROM t WHERE 1=1;" > "$TMP/wipe.sql"
 out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"psql mydb < $TMP/wipe.sql\"},\"cwd\":\"/\"}" | guard)"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "psql < wipe.sql (stdin redirect) → ask" || bad "stdin-redirect write not gated" "$out"
+
+# --- warehouse-seam CLI harvest: scoped to the seam, indent-agnostic ---------------------------
+# The `cli:` scan must read the warehouse seam and nothing else. Each case builds a throwaway
+# project whose cwd the hook resolves stack.yaml from.
+gstack() {  # gstack <name> <<'YAML' ... YAML   → echoes the project dir
+  local d="$TMP/guard-$1"; mkdir -p "$d/.claude/config"; cat > "$d/.claude/config/stack.yaml"
+  printf '%s' "$d"
+}
+gask() {  # gask <command> <project-dir> — payload built by a JSON encoder. Hand-escaping is a trap
+  #        here: a malformed payload makes the hook fail open, so a *negative* assertion would
+  #        pass vacuously and silently stop testing anything.
+  python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$2" | guard
+}
+
+# A cli-less warehouse seam listed BEFORE the tracker must not adopt the tracker's CLI — else a
+# plain `create` on a ticket raises a bogus DB-write prompt.
+d="$(gstack nocli <<'YAML'
+seams:
+  warehouse:
+    tool: bigquery
+    dataset: analytics
+  tracker:
+    tool: jira
+    cli: acli
+YAML
+)"
+out="$(gask 'acli jira workitem create --summary x' "$d")"
+[ -z "$out" ] && ok "cli-less warehouse before tracker: tracker CLI not gated" || bad "warehouse seam scan leaked into the tracker seam" "$out"
+
+# Four-space indentation is valid YAML that yq reads; the scan must not assume two.
+d="$(gstack indent4 <<'YAML'
+seams:
+    warehouse:
+        tool: custom
+        cli: whcli
+YAML
+)"
+out="$(gask 'whcli -e "DROP TABLE x"' "$d")"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "4-space-indented stack: warehouse CLI still gated" || bad "indent width narrowed CLI gating (destructive write would slip through)" "$out"
+
+# A multi-target seam declares one CLI per target; a non-default target's CLI must be gated too.
+d="$(gstack multi <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    targets:
+      prod:
+        tool: snowflake
+        cli: snow
+      lake:
+        tool: trino
+        cli: trino
+YAML
+)"
+out="$(gask 'trino --execute "UPDATE t SET x=1"' "$d")"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "multi-target: non-default target CLI gated" || bad "a non-default target's CLI is not gated" "$out"
+
+# Prose inside a block scalar is not configuration — and the scan resumes after it, so a real
+# `cli:` following the scalar is still harvested. Uses `|-` to cover the indicator modifiers.
+#            `realcli` sits DEEPER than the `note:` header on purpose — that is what proves the
+#            skip actually *ends*, rather than swallowing every remaining nested line.
+d="$(gstack blockscalar <<'YAML'
+seams:
+  warehouse:
+    note: |-
+      cli: not-a-cli
+    default: prod
+    targets:
+      prod:
+        cli: realcli
+YAML
+)"
+out="$(gask 'not-a-cli --do-something CREATE' "$d")"
+[ -z "$out" ] && ok "block-scalar prose not harvested as a CLI" || bad "block-scalar body read as config" "$out"
+out="$(gask 'realcli -e "DROP TABLE x"' "$d")"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "scan resumes after a block scalar (deeper cli: still gated)" || bad "block-scalar skip swallowed the rest of the seam" "$out"
+
+# A comment between `seams:` and the first seam must not hide it (comments carry no indentation).
+d="$(gstack comment <<'YAML'
+seams:
+    # which warehouse we point at
+  warehouse:
+    cli: cmtcli
+YAML
+)"
+out="$(gask 'cmtcli -e "DROP TABLE x"' "$d")"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "comment before the first seam doesn't hide it" || bad "a comment's indentation hid the warehouse seam (gating narrowed)" "$out"
+
+# A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
+d="$(gstack yamlanchor <<'YAML'
+seams: &seam_map
+  warehouse: &wh
+    cli: anchcli
+YAML
+)"
+out="$(gask 'anchcli -e "DROP TABLE x"' "$d")"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "YAML anchor on seams:/warehouse: still gates" || bad "a YAML anchor hid the warehouse seam (gating narrowed)" "$out"
+
+# A partial/malformed config with no `seams:` anchor is scanned whole rather than skipped —
+# over-gating costs a prompt, under-gating runs an unreviewed write.
+d="$(gstack noanchor <<'YAML'
+warehouse:
+  cli: barecli
+YAML
+)"
+out="$(gask 'barecli -e "DROP TABLE x"' "$d")"
+grep -q '"permissionDecision": "ask"' <<<"$out" && ok "no seams: anchor → still gates (fails safe)" || bad "config without a seams: key stopped gating entirely" "$out"
 
 hdr "7 · session_context hook (SessionStart priming)"
 out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
@@ -677,6 +791,118 @@ sto="$(CLAUDE_PROJECT_DIR="$OR" python3 bin/build_ticket_index.py --stats 2>&1)"
 CLAUDE_PROJECT_DIR="$OR" python3 bin/build_ticket_index.py --prune >/dev/null 2>&1
 pr="$(python3 -c "import json; print(','.join(x['id'] for x in json.load(open('$OR/tickets/index_data.json'))['tickets']))")"
 [ "$pr" = "ENG-1" ] && ok "--prune drops the orphan record, keeps the real one" || bad "--prune result wrong" "kept=$pr"
+
+hdr "24 · multi-target warehouse seam (default: + targets:)"
+MT=".claude/config/stack.example.multi-warehouse.yaml"
+mtout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MT" --dry-run 2>&1)"; mtrc=$?
+{ [ "$mtrc" -eq 0 ] && grep -q 'All seams OK' <<<"$mtout"; } \
+  && ok "multi-warehouse example resolves" || bad "multi-warehouse example does not resolve" "$mtout"
+[ "$(grep -c '▸ warehouse\[' <<<"$mtout")" -eq 2 ] \
+  && ok "both warehouse targets get their own row" || bad "expected exactly 2 target rows" "$mtout"
+grep -q '▸ warehouse\[prod\]\*' <<<"$mtout" \
+  && ok "the default target is marked with *" || bad "default marker missing (default: pointer not read)" "$mtout"
+# Each target's verify interpolates ITS OWN tokens, not a sibling's.
+grep -q 'databricks --profile DEFAULT current-user me' <<<"$mtout" \
+  && ok "target verify interpolates that target's own tokens" || bad "target token scoping wrong" "$mtout"
+# Single-mapping stacks must still produce exactly one un-bracketed warehouse row.
+for s in .claude/config/stack.yaml .claude/config/stack.example.asana-bq.yaml .claude/config/stack.example.azure.yaml; do
+  o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
+  { [ "$(grep -c '▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '▸ warehouse\[' <<<"$o"; } \
+    && ok "$(basename "$s"): still one plain warehouse row" || bad "$(basename "$s") regressed to target rows" "$o"
+done
+
+# --- fail closed on an unusable targets: block ---------------------------------------------------
+mtstack() { local d="$TMP/mt-$1"; mkdir -p "$d"; cat > "$d/stack.yaml"; printf '%s' "$d/stack.yaml"; }
+f="$(mtstack nodefault <<'YAML'
+project: {key_prefix: ENG}
+seams:
+  warehouse:
+    targets:
+      prod: {tool: snowflake, adapter: adapters/warehouse/snowflake.md, verify: "true"}
+YAML
+)"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"; rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "no 'default:'" <<<"$o"; } \
+  && ok "targets: without default: fails closed" || bad "missing default: was accepted" "$o"
+f="$(mtstack baddefault <<'YAML'
+project: {key_prefix: ENG}
+seams:
+  warehouse:
+    default: nope
+    targets:
+      prod: {tool: snowflake, adapter: adapters/warehouse/snowflake.md, verify: "true"}
+YAML
+)"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"; rc=$?
+{ [ "$rc" -ne 0 ] && grep -q "not one of the defined targets" <<<"$o"; } \
+  && ok "default: naming an unknown target fails closed" || bad "bad default: was accepted" "$o"
+# …and doesn't also emit the (meaningless) ordering warning for a name that doesn't exist.
+grep -q 'is not the first target' <<<"$o" \
+  && bad "bad default: also emitted a bogus ordering warning" "$o" \
+  || ok "bad default: reports one clear error, not two"
+
+# --- seam-level scalars are inherited; a target's own key wins -----------------------------------
+f="$(mtstack inherit <<'YAML'
+project: {key_prefix: ENG}
+seams:
+  warehouse:
+    default: prod
+    cli: snow
+    pii_role: SHARED
+    targets:
+      prod:
+        tool: snowflake
+        adapter: adapters/warehouse/snowflake.md
+        verify: "echo cli={cli} role={pii_role}"
+      sandbox:
+        tool: snowflake
+        adapter: adapters/warehouse/snowflake.md
+        pii_role: OWN
+        verify: "echo cli={cli} role={pii_role}"
+YAML
+)"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"
+grep -q 'echo cli=snow role=SHARED' <<<"$o" \
+  && ok "seam-level scalars are inherited by a target" || bad "seam-level inheritance broken" "$o"
+grep -q 'echo cli=snow role=OWN' <<<"$o" \
+  && ok "a target's own key overrides the seam's" || bad "target override lost to the seam default" "$o"
+
+# tool/adapter/verify inherit too, so two targets on one account can share all three and differ
+# only in (say) default_warehouse. Keyed on absence: an explicit `verify: null` still means "skip".
+f="$(mtstack opinherit <<'YAML'
+project: {key_prefix: ENG}
+seams:
+  warehouse:
+    default: prod
+    tool: snowflake
+    adapter: adapters/warehouse/snowflake.md
+    verify: "echo shared wh={default_warehouse}"
+    targets:
+      prod: {default_warehouse: PROD_WH}
+      sandbox: {default_warehouse: SBX_WH}
+      mcponly: {verify: null}
+YAML
+)"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"
+{ grep -q 'echo shared wh=PROD_WH' <<<"$o" && grep -q 'echo shared wh=SBX_WH' <<<"$o"; } \
+  && ok "seam-level tool/adapter/verify are inherited by targets" || bad "operational fields not inherited (target shows tool=? / adapter missing)" "$o"
+! grep -q 'warehouse\[mcponly\].*would run' <<<"$o" \
+  && ok "an explicit 'verify: null' target does not inherit the seam's verify" || bad "verify: null wrongly inherited the seam command" "$o"
+
+# --- display readers surface every target -------------------------------------------------------
+MTP="$TMP/mtproj"; mkdir -p "$MTP/.claude/config"
+cp "$MT" "$MTP/.claude/config/stack.yaml"
+o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$MTP" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'warehouse=snowflake+databricks' <<<"$o" \
+  && ok "session banner lists both targets (default first)" || bad "banner hides a warehouse target" "$o"
+o="$(echo '{}' | CLAUDE_PROJECT_DIR="$MTP" bash .claude/statusline.sh 2>&1)"
+grep -q 'snowflake+databricks' <<<"$o" \
+  && ok "statusline lists both targets" || bad "statusline hides a warehouse target" "$o"
+# Non-default default: pointer must reorder the banner, so it never implies the wrong active target.
+sed 's/default: prod/default: lake/' "$MT" > "$MTP/.claude/config/stack.yaml"
+o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$MTP" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'warehouse=databricks+snowflake' <<<"$o" \
+  && ok "banner puts the DEFAULT target first, not the file's first" || bad "banner ignores the default: pointer" "$o"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

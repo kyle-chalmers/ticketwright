@@ -2,7 +2,8 @@
 seam: warehouse
 tool: snowflake
 transport: both        # `snow` CLI for scripts/exports; Snowflake MCP for interactive/semantic
-requires: [cli]        # stack.yaml seams.warehouse.{cli, default_warehouse, pii_role, dev_db}
+requires: [cli]        # stack.yaml seams.warehouse.{cli, default_warehouse, pii_role, dev_target}
+dev_key: dev_db         # legacy spelling of dev_target, still honored
 auth: |
   CLI:  ~/.snowflake/config.toml connection (USERNAME_PASSWORD_MFA for CLI/MCP).
   Verify: `snow connection test` (read-only).
@@ -47,7 +48,7 @@ Discover objects via `INFORMATION_SCHEMA.TABLES` + `ACCOUNT_USAGE.OBJECT_DEPENDE
 - **Layering:** prefer your curated layers (e.g. `RAW → STAGING → ANALYTICS → REPORTING`); avoid
   legacy/raw schemas and point-in-time snapshot tables unless the work is compliance/historical.
 - **Dynamic-table chains:** never interpose a regular view between dynamic tables (`target_lag='DOWNSTREAM'`).
-- **Dev/deploy:** build dev objects in `{dev_db}`; promote with your multi-env deploy template (COPY GRANTS).
+- **Dev/deploy:** build dev objects in `{dev_target}`; promote with your multi-env deploy template (COPY GRANTS).
 - **Portable params — prefer CTE params over session variables / Scripting `DECLARE`.** A `SET v=…; $v`
   session variable (or a Snowflake Scripting `DECLARE`) is script/session-scoped: it doesn't survive
   into a separate JDBC/ODBC statement (DataGrip, Simba), and multi-statement `snow -f` runs emit the

@@ -51,15 +51,95 @@ def find_stack_yaml(cwd: str) -> Path | None:
     return None
 
 
+_COMMENT = re.compile(r"^\s*#")
+# `note: |`, `- note: |-`, `"note": >2`, … — a key whose value is a literal/folded block scalar.
+_BLOCK_SCALAR = re.compile(
+    r"""^\s*(?:-\s+)?(?:"[^"]*"|'[^']*'|[A-Za-z0-9_.-]+):\s*[|>][-+0-9]*\s*(?:#.*)?$"""
+)
+
+
+def seam_block(text: str, seam: str) -> str:
+    """The lines under `<seam>:` inside the top-level `seams:` mapping.
+
+    Three properties matter, all of them about never *narrowing* what gets gated:
+
+    * The seam-key indent is **inferred** from the file, not assumed to be two spaces — a
+      four-space-indented stack.yaml is valid YAML that `yq` reads fine.
+    * Comment-only lines carry no indentation and never terminate the scan, so a comment
+      between `seams:` and the first seam can't hide it.
+    * A config with no `seams:` anchor (malformed or partial) is scanned whole rather than
+      skipped. Gating too much only costs a confirmation prompt; gating too little is a
+      destructive statement running unreviewed.
+
+    Block-scalar bodies are skipped so prose can't be read as configuration. No yaml dep — this
+    hook has to stay a standalone stdlib script.
+    """
+    # A mapping key may carry a YAML anchor/alias/tag before its nested block (`warehouse: &wh`),
+    # which yq resolves fine — so the key patterns tolerate one.
+    prop = r"(?:[&*!][^\s#]*\s*)?"
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines)
+                  if re.match(rf"^seams:\s*{prop}(?:#.*)?$", ln)), None)
+    if start is None:
+        body, min_indent = lines, 0          # no anchor: a bare `warehouse:` may sit at column 0
+    else:
+        body, min_indent = lines[start + 1:], 1
+
+    indent = depth = skip_deeper_than = None
+    out = []
+    for ln in body:
+        if not ln.strip() or _COMMENT.match(ln):
+            if depth is not None and ln.strip() == "":
+                out.append(ln)
+            continue                              # comments define neither indent nor an end
+        cur = len(ln) - len(ln.lstrip())
+        if cur < min_indent:
+            break                                 # dedented out of `seams:`
+        if skip_deeper_than is not None:
+            if cur > skip_deeper_than:
+                continue                          # still inside a block scalar
+            skip_deeper_than = None
+        if depth is None:
+            if indent is None:
+                indent = cur                      # the first real child sets the seam-key column
+            if cur == indent:
+                km = re.match(rf"^\s*{re.escape(seam)}:\s*(.*)$", ln)
+                if km:
+                    rest = re.sub(r"^[&*!][^\s#]*\s*", "", km.group(1).strip())
+                    rest = re.sub(r"\s*#.*$", "", rest).strip()
+                    if rest.startswith("{"):
+                        return rest               # inline flow mapping — the seam is all on this line
+                    if rest == "":
+                        depth = cur               # normal nested block
+                    # any other inline scalar (`warehouse: null`) opens nothing
+            continue
+        if cur <= depth:
+            break                                 # next seam at the same level
+        if _BLOCK_SCALAR.match(ln):
+            skip_deeper_than = cur
+            continue
+        out.append(ln)
+    return "\n".join(out)
+
+
 def warehouse_clis(stack: Path | None) -> list[str]:
+    """Defaults + every `cli:` declared inside the warehouse seam.
+
+    Scoped to the seam block for two reasons. A multi-target seam declares one `cli:` per target,
+    so all of them must be gated. And the previous `DOTALL` scan was unanchored: on a warehouse
+    seam with no `cli:` of its own (only Snowflake requires one) that was listed *before* the
+    tracker, it captured the tracker's CLI — making `<tracker-cli> ... create ...` trip the
+    destructive-statement check and prompt for approval on a plain ticket edit.
+    """
     clis = list(DEFAULT_WAREHOUSE_CLIS)
     if stack:
         try:
-            text = stack.read_text(errors="replace")
-            # tiny scan: a `cli: <name>` line under the warehouse seam (no yaml dep)
-            m = re.search(r"warehouse:.*?(?:\n\s+cli:\s*([A-Za-z0-9_-]+))", text, re.DOTALL)
-            if m and m.group(1) not in clis:
-                clis.insert(0, m.group(1))
+            blk = seam_block(stack.read_text(errors="replace"), "warehouse")
+            # Unanchored within the block (which is already scoped to the seam) so a flow mapping
+            # — `prod: {tool: trino, cli: trino}` — is read too, not just one-key-per-line style.
+            for c in re.findall(r"(?:^|[\s{,])cli:\s*([A-Za-z0-9_.-]+)", blk, re.MULTILINE):
+                if c not in clis:
+                    clis.insert(0, c)
         except OSError:
             pass
     return clis

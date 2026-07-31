@@ -1,0 +1,104 @@
+# stack.example.multi-warehouse.yaml — a team that must reach TWO warehouses.
+#
+# Jira / Snowflake + Databricks / Slack / Google Drive / GitHub. Everything except the warehouse
+# seam is identical to stack.yaml; this file exists to prove one claim — one warehouse seam can
+# hold several named targets, and every target is independently reachable.
+#
+# Skills resolve which target to use per `adapters/README.md` § Multi-target seams; a `.sql` file
+# names its own target in a `-- warehouse-target: <name>` header comment.
+# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml
+
+project:
+  key_prefix: ENG
+  key_prefixes: [ENG]
+  assignee_dir: alice
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
+  default_epic: ENG-100
+  terminal_status: Done
+  ticket_url_template: "https://acme.atlassian.net/browse/{id}"
+  word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+  graph_notes: true
+  graph_config: true
+
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: both
+    site: acme.atlassian.net
+    cli: acli
+    mcp: atlassian
+    verify: 'acli jira workitem search --jql "project = {key_prefix}" --limit 1'
+
+  # ── MULTI-TARGET warehouse seam ───────────────────────────────────────────────────────────────
+  # The presence of `targets:` is the discriminator — NOT `default:`, because other seams already
+  # use default_channel / default_mode / default_branch and `default` must never carry type meaning.
+  #
+  # List the DEFAULT target FIRST. Readers that predate this feature (an un-relaunched session's
+  # statusline and SessionStart banner) display the first target they find, so first == default
+  # keeps them honest instead of quietly naming the wrong warehouse.
+  #
+  # Scalar keys at the SEAM level are inherited by every target, and a target's own key wins —
+  # handy when two targets share an account (one `cli:` up here, differing `default_warehouse:`
+  # per target).
+  warehouse:
+    default: prod
+    targets:
+      prod:
+        tool: snowflake
+        adapter: adapters/warehouse/snowflake.md
+        transport: both
+        cli: snow
+        default_warehouse: ANALYTICS_WH
+        pii_role: PII_READER
+        dev_target: ANALYTICS_DEV       # canonical; a legacy `dev_db:` is still honored
+        verify: "snow connection test"
+      lake:
+        tool: databricks
+        adapter: adapters/warehouse/databricks.md
+        transport: cli
+        cli: dbsqlcli
+        warehouse_id: 0a1b2c3d4e5f6789
+        catalog: main
+        schema: analytics
+        dev_target: main_dev            # was `dev_catalog:`
+        profile: DEFAULT
+        verify: "databricks --profile {profile} current-user me"
+
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: slack
+    default_channel: C0XXXXXXXXX
+    default_mode: draft
+    always_include: [Alice]
+    verify: null
+
+  docstore:
+    tool: gdrive
+    adapter: adapters/docstore/gdrive.md
+    transport: cli
+    base_path: "/path/to/your/Shared drives/Tickets"
+    verify: "test -d \"{base_path}\""
+
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".claude/worktrees"
+    verify: "gh auth status"
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: true
+  chat_default_draft: true
+  hyperlink_everything: true
+  skillify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

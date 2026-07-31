@@ -38,7 +38,9 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 
 ## `seams`
 
-Exactly these five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. Each:
+Exactly these five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. Each is **either** a
+single mapping (below) **or** a *multi-target* mapping — see "Multiple warehouses". Fields of a
+single mapping:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -50,6 +52,51 @@ Exactly these five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. Each
 
 The `warehouse` seam may also be `null`/omitted for non-data repos — `review`, `spec-and-build`,
 and `refresh context` degrade gracefully (skip warehouse steps) when it is.
+
+### Multiple warehouses (named targets)
+
+A repo that must reach more than one warehouse — prod Snowflake plus a Databricks lakehouse, or two
+Snowflake accounts — declares **named targets** instead of one flat mapping:
+
+```yaml
+  warehouse:
+    default: prod              # REQUIRED when `targets:` is present; must name a key below
+    cli: snow                  # seam-level scalars are inherited by every target
+    targets:
+      prod: { tool: snowflake,  adapter: adapters/warehouse/snowflake.md,  verify: "snow connection test" }
+      lake: { tool: databricks, adapter: adapters/warehouse/databricks.md, verify: "…" }
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `targets` | map | Named targets. **Its presence is the discriminator** for a multi-target seam. |
+| `default` | string | Which target skills use when nothing else selects one. Required with `targets`. |
+
+Rules:
+
+- **Inheritance.** A target inherits any key it doesn't define itself, including `tool` / `adapter` /
+  `verify` — so two targets on one account can share all three and differ only in, say,
+  `default_warehouse`. A target's own key wins. Inheritance is keyed on *absence*: an explicit
+  `verify: null` on a target means "skip", it does not fall back to the seam's command.
+- **List the default first.** Readers that predate this feature (an un-relaunched session's statusline
+  and SessionStart banner) show the first target they find, so first == default keeps them honest.
+  `bin/verify_stack.sh` warns when the default isn't first, and fails when `default` is missing or
+  names an unknown target.
+- **Which target is active** is resolved per `adapters/README.md` § Multi-target seams. A `.sql` file
+  names its own target in a `-- warehouse-target: <name>` header comment; that never goes in a CSV,
+  whose header must stay on row 1 with no preamble.
+- v1 implements multi-target for **`warehouse`** only. `verify_stack.sh` handles the shape for any
+  seam, but no skill resolves targets for the other four, so don't rely on it there yet.
+
+**Known limitation:** `tickets/OBJECTS.md` and the graph layer fold object names case-insensitively
+and are warehouse-blind, so `ANALYTICS.CUSTOMERS` on one target and `analytics.customers` on another
+collapse into one node. Usually that's the useful reading (a genuine cross-system relationship), but
+it is not a per-target index.
+
+**Dev target.** The dev environment is `seams.warehouse[.targets.<name>].dev_target`. When that key
+is absent it falls back to the key named by the warehouse adapter's `dev_key:` frontmatter (`dev_db`
+for Snowflake, `dev_dataset` for BigQuery, `dev_catalog` for Databricks, `dev_schema` for
+Postgres/Redshift/Synapse) — so configs written before `dev_target` existed keep working untouched.
 
 ## `policies` (the 9 kit policies — see kit README "AI-layer" section)
 
@@ -72,7 +119,9 @@ and `refresh context` degrade gracefully (skip warehouse steps) when it is.
 
 ## Worked example
 
-A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Two more
+A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Three more
 prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
-(Asana/BigQuery/Teams/SharePoint/GitLab) and `stack.example.azure.yaml`
-(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos). To validate any config: `bash bin/verify_stack.sh`.
+(Asana/BigQuery/Teams/SharePoint/GitLab), `stack.example.azure.yaml`
+(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos), and `stack.example.multi-warehouse.yaml`
+(Jira/**Snowflake + Databricks**/Slack/Drive/GitHub — the named-targets shape above). To validate any
+config: `bash bin/verify_stack.sh`.
