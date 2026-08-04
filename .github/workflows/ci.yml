@@ -37,3 +37,64 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Plugin + marketplace manifest validation (strict)
         run: claude plugin validate . --strict
+
+  # The publish workflow was the only place that ever ran `uv build`, so a broken wheel stayed
+  # invisible until release day. Build and actually install it here instead — which, per this
+  # file's `on:` block, means every PR and every push to main (not every push to any branch).
+  wheel:
+    name: Wheel builds, installs, and scaffolds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Install the wheel into a clean venv
+        run: |
+          python3 -m venv /tmp/tw
+          /tmp/tw/bin/pip install --quiet dist/*.whl
+
+      - name: CLI runs and reports the source-of-truth version
+        run: |
+          PKG="$(python3 -c "import re,pathlib; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('ticketwright/__init__.py').read_text())[1])")"
+          OUT="$(/tmp/tw/bin/ticketwright --version)"
+          echo "$OUT (expected $PKG)"
+          test "$OUT" = "ticketwright $PKG" || { echo "::error::--version said '$OUT', expected 'ticketwright $PKG'"; exit 1; }
+          /tmp/tw/bin/ticketwright --help > /dev/null
+
+      - name: init scaffolds a fresh repo with the right contents
+        run: |
+          mkdir -p /tmp/fresh && cd /tmp/fresh
+          /tmp/tw/bin/ticketwright init .
+          fail=0
+          for d in bin .claude/skills .claude/agents .claude/hooks adapters templates; do
+            [ -d "$d" ] || { echo "::error::init did not scaffold $d"; fail=1; }
+          done
+          # the kit's own stack.yaml is a fictional "Acme" example — it must never land in a real repo
+          if [ -e .claude/config/stack.yaml ]; then
+            echo "::error::init wrote .claude/config/stack.yaml — the Acme example leaked into the wheel"; fail=1
+          fi
+          # ...but the schema + examples the user picks from must be there
+          [ -f .claude/config/stack.schema.md ] || { echo "::error::stack.schema.md missing from the scaffold"; fail=1; }
+          ls .claude/config/stack.example.*.yaml > /dev/null 2>&1 \
+            || { echo "::error::no stack.example.*.yaml in the scaffold"; fail=1; }
+          exit $fail
+
+      # Deliberately sentinels a file the wheel DOES ship. Using stack.yaml here would pass
+      # vacuously — it is excluded from the bundle, so init has no source to copy over it.
+      - name: init re-runs without clobbering local edits, --force restores
+        run: |
+          cd /tmp/fresh
+          echo "# local edit" >> .claude/config/stack.schema.md
+          /tmp/tw/bin/ticketwright init .
+          grep -q "# local edit" .claude/config/stack.schema.md \
+            || { echo "::error::re-running init clobbered a locally edited file"; exit 1; }
+          [ -e .claude/config/stack.yaml ] \
+            && { echo "::error::re-running init created a stack.yaml"; exit 1; }
+          /tmp/tw/bin/ticketwright init . --force
+          grep -q "# local edit" .claude/config/stack.schema.md \
+            && { echo "::error::--force did not restore the kit's copy"; exit 1; }
+          echo "preserve-by-default and --force both behave"

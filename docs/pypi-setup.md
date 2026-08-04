@@ -31,16 +31,27 @@ and uploads via `pypa/gh-action-pypi-publish`.
 
 ## Part B — cut a release (each version)
 
-1. Bump the version in **all three** hardcoded places (keep them in lockstep):
-   `ticketwright/__init__.py` (the source of truth — `pyproject.toml` reads it dynamically via
-   Hatch, so there is nothing to edit there), `.claude-plugin/plugin.json`, and
-   `.claude-plugin/marketplace.json`. Add a `CHANGELOG.md` entry.
-2. Commit, then tag and push the tag:
+1. Bump all three version files in one command, then add a `CHANGELOG.md` entry:
    ```bash
-   git tag v3.0.0 && git push origin v3.0.0
+   bash bin/bump_version.sh 3.4.0
    ```
-3. The `publish` workflow runs, verifies `tag == package version`, builds, and publishes. Watch it in
+   It rewrites `ticketwright/__init__.py` (the source of truth — `pyproject.toml` reads it
+   dynamically via Hatch, so there is nothing to edit there), `.claude-plugin/plugin.json`, and
+   `.claude-plugin/marketplace.json`, then verifies they agree and both manifests still parse.
+   Doing this by hand is what let PyPI drift a full minor behind the plugin; `selftest.sh` §16
+   fails the build if the three ever disagree.
+2. `bash bin/selftest.sh` — must be green.
+3. Commit, then tag and push the tag:
+   ```bash
+   git tag v3.4.0 && git push origin v3.4.0
+   ```
+4. The `publish` workflow runs, verifies `tag == package version`, builds, and publishes. Watch it in
    the repo's Actions tab. Done — `pip install ticketwright` now serves the new version.
+
+> Don't skip the tag. An untagged bump leaves PyPI serving the previous release while the plugin
+> (installed from the git marketplace) moves ahead — pip users then get stale skill prose with
+> bugs the plugin has already fixed. CI's `wheel` job proves the package *builds*; only the tag
+> ships it.
 
 > Note: `v1.3.0` was tagged before this workflow existed, so the **first** publish is `v1.3.1`.
 
@@ -49,9 +60,18 @@ and uploads via `pypa/gh-action-pypi-publish`.
 `pip install ticketwright` installs a zero-dependency, stdlib-only CLI:
 
 - `ticketwright init [path]` — scaffold the kit into a repo (a versioned, upgrade-safe `cp -r`).
-- `ticketwright recall …` / `index …` / `enrich …` — run the prior-art recall + ticket-index tools
-  against the repo at `$PWD`.
+- `ticketwright recall …` / `index …` — the prior-art recall + ticket-index engines, run against the
+  repo at `$PWD`. Pure stdlib; no Claude Code required.
+- `ticketwright enrich …` — refresh a ticket's curated summary. Calls the model headlessly via
+  `claude -p`, so this one **does** need Claude Code on `PATH`.
 
 The kit assets (`bin/`, `.claude/`, `adapters/`, `templates/`) are bundled into the wheel under
 `ticketwright/_kit/` via hatchling `force-include`, so the Claude Code **plugin** and `cp -r` install
 paths (which reference `bin/` at the repo root) are unchanged.
+
+`.claude/config` is force-included **file by file**, not as a directory: the repo's own
+`.claude/config/stack.yaml` is a fictional "Acme" worked example, and mapping the directory shipped
+it in the wheel so `init` scaffolded it into fresh repos as if it were real config. Only the schema
+and the `stack.example.*.yaml` files belong in the bundle — `/setup` writes the live `stack.yaml`
+from evidence in the user's repo. Adding a new file under `.claude/config/` means adding a
+force-include line for it; `selftest.sh` §16 fails if one is missing.

@@ -47,7 +47,14 @@ packages = ["ticketwright"]
 ".claude/skills" = "ticketwright/_kit/.claude/skills"
 ".claude/agents" = "ticketwright/_kit/.claude/agents"
 ".claude/hooks" = "ticketwright/_kit/.claude/hooks"
-".claude/config" = "ticketwright/_kit/.claude/config"
+# .claude/config is enumerated file-by-file ON PURPOSE — mapping the directory would ship the repo's
+# own stack.yaml (a fictional "Acme" worked example) into the wheel, and `init` would then scaffold
+# it into a fresh repo as if it were real config. Only the schema + examples belong in the bundle;
+# the live stack.yaml is written by `/setup`. selftest §16 fails if a new config file misses a line.
+".claude/config/stack.schema.md" = "ticketwright/_kit/.claude/config/stack.schema.md"
+".claude/config/stack.example.asana-bq.yaml" = "ticketwright/_kit/.claude/config/stack.example.asana-bq.yaml"
+".claude/config/stack.example.azure.yaml" = "ticketwright/_kit/.claude/config/stack.example.azure.yaml"
+".claude/config/stack.example.multi-warehouse.yaml" = "ticketwright/_kit/.claude/config/stack.example.multi-warehouse.yaml"
 ".claude/settings.json.tmpl" = "ticketwright/_kit/.claude/settings.json.tmpl"
 ".claude/statusline.sh" = "ticketwright/_kit/.claude/statusline.sh"
 "adapters" = "ticketwright/_kit/adapters"

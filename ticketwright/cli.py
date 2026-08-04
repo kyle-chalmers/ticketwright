@@ -21,8 +21,9 @@ from pathlib import Path
 from . import __version__
 
 KIT = Path(__file__).resolve().parent / "_kit"
-# Per-install files that init must NEVER clobber if they already exist in the target repo. Only
-# stack.yaml ships in the bundle today; the rest are forward-defensive (harmless if never shipped).
+# Per-install files that init must NEVER clobber if they already exist in the target repo. None of
+# these ship in the bundle today (stack.yaml is deliberately excluded from the wheel — `/setup`
+# writes it), so every entry is forward-defensive: harmless now, a guard if one starts shipping.
 PRESERVE = {
     ".claude/config/stack.yaml",
     ".claude/settings.json",

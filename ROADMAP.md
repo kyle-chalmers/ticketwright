@@ -116,7 +116,23 @@ ai-data-security); apply here first since ticketwright is the design ancestor:
   Pre-checks: version files in lockstep (already enforced), no file access outside the plugin
   dir, hooks documented (README "Hooks, in full" section shipped 2026-07-15).
 - **Multi-harness install docs** (Cursor/Codex/Copilot CLI) — what the widest-adopted skill
-  packs do; the Agent Skills spec makes skills increasingly portable.
+  packs do; the Agent Skills spec makes skills increasingly portable. Half the mechanism exists:
+  `ticketwright init` vendors the kit's files into any repo, harness-agnostic. The gap is
+  **setup** — `/setup` is what renders `stack.yaml` and `AGENTS.md`, and it only runs in Claude
+  Code, so a Cursor/Codex user today gets the files and no rendered config. Closing this needs a
+  harness-agnostic setup path (a `ticketwright setup` that asks the questions `/setup` asks), not
+  just docs.
+- **Distribution scope — settled 2026-08-04.** Both channels stay, with distinct jobs: the
+  **plugin is the product** (skills, hooks, project-scoped enablement, updates); **PyPI is the
+  standalone/vendoring installer** for the multi-harness and CI cases above — explicitly *not*
+  a second full UX. Deleting PyPI was considered and rejected: it would drop the only
+  non-Claude-Code install path while leaving the kit-root/project-root branching in place
+  (that branching serves *vendoring*, which predates pip), and the wheel force-includes the
+  same kit rather than maintaining a parallel implementation. What made the channel a liability
+  was drift, not cost — PyPI sat on 3.2.0 while the repo ran 3.3.0, so pip users were served
+  month-old skill prose. Fixed structurally: `bin/bump_version.sh` moves all three version files
+  at once, and CI now builds + installs the wheel on every PR and every push to `main`, instead
+  of only at tag time.
 - **autoUpdate hook caveat** to carry in every release note: bundled hook changes do not reach
   installed copies via autoUpdate (claude-code #52218) — reinstall + relaunch.
 

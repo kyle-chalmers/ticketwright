@@ -143,16 +143,29 @@ custom commands you've built as *shadows / extends / unrelated* against the plug
 writes a `MIGRATION.md` checklist instead of overwriting anything. Adoption is incremental: run one
 real ticket through `/ticket → /review → /ship` before deleting anything custom.
 
-## Also a standalone CLI
+## Installing without the plugin
 
-The pip package runs the deterministic engines without Claude Code:
+The plugin above is the primary channel and the one to use with Claude Code. The pip package
+covers the two cases it can't: vendoring the kit's files into a repo, and running the
+deterministic engines from a shell or CI.
 
 ```bash
 pip install ticketwright                 # zero runtime dependencies; stdlib only
-ticketwright recall --for ENG-123       # prior-art ranking
-ticketwright index --stats              # catalog coverage
-ticketwright init                       # vendor the kit into a repo (plugin-free installs)
+ticketwright init                        # vendor the kit into a repo (no plugin required)
+ticketwright recall --for ENG-123        # prior-art ranking      — no Claude Code needed
+ticketwright index --stats               # catalog coverage       — no Claude Code needed
+ticketwright enrich ENG-123              # curated index summary  — needs `claude` on PATH
 ```
+
+`recall` and `index` are pure stdlib and run anywhere. `enrich` calls the model headlessly via
+`claude -p`, so it needs Claude Code installed. `init` copies the kit's files — skills, agents,
+hooks, adapters, templates, `bin/` — and preserves your edits on re-runs (`--force` to overwrite).
+
+**`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
+`AGENTS.md`; `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
+So on another harness (Cursor, Codex, Copilot CLI) you get the skill files but still have to
+render the config yourself. A harness-agnostic setup path is on the [roadmap](ROADMAP.md), not
+shipped — don't read this section as "Ticketwright runs anywhere today."
 
 ## Learn more
 
