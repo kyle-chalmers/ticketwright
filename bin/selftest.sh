@@ -1195,5 +1195,124 @@ grep -q 'refi-sms-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
   && bad "keyed mode catalogued a keyless folder (scratch dirs would flood INDEX.md)" \
   || ok "keyed mode still skips keyless folders (default behavior unchanged)"
 
+hdr "26 · slug ids: ordering, branch resolution, prefix-free banner"
+# ticket_number must require the id to BE a tracker key. `search` grabbed digits from anywhere, so a
+# slug ending in a year sorted as that ticket number.
+python3 - <<'PY2'
+import sys; sys.path.insert(0, "bin")
+from build_ticket_index import ticket_number, key_regex
+# The configured prefixes are the authority on which ids carry a number — no fixed shape works,
+# since a prefix may contain _ or - or lead with a digit, and a slug may look exactly like a key.
+for prefix, tid, want in (("ENG","ENG-12",12), ("OPS","OPS-7",7), ("ACME_US","ACME_US-42",42),
+                          ("ACME-WEST","ACME-WEST-42",42), ("1ENG","1ENG-42",42)):
+    got = ticket_number(tid, key_regex([prefix]))
+    assert got == want, (tid, got, want)
+# In a slug repo a digit-suffixed folder must not read as a ticket number — including `a-1`, which
+# is shaped exactly like a key, and including a repo that still carries a stale key_prefix.
+# Includes a repo that kept a stale lowercase key_prefix matching the slug ('a' vs folder 'a-1'):
+# the prefixes are not evidence an id is keyed once id_mode is slug.
+from build_ticket_index import id_key_regex
+for cfg in ({"id_mode": "slug", "prefixes": []},
+            {"id_mode": "slug", "prefixes": ["ENG"]},
+            {"id_mode": "slug", "prefixes": ["a"]}):
+    kr = id_key_regex(cfg)
+    for slug in ("refi-sms-lift-2024", "q3-2026-audit", "a-1", "notes", "x2024"):
+        got = ticket_number(slug, kr)
+        assert got == 0, (cfg, slug, got)
+# ...while the SAME id in a keyed repo with that prefix legitimately is ticket 1.
+assert ticket_number("a-1", id_key_regex({"id_mode": "keyed", "prefixes": ["a"]})) == 1
+PY2
+[ $? -eq 0 ] && ok "ticket_number: keyed ids keep their number, slug ids score 0 (no phantom order)" \
+  || bad "a slug id ending in digits is still ordered as a ticket number"
+
+# --branch resolution. `claude` is kept OFF PATH so enrich_ticket stops at its own guard: reaching
+# "Enriching N ticket(s)" proves the id resolved, without spending a model call.
+BR="$TMP/brslug"; mkdir -p "$BR/.claude/config" "$BR/tickets/kyle/refi-sms-lift" "$BR/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BR/bin/"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$BR/.claude/config/stack.yaml"
+printf '# refi-sms-lift: Refi SMS\n\nBody.\n' > "$BR/tickets/kyle/refi-sms-lift/README.md"
+( cd "$BR" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+  && git checkout -q -b claude/refi-sms-lift ) 2>/dev/null
+out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$out" \
+  && ok "--branch resolves a slug branch (claude/<slug>) to its ticket" \
+  || bad "--branch could not resolve a slug branch — /ship's convenience path is dead in slug mode" "$out"
+# A branch that names no ticket must resolve to nothing rather than guessing.
+( cd "$BR" && git checkout -q -b claude/not-a-ticket ) 2>/dev/null
+out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'No ticket ids given' <<<"$out" \
+  && ok "--branch on an unrelated branch resolves nothing (identity, not pattern)" \
+  || bad "--branch invented a ticket id from an unrelated branch name" "$out"
+# Keyed mode's --branch path is untouched.
+BK="$TMP/brkeyed"; mkdir -p "$BK/.claude/config" "$BK/tickets/kyle/ENG-12 refi" "$BK/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BK/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: kyle\n' > "$BK/.claude/config/stack.yaml"
+printf '# ENG-12: Refi\n\nBody.\n' > "$BK/tickets/kyle/ENG-12 refi/README.md"
+( cd "$BK" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+  && git checkout -q -b ENG-12 ) 2>/dev/null
+out="$(cd "$BK" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BK" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$out" \
+  && ok "--branch still resolves a keyed branch (ENG-12)" \
+  || bad "keyed --branch regressed" "$out"
+
+# A trackerless repo has no key_prefix; neither reader may fall back to a bare "?".
+SB="$TMP/slugbanner/my-analysis-repo"; mkdir -p "$SB/.claude/config" "$SB/tickets/kyle/refi-sms-lift"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\nseams:\n  warehouse:\n    tool: snowflake\n' > "$SB/.claude/config/stack.yaml"
+o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$SB" python3 .claude/hooks/session_context.py 2>&1)"
+{ grep -q 'Stack (my-analysis-repo)' <<<"$o" && ! grep -q '?-tickets' <<<"$o"; } \
+  && ok "banner labels a prefix-free repo by its directory, not '?-tickets'" \
+  || bad "session banner shows a placeholder prefix on a trackerless repo" "$o"
+o="$(echo '{}' | CLAUDE_PROJECT_DIR="$SB" bash .claude/statusline.sh 2>&1)"
+{ grep -q 'my-analysis-repo' <<<"$o" && ! grep -q '⛭ ?' <<<"$o"; } \
+  && ok "statusline labels a prefix-free repo by its directory" \
+  || bad "statusline shows '?' on a trackerless repo" "$o"
+# Keyed banner unchanged.
+o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'Stack (ENG-tickets)' <<<"$o" \
+  && ok "keyed banner still reads '<PREFIX>-tickets'" || bad "keyed banner changed" "$o"
+# A keyed repo may configure ONLY the plural key_prefixes; it must still read as keyed rather than
+# falling through to the directory name (which is the trackerless signal).
+for shape in inline block; do
+  KP="$TMP/kp-$shape/keyed-repo"; mkdir -p "$KP/.claude/config"
+  if [ "$shape" = inline ]; then
+    printf 'project:\n  key_prefixes: [OPS, ENG]\n' > "$KP/.claude/config/stack.yaml"
+  else
+    printf 'project:\n  key_prefixes:\n    - OPS\n    - ENG\n' > "$KP/.claude/config/stack.yaml"
+  fi
+  o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KP" python3 .claude/hooks/session_context.py 2>&1)"
+  s="$(echo '{}' | CLAUDE_PROJECT_DIR="$KP" bash .claude/statusline.sh 2>&1)"
+  { grep -q 'Stack (OPS-tickets)' <<<"$o" && grep -q 'OPS' <<<"$s" && ! grep -q 'keyed-repo' <<<"$s"; } \
+    && ok "key_prefixes-only ($shape) still reads as keyed in banner + statusline" \
+    || bad "a key_prefixes-only keyed repo now looks trackerless ($shape)" "$o | $s"
+done
+# A ticket branch created before the first commit is an unborn branch; `rev-parse --abbrev-ref`
+# reports the literal "HEAD" there, so --branch could never resolve a fresh ticket branch.
+UB="$TMP/unborn"; mkdir -p "$UB/.claude/config" "$UB/tickets/kyle/refi-sms-lift" "$UB/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$UB/bin/"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$UB/.claude/config/stack.yaml"
+printf '# refi-sms-lift: R\n\nBody.\n' > "$UB/tickets/kyle/refi-sms-lift/README.md"
+( cd "$UB" && git init -q . && git checkout -q -b claude/refi-sms-lift ) 2>/dev/null
+out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$out" \
+  && ok "--branch resolves on an UNBORN branch (no commits yet)" \
+  || bad "--branch fails on a branch created before the first commit" "$out"
+# Detached HEAD must resolve nothing rather than guessing.
+( cd "$UB" && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m i && git checkout -q --detach HEAD ) 2>/dev/null
+out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'No ticket ids given' <<<"$out" \
+  && ok "--branch on a detached HEAD resolves nothing" \
+  || bad "--branch guessed an id on a detached HEAD" "$out"
+# ingest persists ticket_url into index_data.json, and a persisted URL WINS over a re-render — so a
+# wrong {number} there is permanent. A slug shaped like a key (`a-1`) must not become ticket 1.
+IU="$TMP/ingesturl"; mkdir -p "$IU/.claude/config" "$IU/tickets/kyle/a-1" "$IU/bin"
+cp bin/build_ticket_index.py bin/ingest_index_records.py "$IU/bin/"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_url_template: "https://x/browse/{number}"\n' > "$IU/.claude/config/stack.yaml"
+printf '# a-1: Looks like a key\n\nBody.\n' > "$IU/tickets/kyle/a-1/README.md"
+printf '{"records":[{"owner":"kyle","id":"a-1","summary":"s","status":"Completed","date":"2026-01-01"}]}' \
+  | CLAUDE_PROJECT_DIR="$IU" python3 "$IU/bin/ingest_index_records.py" --from-json - >/dev/null 2>&1
+grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/dev/null \
+  && bad "a slug shaped like a tracker key was persisted with {number}=1 (links to an unrelated ticket)" \
+  || ok "ingest does not invent a tracker number for a key-shaped slug id"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

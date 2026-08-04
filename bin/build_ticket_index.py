@@ -211,27 +211,58 @@ def key_regex(prefixes: list[str]) -> re.Pattern:
     return re.compile(r"[A-Z][A-Z0-9]+-\d+")  # generic fallback when stack.yaml is absent
 
 
+NEVER = re.compile(r"(?!x)x")   # matches nothing
+
+
+def id_key_regex(cfg: dict) -> re.Pattern:
+    """The pattern that decides which ids carry a tracker number.
+
+    In slug mode the answer is always "none of them". A folder name is free to look exactly like a
+    key (`a-1`), and a repo may still carry a stale `key_prefix` from before it went trackerless — so
+    the configured prefixes are not evidence that an id is keyed. Returning a never-matching pattern
+    is safe because slug mode uses `key_re` for nothing else: discovery matches `SLUG_ID`, and
+    cross-references are wiki-links.
+    """
+    return NEVER if cfg.get("id_mode") == "slug" else key_regex(cfg["prefixes"])
+
+
 def title_prefix_regex(prefixes: list[str]) -> re.Pattern:
     alt = "|".join(re.escape(p) for p in prefixes) if prefixes else r"[A-Z][A-Z0-9]+"
     return re.compile(rf"^(?:{alt})-\d+\S*\s*[:\-–—]\s*")
 
 
-def ticket_url(template: str | None, tid: str) -> str | None:
+def ticket_url(template: str | None, tid: str, key_re: re.Pattern | None = None) -> str | None:
     # {id} = full key (e.g. ENG-12); {number} = trailing integer (e.g. 12), for trackers whose
     # native id is a bare number (Azure Boards, GitHub Issues) even when folders use a prefix.
     if not template:
         return None
-    return template.replace("{id}", tid).replace("{number}", str(ticket_number(tid)))
+    return template.replace("{id}", tid).replace("{number}", str(ticket_number(tid, key_re)))
 
 
-def ticket_number(tid: str) -> int:
+def ticket_number(tid: str, key_re: re.Pattern | None = None) -> int:
+    """The integer part of a tracker key, or 0 when the id isn't one.
+
+    Pass `key_re` (from `key_regex`) to make this strict: the id must *fully* match it to have a
+    number. That matters because a bare `re.search` for `-\\d+` finds digits anywhere, so a slug id
+    like `refi-sms-lift-2024` reads as ticket 2024 and sorts among real keys.
+
+    `key_re` rather than a shape test or a mode flag, because it is already the authority on what a
+    keyed id looks like. No hardcoded shape can do the job: a configured prefix may contain `_` or
+    `-` or start with a digit (`ACME_US-42`, `ACME-WEST-42`, `1ENG-42`), while a slug is free to look
+    exactly like a key (`a-1`). Only the configured prefixes distinguish them.
+
+    Omitting `key_re` keeps the original loose behavior, so callers that don't have one are unchanged.
+    """
+    if key_re is not None and not key_re.fullmatch(tid):
+        return 0
     m = re.search(r"-(\d+)", tid)
     return int(m.group(1)) if m else 0
 
 
-def ref_key(tid: str):
-    """Total order for tracker keys (number then full id, so ENG-12 vs OPS-12 are stable)."""
-    return (ticket_number(tid), tid)
+def ref_key(tid: str, key_re: re.Pattern | None = None):
+    """Total order for ids: tracker number first (so ENG-12 vs OPS-12 is stable), then the id
+    itself — which is what orders slug ids, since they all score 0."""
+    return (ticket_number(tid, key_re), tid)
 
 
 def sha256_file(path: Path) -> str | None:
@@ -363,7 +394,8 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
     now requires an author to have actually written a link, and cannot be manufactured by prose.
     """
     if id_mode != "slug":
-        return sorted({r for r in key_re.findall(text) if r != self_id}, key=ref_key)
+        return sorted({r for r in key_re.findall(text) if r != self_id},
+                      key=lambda i: ref_key(i, key_re))
 
     known = {i for i in (known_ids or ()) if i != self_id}
     if not known:
@@ -378,7 +410,7 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
         t = t[:-3] if t.endswith(".md") else t
         if t in known:
             found.add(t)
-    return sorted(found, key=ref_key)
+    return sorted(found, key=lambda i: ref_key(i, key_re))
 
 
 def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Pattern,
@@ -464,7 +496,7 @@ def find_orphans(root: Path, rows: list[dict]) -> list[str]:
 
 def build_rows(root: Path) -> list[dict]:
     cfg = load_config(root)
-    key_re = key_regex(cfg["prefixes"])
+    key_re = id_key_regex(cfg)
     title_re = title_prefix_regex(cfg["prefixes"])
     data = load_data(root)
     rows = []
@@ -506,7 +538,7 @@ def build_rows(root: Path) -> list[dict]:
             if isinstance(o, str) and o.strip():
                 obj_map.setdefault(o.strip().lower(), o.strip())
         objects = sorted(obj_map.values(), key=str.lower)
-        url = (entry or {}).get("ticket_url") or (entry or {}).get("jira_url") or ticket_url(cfg["url_template"], tid)
+        url = (entry or {}).get("ticket_url") or (entry or {}).get("jira_url") or ticket_url(cfg["url_template"], tid, key_re)
         rel = d.relative_to(root / "tickets").as_posix()
         link = quote(readme.relative_to(root / "tickets").as_posix()) if readme else quote(rel) + "/"
 
@@ -515,7 +547,7 @@ def build_rows(root: Path) -> list[dict]:
             "summary": summary, "tags": tags, "cross_refs": cross_refs, "objects": objects, "url": url,
             "link": link, "enriched": enriched, "stale": stale, "has_readme": bool(readme),
         })
-    rows.sort(key=lambda r: ((r["date"] or "0000-00-00"), ticket_number(r["id"]), r["id"], r["owner"]), reverse=True)
+    rows.sort(key=lambda r: ((r["date"] or "0000-00-00"), ticket_number(r["id"], key_re), r["id"], r["owner"]), reverse=True)
     return rows
 
 
@@ -578,7 +610,8 @@ def render(rows: list[dict]) -> str:
     return "\n".join(out)
 
 
-def render_objects(rows: list[dict], collapse_threshold: int = 150) -> str:
+def render_objects(rows: list[dict], collapse_threshold: int = 150,
+                   key_re: re.Pattern | None = None) -> str:
     """Reverse index: data object → tickets that touched it. Deterministic, byte-stable.
     Above collapse_threshold distinct objects, single-ticket objects move to a compact appendix so the
     shared-object table stays scannable — the full data still lives in index_data.json + the appendix."""
@@ -607,7 +640,7 @@ def render_objects(rows: list[dict], collapse_threshold: int = 150) -> str:
         return "\n".join(out)
 
     def cells_for(slot):
-        ts = sorted(slot["tickets"], key=lambda r: (ref_key(r["id"]), r["owner"]))
+        ts = sorted(slot["tickets"], key=lambda r: (ref_key(r["id"], key_re), r["owner"]))
         return ts, ", ".join(f"[{t['id']}]({t['link']})" for t in ts)
 
     collapse = len(obj) > collapse_threshold
@@ -633,12 +666,13 @@ def object_filename(obj: str) -> str:
     return re.sub(r"[:\\/]", ".", obj) + ".md"
 
 
-def graph_stub(tid: str, rows: list, valid_ids: set, canon: dict) -> str:
+def graph_stub(tid: str, rows: list, valid_ids: set, canon: dict,
+               key_re: re.Pattern | None = None) -> str:
     """One id-labeled Obsidian graph node per ticket. rows = all rows sharing this id (usually one)."""
     r0 = rows[0]
     owners = ", ".join(sorted({r["owner"] for r in rows}))
     objects = sorted({canon.get(o.lower(), o) for r in rows for o in r["objects"]}, key=str.lower)
-    refs = sorted({x for r in rows for x in r["cross_refs"]}, key=ref_key)
+    refs = sorted({x for r in rows for x in r["cross_refs"]}, key=lambda i: ref_key(i, key_re))
     obj_cells = ", ".join(f"[`{o}`](../objects/{object_filename(o)})" for o in objects) or "(none)"
     out = [f"# {tid}: {md_escape(r0['title'])}", "",
            f"`{owners}` · {r0['status']} · {r0['date'] or '—'}", "",
@@ -655,18 +689,18 @@ def graph_stub(tid: str, rows: list, valid_ids: set, canon: dict) -> str:
     return "\n".join(out)
 
 
-def graph_object_note(obj: str, tickets: list) -> str:
+def graph_object_note(obj: str, tickets: list, key_re: re.Pattern | None = None) -> str:
     """One node per data object; links the ticket stubs (../graph/<id>.md). tickets = (id, title, date)."""
     schema = obj.split(".")[0] if "." in obj else "object"
     out = [f"# {obj}", "", f"> `{schema}` layer. Touched by **{len(tickets)}** ticket(s).", ""]
-    for tid, title, date in sorted(tickets, key=lambda t: ((t[2] or "0000-00-00"), ref_key(t[0]))):
+    for tid, title, date in sorted(tickets, key=lambda t: ((t[2] or "0000-00-00"), ref_key(t[0], key_re))):
         suffix = f" - {md_escape(title)}" if title and title != tid else ""
         out.append(f"- [{tid}](../graph/{tid}.md){suffix} ({date or '—'})")
     out += ["", "<!-- generated graph node - regenerated by build_ticket_index.py; do not edit -->", ""]
     return "\n".join(out)
 
 
-def render_graph_layer(rows: list, root: Path) -> dict:
+def render_graph_layer(rows: list, root: Path, key_re: re.Pattern | None = None) -> dict:
     """Return {Path: content} for tickets/graph/*.md + tickets/objects/*.md. Deterministic."""
     gdir, odir = root / "tickets" / "graph", root / "tickets" / "objects"
     by_tid: dict = {}
@@ -683,9 +717,10 @@ def render_graph_layer(rows: list, root: Path) -> dict:
     canon = {k: v["label"] for k, v in objmap.items()}  # lower(obj) -> canonical display label
     fresh: dict = {}
     for tid, rs in by_tid.items():
-        fresh[gdir / f"{tid}.md"] = graph_stub(tid, rs, valid_ids, canon)
+        fresh[gdir / f"{tid}.md"] = graph_stub(tid, rs, valid_ids, canon, key_re)
     for slot in objmap.values():
-        fresh[odir / object_filename(slot["label"])] = graph_object_note(slot["label"], list(slot["tids"].values()))
+        fresh[odir / object_filename(slot["label"])] = graph_object_note(
+            slot["label"], list(slot["tids"].values()), key_re)
     return fresh
 
 
@@ -779,13 +814,14 @@ def main() -> int:
 
     root = repo_root()
     cfg = load_config(root)
+    key_re = id_key_regex(cfg)   # the authority on which ids carry a tracker number
     rows = build_rows(root)
     tickets_dir = root / "tickets"
     index_path, objects_path = tickets_dir / "INDEX.md", tickets_dir / "OBJECTS.md"
-    fresh = {index_path: render(rows), objects_path: render_objects(rows)}
+    fresh = {index_path: render(rows), objects_path: render_objects(rows, key_re=key_re)}
     graph_dirs = [tickets_dir / "graph", tickets_dir / "objects"]  # always tracked, so disabling cleans up the old layer
     if cfg.get("graph_notes", True):
-        fresh.update(render_graph_layer(rows, root))
+        fresh.update(render_graph_layer(rows, root, key_re))
 
     if args.prune:
         orph = find_orphans(root, rows)

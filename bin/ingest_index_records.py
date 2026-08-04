@@ -23,7 +23,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from build_ticket_index import discover, repo_root, sha256_file, ref_key, load_config, ticket_url
+from build_ticket_index import (discover, repo_root, sha256_file, ref_key, load_config,
+                               ticket_url, id_key_regex)
 
 VALID_STATUS = {"Completed", "Deployed", "In Review", "In Progress", "Blocked", "Unknown"}
 
@@ -87,7 +88,11 @@ def main() -> int:
 
     root = repo_root()
     dirs = {(t["owner"], t["id"]): t for t in discover(root)}
-    url_template = load_config(root)["url_template"]
+    _cfg = load_config(root)
+    url_template = _cfg["url_template"]
+    # The configured prefixes decide which ids carry a tracker number; without this a slug like
+    # `a-1` would be persisted with {number}=1, pointing at an unrelated real ticket.
+    key_re = id_key_regex(_cfg)
 
     store_path = root / "tickets" / "index_data.json"
     store: dict[tuple[str, str], dict] = {}
@@ -112,7 +117,8 @@ def main() -> int:
         owner, tid = str(owner), str(tid)
         readme = loc["readme"]
         status = r.get("status") if r.get("status") in VALID_STATUS else "Unknown"
-        refs = sorted({c for c in _as_list(r.get("cross_refs")) if c != tid}, key=ref_key)
+        refs = sorted({c for c in _as_list(r.get("cross_refs")) if c != tid},
+                      key=lambda i: ref_key(i, key_re))
         rec = {
             "id": tid,
             "owner": owner,
@@ -127,14 +133,14 @@ def main() -> int:
             "readme_present": bool(readme),
             "readme_hash": sha256_file(readme) if readme else None,
         }
-        url = r.get("ticket_url") or r.get("jira_url") or ticket_url(url_template, tid)
+        url = r.get("ticket_url") or r.get("jira_url") or ticket_url(url_template, tid, key_re)
         if url:
             rec["ticket_url"] = url
         store[(owner, tid)] = rec
         upserted += 1
 
     tickets = sorted(store.values(),
-                     key=lambda t: ((t.get("date") or "0000-00-00"), ref_key(t["id"]), t["owner"]),
+                     key=lambda t: ((t.get("date") or "0000-00-00"), ref_key(t["id"], key_re), t["owner"]),
                      reverse=True)
     payload = json.dumps({"schema_version": 1, "tickets": tickets}, indent=2, ensure_ascii=False) + "\n"
     store_path.parent.mkdir(parents=True, exist_ok=True)

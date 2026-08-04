@@ -137,8 +137,14 @@ def seam_tools(text: str, seam: str) -> list[str]:
 def scan_stack(stack: Path) -> dict:
     text = stack.read_text(errors="replace")
     out = {}
+    # None, not "?": a trackerless (id_mode: slug) repo has no prefix, and the caller labels the
+    # workspace by its directory instead of printing "?-tickets". `key_prefixes` is checked too —
+    # a keyed repo may configure only the plural form, and it should still read as keyed.
     m = re.search(r"^\s*key_prefix:\s*([A-Za-z0-9_-]+)", text, re.MULTILINE)
-    out["key_prefix"] = m.group(1) if m else "?"
+    if not m:
+        m = re.search(r"^\s*key_prefixes:\s*\[\s*[\"']?([A-Za-z0-9_-]+)", text, re.MULTILINE) \
+            or re.search(r"^\s*key_prefixes:\s*\n\s*-\s*[\"']?([A-Za-z0-9_-]+)", text, re.MULTILINE)
+    out["key_prefix"] = m.group(1) if m else None
     for seam in ("tracker", "warehouse", "chat", "docstore", "vcs"):
         tools = seam_tools(text, seam)
         # A multi-target seam renders as "a+b" (default first) so no target is hidden.
@@ -165,7 +171,8 @@ def main() -> int:
 
     lines = [
         "## Ticketwright — session context",
-        f"Stack ({s['key_prefix']}-tickets): tracker={s['tracker']} · warehouse={s['warehouse']} · "
+        f"Stack ({s['key_prefix'] + '-tickets' if s['key_prefix'] else root.name}): "
+        f"tracker={s['tracker']} · warehouse={s['warehouse']} · "
         f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}.",
         "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",
     ]

@@ -24,7 +24,7 @@ import math
 import re
 import sys
 
-from build_ticket_index import repo_root, build_rows, ticket_number
+from build_ticket_index import repo_root, build_rows, ticket_number, id_key_regex, load_config
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "by", "with", "from", "into",
@@ -93,10 +93,12 @@ def score_candidate(q_tokens, q_tags, q_objects, seed_id, seed_refs, r, weights,
     return score, obj_hits, tag_hits, kw_hits, ref_link
 
 
-def sort_key(item):
+def sort_key(item, key_re=None):
     # self-contained total order: score, then date, ticket number, id, owner — all desc.
+    # key_re makes the number strict, so slug ids don't get a phantom numeric tie-break and
+    # ranking stays consistent with INDEX.md.
     s, r, _why = item
-    return (s, r["date"] or "0000-00-00", ticket_number(r["id"]), r["id"], r["owner"])
+    return (s, r["date"] or "0000-00-00", ticket_number(r["id"], key_re), r["id"], r["owner"])
 
 
 def verdict_line(top) -> str:
@@ -119,7 +121,7 @@ def verdict_line(top) -> str:
     return f"verdict: {v}. (You may skip reading candidates when weak/none.)"
 
 
-def run_query(args, rows, df_map, n_docs) -> int:
+def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
     q_tokens, q_tags, q_objects = tokenize(args.query), ci(args.tags.split(",")), ci([args.object] if args.object else [])
     seed_id, seed_owner, seed_refs = None, None, set()
     if args.seed:
@@ -159,7 +161,7 @@ def run_query(args, rows, df_map, n_docs) -> int:
         if kw_hits and not reverse_only: why.append(f"kw:{min(len(kw_hits), KEYWORD_CAP)}")
         scored.append((score, r, why))
 
-    scored.sort(key=sort_key, reverse=True)
+    scored.sort(key=lambda it: sort_key(it, key_re), reverse=True)
     if args.min_score:
         scored = [x for x in scored if x[0] >= args.min_score]
     top = scored[: args.top]
@@ -190,7 +192,7 @@ def run_query(args, rows, df_map, n_docs) -> int:
     return 0
 
 
-def run_eval(rows, df_map, n_docs, weights, top_k=5) -> dict:
+def run_eval(rows, df_map, n_docs, weights, top_k=5, key_re=None) -> dict:
     """Hold out each ticket's curated cross_refs and measure whether recall predicts them. The cross-ref
     signal is DISABLED (allow_ref=False) so the labels can't leak into scoring."""
     ids_present = {r["id"].lower() for r in rows}
@@ -209,7 +211,7 @@ def run_eval(rows, df_map, n_docs, weights, top_k=5) -> dict:
             score, *_ = score_candidate(q_tokens, q_tags, q_objects, None, set(), r, weights,
                                         allow_ref=False, df_map=df_map, n_docs=n_docs)
             ranked.append((score, r, []))
-        ranked.sort(key=sort_key, reverse=True)
+        ranked.sort(key=lambda it: sort_key(it, key_re), reverse=True)
         ordered = [r["id"].lower() for _s, r, _w in ranked]
         first = next((i + 1 for i, x in enumerate(ordered) if x in relevant), None)
         if first:
@@ -242,11 +244,13 @@ def main() -> int:
     ap.add_argument("--sweep", action="store_true", help="with --eval: print MRR under several weight settings")
     args = ap.parse_args()
 
-    rows = build_rows(repo_root())
+    root = repo_root()
+    rows = build_rows(root)
+    key_re = id_key_regex(load_config(root))
     df_map, n_docs = object_df(rows), len(rows)
 
     if args.eval:
-        base = run_eval(rows, df_map, n_docs, DEFAULT_WEIGHTS)
+        base = run_eval(rows, df_map, n_docs, DEFAULT_WEIGHTS, key_re=key_re)
         if not base.get("labeled"):
             print("recall --eval: no tickets have cross_refs resolving in-corpus — nothing to score.")
             return 0
@@ -257,11 +261,11 @@ def main() -> int:
             for w in ({"obj": 4, "tag": 3, "ref": 5, "kw": 1}, {"obj": 4, "tag": 1, "ref": 5, "kw": 1},
                       {"obj": 4, "tag": 5, "ref": 5, "kw": 1}, {"obj": 4, "tag": 3, "ref": 5, "kw": 2},
                       {"obj": 0, "tag": 3, "ref": 5, "kw": 1}, {"obj": 4, "tag": 0, "ref": 5, "kw": 0}):
-                m = run_eval(rows, df_map, n_docs, w)
+                m = run_eval(rows, df_map, n_docs, w, key_re=key_re)
                 print(f"  ({w['obj']},{w['tag']},{w['ref']},{w['kw']}) -> MRR {m['mrr']:.3f}")
         return 0
 
-    return run_query(args, rows, df_map, n_docs)
+    return run_query(args, rows, df_map, n_docs, key_re)
 
 
 if __name__ == "__main__":

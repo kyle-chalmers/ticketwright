@@ -101,16 +101,35 @@ def main() -> int:
 
     ids = list(args.ids)
     if args.branch:
-        try:
-            br = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                                capture_output=True, text=True, cwd=root).stdout
-            m = key_regex(load_config(root)["prefixes"]).search(br)
+        # `symbolic-ref` rather than `rev-parse --abbrev-ref`: on a branch with no commits yet
+        # rev-parse returns the literal string "HEAD", so a freshly created ticket branch could
+        # never resolve. symbolic-ref reports the real name, and stays empty on a detached HEAD.
+        br = ""
+        for cmd in (["git", "symbolic-ref", "--short", "-q", "HEAD"],
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"]):
+            try:
+                got = subprocess.run(cmd, capture_output=True, text=True, cwd=root).stdout.strip()
+            except OSError:
+                got = ""
+            if got and got != "HEAD":
+                br = got
+                break
+        cfg = load_config(root)
+        if cfg["id_mode"] == "slug":
+            # A slug has no distinguishing shape, so match by identity against the ids actually on
+            # disk instead of by pattern. Try the whole branch name and its last path segment, so
+            # both `refi-sms-lift` and `claude/refi-sms-lift` resolve.
+            known = {i for (_, i) in locs_by_owner_id}
+            for cand in (br, br.rsplit("/", 1)[-1]):
+                if cand in known:
+                    ids.append(cand)
+                    break
+        else:
+            m = key_regex(cfg["prefixes"]).search(br)
             if m:
                 ids.append(m.group(0))
-        except OSError:
-            pass
     if not ids:
-        sys.exit("No ticket ids given. Pass ids (e.g. ENG-123) or --branch.")
+        sys.exit("No ticket ids given. Pass a ticket id (or folder name) or --branch.")
 
     targets = []
     for tid in ids:
