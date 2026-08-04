@@ -1040,5 +1040,160 @@ o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$MTP" pytho
 grep -q 'warehouse=databricks+snowflake' <<<"$o" \
   && ok "banner puts the DEFAULT target first, not the file's first" || bad "banner ignores the default: pointer" "$o"
 
+hdr "25 · id_mode: slug (folder name IS the ticket id; no tracker required)"
+S="$TMP/slugmode"; mkdir -p "$S/.claude/config" "$S/bin"
+cp bin/build_ticket_index.py "$S/bin/"
+cat > "$S/.claude/config/stack.yaml" <<'EOF'
+project:
+  assignee_dir: kyle
+  id_mode: slug
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_url_template: null
+EOF
+mkdir -p "$S/tickets/kyle/refi-sms-lift-analysis" "$S/tickets/kyle/bounce-placement-audit" "$S/tickets/kyle/notes" "$S/tickets/kyle/data-quality"
+# Ordinary prose, deliberately loaded with hyphenated words. NONE may become a cross-reference:
+# that is the whole reason discovery and reference-resolution can't share one pattern.
+cat > "$S/tickets/kyle/refi-sms-lift-analysis/README.md" <<'EOF'
+# refi-sms-lift-analysis: Refi SMS incremental lift
+
+We ran a well-designed hold-out test on the refi-eligible population. The follow-up
+data-quality review was end-to-end and covered opt-in state, do-not-contact flags and
+long-standing send-time issues. See my notes for the day-by-day breakdown; the
+first-touch attribution model is unchanged.
+EOF
+# Genuine references, in the two explicit forms plus a self-mention that must not count.
+cat > "$S/tickets/kyle/bounce-placement-audit/README.md" <<'EOF'
+# bounce-placement-audit: Bounce file placement
+
+Follows on from [[refi-sms-lift-analysis]] and also [[notes]].
+Self-link [[bounce-placement-audit]] must not become a self-reference.
+An escaped \\[[notes]] is literal text, not a link.
+Nor is an example in code: `[[refi-sms-lift-analysis]]`.
+EOF
+CLAUDE_PROJECT_DIR="$S" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q 'refi-sms-lift-analysis' "$S/tickets/INDEX.md" 2>/dev/null \
+  && ok "slug mode: a folder with no tracker key IS catalogued" \
+  || bad "slug mode: slug folder never reached INDEX.md"
+# The load-bearing assertion for this whole mode.
+refs="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY'
+import os, pathlib, sys
+sys.path.insert(0, "bin")
+from build_ticket_index import build_rows
+rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
+print("PROSE=" + ",".join(rows["refi-sms-lift-analysis"]["cross_refs"]))
+print("REAL=" + ",".join(rows["bounce-placement-audit"]["cross_refs"]))
+print("TITLE=" + (rows["refi-sms-lift-analysis"]["title"] or ""))
+PY
+)"
+grep -q '^PROSE=$' <<<"$refs" \
+  && ok "slug mode: prose-only README yields ZERO cross-refs (hyphenated words aren't ids)" \
+  || bad "slug mode: ordinary prose became cross-references" "$refs"
+grep -q '^REAL=notes,refi-sms-lift-analysis$' <<<"$refs" \
+  && ok "slug mode: wiki-links resolve; escaped and code examples do not; no self-reference" \
+  || bad "slug mode: explicit references did not resolve as expected" "$refs"
+grep -q '^TITLE=Refi SMS incremental lift$' <<<"$refs" \
+  && ok "slug mode: H1 id prefix stripped from the title" \
+  || bad "slug mode: title still carries its slug prefix" "$refs"
+# SLUG_ID must reject ids that aren't safe as a git branch name (git rejects a..b, trailing '.', .lock).
+python3 - <<'PY2'
+import sys; sys.path.insert(0, "bin")
+from build_ticket_index import SLUG_ID
+bad_ids = ["a..b", "foo.", "foo.lock", ".hidden", "..", "Has-Upper", "has space", "-leading"]
+good_ids = ["refi-sms-lift-analysis", "notes", "a1", "x_y-z"]
+assert not any(SLUG_ID.match(b) for b in bad_ids), [b for b in bad_ids if SLUG_ID.match(b)]
+assert all(SLUG_ID.match(g) for g in good_ids), [g for g in good_ids if not SLUG_ID.match(g)]
+PY2
+[ $? -eq 0 ] && ok "SLUG_ID rejects branch-unsafe ids, accepts ordinary slugs" \
+  || bad "SLUG_ID admits an id that is unsafe as a git branch/filename"
+# Two folders reducing to one id must be reported, not silently dropped.
+mkdir -p "$S/tickets/kyle/dupe" "$S/tickets/kyle/☑️ dupe"
+warn="$(CLAUDE_PROJECT_DIR="$S" python3 bin/build_ticket_index.py 2>&1 >/dev/null)"
+grep -q 'two folders map to one id' <<<"$warn" \
+  && ok "colliding folder names are reported on stderr, not silently dropped" \
+  || bad "an on-disk ticket vanished from the catalog with no explanation" "$warn"
+rm -rf "$S/tickets/kyle/dupe" "$S/tickets/kyle/☑️ dupe"
+# Only a [[wiki-link]] is a reference. These constructs each defeated an earlier, looser attempt
+# (pattern-matched links, then filesystem-resolved destinations); none of them may create an edge.
+cat > "$S/tickets/kyle/data-quality/README.md" <<'EOF'
+# data-quality: Field null-rate review
+
+![diagram](/assets/notes)
+An [external](https://example.com/notes) link and an [absolute](/var/tmp/notes) one.
+\](notes) and a bare ](notes) are not links.
+Inline `` [[notes]] `` is an example, not a link.
+
+~~~
+[[notes]]
+~~~
+EOF
+refs2="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY2'
+import os, pathlib, sys
+sys.path.insert(0, "bin")
+from build_ticket_index import build_rows
+rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
+print("DQ=" + ",".join(rows["data-quality"]["cross_refs"]))
+PY2
+)"
+# KNOWN LIMITATION, deliberate: a wiki-link inside an INDENTED code block (4 spaces) still counts.
+# Treating every 4-space line as code silently dropped real links in list continuations, which is the
+# worse failure for this payload. Fenced and inline code — how examples are actually written — are
+# stripped. If this ever bites, fence the example.
+grep -q '^DQ=$' <<<"$refs2" \
+  && ok "slug mode: images, external URLs, absolute paths and fenced/inline code yield no references" \
+  || bad "a non-reference markdown construct became a cross-reference" "$refs2"
+# A markdown link destination is deliberately NOT a reference: only a [[wiki-link]] is. Three
+# attempts at honouring destinations (by pattern, then by resolving them on disk) each leaked a new
+# markdown construct, for a payload whose worst case is a spurious OBJECTS.md row.
+cat > "$S/tickets/kyle/data-quality/README.md" <<'EOF'
+# data-quality: Field null-rate review
+
+Detail in [the notes](../notes/README.md#summary), see also [go][k].
+[k]: ../refi-sms-lift-analysis/
+
+The wiki-link [[notes]] is what actually creates an edge.
+EOF
+refs3="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY3'
+import os, pathlib, sys
+sys.path.insert(0, "bin")
+from build_ticket_index import build_rows
+rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
+print("DQ=" + ",".join(rows["data-quality"]["cross_refs"]))
+PY3
+)"
+grep -q '^DQ=notes$' <<<"$refs3" \
+  && ok "slug mode: only wiki-links count — markdown destinations are not references" \
+  || bad "markdown link destinations leaked back in as references" "$refs3"
+# _strip_code is a line scanner, not a regex, because fences nested in a blockquote/list and a
+# closing fence LONGER than its opener each defeated a regex attempt. The second case matters most:
+# it used to swallow the rest of the README, losing genuine links.
+python3 - <<'PY2'
+import sys; sys.path.insert(0, "bin")
+from build_ticket_index import resolve_cross_refs, key_regex
+kr, known = key_regex([]), {"notes"}
+def r(x): return resolve_cross_refs(x, "self", kr, "slug", known)
+checks = [
+    ("> ~~~\n> [[notes]]\n> ~~~\n",            []),          # fence inside a blockquote
+    ("- ```\n  [[notes]]\n  ```\n",            []),          # fence inside a list item
+    ("~~~\ncode\n~~~~\nThen [[notes]].",       ["notes"]),   # closer longer than opener
+    ("```\n[[notes]]\n",                        []),          # unclosed fence blanks to EOF
+    ("[[\n  notes\n]]",                         []),          # not a single-line wiki-link
+    ("- parent\n\n    [[notes]]\n",            ["notes"]),   # list continuation is NOT code
+]
+for text, want in checks:
+    got = r(text)
+    assert got == want, (text, got, want)
+PY2
+[ $? -eq 0 ] && ok "code-stripping handles nested/oversized/unclosed fences without losing real links" \
+  || bad "_strip_code mishandled a fence form (stray edge, or a real link swallowed)"
+# keyed mode must NOT pick these up — that is what keeps adhoc-*/scratch-* folders out of the catalog.
+K="$TMP/keyedmode"; mkdir -p "$K/.claude/config" "$K/bin" "$K/tickets/kyle/refi-sms-lift-analysis"
+cp bin/build_ticket_index.py "$K/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: kyle\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$K/.claude/config/stack.yaml"
+printf '# refi-sms-lift-analysis: nope\n\nScratch work, not a ticket.\n' > "$K/tickets/kyle/refi-sms-lift-analysis/README.md"
+CLAUDE_PROJECT_DIR="$K" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q 'refi-sms-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
+  && bad "keyed mode catalogued a keyless folder (scratch dirs would flood INDEX.md)" \
+  || ok "keyed mode still skips keyless folders (default behavior unchanged)"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

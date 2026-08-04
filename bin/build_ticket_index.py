@@ -8,10 +8,14 @@ write, so the LLM-authored fields (summary / status / best-date / tags) live in
 refreshed per ticket at close. This script only *renders* that data and keeps the catalog
 complete: every ticket folder on disk gets a row, enriched or not.
 
-A "ticket" is any immediate sub-folder of `tickets/<owner>/` whose name contains a tracker
-key — the prefixes come from `.claude/config/stack.yaml` (`key_prefixes`, else `key_prefix`;
-default: any `LETTERS-digits`). Emoji-prefixed names like "☑️ ENG-12_thing" work too. Folders
-with no tracker key (adhoc-*, scratch-*, ℹ️ …) are reference/scratch work and are skipped.
+What counts as a "ticket" depends on `project.id_mode` in `.claude/config/stack.yaml`:
+
+  keyed (default) — any immediate sub-folder of `tickets/<owner>/` whose name contains a tracker
+    key; the prefixes come from `key_prefixes`, else `key_prefix` (default: any `LETTERS-digits`).
+    Emoji-prefixed names like "☑️ ENG-12_thing" work too. Folders with no tracker key (adhoc-*,
+    scratch-*, ℹ️ …) are reference/scratch work and are skipped.
+  slug — the folder NAME is the id, for repos with no tracker at all. Cross-references are then
+    only `[[wiki-links]]`, never bare prose (see resolve_cross_refs).
 
 Usage:
   build_ticket_index.py            # (re)write tickets/INDEX.md
@@ -98,7 +102,8 @@ def _yaml_list(text: str, key: str) -> list[str]:
 
 def load_config(root: Path) -> dict:
     """Read the few fields the index needs from stack.yaml (stdlib regex; no YAML dep)."""
-    cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True, "ticket_subdirs": []}
+    cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True,
+           "ticket_subdirs": [], "id_mode": "keyed"}
     f = root / ".claude" / "config" / "stack.yaml"
     if not f.is_file():
         return cfg
@@ -138,7 +143,66 @@ def load_config(root: Path) -> dict:
     if m and m.group(1).strip().strip("\"'").lower() in ("false", "no", "off", "0"):
         cfg["graph_config"] = False
     cfg["ticket_subdirs"] = _yaml_list(text, "ticket_subdirs")
+    # id_mode: `keyed` (default) = folder names carry a tracker key like ENG-1234.
+    #          `slug`            = the folder name IS the id, for repos with no tracker at all.
+    m = re.search(r"^\s*id_mode:\s*[\"']?([A-Za-z_-]+)", text, re.MULTILINE)
+    if m and m.group(1).strip().lower() == "slug":
+        cfg["id_mode"] = "slug"
     return cfg
+
+
+# A slug id is the whole folder name: lowercase, digit- or letter-initial, no spaces. Restrictive on
+# purpose — the id doubles as a git branch name, a filename and a wiki-link target. Dots are excluded
+# rather than allowed-and-filtered: `git check-ref-format` rejects `a..b`, a trailing `.`, and a
+# `.lock` suffix, and excluding `.` outright rules out all three without special cases.
+SLUG_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+# A wiki-link shown as an example is not a reference, so code gets blanked before scanning.
+_INLINE_CODE = re.compile(r"(`+)[\s\S]*?\1")
+# Leading blockquote markers and list bullets, so a fence nested in either is still seen as a fence.
+_CONTAINER_PREFIX = re.compile(r"^[ \t]*(?:>[ \t]*)*(?:[-*+][ \t]+|\d+[.)][ \t]+)?")
+_FENCE_MARK = re.compile(r"([`~])\1{2,}")
+
+
+def _strip_code(text: str) -> str:
+    """Blank out code spans and fenced blocks so an example wiki-link isn't read as a reference.
+
+    A line scanner rather than a regex: it handles fences of either character and any length, a
+    closing fence longer than its opener, an unclosed fence (blanks to end of file), and fences
+    nested inside a blockquote or list item — each of which defeated a separate regex attempt.
+
+    Deliberately a heuristic, not a Markdown parser. Indented code blocks are **not** stripped: four
+    leading spaces is far more often list-continuation or a wrapped line than code, and treating it
+    as code silently drops real links. The asymmetry is intentional — for a payload whose cost is one
+    row in `OBJECTS.md`, missing a real edge is worse than keeping a stray one.
+    """
+    out: list[str] = []
+    fence: tuple[str, int] | None = None
+    for ln in text.splitlines():
+        body = _CONTAINER_PREFIX.sub("", ln)
+        m = _FENCE_MARK.match(body)
+        if fence is None:
+            if m:
+                fence = (m.group(1), len(m.group(0)))
+                out.append("")
+            else:
+                out.append(_INLINE_CODE.sub(" ", ln))
+        else:
+            char, length = fence
+            closes = (m and m.group(1) == char and len(m.group(0)) >= length
+                      and not body[len(m.group(0)):].strip())
+            if closes:
+                fence = None
+            out.append("")
+    return "\n".join(out)
+
+
+def strip_status_emoji(name: str) -> tuple[str, str | None]:
+    """Split a leading status emoji off a folder name → (remainder, mapped status or None)."""
+    for k, v in EMOJI_STATUS.items():
+        if name.startswith(k):
+            return name[len(k):].strip(), v
+    return name, None
 
 
 def key_regex(prefixes: list[str]) -> re.Pattern:
@@ -222,14 +286,22 @@ def find_readme(ticket_dir: Path, subdirs: list[str] | None = None) -> Path | No
     return hits[0] if hits else None
 
 
-def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | None = None) -> list[dict]:
-    """Every tracker-keyed ticket folder, one level under tickets/<owner>/. Cheap (few file reads)."""
-    if key_re is None or subdirs is None:
+def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | None = None,
+             id_mode: str | None = None) -> list[dict]:
+    """Every ticket folder, one level under tickets/<owner>/. Cheap (few file reads).
+
+    In `keyed` mode a folder qualifies by containing a tracker key, and the *matched key* is the id
+    (so `☑️ ENG-12 refi lift` → `ENG-12`). In `slug` mode the whole folder name is the id, so a repo
+    with no tracker at all still gets a catalog.
+    """
+    if key_re is None or subdirs is None or id_mode is None:
         cfg = load_config(root)
         if key_re is None:
             key_re = key_regex(cfg["prefixes"])
         if subdirs is None:
             subdirs = cfg["ticket_subdirs"]
+        if id_mode is None:
+            id_mode = cfg["id_mode"]
     out: dict[tuple[str, str], dict] = {}
     tickets = root / "tickets"
     if not tickets.is_dir():
@@ -237,11 +309,25 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
     for owner_dir in sorted(p for p in tickets.iterdir() if p.is_dir()):
         owner = owner_dir.name
         for d in sorted(p for p in owner_dir.iterdir() if p.is_dir()):
-            m = key_re.search(d.name)
-            if not m:
-                continue
-            tid = m.group(0)
-            emoji = next((v for k, v in EMOJI_STATUS.items() if d.name.startswith(k)), None)
+            bare, emoji = strip_status_emoji(d.name)
+            if id_mode == "slug":
+                if not SLUG_ID.match(bare):
+                    continue
+                tid = bare
+            else:
+                m = key_re.search(d.name)
+                if not m:
+                    continue
+                tid = m.group(0)
+            # Two folders can reduce to one id — `foo` and `☑️ foo`. The later one wins
+            # (deterministic by sort order), but say so, or a ticket that exists on disk just isn't in
+            # the catalog with nothing to explain why. Slug mode only: keyed mode has always collapsed
+            # `ENG-12 a` / `ENG-12 b` silently and this change promises keyed behaviour is untouched.
+            prior = out.get((owner, tid))
+            if prior is not None and id_mode == "slug":
+                print(f"build_ticket_index: {owner}/{tid}: two folders map to one id — "
+                      f"'{prior['dir'].name}' and '{d.name}'; using the latter",
+                      file=sys.stderr)
             out[(owner, tid)] = {
                 "owner": owner, "id": tid, "dir": d,
                 "readme": find_readme(d, subdirs), "emoji_status": emoji,
@@ -249,7 +335,54 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
     return list(out.values())
 
 
-def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Pattern) -> dict:
+def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
+                       id_mode: str = "keyed", known_ids: set[str] | None = None) -> list[str]:
+    """The ticket ids a README references.
+
+    Discovery and cross-reference resolution look like one job and are not — this is the one place
+    where sharing a pattern between them is actively wrong.
+
+    A tracker key (`ENG-1234`) is self-evidently a reference wherever it appears, so `keyed` mode
+    pattern-matches the prose and can legitimately name a ticket that has no folder here.
+
+    A slug has no such shape. Any pattern loose enough to match a folder called `refi-sms-lift` also
+    matches ordinary English, so pattern-matching prose in slug mode would turn stray words into
+    `OBJECTS.md` rows and graph edges. A ticket is free to be named after an ordinary phrase
+    (`data-quality`), so bare prose mentions deliberately never count.
+
+    Slug mode therefore recognizes **exactly one** form: a `[[wiki-link]]` naming a known id. That is
+    the form the graph layer itself emits and what an Obsidian user types, so it costs almost nothing
+    to require.
+
+    It is deliberately this narrow. Three successive attempts tried to also honour markdown link
+    destinations — first by pattern (leaked images, external URLs, escaped brackets), then by
+    resolving destinations on disk (leaked non-existent paths, symlinked trees, angle-bracket
+    destinations). Each round of hardening bought a smaller correctness gain than the complexity it
+    added, for a payload whose entire cost of being wrong is a spurious row in `OBJECTS.md` and a
+    stray edge in a graph view. One unambiguous marker beats an approximate Markdown parser: an edge
+    now requires an author to have actually written a link, and cannot be manufactured by prose.
+    """
+    if id_mode != "slug":
+        return sorted({r for r in key_re.findall(text) if r != self_id}, key=ref_key)
+
+    known = {i for i in (known_ids or ()) if i != self_id}
+    if not known:
+        return []
+
+    scan = _strip_code(text)          # a wiki-link inside an example isn't a reference
+    found: set[str] = set()
+    # `(?<!\\)` so an escaped `\[[notes]]` stays literal text. Optional `|alias` / `#heading` are
+    # Obsidian syntax; the target may be written as a path or with a `.md` suffix.
+    for m in re.finditer(r"(?<!\\)\[\[[ \t]*([^\]|#\n]+?)[ \t]*(?:[|#][^\]\n]*)?\]\]", scan):
+        t = m.group(1).strip().rsplit("/", 1)[-1]
+        t = t[:-3] if t.endswith(".md") else t
+        if t in known:
+            found.add(t)
+    return sorted(found, key=ref_key)
+
+
+def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Pattern,
+                 id_mode: str = "keyed", known_ids: set[str] | None = None) -> dict:
     """Deterministic fallback extraction for un-enriched tickets."""
     try:
         text = path.read_text(errors="replace")
@@ -262,6 +395,15 @@ def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Patt
         mm = re.match(r"^#\s+(.*\S)\s*$", ln)
         if mm:
             title = title_re.sub("", mm.group(1)).strip()
+            # Slug mode strips the id prefix against this ticket's *literal* id rather than a
+            # generic pattern — `# data-quality: what we found` must keep its title when
+            # `data-quality` isn't this ticket, so a regex over any `word-word:` won't do.
+            if id_mode == "slug":
+                for sep in (":", "-", "–", "—"):
+                    pre = f"{self_id}{sep}"
+                    if title.lower().startswith(pre.lower()):
+                        title = title[len(pre):].strip()
+                        break
             h1_idx = i
             break
 
@@ -291,7 +433,7 @@ def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Patt
         summary = (s[: SUMMARY_MAX - 1].rstrip() + "…") if len(s) > SUMMARY_MAX else s
         break
 
-    refs = sorted({r for r in key_re.findall(text) if r != self_id}, key=ref_key)
+    refs = resolve_cross_refs(text, self_id, key_re, id_mode, known_ids)
     return {"title": title, "date": best_date, "summary": summary, "cross_refs": refs}
 
 
@@ -326,10 +468,14 @@ def build_rows(root: Path) -> list[dict]:
     title_re = title_prefix_regex(cfg["prefixes"])
     data = load_data(root)
     rows = []
-    for t in discover(root, key_re, cfg["ticket_subdirs"]):
+    tickets = discover(root, key_re, cfg["ticket_subdirs"], cfg["id_mode"])
+    # Slug mode resolves cross-refs by identity, not by pattern, so it needs the full id set up front.
+    known_ids = {t["id"] for t in tickets} if cfg["id_mode"] == "slug" else None
+    for t in tickets:
         owner, tid, d, readme = t["owner"], t["id"], t["dir"], t["readme"]
         entry = data.get((owner, tid))
-        parsed = parse_readme(readme, tid, key_re, title_re) if readme else {"title": None, "date": None, "summary": None, "cross_refs": []}
+        parsed = parse_readme(readme, tid, key_re, title_re, cfg["id_mode"], known_ids) \
+            if readme else {"title": None, "date": None, "summary": None, "cross_refs": []}
         cur_hash = sha256_file(readme) if readme else None
 
         title = parsed["title"] or (entry or {}).get("title") or tid
