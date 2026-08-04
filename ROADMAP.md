@@ -14,7 +14,7 @@ The ticket index is **active**, not just browsable, and observable.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
-- 19 adapters across 5 seams; 3 worked stacks; **95-check self-test**; GitHub Actions CI.
+- 20 adapters across 5 seams; 5 worked stacks; **200+-check self-test**; GitHub Actions CI.
 
 Lineage: Ticketwright is the canonical evolution of the earlier `crank-tickets` / GDD experiment — the
 advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *distribution* ideas
@@ -85,7 +85,8 @@ artifact it touches:
 Surfaced by a two-AI (Codex + agent-panel) review as the top *coverage* gaps — the abstraction is
 solid for keyed trackers (Jira/Linear) and good-with-caveats for integer/label ones:
 
-- **Tracker `id_mode` contract** — `keyed | integer | gid` + a normalizer so integer trackers (Azure
+- **Tracker `id_mode` contract** — `slug` **shipped** (a folder name can be the id, for repos with no
+  tracker); `keyed | integer | gid` + a normalizer still open, so integer trackers (Azure
   Boards, GitHub Issues) stop being a silent abstraction leak (bare number for the CLI, `KEY-123` for
   branches/folders/index). *The single highest-value contract fix.*
 - **Semantic adapter lint** — verify each adapter's token references resolve and required frontmatter is

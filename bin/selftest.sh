@@ -1319,11 +1319,12 @@ hdr "27 · local tracker adapter (the filesystem IS the tracker)"
 # and /ship keep calling tracker verbs without knowing there's no API.
 lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
 [ "$lv" -eq 6 ] && ok "local adapter implements all 6 tracker verbs" || bad "local adapter has $lv verbs, expected 6"
+lvmiss=""
 for v in fetch_ticket create_ticket transition comment search download_attachments; do
   grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
 done
-[ -z "${lvmiss:-}" ] && ok "local adapter verb NAMES match the contract exactly" \
-  || bad "local adapter verb names diverge from the contract" "${lvmiss:-}"
+[ -z "$lvmiss" ] && ok "local adapter verb NAMES match the contract exactly" \
+  || bad "local adapter verb names diverge from the contract" "$lvmiss"
 # It must not require any seam config or auth — that is what makes it usable with no tracker.
 grep -qE '^requires: \[\]' adapters/tracker/local.md \
   && ok "local adapter requires no seam config" || bad "local adapter declares required seam keys"
@@ -1420,6 +1421,63 @@ CLAUDE_PROJECT_DIR="$E2E" python3 "$E2E/bin/build_ticket_index.py" >/dev/null 2>
 { grep -q 'refi-sms-lift' "$E2E/tickets/INDEX.md" && ! grep -q '↗' "$E2E/tickets/INDEX.md"; } \
   && ok "solo stack: a slug ticket reaches INDEX.md with no external link (index path, not the skill flow)" \
   || bad "solo stack did not produce a usable INDEX.md" "$(cat "$E2E/tickets/INDEX.md" 2>&1 | head -20)"
+
+hdr "28 · docs stay true to the code (counts and capabilities drift silently)"
+# These numbers were stale in three places before this section existed, so assert them rather than
+# trusting prose: the docs are the adoption surface.
+na="$(ls adapters/*/*.md | grep -v README | wc -l | tr -d ' ')"
+grep -q "\*\*$na adapters\*\*" docs/architecture.md \
+  && ok "architecture.md's adapter count matches the tree ($na)" \
+  || bad "architecture.md states the wrong adapter count (tree has $na)" "$(grep -o '\*\*[0-9]* adapters\*\*' docs/architecture.md)"
+grep -q "^- $na adapters across 5 seams" ROADMAP.md \
+  && ok "ROADMAP's adapter count matches the tree ($na)" || bad "ROADMAP adapter count stale (tree has $na)"
+ns="$(ls .claude/config/stack.yaml .claude/config/stack.example.*.yaml | wc -l | tr -d ' ')"
+grep -q "$ns worked stacks" ROADMAP.md \
+  && ok "ROADMAP's worked-stack count matches the configs ($ns)" || bad "ROADMAP worked-stack count stale (found $ns)"
+# Every shipped adapter must be listed in the adapters README, or adopters can't find it.
+sed -n '/^## Adapters shipped$/,/^## /p' adapters/README.md > "$TMP/shipped_list.txt"
+amiss=""
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  n="$(basename "$f" .md)"
+  grep -q "\`$n\`" "$TMP/shipped_list.txt" || amiss="$amiss $n"
+done
+[ -z "$amiss" ] && ok "every shipped adapter appears in adapters/README.md" \
+  || bad "an adapter ships but is undocumented" "$amiss"
+# The two new capabilities must be discoverable from the docs an adopter actually reads.
+dmiss=""
+for pair in "README.md:id_mode" ".claude/config/stack.schema.md:id_mode" \
+            "docs/ticket-index.md:id_mode" "docs/troubleshooting.md:id_mode"; do
+  f="${pair%%:*}"; k="${pair##*:}"
+  grep -q "$k" "$f" || dmiss="$dmiss $f"
+done
+[ -z "$dmiss" ] && ok "id_mode is documented in README, schema, ticket-index and troubleshooting" \
+  || bad "id_mode undocumented in an adoption-facing doc" "$dmiss"
+# stack.yaml's header and architecture.md's proof list both enumerate the shipped configs, and both
+# were stale. Assert every example file is named in each.
+cmiss=""
+for f in .claude/config/stack.example.*.yaml; do
+  n="$(basename "$f")"
+  grep -q "$n" .claude/config/stack.yaml || cmiss="$cmiss stack.yaml:$n"
+  grep -q "$n" docs/architecture.md || cmiss="$cmiss architecture.md:$n"
+done
+[ -z "$cmiss" ] && ok "every example stack is named in stack.yaml's header and architecture.md" \
+  || bad "an example stack ships but isn't listed where adopters look" "$cmiss"
+grep -qE '^  id_mode:[[:space:]]*slug([[:space:]]|#|$)' .claude/config/stack.example.solo.yaml \
+  && ok "the solo example config actually sets project.id_mode: slug" \
+  || bad "solo example does not set id_mode: slug (a comment mentioning it is not the setting)"
+# The slug cross-reference rule is the most surprising behaviour; it must be stated, not implied.
+grep -qi 'wiki-link' docs/ticket-index.md && grep -qi 'wiki-link' .claude/config/stack.schema.md \
+  && ok "the slug cross-reference rule (wiki-links only) is documented in both places" \
+  || bad "the wiki-links-only rule is not documented where adopters will look"
+
+# A stated check count goes stale on every added test, so the docs state a FLOOR. Assert it against
+# the live counter — a static scan can't work, since loop-driven call sites each yield many checks.
+# Counting this assertion itself is why it is the last one.
+floor="$(grep -oE '[0-9]+\+-check' docs/troubleshooting.md | head -1 | grep -oE '^[0-9]+')"
+{ [ -n "$floor" ] && [ "$((PASS + 1))" -ge "$floor" ]; } \
+  && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
+  || bad "the docs claim more checks than the suite runs" "floor=${floor:-unset} actual=$PASS"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

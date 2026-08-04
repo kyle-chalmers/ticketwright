@@ -5,6 +5,48 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+Skills can now **resolve a warehouse target**, so the multi-target seam released in 3.4.0 is usable
+end to end — and a repo with **no ticketing system at all** can use the kit. Tool-agnostic and
+stdlib-only; no version bump here.
+
+Upgrade note: reinstall and relaunch **before** editing `stack.yaml`. Bundled hook changes don't reach
+an installed copy via autoUpdate (claude-code #52218), and an un-relaunched session reads a new config
+with old hooks — the display readers degrade to showing the first warehouse target rather than
+breaking, but `bin/verify_stack.sh` will flag the seam until you relaunch.
+
+### Added
+- **Trackerless work — `project.id_mode: slug` + a `local` tracker adapter.** A repo with no
+  ticketing system can now use ticketwright: set `id_mode: slug` and a folder under
+  `tickets/<owner>/` named however you name it becomes the ticket, with its `README.md` holding what
+  a tracker would otherwise store. `adapters/tracker/local.md` implements the full six-verb tracker
+  contract against that folder, so **`/ticket` and `/ship` are unchanged** — they keep calling
+  `fetch_ticket` / `create_ticket` / `transition` / `comment` / `search` / `download_attachments` and
+  never learn there is no API. Worked config: `.claude/config/stack.example.solo.yaml` (no tracker,
+  and no chat or docstore either). `keyed` remains the default and is byte-identical: `INDEX.md`,
+  `OBJECTS.md` and the graph notes match the previous release exactly.
+
+  Three behaviours are worth knowing before adopting it. **Cross-references become explicit** — in
+  slug mode only a `[[wiki-link]]` counts, never prose, because a folder name is free to be an
+  ordinary phrase (`data-quality`) and matching prose would turn stray words into `OBJECTS.md` rows
+  and graph edges. **The folder name is the id**, so renaming it renames the ticket everywhere and
+  the character set is restricted to stay valid as a git branch and a filename. **`key_prefix`
+  becomes optional**, and the session banner and statusline then label the workspace by its
+  directory rather than printing `?-tickets`.
+
+### Fixed
+- **A slug id ending in digits no longer sorts as a ticket number.** `ticket_number()` searched for
+  `-\d+` anywhere in an id, so a folder called `refi-sms-lift-2024` ranked as ticket 2024 among real
+  keys, in `INDEX.md`, `OBJECTS.md`, the graph notes and `recall.py`. Numbering is now decided by the
+  configured prefixes (`id_key_regex`), which also fixes a pre-existing case: a prefix containing `_`
+  or `-` or leading with a digit (`ACME_US-42`, `1ENG-42`) is matched correctly. Notably
+  `ingest_index_records.py` *persists* `ticket_url` into `index_data.json` and a persisted URL wins
+  over a re-render, so a wrong `{number}` there had been permanent — a link to an unrelated real ticket.
+- **`enrich_ticket --branch` works on a branch with no commits.** It used
+  `git rev-parse --abbrev-ref HEAD`, which returns the literal string `HEAD` on an unborn branch, so a
+  freshly created ticket branch could never resolve. It now prefers `git symbolic-ref`. In slug mode it
+  also resolves by identity against the ids on disk rather than by tracker-key pattern, and a detached
+  HEAD resolves nothing instead of guessing.
+
 ## [3.4.1] — 2026-08-05
 
 ### Fixed — security, upgrade from 3.4.0
@@ -93,6 +135,7 @@ adopt/install field-report fixes prepared earlier for this version. Tool-agnosti
   `.claude/config/stack.example.multi-warehouse.yaml` (Snowflake + Databricks).
   **Existing single-warehouse configs need no edits** — all three shipped stacks produce
   byte-identical `verify_stack.sh`, `session_context.py`, and `statusline.sh` output.
+
 - **`dev_target` as the canonical dev-environment key**, with each warehouse adapter declaring its
   legacy spelling in new `dev_key:` frontmatter (`dev_db` / `dev_dataset` / `dev_catalog` /
   `dev_schema`). Configs written before this keep working through that fallback.

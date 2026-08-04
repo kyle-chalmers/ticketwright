@@ -22,7 +22,9 @@ weak models).
 ## Seams, adapters, and the verb contract
 
 A **seam** is a tool slot the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`.
-The wiring is hybrid — config names the tools, verification proves them:
+A seam may name one tool or several **named targets** (v1: `warehouse`), and a seam whose tool is
+absent can still be filled by an adapter over local files — that is how a repo with no tracker
+runs unchanged. The wiring is hybrid — config names the tools, verification proves them:
 
 1. **`.claude/config/stack.yaml`** names which tool fills each seam + project facts + the 9
    policies. Schema: [.claude/config/stack.schema.md](../.claude/config/stack.schema.md).
@@ -33,12 +35,16 @@ The wiring is hybrid — config names the tools, verification proves them:
    run, unreachable ones halt with the adapter's auth notes.
 
 Skills are written **once against verbs** and never name a tool. Swapping a tool = edit
-`stack.yaml` + point at a different adapter; **no skill changes.** Proof: three configs ship —
+`stack.yaml` + point at a different adapter; **no skill changes.** Proof: five configs ship —
 [`stack.yaml`](../.claude/config/stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub),
 [`stack.example.asana-bq.yaml`](../.claude/config/stack.example.asana-bq.yaml)
 (Asana/BigQuery/Teams/SharePoint/GitLab), and
 [`stack.example.azure.yaml`](../.claude/config/stack.example.azure.yaml)
-(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos) — the same skills run against all three.
+(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos),
+[`stack.example.multi-warehouse.yaml`](../.claude/config/stack.example.multi-warehouse.yaml)
+(Snowflake **+** Databricks — two targets in one seam), and
+[`stack.example.solo.yaml`](../.claude/config/stack.example.solo.yaml) (**no tracker**, no chat, no
+docstore — the ticket folder is the tracker) — the same skills run against all five.
 
 **Adding a tool:** write one adapter (copy the closest reference in the same seam; implement every
 verb section; keep the frontmatter), add a `verify` line to your `stack.yaml` seam, run
@@ -79,7 +85,8 @@ protection. The policy value is the shared contract; only the enforcement mechan
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`
   delegates to (one per pyramid layer in `--deep` mode).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
-- **19 adapters** (`adapters/`) across 5 seams — full verb coverage each.
+- **20 adapters** (`adapters/`) across 5 seams — full verb coverage each, including a `local`
+  tracker whose "API" is the ticket folder itself.
 - **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
   README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via
   `*.private.csv` / a `private/` subfolder), role snippets, and the productized-skill skeleton.

@@ -3,7 +3,8 @@
 Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 
 - **`bin/build_ticket_index.py`** — deterministic, LLM-free renderer. Discovers every ticket folder
-  (tracker keys from `stack.yaml` `key_prefixes`/`key_prefix`), merges curated fields from
+  (by tracker key from `stack.yaml` `key_prefixes`/`key_prefix`, or by folder name under
+  `id_mode: slug`), merges curated fields from
   `tickets/index_data.json`, and writes `INDEX.md` + `OBJECTS.md` (object → tickets reverse index;
   objects = enrichment ∪ a deterministic grep of each ticket's SQL). `--check` (staleness gate,
   covers both files) · `--stats` (coverage) · `--recurring` (frequently-touched objects —
@@ -12,7 +13,8 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
   objects + each README's content hash). This skill writes it.
 
 ## Phase 0 — Preflight
-1. Confirm `stack.yaml` has `key_prefix`/`key_prefixes` and (optionally) `ticket_url_template`.
+1. Confirm `stack.yaml` has `key_prefix`/`key_prefixes` — or `id_mode: slug`, where folder names are
+   the ids and no prefix is needed — and (optionally) `ticket_url_template`.
 2. `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py" --stats` — how
    many tickets are discovered, enriched, un-enriched (`▱`), stale (`⚠`).
 

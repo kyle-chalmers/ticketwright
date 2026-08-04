@@ -61,7 +61,7 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 ### `vcs` — version control + PRs
 | Verb | Inputs | Returns |
 |---|---|---|
-| `branch` | name (`{key_prefix}-NNNN`) | branch created/checked out |
+| `branch` | name (the ticket id — `{key_prefix}-NNNN`, or the folder slug under `id_mode: slug`) | branch created/checked out |
 | `worktree` | branch | isolated worktree path (the Plan→Implement context reset) |
 | `commit` | paths, message (semantic) | commit sha |
 | `open_pr` | title (semantic), body | PR URL |
@@ -73,15 +73,18 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 Pick the one matching your stack (or copy the closest as a starting point). All implement the full
 verb contract for their seam:
 
-- **tracker:** `jira`, `azure-devops` (Azure Boards), `linear`, `asana`, `monday`, `github-issues`
+- **tracker:** `jira`, `azure-devops` (Azure Boards), `linear`, `asana`, `monday`, `github-issues`,
+  `local` (**no tracker at all** — the ticket folder itself; pair with `project.id_mode: slug`)
 - **warehouse:** `snowflake`, `bigquery`, `databricks`, `postgres`, `redshift`, `synapse` (also Azure SQL / SQL Server / Fabric)
 - **chat:** `slack`, `teams`
 - **docstore:** `gdrive`, `sharepoint`
 - **vcs:** `github`, `gitlab`, `azure-repos`
 
-Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Three worked
-`stack.yaml` configs ship (Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
-and Azure DevOps/Synapse/Teams/SharePoint/Azure Repos) — the same skills run against all three.
+Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Five worked
+`stack.yaml` configs ship — Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
+Azure DevOps/Synapse/Teams/SharePoint/Azure Repos, Snowflake **+** Databricks (two warehouse targets
+in one seam), and a solo repo with **no tracker and no chat/docstore**. The same skills run against
+all five, unedited — which is the claim those configs exist to keep honest.
 
 > **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack) reference each operation with a
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on

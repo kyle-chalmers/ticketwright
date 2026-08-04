@@ -14,7 +14,9 @@ externally without your explicit go.
 
 It works with **your** tools — Jira, Azure DevOps, Linear, Asana, Monday, or GitHub Issues;
 Snowflake, BigQuery, Databricks, Postgres, Redshift, or Synapse; Slack or Teams; Drive or
-SharePoint; GitHub, GitLab, or Azure Repos — through one config file. Don't see yours? Adding it is
+SharePoint; GitHub, GitLab, or Azure Repos — through one config file. More than one warehouse is
+fine (name the targets), and so is **no ticketing system at all**: set `id_mode: slug` and a folder
+you name becomes the ticket. Don't see yours? Adding it is
 [a single adapter file](adapters/README.md).
 
 ## Quickstart (5 minutes)

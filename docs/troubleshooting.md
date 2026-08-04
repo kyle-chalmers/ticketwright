@@ -32,6 +32,35 @@ login, `config.toml`, MCP server connect). For a personalized walk-through, run
 - **Never hand-edit `INDEX.md` or `OBJECTS.md`** — they're generated; edits are overwritten.
   Curated fields live in `tickets/index_data.json`.
 
+## My folders aren't showing up in `INDEX.md`
+
+Check `project.id_mode`. Under the default `keyed`, a folder is only a ticket if its name contains a
+tracker key from `key_prefixes` / `key_prefix` — `refi-sms-lift` is skipped on purpose, the same way
+`scratch-*` is. If the repo has no ticketing system, that is what `id_mode: slug` is for: the folder
+name becomes the id. See `stack.example.solo.yaml` for a full config.
+
+Conversely, if a folder you meant as scratch work **is** appearing, you are in `slug` mode, where
+nothing is skipped for lacking a key — move it out of `tickets/`.
+
+## A slug ticket's related-work links are missing
+
+In `slug` mode, cross-references come only from `[[wiki-links]]`, never from prose. Writing
+"follows on from refi-sms-lift" creates no link; `[[refi-sms-lift]]` does. This is deliberate — a
+folder name can be an ordinary phrase (`data-quality`), and matching prose would turn stray words into
+catalog rows and graph edges. Note a wiki-link inside a fenced or inline code block counts as an
+example, not a reference, and markdown link destinations are not consulted at all.
+
+## The statusline or session banner shows my repo's directory name instead of a prefix
+
+It means no `key_prefix` (or `key_prefixes`) was found in `stack.yaml` — which is expected under
+`id_mode: slug`, but can also just mean a keyed repo never configured one. If the repo *is* keyed, add
+the prefix: the readers check `key_prefix` first, then the first entry of `key_prefixes`, and only then
+fall back to the directory name.
+
+If instead the statusline shows only one warehouse when you configured several, relaunch the session:
+bundled hook changes don't reach an installed copy until it is reinstalled, and an un-relaunched
+session displays the first target it finds. Listing the default target first keeps that honest.
+
 ## Hooks don't seem to be running
 
 - Plugin install: hooks are declared in the plugin manifest — check `claude plugin list` shows
@@ -82,7 +111,7 @@ The old names routed automatically through v2.x as deprecated aliases; they were
 
 ## Something else went wrong
 
-`bash bin/selftest.sh` runs the kit's full 95-check suite (config parsing, adapter coverage,
+`bash bin/selftest.sh` runs the kit's full 200+-check suite (config parsing, adapter coverage,
 frontmatter, hooks, render gate, index/recall engines) and pinpoints what's broken. If the
 self-test is green but a skill misbehaves, the issue is usually `stack.yaml` (wrong key, stub
 adapter) — `bash bin/verify_stack.sh` narrows it to a seam.

@@ -24,7 +24,8 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 
 | Field | Type | Example | Meaning |
 |---|---|---|---|
-| `key_prefix` | string | `ENG` | Ticket-ID prefix. Branch names = `{key_prefix}-NNNN`. |
+| `key_prefix` | string | `ENG` | Ticket-ID prefix. Branch names = `{key_prefix}-NNNN`. Omit it when `id_mode: slug` — there are no keys to prefix. |
+| `id_mode` | enum | `keyed` | `keyed` (default) = folder names carry a tracker key; `slug` = the folder name **is** the id. See "Trackerless work". |
 | `key_prefixes` | list | `[ENG]` | Prefixes the ticket index recognizes in folder names. Optional; defaults to `[key_prefix]`. Use when one repo holds tickets from several trackers (e.g. `[ENG, OPS]`). |
 | `assignee_dir` | string | `alice` | Default owner subdir under `tickets/`. |
 | `ticket_path` | template | `tickets/{assignee}/{id}` | Where a ticket folder lives. `{assignee}` `{id}` tokens. |
@@ -38,9 +39,10 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 
 ## `seams`
 
-Exactly these five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. Each is **either** a
-single mapping (below) **or** a *multi-target* mapping — see "Multiple warehouses". Fields of a
-single mapping:
+These five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs` — no others. A seam may be
+omitted when the repo genuinely has no such tool (see the per-seam notes below); the skills that use
+it then degrade rather than fail. Each present seam is **either** a single mapping (below) **or** a
+*multi-target* mapping — see "Multiple warehouses". Fields of a single mapping:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -50,8 +52,10 @@ single mapping:
 | `transport` | enum | `cli` \| `mcp` \| `both` — how the adapter talks to the tool. Drives the verify fallback. |
 | *(extra keys)* | any | Tool-specific config the adapter reads (site, warehouse, role, channel, base_path, …). |
 
-The `warehouse` seam may also be `null`/omitted for non-data repos — `review`, `spec-and-build`,
-and `refresh context` degrade gracefully (skip warehouse steps) when it is.
+The `warehouse` seam may be `null`/omitted for non-data repos — `review`, `spec-and-build`, and
+`refresh context` degrade gracefully (skip warehouse steps) when it is. `chat` and `docstore` may
+likewise be omitted: `/ship` skips those artifacts and names the `/setup` command that would enable
+them rather than blocking. `stack.example.solo.yaml` omits both.
 
 ### Multiple warehouses (named targets)
 
@@ -97,6 +101,39 @@ it is not a per-target index.
 is absent it falls back to the key named by the warehouse adapter's `dev_key:` frontmatter (`dev_db`
 for Snowflake, `dev_dataset` for BigQuery, `dev_catalog` for Databricks, `dev_schema` for
 Postgres/Redshift/Synapse) — so configs written before `dev_target` existed keep working untouched.
+
+## Trackerless work (`id_mode: slug`)
+
+Set `id_mode: slug` when the repo has **no ticketing system** — self-defined analysis, a personal or
+team notebook. A folder under `tickets/<owner>/` named however you name it becomes the unit of work,
+and its `README.md` is the ticket. Pair it with `tracker: local`
+([adapter](../../adapters/tracker/local.md)), which maps the tracker verbs onto that folder, and with
+`ticket_url_template: null`, since there is nothing external to link to. Worked config:
+[`stack.example.solo.yaml`](stack.example.solo.yaml).
+
+What changes:
+
+| | `keyed` (default) | `slug` |
+|---|---|---|
+| A folder is a ticket when | its name contains a tracker key (`ENG-12`) | its whole name, after an optional leading status emoji, matches `[a-z0-9][a-z0-9_-]*` |
+| The id is | the matched key | the whole folder name |
+| `key_prefix` | conventional (absent, the index falls back to matching any `LETTERS-digits`) | omit it — the banner and statusline label the repo by its directory |
+| Cross-references come from | any `ENG-1234` in the README prose | **only** `[[wiki-links]]` |
+| Ordering | date, then ticket number, then id | date, then id (every slug scores 0 on the number) |
+
+Two consequences worth knowing before you adopt it:
+
+- **Cross-references must be explicit.** A slug is free to be an ordinary phrase (`data-quality`), so
+  matching prose would turn stray words into catalog rows and graph edges. Only a `[[wiki-link]]`
+  naming an existing ticket counts — which is what the graph layer emits anyway. A link inside a
+  fenced or inline code block is treated as an example, not a reference.
+- **The folder name is the id, so renaming it renames the ticket** — in `INDEX.md`, in `OBJECTS.md`,
+  in the graph, and as the branch name. The character set is restricted precisely so an id stays valid
+  as a git branch and a filename (dots are excluded because git rejects `a..b`, a trailing `.`, and a
+  `.lock` suffix). Two folders that reduce to one id (`refi-lift` and `☑️ refi-lift`) are reported on
+  stderr, and the later one wins.
+
+---
 
 ## `policies` (the 9 kit policies — see kit README "AI-layer" section)
 
@@ -147,11 +184,12 @@ hooks are the only mechanically enforced layer.
 
 ---
 
-## Worked example
+## Worked examples
 
-A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Three more
+A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Four more
 prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
 (Asana/BigQuery/Teams/SharePoint/GitLab), `stack.example.azure.yaml`
-(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos), and `stack.example.multi-warehouse.yaml`
-(Jira/**Snowflake + Databricks**/Slack/Drive/GitHub — the named-targets shape above). To validate any
-config: `bash bin/verify_stack.sh`.
+(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos), `stack.example.multi-warehouse.yaml`
+(Jira/**Snowflake + Databricks**/Slack/Drive/GitHub — the named-targets shape above), and
+`stack.example.solo.yaml` (**no tracker at all** — `tracker: local` + `id_mode: slug`, and no chat or
+docstore). To validate any config: `bash bin/verify_stack.sh`.
