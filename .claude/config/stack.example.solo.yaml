@@ -1,0 +1,69 @@
+# stack.example.solo.yaml — no ticketing system at all.
+#
+# The persona: one analyst (or a small team) doing self-defined work in their own repo. There is no
+# Jira, no Linear, no GitHub Issues. A folder under tickets/<owner>/ named however you name it IS
+# the unit of work, and its README.md is the ticket.
+#
+# Two settings carry that: `tracker: local` (the tracker verbs read and write the folder itself) and
+# `id_mode: slug` (the folder name is the id, instead of a tracker key like ENG-1234). Chat and
+# docstore are simply absent — /ship skips those artifacts and names the /setup command that would
+# enable them, rather than blocking.
+#
+# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.solo.yaml
+
+project:
+  # No key_prefix: there are no tracker keys to prefix. The session banner and statusline fall back
+  # to the repository's directory name.
+  id_mode: slug                          # the folder name IS the ticket id
+  assignee_dir: kyle
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
+  default_epic: null                     # nothing to parent work to
+  terminal_status: Done                  # what `transition` writes into the README's Status bullet
+  ticket_url_template: null              # no external system → the index renders no ↗ link
+  word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+  graph_notes: true
+  graph_config: true
+
+seams:
+  tracker:
+    tool: local
+    adapter: adapters/tracker/local.md
+    transport: cli
+    verify: "test -w ."                  # a writable tree is the only precondition. NOT
+                                         # `test -d tickets` — that fails in a brand-new repo,
+                                         # exactly when create_ticket should be making it.
+
+  # A solo repo often has a small local database. There is no shipped duckdb adapter, so this uses
+  # postgres — a real shipped adapter whose verbs match the config below. Swap in your own warehouse
+  # (or write a one-file adapter) rather than pointing a mismatched tool at this one.
+  warehouse:
+    tool: postgres
+    adapter: adapters/warehouse/postgres.md
+    transport: cli
+    conn: "postgresql:///analysis"
+    dev_target: analysis_dev
+    verify: "psql 'postgresql:///analysis' -c 'select 1'"
+
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".claude/worktrees"
+    verify: "gh auth status"
+
+  # chat and docstore are deliberately omitted — a solo repo often has neither. /ship skips those
+  # artifacts and points at `/setup chat` / `/setup docstore` as the enabler.
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: true
+  chat_default_draft: true
+  hyperlink_everything: true
+  skillify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

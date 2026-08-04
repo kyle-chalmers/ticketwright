@@ -1314,5 +1314,112 @@ grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/de
   && bad "a slug shaped like a tracker key was persisted with {number}=1 (links to an unrelated ticket)" \
   || ok "ingest does not invent a tracker number for a key-shaped slug id"
 
+hdr "27 · local tracker adapter (the filesystem IS the tracker)"
+# The whole point is zero skill edits: the adapter must satisfy the same 6-verb contract, so /ticket
+# and /ship keep calling tracker verbs without knowing there's no API.
+lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
+[ "$lv" -eq 6 ] && ok "local adapter implements all 6 tracker verbs" || bad "local adapter has $lv verbs, expected 6"
+for v in fetch_ticket create_ticket transition comment search download_attachments; do
+  grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
+done
+[ -z "${lvmiss:-}" ] && ok "local adapter verb NAMES match the contract exactly" \
+  || bad "local adapter verb names diverge from the contract" "${lvmiss:-}"
+# It must not require any seam config or auth — that is what makes it usable with no tracker.
+grep -qE '^requires: \[\]' adapters/tracker/local.md \
+  && ok "local adapter requires no seam config" || bad "local adapter declares required seam keys"
+
+# The snippets are EXTRACTED from the adapter and executed, not reimplemented here — a copied
+# implementation would keep passing after the documented one drifted or broke.
+cat > "$TMP/extract_verb.py" <<'PY2'
+import pathlib, re, sys
+md, verb = pathlib.Path(sys.argv[1]).read_text(), sys.argv[2]
+sec = re.split(r"(?m)^## ", md)
+body = next(s for s in sec if s.startswith(f"verb: {verb}\n"))
+m = re.search(r"<<'PY'\n(.*?)\nPY\n", body, re.DOTALL)
+if not m:
+    sys.exit(f"no python snippet under 'verb: {verb}'")
+print(m.group(1))
+PY2
+LA="adapters/tracker/local.md"
+python3 "$TMP/extract_verb.py" "$LA" transition > "$TMP/transition.py" 2>"$TMP/x.err" \
+  && ok "transition snippet extracted from the adapter (tests bind to the doc)" \
+  || bad "could not extract the transition snippet" "$(cat "$TMP/x.err")"
+python3 "$TMP/extract_verb.py" "$LA" comment > "$TMP/comment.py" 2>"$TMP/x.err" \
+  && ok "comment snippet extracted from the adapter" \
+  || bad "could not extract the comment snippet" "$(cat "$TMP/x.err")"
+
+TL="$TMP/localadapter"; mkdir -p "$TL"
+hdr_readme() { printf '# refi-sms-lift: R\n\n## Ticket Information\n- **Link:** \n- **Type:** analysis\n- **Status:** In Progress\n- **Epic/Parent:** \n- **Assignee:** kyle\n\n## Business Context\nBrief.\n' > "$1"; }
+
+# Only the Status bullet changes, and it is re-runnable.
+hdr_readme "$TL/a.md"
+python3 "$TMP/transition.py" "$TL/a.md" Completed >/dev/null 2>&1
+python3 "$TMP/transition.py" "$TL/a.md" Done >/dev/null 2>&1
+b="$(grep -cE '^- \*\*(Link|Type|Status|Epic/Parent|Assignee):' "$TL/a.md")"
+{ grep -q '^- \*\*Status:\*\* Done$' "$TL/a.md" && [ "$b" -eq 5 ]; } \
+  && ok "local transition rewrites only the Status bullet and is re-runnable" \
+  || bad "local transition corrupted the README" "$(cat "$TL/a.md")"
+
+# A status is user input: in a replacement STRING, `\1` would expand and `\q` would raise.
+hdr_readme "$TL/b.md"
+python3 "$TMP/transition.py" "$TL/b.md" 'weird \1 \g<1> \q' >"$TMP/o.txt" 2>&1
+{ grep -qF -- '- **Status:** weird \1 \g<1> \q' "$TL/b.md" && ! grep -qi 'traceback' "$TMP/o.txt"; } \
+  && ok "local transition treats a status with regex escapes as literal text" \
+  || bad "a status containing backreferences/escapes corrupted the file or raised" "$(cat "$TMP/o.txt"; cat "$TL/b.md")"
+
+# Two Status bullets must not be left disagreeing with each other.
+printf '# x: y\n\n- **Status:** In Progress\n- **Type:** t\n- **Status:** Blocked\n' > "$TL/c.md"
+python3 "$TMP/transition.py" "$TL/c.md" Done >/dev/null 2>&1
+[ "$(grep -c '^- \*\*Status:\*\* Done$' "$TL/c.md")" -eq 2 ] \
+  && ok "local transition updates every Status bullet (no contradictory leftovers)" \
+  || bad "a duplicated Status bullet was left disagreeing" "$(cat "$TL/c.md")"
+
+# No bullet: say so, change nothing.
+printf '# x: y\n\nNo bullets.\n' > "$TL/d.md"; before="$(cat "$TL/d.md")"
+out="$(python3 "$TMP/transition.py" "$TL/d.md" Done 2>&1)"
+{ [ "$before" = "$(cat "$TL/d.md")" ] && grep -q 'no Status bullet' <<<"$out"; } \
+  && ok "local transition no-ops (and says so) when there is no Status bullet" \
+  || bad "local transition altered a README with no Status bullet" "$out"
+
+# comment: one heading, appended entries, and a fenced `## Log` example is not the real heading.
+printf '# x: y\n\nBody.\n' > "$TL/log1.md"
+python3 "$TMP/comment.py" "$TL/log1.md" 2026-08-04 "First." >/dev/null 2>&1
+python3 "$TMP/comment.py" "$TL/log1.md" 2026-08-04 "Second." >/dev/null 2>&1
+{ [ "$(grep -c '^## Log$' "$TL/log1.md")" -eq 1 ] && [ "$(grep -c '^\*\*2026-08-04\*\*' "$TL/log1.md")" -eq 2 ]; } \
+  && ok "local comment creates '## Log' once and appends dated entries" \
+  || bad "local comment duplicated the heading or lost an entry" "$(cat "$TL/log1.md")"
+printf '# x: y\n\n```\n## Log\n```\n' > "$TL/log2.md"
+python3 "$TMP/comment.py" "$TL/log2.md" 2026-08-04 "Note." >/dev/null 2>&1
+[ "$(grep -c '^## Log$' "$TL/log2.md")" -eq 2 ] \
+  && ok "local comment ignores a '## Log' inside a fenced block and creates a real one" \
+  || bad "a fenced '## Log' example suppressed the real log heading" "$(cat "$TL/log2.md")"
+# A README that OPENS with the heading must not gain a second one.
+printf '## Log\n\n**2026-01-01** — old.\n' > "$TL/log3.md"
+python3 "$TMP/comment.py" "$TL/log3.md" 2026-08-04 "New." >/dev/null 2>&1
+[ "$(grep -c '^## Log$' "$TL/log3.md")" -eq 1 ] \
+  && ok "local comment recognizes a leading '## Log' heading" \
+  || bad "a README opening with '## Log' gained a duplicate heading" "$(cat "$TL/log3.md")"
+
+# The clobber guard: /ticket creates via the adapter, THEN renders the template into the same file.
+# With a remote tracker those are different artifacts; here an unguarded render destroys the brief.
+printf '# refi-sms-lift: R\n\n## Business Context\nInterviewed brief worth keeping.\n' > "$TL/brief.md"
+printf 'ticket_id=refi-sms-lift\ntitle=R\n' > "$TL/vars.env"
+[ -s "$TL/brief.md" ] || bash bin/render.sh templates/ticket-README.md.tmpl --vars "$TL/vars.env" > "$TL/brief.md"
+grep -q 'Interviewed brief worth keeping' "$TL/brief.md" \
+  && ok "guarded render preserves an existing brief (the documented clobber guard)" \
+  || bad "the render overwrote an interviewed brief"
+grep -q 'Never render over a README that already has content' adapters/tracker/local.md \
+  && ok "adapter documents the render-clobber hazard" || bad "clobber hazard undocumented"
+
+# End to end: a slug folder under the solo stack reaches INDEX.md with a local link and no ↗.
+E2E="$TMP/e2e"; mkdir -p "$E2E/.claude/config" "$E2E/bin" "$E2E/tickets/kyle/refi-sms-lift"
+cp bin/build_ticket_index.py "$E2E/bin/"
+sed 's#^  assignee_dir: kyle#  assignee_dir: kyle#' .claude/config/stack.example.solo.yaml > "$E2E/.claude/config/stack.yaml"
+printf '# refi-sms-lift: Refi SMS lift\n\n## Business Context\nMeasure lift.\n' > "$E2E/tickets/kyle/refi-sms-lift/README.md"
+CLAUDE_PROJECT_DIR="$E2E" python3 "$E2E/bin/build_ticket_index.py" >/dev/null 2>&1
+{ grep -q 'refi-sms-lift' "$E2E/tickets/INDEX.md" && ! grep -q '↗' "$E2E/tickets/INDEX.md"; } \
+  && ok "solo stack: a slug ticket reaches INDEX.md with no external link (index path, not the skill flow)" \
+  || bad "solo stack did not produce a usable INDEX.md" "$(cat "$E2E/tickets/INDEX.md" 2>&1 | head -20)"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
