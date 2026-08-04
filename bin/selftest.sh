@@ -13,7 +13,10 @@ PASS=0; FAIL=0; TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 ok()   { PASS=$((PASS+1)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
-bad()  { FAIL=$((FAIL+1)); printf "  \033[31m✗\033[0m %s\n" "$1"; [ -n "${2:-}" ] && printf "      %s\n" "$2"; }
+# `return 0` matters: bad() used to end on the `[ -n "$2" ]` test, so a one-arg call returned
+# non-zero and any inverted check (`cond && bad ... || ok ...`) fired the `|| ok` too — printing a
+# ✓ right under the ✗ and incrementing both counters. Several checks below are written that way.
+bad()  { FAIL=$((FAIL+1)); printf "  \033[31m✗\033[0m %s\n" "$1"; [ -n "${2:-}" ] && printf "      %s\n" "$2"; return 0; }
 hdr()  { printf "\n\033[1m%s\033[0m\n" "$1"; }
 
 hdr "0 · tooling"
@@ -449,6 +452,26 @@ python3 -c "import sys; sys.path.insert(0,'.'); import ticketwright.cli as c; ra
   && ok "ticketwright.cli imports + exposes main()" || bad "ticketwright.cli broken"
 grep -q 'ticketwright = "ticketwright.cli:main"' pyproject.toml \
   && ok "console_script entry point declared" || bad "console_script entry point missing"
+# bumping the three version files by hand is what let PyPI drift behind the plugin — keep the script
+{ [ -f bin/bump_version.sh ] && [ -x bin/bump_version.sh ]; } \
+  && ok "bin/bump_version.sh present + executable" || bad "bin/bump_version.sh missing or not executable"
+# The wheel must NOT ship the repo's own stack.yaml (a fictional "Acme" example) — `init` would
+# scaffold it into a fresh repo as real config. Examples + schema DO ship, enumerated one per line.
+grep -q '^"\.claude/config" =' pyproject.toml \
+  && bad "pyproject force-includes .claude/config wholesale (ships the Acme stack.yaml)" \
+  || ok "pyproject does not force-include .claude/config wholesale"
+grep -q '^"\.claude/config/stack\.yaml" =' pyproject.toml \
+  && bad "pyproject force-includes .claude/config/stack.yaml (Acme example would ship)" \
+  || ok "stack.yaml excluded from the wheel (/setup writes the real one)"
+cfgmiss=""
+for f in .claude/config/*; do
+  [ -f "$f" ] || continue
+  [ "$f" = ".claude/config/stack.yaml" ] && continue
+  grep -q "^\"$f\" = " pyproject.toml || cfgmiss="$cfgmiss $f"
+done
+[ -z "$cfgmiss" ] \
+  && ok "every shipped .claude/config file is force-included by name" \
+  || bad "config file(s) missing a force-include line (add to pyproject)" "$cfgmiss"
 
 hdr "17 · render-validation gate (render_and_validate.sh) — items 1+2"
 RV="bin/render_and_validate.sh"

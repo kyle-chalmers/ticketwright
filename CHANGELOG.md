@@ -9,6 +9,20 @@ Field-report fixes from two real adopt/install sessions (2026-07-06). Tool-agnos
 no version bump here — the release that ships these bumps the three version files in lockstep and tags.
 
 ### Added
+- **Distribution scope settled: plugin = the product, PyPI = the standalone/vendoring installer.**
+  Both channels stay, with the pip package explicitly scoped to the cases the plugin can't serve
+  (vendoring into a non-Claude-Code harness, running the deterministic engines from a shell or CI)
+  rather than as a second full UX. Rationale and the rejected alternatives are recorded in
+  [`ROADMAP.md`](ROADMAP.md). The real problem was drift, not cost — PyPI served 3.2.0 while the
+  repo ran 3.3.0 — so the fix is structural:
+  - **`bin/bump_version.sh <version>`** moves `ticketwright/__init__.py`, `.claude-plugin/plugin.json`,
+    and `.claude-plugin/marketplace.json` in one command, verifies they agree, re-parses both
+    manifests as JSON, and prints the tag command instead of running it (tagging publishes).
+  - **CI builds and installs the wheel** (new `wheel` job, running on every PR and every push to
+    `main`). `uv build` previously ran only in the publish workflow, so packaging breaks were
+    invisible until release day. The job installs into a clean venv, checks `--version` against the
+    source of truth, scaffolds a fresh repo with `init`, asserts the Acme `stack.yaml` did not come
+    along, and checks that a re-run preserves local edits while `--force` overwrites them.
 - **Multiple warehouses per repo (named targets).** `seams.warehouse` is now *either* today's single
   mapping *or* a multi-target mapping — `default: <name>` plus a `targets:` map. The presence of
   `targets:` is the discriminator (deliberately not `default:`, since other seams already use
@@ -25,6 +39,13 @@ no version bump here — the release that ships these bumps the three version fi
   `dev_schema`). Configs written before this keep working through that fallback.
 
 ### Fixed
+- **The kit's fictional "Acme" `stack.yaml` no longer ships in the wheel.** `pyproject.toml`
+  force-included `.claude/config` as a directory, so the repo's own worked example rode along and
+  `ticketwright init` scaffolded it into fresh repos as if it were real config — `PRESERVE` only
+  guards a file that *already* exists, which on a fresh repo it doesn't. The config dir is now
+  enumerated file by file (schema + `stack.example.*.yaml` only); `/setup` writes the live
+  `stack.yaml`. `selftest.sh` §16 fails if the directory mapping returns or a new config file is
+  added without a force-include line.
 - **`db_write_guard` no longer harvests another seam's CLI.** The `cli:` scan was an unanchored
   `re.DOTALL` regex starting at `warehouse:`, so a warehouse seam with no `cli:` of its own (only
   Snowflake requires one) that was listed *before* the tracker captured the tracker's CLI — making an
