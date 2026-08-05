@@ -19,6 +19,10 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _stack import MODE_ALL, MODE_OFF, db_write_mode  # noqa: E402
+
 
 def project_root() -> Path:
     if os.environ.get("CLAUDE_PROJECT_DIR"):
@@ -169,8 +173,17 @@ def main() -> int:
         lines.append("Skills: " + ", ".join(skills) + ".")
     if commands:
         lines.append("Commands: " + ", ".join(commands) + ".")
-    lines.append("Policies enforced: DB writes & external posts require approval (db_write_guard hook + "
-                 "skill hard-halts); chat defaults to draft; outputs deterministic. See AGENTS.md.")
+    # Name the actual policy value: a banner that says "DB writes require approval" while the
+    # guard is set to `off` teaches the agent the wrong rule.
+    mode = db_write_mode(stack)
+    db_rule = {
+        MODE_OFF: "DB writes are NOT gated (db_write_requires_approval: off)",
+        MODE_ALL: "every DB write requires approval (db_write_requires_approval: all)",
+    }.get(mode, "high-risk DB writes require approval (db_write_requires_approval: high_risk) — "
+                "plain CREATE/INSERT/ALTER ADD run without asking")
+    lines.append(f"Policies enforced: {db_rule}; external posts require approval "
+                 "(db_write_guard hook + skill hard-halts); chat defaults to draft; "
+                 "outputs deterministic. See AGENTS.md.")
     print("\n".join(lines))
     return 0
 

@@ -5,10 +5,42 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
-Field-report fixes from two real adopt/install sessions (2026-07-06). Tool-agnostic and stdlib-only;
-no version bump here — the release that ships these bumps the three version files in lockstep and tags.
+## [3.4.0] — 2026-08-05
+
+Graduated DB-write permission modes: the guard stops charging a confirmation for routine additive
+work while still gating anything irreversible. Ships alongside the plugin-setup commit hygiene and
+adopt/install field-report fixes prepared earlier for this version. Tool-agnostic and stdlib-only.
+
+### Changed — behavior change, read before upgrading
+- **`db_write_requires_approval` is now a three-value enum**, not a boolean:
+  `off` | `high_risk` | `all`, defaulting to **`high_risk`**. Legacy values still parse —
+  **`true` now resolves to `high_risk`, not to `all`** — so an existing config gets the relaxed
+  default without being edited. Under `high_risk` the guard asks only for irreversible,
+  access-changing, or unrecognized SQL; plain `CREATE`, `INSERT INTO`, `ALTER … ADD`, and
+  `COMMENT ON` run without a prompt. **To keep the old ask-on-everything behavior, set
+  `db_write_requires_approval: all`.** A missing, malformed, or unrecognized value resolves to
+  `all`, never to something weaker.
+- **Classification is default-deny.** Only the four additive forms above are treated as additive;
+  everything else that mutates is high-risk, *including SQL the scanner doesn't recognize*. The
+  previous flat verb list had holes — `ALTER TABLE … MODIFY COLUMN` can change a type and truncate
+  data while matching no "destructive" verb.
+- **`bypassPermissions` is honored.** The guard no longer asks in that mode; it emits a
+  `systemMessage` instead, so the suppression is visible. Every other permission mode still gets a
+  normal `ask` — notably `dontAsk`, where suppressing would turn an allow-listed CLI into an
+  unguarded destructive channel.
 
 ### Added
+- **Read-only `allow` fast-path.** Verifiably read-only SQL is auto-approved instead of falling
+  through to the normal permission flow. Deliberately narrow: a single simple command (no shell
+  operators or command substitution), every referenced file actually read, and every statement a
+  read. Anything short of that is not auto-approved.
+- **`.claude/hooks/_stack.py`** — shared stack.yaml resolution and policy reading. The hooks had
+  grown three mutually inconsistent root-resolution implementations; `db_write_guard` and
+  `session_context` now share one.
+- **`bin/selftest.sh` §6b** — 41 assertions across the enum (including every legacy value and the
+  fail-safe fallbacks), all six permission modes, tier classification, comment/string-literal
+  false positives, multi-statement priority, and the allow fast-path's guards.
+
 - **Distribution scope settled: plugin = the product, PyPI = the standalone/vendoring installer.**
   Both channels stay, with the pip package explicitly scoped to the cases the plugin can't serve
   (vendoring into a non-Claude-Code harness, running the deterministic engines from a shell or CI)
@@ -39,6 +71,16 @@ no version bump here — the release that ships these bumps the three version fi
   `dev_schema`). Configs written before this keep working through that fallback.
 
 ### Fixed
+- **The guard is actually repo-gated now.** It previously fell back to the kit's own shipped
+  `stack.yaml`, so a globally enabled plugin enforced the worked example's policy in unrelated
+  repos — contradicting the documented "zero output outside a configured repo".
+- **The policy is actually read.** `db_write_requires_approval` was never parsed; it appeared only
+  in the hook's docstring and its message text, so setting it `false` did nothing.
+- **Fail-open is now enforced, not aspirational.** `main()` is wrapped in `except Exception`; a
+  nonzero PreToolUse exit *blocks* the tool call, so an unexpected exception type previously failed
+  closed.
+- **Comments and string literals no longer trigger prompts** — `SELECT 'DROP TABLE x'` is a read.
+
 - **The kit's fictional "Acme" `stack.yaml` no longer ships in the wheel.** `pyproject.toml`
   force-included `.claude/config` as a directory, so the repo's own worked example rode along and
   `ticketwright init` scaffolded it into fresh repos as if it were real config — `PRESERVE` only
@@ -60,7 +102,9 @@ no version bump here — the release that ships these bumps the three version fi
   Postgres/Redshift/Synapse (`dev_schema`). `bin/selftest.sh` now fails if any skill, command, or agent
   names a warehouse-specific dev key again.
 
-### Added (2026-07-06 field report)
+### Also in this release — adopt/install field report (2026-07-06)
+
+#### Added
 - **`build_ticket_index.py --prune`** — drops *orphan* curated records (present in
   `tickets/index_data.json` but with no ticket folder on disk, e.g. a folder renamed/deleted after its
   record was written). Such drift was previously invisible and permanent.
@@ -73,7 +117,7 @@ no version bump here — the release that ships these bumps the three version fi
 - **`bin/selftest.sh` §23** — fixtures for the nested-README locator and the orphan-record
   `--stats`/`--prune` path.
 
-### Fixed
+#### Fixed
 - **Marketplace source clones over HTTPS.** The committed `extraKnownMarketplaces` block and the
   Quickstart command now use an explicit `https://…git` **`url`** source instead of the `owner/repo` /
   `github` shorthand, which could resolve to SSH and fail (`git@github.com: Permission denied`) for
@@ -86,7 +130,12 @@ no version bump here — the release that ships these bumps the three version fi
   `docs/ticket-index.md`, the `bin/recall.py` docstring, and `ROADMAP.md` to `/ticket --recall`
   (CHANGELOG history left intact).
 
-### Changed
+#### Changed
+- **Plugin-setup files get their own commit — never folded into a ticket.** `/ship` now isolates
+  repo-setup / AI-layer files (`.claude/settings.json`, seeded `AGENTS.md`/`CLAUDE.md`,
+  `documentation/AI_LAYER_INDEX.md`, `.gitignore`, `.claude/statusline.sh`) into a separate
+  `chore(plugins):` commit on the ticket's branch, so the ticket PR stays one clean merge. The rule is
+  documented in the rendered `AGENTS.md` too, so every session and teammate follows it, not just `/ship`.
 - **`/refresh index` scope is explicit.** `--all` now means "cover every ticket **but skip already
   enriched + fresh** ones" (the bootstrap scope); a new `--force`/`--reenrich-all` is the rare full
   rewrite. Default stays the un-enriched/stale set. Curated summaries are never rewritten silently.

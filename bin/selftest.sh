@@ -95,31 +95,128 @@ bash bin/render.sh templates/spec.md.tmpl >/dev/null 2>"$TMP/rz.err"; rc=$?
 [ "$rc" -eq 0 ] && ok "render.sh with no vars doesn't crash (bash 3.2 empty array)" || bad "render.sh crashes with zero pairs" "$(cat "$TMP/rz.err")"
 
 hdr "6 · db_write_guard hook (PreToolUse policy enforcement)"
-guard() { python3 .claude/hooks/db_write_guard.py; }
-# read-only inline SELECT → no decision (allow through)
-out="$(echo '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \"SELECT * FROM t LIMIT 5\""}}' | guard)"
-[ -z "$out" ] && ok "SELECT passes through (no prompt)" || bad "SELECT wrongly gated" "$out"
-# inline destructive UPDATE → ask
-out="$(echo '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \"UPDATE t SET x=1\""}}' | guard)"
-grep -q '"permissionDecision": "ask"' <<<"$out" && grep -q UPDATE <<<"$out" && ok "inline UPDATE → ask" || bad "UPDATE not gated" "$out"
-# destructive SQL inside a -f file → ask (the strengthened file scan)
+# The guard is repo-gated: with no project stack.yaml it emits nothing at all. So every
+# case runs against a fixture repo rather than a bare payload, which also lets the policy
+# value vary per assertion. The fixture carries a `vcs.cli: gh` *after* the warehouse seam
+# on purpose — a seam-scoped lookup must not adopt it as the warehouse CLI.
+GREPO="$TMP/guardrepo"; mkdir -p "$GREPO/.claude/config"; : > "$GREPO/.git"
+mkstack() {
+  printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\n  vcs:\n    tool: github\n    cli: gh\npolicies:\n  db_write_requires_approval: %s\n' "$1" > "$GREPO/.claude/config/stack.yaml"
+}
+mkstack_nopolicy() {
+  printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  chat_default_draft: true\n' > "$GREPO/.claude/config/stack.yaml"
+}
+guard() { env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/db_write_guard.py; }
+# Build the payload in python so SQL never has to survive nested shell quoting.
+gcall() {
+  python3 - "$GREPO" "$1" "${2:-}" <<'PY' | guard
+import json, sys
+cwd, cmd, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+payload = {"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": cwd}
+if mode:
+    payload["permission_mode"] = mode
+print(json.dumps(payload))
+PY
+}
+# Collapse the hook's stdout to one token: allow | ask | deny | sysmsg | none
+dec() {
+  python3 -c '
+import sys, json
+raw = sys.stdin.read().strip()
+if not raw:
+    print("none"); raise SystemExit
+d = json.loads(raw)
+h = d.get("hookSpecificOutput") or {}
+print(h.get("permissionDecision") or ("sysmsg" if d.get("systemMessage") else "none"))'
+}
+# expect <want> <label> <command> [permission_mode]
+expect() {
+  got="$(gcall "$3" "${4:-}" | dec)"
+  [ "$got" = "$1" ] && ok "$2" || bad "$2 — got '$got', want '$1'"
+}
+
+mkstack high_risk
+expect allow "SELECT → allow (read-only fast-path)"        'snow sql -q "SELECT * FROM t LIMIT 5"'
+expect ask   "inline UPDATE → ask"                          'snow sql -q "UPDATE t SET x=1"'
+expect none  "non-warehouse bash passes through"            'ls -la'
 echo "CREATE OR REPLACE TABLE foo AS SELECT 1;" > "$TMP/deploy.sql"
-out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"snow sql -f $TMP/deploy.sql\"},\"cwd\":\"/\"}" | guard)"
-grep -q '"permissionDecision": "ask"' <<<"$out" && ok "-f deploy.sql (CREATE OR REPLACE) → ask" || bad "file-based write not gated" "$out"
-# read-only -f file → no decision
+expect ask   "-f deploy.sql (CREATE OR REPLACE) → ask"      "snow sql -f $TMP/deploy.sql"
 echo "SELECT count(*) FROM t;" > "$TMP/qc.sql"
-out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"snow sql -f $TMP/qc.sql\"},\"cwd\":\"/\"}" | guard)"
-[ -z "$out" ] && ok "-f qc.sql (SELECT only) passes through" || bad "read-only file wrongly gated" "$out"
-# non-warehouse bash → no decision
-out="$(echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' | guard)"
-[ -z "$out" ] && ok "non-warehouse bash passes through" || bad "non-warehouse wrongly gated" "$out"
+expect allow "-f qc.sql (SELECT only) → allow"              "snow sql -f $TMP/qc.sql"
+echo "DELETE FROM t WHERE 1=1;" > "$TMP/wipe.sql"
+expect ask   "psql < wipe.sql (stdin redirect) → ask"       "psql mydb < $TMP/wipe.sql"
 # non-Bash tool → no decision
 out="$(echo '{"tool_name":"Read","tool_input":{"file_path":"x"}}' | guard)"
 [ -z "$out" ] && ok "non-Bash tool passes through" || bad "non-Bash wrongly gated" "$out"
-# destructive SQL via stdin redirect (psql < file.sql) → ask (the strengthened stdin scan)
-echo "DELETE FROM t WHERE 1=1;" > "$TMP/wipe.sql"
-out="$(echo "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"psql mydb < $TMP/wipe.sql\"},\"cwd\":\"/\"}" | guard)"
-grep -q '"permissionDecision": "ask"' <<<"$out" && ok "psql < wipe.sql (stdin redirect) → ask" || bad "stdin-redirect write not gated" "$out"
+# malformed stdin must not crash: a nonzero PreToolUse exit would BLOCK the call
+echo 'not json at all' | guard >/dev/null 2>&1
+[ $? -eq 0 ] && ok "malformed payload → exit 0 (fail-open)" || bad "malformed payload did not exit 0"
+# repo gating: outside a configured repo the hook is entirely silent
+out="$(echo '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \"DROP TABLE t\""},"cwd":"/"}' | guard)"
+[ -z "$out" ] && ok "no project stack.yaml → silent (repo-gated)" || bad "guard fired outside a configured repo" "$out"
+
+hdr "6b · db_write_guard tiers, policy enum, and permission modes"
+# --- the enum, including legacy values -------------------------------------------
+mkstack high_risk
+expect none  "high_risk: CREATE TABLE passes (the relaxation)"   'snow sql -q "CREATE TABLE t (a int)"'
+expect ask   "high_risk: DROP asks"                              'snow sql -q "DROP TABLE t"'
+mkstack all
+expect ask   "all: CREATE TABLE asks"                            'snow sql -q "CREATE TABLE t (a int)"'
+mkstack off
+expect none  "off: DROP passes silently"                         'snow sql -q "DROP TABLE t"'
+mkstack true
+expect none  "legacy true → high_risk (CREATE passes)"           'snow sql -q "CREATE TABLE t (a int)"'
+expect ask   "legacy true → high_risk (DROP asks)"               'snow sql -q "DROP TABLE t"'
+mkstack false
+expect none  "legacy false → off"                                'snow sql -q "DROP TABLE t"'
+mkstack strict
+expect ask   "strict → all"                                      'snow sql -q "CREATE TABLE t (a int)"'
+mkstack destructive
+expect none  "destructive → high_risk"                           'snow sql -q "CREATE TABLE t (a int)"'
+# A value the parser cannot make sense of must never resolve to something weaker.
+mkstack wat
+expect ask   "unknown value → all (fails safe, not open)"        'snow sql -q "CREATE TABLE t (a int)"'
+mkstack_nopolicy
+expect ask   "policy key absent → all (fails safe)"              'snow sql -q "CREATE TABLE t (a int)"'
+
+# --- permission modes ------------------------------------------------------------
+mkstack high_risk
+for m in default plan acceptEdits auto dontAsk; do
+  expect ask "permission_mode=$m: DROP still asks" 'snow sql -q "DROP TABLE t"' "$m"
+done
+expect sysmsg "bypassPermissions: DROP → systemMessage, no prompt" 'snow sql -q "DROP TABLE t"' bypassPermissions
+
+# --- classification is default-deny ----------------------------------------------
+# The inverse rule (enumerate the dangerous forms) let ALTER … MODIFY / SET slip through
+# as "not destructive"; MODIFY COLUMN can change a type and truncate data.
+expect ask  "ALTER … MODIFY COLUMN → high-risk"        'snow sql -q "ALTER TABLE t MODIFY COLUMN c varchar(2)"'
+expect ask  "ALTER … SET → high-risk"                  'snow sql -q "ALTER TABLE t SET COMMENT = x"'
+expect none "ALTER … ADD COLUMN is additive"           'snow sql -q "ALTER TABLE t ADD COLUMN c int"'
+expect ask  "CREATE OR REPLACE VIEW → high-risk"       'snow sql -q "CREATE OR REPLACE VIEW v AS SELECT 1"'
+expect ask  "CREATE OR REPLACE TABLE → high-risk"      'snow sql -q "CREATE OR REPLACE TABLE t AS SELECT 1"'
+expect none "INSERT INTO is additive"                  'snow sql -q "INSERT INTO t VALUES (1)"'
+expect ask  "INSERT OVERWRITE → high-risk"             'snow sql -q "INSERT OVERWRITE INTO t SELECT 1"'
+expect none "COMMENT ON is additive"                   'snow sql -q "COMMENT ON TABLE t IS x"'
+expect ask  "MERGE → high-risk"                        'snow sql -q "MERGE INTO t USING s ON t.i=s.i WHEN MATCHED THEN UPDATE SET t.v=s.v"'
+expect ask  "GRANT → high-risk (access control)"       'snow sql -q "GRANT SELECT ON t TO ROLE r"'
+expect ask  "TRUNCATE → high-risk"                     'snow sql -q "TRUNCATE TABLE t"'
+expect ask  "EXECUTE IMMEDIATE (dynamic SQL) → high-risk" 'snow sql -q "EXECUTE IMMEDIATE $$ SELECT 1 $$"'
+expect ask  "unrecognized verb → high-risk (default-deny)" 'snow sql -q "VACUUM ANALYZE t"'
+
+# --- noise that should NOT prompt -------------------------------------------------
+expect allow "DROP inside a line comment is not a statement"  'snow sql -q "SELECT 1 -- DROP TABLE x"'
+expect allow "DROP inside a string literal is data"           "snow sql -q \"SELECT 'DROP TABLE x' AS s\""
+expect allow "WITH … SELECT is a read"                        'snow sql -q "WITH c AS (SELECT 1) SELECT * FROM c"'
+expect ask   "WITH … DELETE is not"                           'snow sql -q "WITH c AS (SELECT 1) DELETE FROM t"'
+expect ask   "multi-statement reports the highest tier"       'snow sql -q "SELECT 1; DROP TABLE t"'
+# Seam-scoped cli lookup: the fixture's `vcs.cli: gh` must not become a warehouse CLI,
+# or `gh pr create` matches CREATE and prompts.
+expect none  "gh pr create is not a warehouse command"        'gh pr create --title x'
+
+# --- the allow fast-path stays narrow --------------------------------------------
+expect none "shell operator defeats the allow fast-path"      'snow sql -q "SELECT 1" && rm -rf /tmp/nope'
+expect none "command substitution defeats the fast-path"      'snow sql -q "SELECT $(whoami)"'
+expect none "unreadable -f file is never auto-allowed"        'snow sql -f /nonexistent/missing.sql'
 
 # --- warehouse-seam CLI harvest: scoped to the seam, indent-agnostic ---------------------------
 # The `cli:` scan must read the warehouse seam and nothing else. Each case builds a throwaway

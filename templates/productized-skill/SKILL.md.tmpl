@@ -28,7 +28,8 @@ Render each `sql/*.sql.tmpl` (or `bin/*`) through `bin/render_and_validate.sh` �
 tokens **and** gates the result (zero leftover tokens, no token inside a comment, balanced
 single-quotes / parens, unquoted SQL literals flagged); **halt on any error**. Write the validated SQL
 to the ticket's `final_deliverables/`, then execute via the warehouse adapter. Capture the metrics
-each step emits. Any DB write ⇒ policy `db_write_requires_approval` (show SQL, explain, wait). Record a
+each step emits. DB writes ⇒ policy `db_write_requires_approval` (`off` | `high_risk` | `all`; under the
+default, high-risk SQL means show, explain, wait — additive SQL may run). Record a
 **rollback key** for any write. **Heavy / long pulls run in the background, not the foreground** (they
 routinely exceed a 2-minute foreground limit) — launch detached and poll.
 

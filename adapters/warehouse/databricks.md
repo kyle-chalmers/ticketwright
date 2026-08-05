@@ -54,7 +54,10 @@ Inventory: `SHOW TABLES IN {catalog}.{schema}`. Lineage: Unity Catalog `system.a
 - **Portable params:** prefer a CTE params row (`WITH params AS (SELECT DATE '2026-06-30' AS anchor) … CROSS JOIN params`) over a session `DECLARE VARIABLE`/`SET VAR` when the SQL must run as one portable, export-clean statement.
 
 ## gotchas
-- Non-SELECT / DDL ⇒ policy `db_write_requires_approval` (show SQL, explain, wait).
+- Mutations are tiered by policy `db_write_requires_approval` (`off` | `high_risk` | `all`):
+  high-risk SQL (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/`CREATE OR REPLACE`/non-ADD `ALTER`)
+  ⇒ show the SQL, explain, wait for explicit `yes`. Additive SQL (plain CREATE, INSERT INTO,
+  `ALTER … ADD`, COMMENT ON) runs without asking unless the policy is `all`.
 - **Pause before any prod job deploy** — stop for human confirmation before writing prod job
   definitions or PR-ing to a jobs repo.
 - The `databricks` CLI is for workspace/API management; SQL runs through `dbsqlcli` / the SQL API / MCP.

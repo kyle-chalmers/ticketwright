@@ -47,4 +47,7 @@ Inventory via `svv_tables` / `svv_columns`.
 
 ## gotchas
 - Data API is **async** — always poll `describe-statement` to `FINISHED` before `get-statement-result`.
-- Non-SELECT/DDL ⇒ policy `db_write_requires_approval`.
+- Mutations are tiered by policy `db_write_requires_approval` (`off` | `high_risk` | `all`):
+  high-risk SQL (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/`CREATE OR REPLACE`/non-ADD `ALTER`)
+  ⇒ show the SQL, explain, wait for explicit `yes`. Additive SQL (plain CREATE, INSERT INTO,
+  `ALTER … ADD`, COMMENT ON) runs without asking unless the policy is `all`.

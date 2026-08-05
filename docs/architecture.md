@@ -50,10 +50,15 @@ Policies are only as good as the agent's memory unless something enforces them. 
 Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires them into a repo's
 `.claude/settings.json` for non-plugin installs):
 
-- **`db_write_guard.py`** (PreToolUse/Bash) — makes `db_write_requires_approval` mechanical: asks
-  before any destructive warehouse statement (CREATE/ALTER/DROP/DELETE/UPDATE/INSERT/TRUNCATE/
-  MERGE/GRANT/REVOKE), **including SQL hidden in a `-f` file or a stdin redirect**; read-only
-  SELECT/DESCRIBE/SHOW pass straight through.
+- **`db_write_guard.py`** (PreToolUse/Bash) — makes `db_write_requires_approval` mechanical.
+  The policy is a three-value enum (`off` | `high_risk` | `all`, default `high_risk`), so routine
+  additive work doesn't cost a confirmation while irreversible work still does. Classification is
+  **default-deny**: only plain `CREATE`, `INSERT INTO`, `ALTER … ADD`, and `COMMENT ON` count as
+  additive; everything else that mutates — *including anything the scanner doesn't recognize* — is
+  high-risk. It sees SQL hidden in a `-f` file or a stdin redirect, and strips comments and string
+  literals first so a verb quoted as data isn't mistaken for a statement. Read-only SQL takes an
+  `allow` fast-path. Under `bypassPermissions` it emits a `systemMessage` instead of asking, since
+  the operator has already opted out of prompting.
 - **`session_context.py`** (SessionStart) — primes every session with the configured stack, the
   skills, and the lifecycle.
 - **`ticket_index_context.py`** (SessionStart) — surfaces the ticket catalog (counts + most recent
@@ -62,7 +67,9 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   whenever a ticket folder changes.
 
 Hooks are the one Claude-Code-specific layer; the rest of the kit is agent-agnostic. Other agents
-enforce the same policies via the skill-level hard-halts.
+read the same policies from `stack.yaml` and honor them via the skill-level hard-halts — that is
+**guidance, not enforcement**, and the docs should not imply those agents get equivalent runtime
+protection. The policy value is the shared contract; only the enforcement mechanism differs.
 
 ## What's inside
 

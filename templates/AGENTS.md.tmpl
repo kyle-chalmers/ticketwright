@@ -37,16 +37,30 @@ in a skill**; put it in the config/adapter.
 ## Permission hierarchy
 **No permission needed (internal):** read queries / data exploration; reading/searching/writing files
 in the repo; local analysis + output.
-**Explicit permission required (external/destructive):** any DB write (UPDATE/ALTER/DROP/DELETE/
-INSERT/CREATE OR REPLACE/TRUNCATE/DDL); commits/pushes/PRs; tracker comments; chat messages; docstore
-backups. **DB-write protocol:** show the exact SQL → explain the change → wait for `yes` → run. This
-is enforced mechanically by the `db_write_guard` PreToolUse hook (`.claude/hooks/`) — it asks before
-any destructive warehouse statement, including SQL hidden in a `-f` file — so the rule holds even if
-the agent forgets it.
+**Explicit permission required (external/destructive):** high-risk DB writes; commits/pushes/PRs;
+tracker comments; chat messages; docstore backups.
+
+**DB-write protocol:** show the exact SQL → explain the change → wait for `yes` → run.
+
+How much is gated is set by `policies.db_write_requires_approval` in `.claude/config/stack.yaml`:
+
+- `off` — nothing is gated.
+- `high_risk` *(default)* — gate anything irreversible, access-changing, or unrecognized:
+  `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `MERGE`, `GRANT`/`REVOKE`, every `CREATE OR REPLACE`,
+  and every `ALTER` other than `ALTER … ADD`. Plain `CREATE`, `INSERT INTO`, `ALTER … ADD`, and
+  `COMMENT ON` are additive — run them without asking.
+- `all` — gate every mutation, additive ones included.
+
+Read the current value before assuming; don't hardcode one of these behaviors.
+
+In Claude Code this is enforced mechanically by the `db_write_guard` PreToolUse hook
+(`.claude/hooks/`), which sees SQL hidden in a `-f` file or a stdin redirect too, so the rule holds
+even if the agent forgets it. **For every other agent it is guidance, not enforcement** — hooks are
+the only mechanically enforced layer, so honoring this protocol is on you.
 
 ## The 9 policies (inherited by every skill, from stack.yaml)
 1. **hard_halt_before_external_posts** — pause for human go before any tracker/chat/docstore write.
-2. **db_write_requires_approval** — show SQL, explain, wait.
+2. **db_write_requires_approval** — `off` | `high_risk` (default) | `all`; show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
 5. **skillify_everything** — recurring work becomes a `/productize` skill the agent can invoke itself.
