@@ -1,7 +1,7 @@
 ---
 name: spec-and-build
 description: Research-rich spec then execute it. `spec` mode writes a PRP-style blueprint (committed before building); `build` mode implements it in fresh context with independent validation. The IMPLEMENT phase.
-argument-hint: spec <ticket-id> "<what to build>" | build <ticket-id> [spec-path]
+argument-hint: spec <ticket-id> "<what to build>" [--warehouse <name>] | build <ticket-id> [spec-path]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
 
@@ -18,7 +18,8 @@ context-engineering core idea: AI fails from missing context, not weak models.
 
 ## Mode: `spec` — author the blueprint (this is still PLAN-adjacent; no production writes)
 
-1. **Preflight** the warehouse seam (verify; halt with auth notes if unreachable). If no warehouse
+1. **Preflight** each warehouse **target** the ticket needs (resolve per `adapters/README.md`
+   § Multi-target seams; verify each; halt with that target's auth notes). If no warehouse
    configured, the spec is code/analysis-only — proceed without warehouse steps.
 2. **Research in parallel, never implement.** Spawn read-only research (Agent/Explore, or re-run
    the priming slices from `/ticket` — see `skills/ticket/priming.md`):
@@ -56,4 +57,4 @@ context-engineering core idea: AI fails from missing context, not weak models.
 
 ## Generalizes
 `generate-data-object-prp` + `prp-data-object-execute` + `PRPs/templates/data-object-initial.md`,
-warehouse-agnostic via `seams.warehouse`.
+warehouse-agnostic via `seams.warehouse`, and works the same when that seam holds several targets.

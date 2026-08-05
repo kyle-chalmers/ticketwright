@@ -55,6 +55,16 @@ leaks="$(grep -REn -i 'acli|\bsnow \b|snow sql|mcp__slack|slack_send|\bgh pr\b|\
 # A warehouse-specific *config key* is the same leak wearing a different hat: `dev_db` is Snowflake's
 # spelling, and naming it in a skill silently breaks that skill on BigQuery/Databricks/Postgres.
 # The tool-neutral reference is `dev_target` (with the adapter's `dev_key:` as the legacy fallback).
+# The CLI grep above catches `snow sql` but not a warehouse's PRODUCT NAME in prose — two skills
+# carried "works on Snowflake, BigQuery, Databricks" while claiming to be tool-neutral. Naming a
+# product in a skill is the same leak: it silently scopes the skill to one vendor's stack.
+# The CLI-detection probe in `setup` is a sanctioned exception (adapters/README.md) — it has to name
+# CLIs in order to detect them, exactly as the tool-name grep above exempts it.
+prodleaks="$(grep -REn -i 'snowflake|bigquery|databricks|redshift|synapse' \
+              .claude/skills .claude/commands .claude/agents 2>/dev/null \
+              | grep -v 'for c in snow acli gh' || true)"
+[ -z "$prodleaks" ] && ok "no warehouse product name appears in a skill/command/agent" \
+  || bad "a skill names a specific warehouse product (scopes a tool-neutral skill to one vendor)" "$prodleaks"
 devleaks="$(grep -REn 'dev_db|dev_dataset|dev_catalog|dev_schema' \
              .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
 [ -z "$devleaks" ] && ok "no warehouse-specific dev key named in a skill/command/agent" \
@@ -75,6 +85,7 @@ domain=data
 ticket_path=tickets/{assignee}/{id}
 tracker_tool=jira
 warehouse_tool=snowflake
+warehouse_adapter=`adapters/warehouse/snowflake.md`
 chat_tool=slack
 docstore_tool=gdrive
 vcs_tool=github
@@ -320,6 +331,97 @@ YAML
 )"
 out="$(gask 'cmtcli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "comment before the first seam doesn't hide it" || bad "a comment's indentation hid the warehouse seam (gating narrowed)" "$out"
+
+# Wrong-warehouse detection: right SQL, wrong target. A READ is gated too, because it returns
+# plausible numbers about the wrong system rather than erroring — the failure mode this feature
+# introduces. Only a CONFIRMED mismatch gates; an unknown name must never manufacture a prompt.
+d="$(gstack wrongwh <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    targets:
+      prod: {tool: snowflake, cli: snow}
+      lake: {tool: databricks, cli: dbsqlcli}
+YAML
+)"
+printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d/q.sql"
+out="$(gask "snow sql -f $d/q.sql" "$d")"
+grep -q 'wrong warehouse' <<<"$out" \
+  && ok "a read against the wrong target is gated (mismatched -- warehouse-target: header)" \
+  || bad "SQL declaring one target ran on another with no prompt" "$out"
+printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$d/ok.sql"
+out="$(gask "snow sql -f $d/ok.sql" "$d")"
+[ -z "$out" ] && ok "a matching target header passes through silently" || bad "matching target wrongly gated" "$out"
+printf -- '-- warehouse-target: typo\nSELECT 1;\n' > "$d/typo.sql"
+out="$(gask "snow sql -f $d/typo.sql" "$d")"
+[ -z "$out" ] && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
+# A single-warehouse repo has no targets, so a stray header must not resolve to the seam's own cli.
+d1="$(gstack wrongwh1 <<'YAML'
+seams:
+  warehouse:
+    tool: snowflake
+    cli: snow
+YAML
+)"
+printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d1/q.sql"
+out="$(gask "snow sql -f $d1/q.sql" "$d1")"
+[ -z "$out" ] && ok "single-warehouse repo: a stray target header changes nothing" \
+  || bad "a single-mapping seam resolved an undefined target and gated" "$out"
+# A quoted scalar is valid YAML. Leaving the quotes attached made every comparison mismatch, i.e. a
+# false prompt on a correct command — the worst outcome for a guard, since dismissed prompts stop working.
+dq="$(gstack quotedcli <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    targets:
+      prod: {tool: snowflake, cli: "snow"}
+      lake: {tool: databricks, cli: 'dbsqlcli'}
+YAML
+)"
+printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$dq/ok.sql"
+out="$(gask "snow sql -f $dq/ok.sql" "$dq")"
+[ -z "$out" ] && ok "a quoted cli: value doesn't false-gate a correct command" \
+  || bad "quoted YAML scalars produced a bogus wrong-warehouse prompt" "$out"
+printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dq/bad.sql"
+out="$(gask "snow sql -f $dq/bad.sql" "$dq")"
+grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value still catches a real mismatch" \
+  || bad "quoting the cli hid a real mismatch" "$out"
+# Exotic YAML the stdlib scan doesn't read must fall through to NO gate, never to a guess.
+for shape in flowtargets aliastarget; do
+  case "$shape" in
+    flowtargets) y='seams:
+  warehouse:
+    cli: snow
+    targets: {prod: {cli: snow}, lake: {cli: dbsqlcli}}' ;;
+    aliastarget) y='seams:
+  warehouse:
+    cli: snow
+    targets:
+      lake: *shared' ;;
+  esac
+  dx="$TMP/exotic-$shape"; mkdir -p "$dx/.claude/config"
+  printf '%s\n' "$y" > "$dx/.claude/config/stack.yaml"
+  printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dx/q.sql"
+  out="$(gask "snow sql -f $dx/q.sql" "$dx")"
+  [ -z "$out" ] && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
+    || bad "an unread YAML form produced a wrong-warehouse prompt ($shape)" "$out"
+done
+
+# Inheritance: two targets sharing one seam-level cli must both resolve to it.
+d2="$(gstack wrongwh2 <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    cli: snow
+    targets:
+      prod: {tool: snowflake, default_warehouse: P}
+      sbx:  {tool: snowflake, default_warehouse: S}
+YAML
+)"
+printf -- '-- warehouse-target: sbx\nSELECT 1;\n' > "$d2/q.sql"
+out="$(gask "snow sql -f $d2/q.sql" "$d2")"
+[ -z "$out" ] && ok "targets inheriting one seam-level cli don't false-positive" \
+  || bad "seam-level cli inheritance produced a bogus mismatch" "$out"
 
 # A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
 d="$(gstack yamlanchor <<'YAML'

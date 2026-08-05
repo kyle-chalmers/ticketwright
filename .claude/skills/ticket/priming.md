@@ -38,10 +38,12 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
 ## 4 · Warehouse slice (only the objects in play)
 
 - Skip cleanly if `seams.warehouse` is absent/null ("no warehouse configured").
-- **Preflight** the warehouse seam (`seams.warehouse.verify`); if it fails, halt this slice with
+- Resolve and **preflight** the target(s) in play — see `adapters/README.md` § Multi-target seams.
+  If one fails, halt this slice with
   the adapter's auth notes — don't guess at schemas.
 - **Resolve object names** (topic → real names via the local pack and the adapter's discovery
   query), then per object: `describe` (columns/types/DDL), a 5-row sample via `query`, and
   dependencies per the adapter's `dialect_notes` lineage approach.
-- Brief per object: key columns, join keys (+ cast/filter rules from `dialect_notes`), grain, and
+- Brief per object: **which target it lives on** (two targets can hold same-named objects at
+  different grain), key columns, join keys (+ cast/filter rules from `dialect_notes`), grain, and
   the safest source layer to read from.

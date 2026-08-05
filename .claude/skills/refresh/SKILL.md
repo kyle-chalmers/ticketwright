@@ -1,7 +1,7 @@
 ---
 name: refresh
 description: Maintain the repo's knowledge — `index` rebuilds the ticket catalog (INDEX.md), `context` rebuilds the domain knowledge pack (documentation/). Day-to-day, hooks keep these fresh automatically.
-argument-hint: index [--all | TICKET-ID ...] | context [--refresh] [schema-or-scope] | all
+argument-hint: index [--all | TICKET-ID ...] | context [--refresh] [--warehouse <name>] [schema-or-scope] | all
 allowed-tools: [Read, Write, Bash, Glob, Grep]
 ---
 
@@ -33,7 +33,7 @@ via `bin/ingest_index_records.py`), re-render, then verify with `--check` and co
 index files together (`INDEX.md`, `OBJECTS.md`, `index_data.json`).
 
 ## Mode: `context`
-Follow [context-pack.md](context-pack.md): verify the warehouse seam, introspect via the adapter
+Follow [context-pack.md](context-pack.md): verify each configured warehouse target, introspect via its adapter
 (inventory → DDL → dependencies → usage ranking), generate `data_catalog.md` / `erd.md` /
 `glossary.md` into `documentation/` with freshness stamps, and update
 `documentation/AI_LAYER_INDEX.md`. Don't invent business meaning — flag glossary gaps for a human

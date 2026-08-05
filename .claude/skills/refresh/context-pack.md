@@ -2,11 +2,13 @@
 
 Builds the on-demand knowledge base that `/ticket`'s domain + warehouse priming reads, so
 day-to-day tickets prime *slices* instead of re-discovering the warehouse every time. Reads
-`.claude/config/stack.yaml`; introspects via the warehouse adapter, so it works on Snowflake,
-BigQuery, Databricks, etc.
+`.claude/config/stack.yaml`; introspects via each configured warehouse target's adapter, so it works
+against any warehouse — or several.
 
 ## Phase 0 — Setup
-1. Read `stack.yaml`; verify the warehouse seam (halt with auth notes if unreachable). Scope to
+1. Read `stack.yaml`; resolve and verify the warehouse target(s) — see `adapters/README.md`
+   § Multi-target seams. With several, each target's pack goes under `documentation/<target>/`.
+   Scope to
    the given schema/dataset or the whole configured warehouse. `--refresh` updates an existing
    pack in place (overwrite, don't sprawl).
 

@@ -6,6 +6,7 @@
 - **Status:** {{status}}
 - **Epic/Parent:** {{epic}}
 - **Assignee:** {{assignee}}
+- **Warehouse target(s):** {{warehouse_targets}}
 
 ## Business Context
 {{description}}
@@ -23,7 +24,8 @@ Scope/Time Window (as-of dates, ranges) · Methodology · Source Selection · Ou
    - **Impact**: [how it affects the analysis]
 
 ## Deliverables
-*Numbered in review order; filenames carry record counts.*
+*Numbered in review order; filenames carry record counts. Note each deliverable's warehouse target —
+a `.sql` carries its own `-- warehouse-target:` header, but a CSV cannot (its header must be row 1).*
 
 ## Quality Control
 *The `/review` verdict + pyramid results (counts/dedup, reconciliation, anti-patterns).*

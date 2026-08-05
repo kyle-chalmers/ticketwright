@@ -68,6 +68,85 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 
 ---
 
+## Multi-target seams
+
+A seam normally names one tool. A repo that must reach more than one warehouse — prod Snowflake plus
+a lakehouse, or two accounts of the same warehouse — declares **named targets** instead:
+
+```yaml
+seams:
+  warehouse:
+    default: prod          # required when `targets:` is present
+    cli: snow              # seam-level scalars are inherited by every target
+    targets:
+      prod: { tool: snowflake,  adapter: adapters/warehouse/snowflake.md,  verify: "…" }
+      lake: { tool: databricks, adapter: adapters/warehouse/databricks.md, verify: "…" }
+```
+
+`targets:` — not `default:` — is what marks a seam multi-target, because other seams already use
+`default_channel` / `default_mode` / `default_branch`. Full field docs: `stack.schema.md`.
+
+### Resolving the active target
+
+First hit wins:
+
+1. an explicit `--warehouse <name>` on the invocation;
+2. the `-- warehouse-target: <name>` header comment in the `.sql` file being run or linted;
+3. the ticket's declared target — the spec's `primary_target`, else the ticket README's target line;
+4. `seams.warehouse.default`;
+5. the seam itself, when it is a single mapping (call it `default` in reports).
+
+An unresolvable name is a **halt**: say which names are configured. Never quietly fall back to the
+default, because that is precisely the wrong-warehouse failure.
+
+### One file, one target
+
+Line 1 of every `.sql` file names its target:
+
+```sql
+-- warehouse-target: lake
+```
+
+That one token drives execution, the dialect lint, and the re-run, so it cannot drift from reality
+the way a separate annotation would. A ticket spanning two targets carries two sets of files.
+
+**Never put this in a CSV.** A deliverable CSV must keep its header on row 1 with no preamble.
+Record a CSV's target in the ticket README's deliverables list instead.
+
+The header is **required only in a multi-target repo**. In a single-warehouse repo its absence is
+correct and silent — otherwise every existing ticket everywhere becomes non-conformant.
+
+Two things check it, deliberately:
+
+- **`/review`** flags a headerless or mismatched `.sql` as a Should-fix finding. This is the
+  authoritative half — it reads the header directly and works under any agent.
+- **the `db_write_guard` hook** prompts *before* a command runs when the invoked CLI doesn't match
+  the header's target, including for read-only SQL, since a read on the wrong warehouse returns
+  plausible wrong numbers rather than an error. This half is best-effort: it resolves the target's
+  CLI with a stdlib scan, and stays silent on anything it can't read confidently (a flow mapping for
+  the whole `targets:` value, a target defined by a YAML alias). It is also Claude-Code-only, because
+  hooks don't run under other agents.
+
+So the hook catches things earlier and the review catches them more reliably. Neither replaces the
+other, which is why both exist.
+
+### Resolving the dev target
+
+`dev_target` on the resolved target, else the key named by that target's adapter `dev_key:`
+frontmatter. Adapters spell their own legacy key; skills never name one.
+
+### Cross-target work is out of scope
+
+Routing a query to the right warehouse is this kit's job. Joining data *across* warehouses is not,
+and the boundary is deliberate: moving rows between them is a write subject to
+`db_write_requires_approval`, the extract side is a governance decision the kit has no vocabulary
+for (note `pii_role` is a *per-target* key), and a hand-rolled bridge breaks `deterministic_outputs`.
+A team that genuinely needs it already has federation configured in the warehouse, where the
+federated objects are reachable from one target and need no support here.
+
+The supported shape is two single-target queries → two exports → an explicit local combine step,
+documented in the spec, whose reconciliation is a validation gate.
+
 ## Adapters shipped
 
 Pick the one matching your stack (or copy the closest as a starting point). All implement the full

@@ -1,7 +1,7 @@
 ---
 name: review
 description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
-argument-hint: <ticket-id> [--deep]
+argument-hint: <ticket-id> [--deep] [--warehouse <name>]
 allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 
@@ -10,17 +10,22 @@ allowed-tools: [Read, Bash, Glob, Grep, Agent]
 The **check** step of the lifecycle. An *independent* second pass over a ticket's deliverables —
 re-runs queries, walks a tiered validation pyramid, sweeps for anti-patterns, and returns an
 APPROVE / REQUEST-CHANGES verdict. Reads `.claude/config/stack.yaml`; warehouse specifics come from
-the adapter's `dialect_notes`, so the same review runs on Snowflake, BigQuery, or Databricks.
+the resolved target's adapter `dialect_notes`, so the same review runs against any warehouse — or
+several, when a ticket spans more than one.
 Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 
 ## Phase 0 — Setup
-1. Read `stack.yaml`; verify the warehouse seam (halt with auth notes if unreachable). Load
-   `seams.warehouse.dialect_notes` from the adapter — it parameterizes the lint layer.
+1. Read `stack.yaml`. Resolve every warehouse **target** this ticket touches and verify each one
+   (halt with that target's adapter auth notes if unreachable) — resolution order in
+   `adapters/README.md` § Multi-target seams. Load each target's `dialect_notes`: the lint layer is
+   parameterized **per file**, by the target its header names.
 2. Read the ticket README, the spec (if any), and list `final_deliverables/` + `qc_queries/`.
 
 ## The validation pyramid (bottom = cheap/automated, top = human)
 
-**① Dialect lint** (static, per `dialect_notes`)
+**① Dialect lint** (static, per the `dialect_notes` of *that file's* target — in a multi-target repo
+a `.sql` with no target header is a **Should-fix** finding, and is linted against whatever the
+canonical order resolves next — the ticket's declared target before the seam default)
 - `= NULL` → must be `IS NULL`; missing div-by-zero guard; `SELECT *` in deliverables; functions on
   filtered columns; implicit cross-source type mismatches (missing `CAST`); hardcoded values that
   should be parameters; missing required schema/instance filters; `LEFT JOIN` predicate in `WHERE`
@@ -39,7 +44,8 @@ Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 - Reconcile totals against the source of truth (e.g. SUM vs the input file/feed) within tolerance.
 
 **④ Independent re-run + anti-pattern sweep**
-- Re-execute the main deliverable query end-to-end; diff results to the committed output (byte-level
+- Re-execute each deliverable **against the target its header names** — re-running one target's SQL
+  on another is not a reproduction. Diff results to the committed output (byte-level
   for CSVs — `deterministic_outputs` requires explicit `ORDER BY`).
 - Sweep the full anti-pattern set (correctness, performance, data-quality, dialect-specific,
   maintainability). Classify each finding Critical / Should-fix / Review.

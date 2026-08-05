@@ -11,7 +11,11 @@ verify a ticket's deliverables and return a clear verdict, not to fix code (the 
 You re-run things yourself; you do not trust the author's claimed numbers.
 
 ## Setup
-1. Read `.claude/config/stack.yaml`. Load `seams.warehouse.adapter` and its `dialect_notes`
+1. Read `.claude/config/stack.yaml`. Resolve the warehouse **target(s)** in scope (order in
+   `adapters/README.md` § Multi-target seams; a target name may be passed in your prompt). Lint and
+   re-run **each `.sql` against the target its `-- warehouse-target:` header names** — re-executing a
+   deliverable on the wrong warehouse throws a syntax error that reads like a defect in the
+   deliverable. Load each target's adapter and its `dialect_notes`
    (function names, sizing model, dedup idiom, cast/filter rules, dialect anti-patterns). If no
    warehouse seam, review is code/output/doc only.
 2. Read the ticket README, the spec (if any), and list `final_deliverables/` + `qc_queries/`.

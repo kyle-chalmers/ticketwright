@@ -1,7 +1,7 @@
 ---
 name: ticket
 description: The front door — open or resume a ticket, auto-load its context and prior art, and route to the next step (spec, build, review, or ship). Start every ticket here.
-argument-hint: <ticket-id> | --create "<summary>" [--type T] [--worktree] | --recall "<topic>" | --recall --object <NAME>
+argument-hint: <ticket-id> [--warehouse <name>] | --create "<summary>" [--type T] [--worktree] | --recall "<topic>" | --recall --object <NAME>
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
 
