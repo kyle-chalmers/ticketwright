@@ -1043,7 +1043,11 @@ grep -q '▸ warehouse\[prod\]\*' <<<"$mtout" \
 grep -q 'databricks --profile DEFAULT current-user me' <<<"$mtout" \
   && ok "target verify interpolates that target's own tokens" || bad "target token scoping wrong" "$mtout"
 # Single-mapping stacks must still produce exactly one un-bracketed warehouse row.
-for s in .claude/config/stack.yaml .claude/config/stack.example.asana-bq.yaml .claude/config/stack.example.azure.yaml; do
+# Derived, not hardcoded: any config without a `targets:` map is a single-mapping stack and must
+# keep producing one plain row. A hardcoded list silently skipped the solo example when it was added.
+for s in $(for f in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
+             yq -e '.seams | to_entries | map(select(.value.targets)) | length > 0' "$f" >/dev/null 2>&1 || echo "$f"
+           done); do
   o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
   { [ "$(grep -c '▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '▸ warehouse\[' <<<"$o"; } \
     && ok "$(basename "$s"): still one plain warehouse row" || bad "$(basename "$s") regressed to target rows" "$o"
@@ -1141,6 +1145,84 @@ sed 's/default: prod/default: lake/' "$MT" > "$MTP/.claude/config/stack.yaml"
 o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$MTP" python3 .claude/hooks/session_context.py 2>&1)"
 grep -q 'warehouse=databricks+snowflake' <<<"$o" \
   && ok "banner puts the DEFAULT target first, not the file's first" || bad "banner ignores the default: pointer" "$o"
+# Two structural checks over every shipped config. yq is the authority for *which* seams have
+# targets and what they resolve to — it reads block and flow forms alike, and it can't be fooled by
+# an unrelated nested `targets:` elsewhere in the document. Duplicate keys are the one thing yq
+# cannot report (it silently keeps the last), so those are counted from the text.
+python3 - <<'PY2'
+import json, pathlib, re, subprocess, sys, glob
+
+def yq(expr, f):
+    r = subprocess.run(["yq", "-o=json", expr, f], capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return None
+
+files = [".claude/config/stack.yaml"] + sorted(glob.glob(".claude/config/stack.example.*.yaml"))
+missing_adapter, dupes, dangling = [], [], []
+
+for f in files:
+    seams = yq(".seams", f) or {}
+    text = pathlib.Path(f).read_text()
+    for seam, body in seams.items():
+        if not isinstance(body, dict) or "targets" not in body:
+            continue
+        targets = body.get("targets") or {}
+        # A target may INHERIT tool from the seam, so check the effective value, not just its own.
+        for name, tgt in targets.items():
+            tgt = tgt or {}
+            tool = (tgt.get("tool") if isinstance(tgt, dict) else None) or body.get("tool")
+            if not tool:
+                missing_adapter.append(f"{pathlib.Path(f).name}:{seam}/{name}: no tool (own or inherited)")
+            elif not pathlib.Path(f"adapters/{seam}/{tool}.md").is_file():
+                missing_adapter.append(f"{pathlib.Path(f).name}:{seam}/{name} -> {tool}")
+        # `default:` must name one of them. A missing default is a different assertion's job.
+        d = body.get("default")
+        if d is not None and d not in targets:
+            dangling.append(f"{pathlib.Path(f).name}:{seam}: default '{d}' not in {sorted(targets)}")
+        # Duplicate keys: compare yq's collapsed count against the raw keys in the targets region.
+        m = re.search(rf"(?m)^([ \t]*){re.escape(seam)}:[ \t]*$", text)
+        region = ""
+        if m:
+            base = len(m.group(1))
+            for ln in text[m.end():].splitlines():
+                if ln.strip() and (len(ln) - len(ln.lstrip())) <= base:
+                    break
+                region += ln + "\n"
+        tm = re.search(r"(?m)^([ \t]*)targets:[ \t]*(.*)$", region)
+        if tm:
+            if tm.group(2).strip().startswith("{"):
+                raw = len(re.findall(r"[{,]\s*(?:\"[^\"]+\"|'[^']+'|[A-Za-z0-9_.-]+)\s*:", tm.group(2)))
+            else:
+                tbase, raw, child = len(tm.group(1)), 0, None
+                for ln in region[tm.end():].splitlines():
+                    if not ln.strip() or ln.lstrip().startswith("#"):
+                        continue
+                    cur = len(ln) - len(ln.lstrip())
+                    if cur <= tbase:
+                        break
+                    if child is None:
+                        child = cur
+                    if cur == child and re.match(r"""^\s*(?:"[^"]+"|'[^']+'|[A-Za-z0-9_.-]+)\s*:""", ln):
+                        raw += 1
+            if raw and raw != len(targets):
+                dupes.append(f"{pathlib.Path(f).name}:{seam}: {raw} target keys in the text but "
+                             f"{len(targets)} survive — a duplicate name is silently dropped")
+
+out = {"adapter": missing_adapter, "dupes": dupes, "dangling": dangling}
+pathlib.Path(".selftest_targets.json").write_text(json.dumps(out))
+PY2
+tj="$(cat .selftest_targets.json 2>/dev/null || echo '{}')"; rm -f .selftest_targets.json
+jqf() { python3 -c "import json,sys;print(' '.join(json.loads(sys.argv[1]).get(sys.argv[2],[])))" "$1" "$2"; }
+a="$(jqf "$tj" adapter)"; du="$(jqf "$tj" dupes)"; dg="$(jqf "$tj" dangling)"
+[ -z "$a" ] && ok "every named target resolves a tool (own or inherited) with a shipped adapter" \
+  || bad "a target's effective tool has no adapter file" "$a"
+[ -z "$du" ] && ok "no multi-target seam silently drops a duplicate target name" \
+  || bad "duplicate target names — the earlier config is discarded" "$du"
+[ -z "$dg" ] && ok "every default: names a target that exists" || bad "a dangling default:" "$dg"
 
 hdr "25 · id_mode: slug (folder name IS the ticket id; no tracker required)"
 S="$TMP/slugmode"; mkdir -p "$S/.claude/config" "$S/bin"

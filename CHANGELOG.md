@@ -15,6 +15,22 @@ with old hooks — the display readers degrade to showing the first warehouse ta
 breaking, but `bin/verify_stack.sh` will flag the seam until you relaunch.
 
 ### Added
+- **Skills resolve a warehouse target.** `adapters/README.md` gains a canonical
+  `## Multi-target seams` section — the five-step resolution order, the `-- warehouse-target:` header
+  convention, one-file-one-target, the CSV exception, dev-target resolution, and why cross-target
+  joins are out of scope. Every skill and agent points at it rather than restating it. `/review` and
+  `qc-reviewer` now resolve the dialect lint and the re-run **per file**, since a ticket spanning two
+  targets has no single answer at ticket scope and re-running one target's SQL on another is not a
+  reproduction. `--warehouse <name>` is accepted by `/ticket`, `/review`, `/spec-and-build` and
+  `/refresh context`; the spec and ticket README record the target(s).
+- **Wrong-warehouse guard.** `db_write_guard` prompts when the invoked CLI doesn't match the target a
+  `.sql` declares in its leading `-- warehouse-target:` comment — **including for read-only SQL**,
+  because a read against the wrong warehouse returns plausible wrong numbers rather than erroring.
+  Deliberately conservative: it resolves the target's CLI with a stdlib scan and stays silent on
+  anything it can't read confidently (a flow mapping for the whole `targets:` value, a target defined
+  by a YAML alias), because a false prompt is worse than a missed one — prompts people learn to
+  dismiss stop working. The authoritative check is the `/review` Should-fix finding, which needs no
+  YAML parsing and is the only half that runs under agents other than Claude Code.
 - **Trackerless work — `project.id_mode: slug` + a `local` tracker adapter.** A repo with no
   ticketing system can now use ticketwright: set `id_mode: slug` and a folder under
   `tickets/<owner>/` named however you name it becomes the ticket, with its `README.md` holding what
@@ -34,6 +50,10 @@ breaking, but `bin/verify_stack.sh` will flag the seam until you relaunch.
   directory rather than printing `?-tickets`.
 
 ### Fixed
+- **Two skills silently scoped themselves to one vendor.** `review` and `refresh context` said they
+  work "on Snowflake, BigQuery, Databricks" while claiming to be tool-neutral. `bin/selftest.sh` now
+  fails if a warehouse product name appears in any skill, command or agent — the existing guard
+  caught CLI invocations like `snow sql` but not product names in prose.
 - **A slug id ending in digits no longer sorts as a ticket number.** `ticket_number()` searched for
   `-\d+` anywhere in an id, so a folder called `refi-sms-lift-2024` ranked as ticket 2024 among real
   keys, in `INDEX.md`, `OBJECTS.md`, the graph notes and `recall.py`. Numbering is now decided by the
