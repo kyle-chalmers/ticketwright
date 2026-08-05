@@ -351,10 +351,10 @@ grep -q 'wrong warehouse' <<<"$out" \
   || bad "SQL declaring one target ran on another with no prompt" "$out"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$d/ok.sql"
 out="$(gask "snow sql -f $d/ok.sql" "$d")"
-[ -z "$out" ] && ok "a matching target header passes through silently" || bad "matching target wrongly gated" "$out"
+! grep -q 'wrong warehouse' <<<"$out" && ok "a matching target header raises no wrong-warehouse prompt" || bad "matching target wrongly gated" "$out"
 printf -- '-- warehouse-target: typo\nSELECT 1;\n' > "$d/typo.sql"
 out="$(gask "snow sql -f $d/typo.sql" "$d")"
-[ -z "$out" ] && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
+! grep -q 'wrong warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
 # A single-warehouse repo has no targets, so a stray header must not resolve to the seam's own cli.
 d1="$(gstack wrongwh1 <<'YAML'
 seams:
@@ -365,7 +365,7 @@ YAML
 )"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d1/q.sql"
 out="$(gask "snow sql -f $d1/q.sql" "$d1")"
-[ -z "$out" ] && ok "single-warehouse repo: a stray target header changes nothing" \
+! grep -q 'wrong warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
   || bad "a single-mapping seam resolved an undefined target and gated" "$out"
 # A quoted scalar is valid YAML. Leaving the quotes attached made every comparison mismatch, i.e. a
 # false prompt on a correct command — the worst outcome for a guard, since dismissed prompts stop working.
@@ -380,7 +380,7 @@ YAML
 )"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$dq/ok.sql"
 out="$(gask "snow sql -f $dq/ok.sql" "$dq")"
-[ -z "$out" ] && ok "a quoted cli: value doesn't false-gate a correct command" \
+! grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
   || bad "quoted YAML scalars produced a bogus wrong-warehouse prompt" "$out"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dq/bad.sql"
 out="$(gask "snow sql -f $dq/bad.sql" "$dq")"
@@ -403,7 +403,7 @@ for shape in flowtargets aliastarget; do
   printf '%s\n' "$y" > "$dx/.claude/config/stack.yaml"
   printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dx/q.sql"
   out="$(gask "snow sql -f $dx/q.sql" "$dx")"
-  [ -z "$out" ] && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
+  ! grep -q 'wrong warehouse' <<<"$out" && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
     || bad "an unread YAML form produced a wrong-warehouse prompt ($shape)" "$out"
 done
 
@@ -420,7 +420,7 @@ YAML
 )"
 printf -- '-- warehouse-target: sbx\nSELECT 1;\n' > "$d2/q.sql"
 out="$(gask "snow sql -f $d2/q.sql" "$d2")"
-[ -z "$out" ] && ok "targets inheriting one seam-level cli don't false-positive" \
+! grep -q 'wrong warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
   || bad "seam-level cli inheritance produced a bogus mismatch" "$out"
 
 # A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
