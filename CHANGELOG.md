@@ -5,6 +5,33 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [3.4.1] — 2026-08-05
+
+### Fixed — security, upgrade from 3.4.0
+- **The read-only `allow` fast-path could auto-approve an arbitrary second command.**
+  `is_simple_command` scanned for `;`, `&`, `|`, `<`, `>` but **not newlines**, and a newline
+  separates commands exactly like `;`. So a read-only query with a second command on the next
+  line was classified on the query alone and auto-approved:
+
+  ```
+  snow sql -q "SELECT 1"
+  snow sql -q "DROP TABLE t"     → allow
+  ```
+
+  The guard handed out `allow` for a `DROP` — the exact outcome it exists to prevent. Newline
+  and carriage return now terminate the simple-command check.
+- **Only the first `-q`/`--query` payload was ever classified.** `extract_inline_sql` used
+  `.search()`, so a second `-q` on the same line was invisible to the tier scan. It now reads
+  every payload.
+- **The fast-path now requires the warehouse CLI in command position.** `is_simple_command` is a
+  lexical check, not a proof, and it masks quoted spans before scanning — so it cannot see inside
+  `sh -c "…"` or `eval "…"`. Without a leading-CLI anchor an interpreter invocation that merely
+  mentioned a warehouse CLI could reach `allow`. Costs a prompt on `env FOO=1 snow …`, which is
+  the safe direction.
+
+Only the `allow` fast-path was affected; the `ask` path never under-gated. Introduced in 3.4.0,
+which is the only affected release. `bin/selftest.sh` §6b covers all six cases.
+
 ## [3.4.0] — 2026-08-05
 
 Graduated DB-write permission modes: the guard stops charging a confirmation for routine additive

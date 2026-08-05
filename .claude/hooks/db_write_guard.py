@@ -190,13 +190,19 @@ def invokes_warehouse(command: str, clis: list[str]) -> str | None:
 
 
 def extract_inline_sql(command: str) -> str:
-    match = _QUERY_FLAG.search(command)
-    if not match:
-        return ""
-    payload = match.group(1)
-    if payload and payload[0] in "\"'" and payload[-1] == payload[0]:
-        payload = payload[1:-1]
-    return payload
+    """Every `-q`/`--query` payload on the line, not just the first.
+
+    `.search()` here was a real hole: `snow sql -q "SELECT 1"` followed by a second
+    `snow sql -q "DROP TABLE t"` classified on the SELECT alone and the DROP was never
+    seen. Anything that can carry SQL has to be classified, or the tier is a guess.
+    """
+    out = []
+    for match in _QUERY_FLAG.finditer(command):
+        payload = match.group(1)
+        if payload and payload[0] in "\"'" and payload[-1] == payload[0]:
+            payload = payload[1:-1]
+        out.append(payload)
+    return "\n;\n".join(out)
 
 
 def referenced_sql(command: str, cwd: str) -> tuple[str, bool]:
@@ -287,7 +293,10 @@ def is_simple_command(command: str) -> bool:
     if re.search(r"\$\(|`|\$\{", no_sq):
         return False
     masked = re.sub(r'"(?:[^"\\]|\\.)*"', '""', no_sq)
-    return not re.search(r"[;&|<>]", masked)
+    # Newlines separate commands exactly like `;` does. Omitting them meant
+    # `snow sql -q "SELECT 1"\nrm -rf …` counted as one simple command and was
+    # auto-approved — the guard handing out `allow` for an arbitrary second command.
+    return not re.search(r"[;&|<>\n\r]", masked)
 
 
 def emit(decision: str | None = None, reason: str = "", system_message: str = "") -> None:
@@ -365,7 +374,12 @@ def run() -> int:
     # Read-only fast-path. Deliberately narrow: a single simple command, every
     # referenced file actually read, and every statement classified as a read. Anything
     # short of that falls through to the normal permission flow rather than auto-approving.
-    if tier == READ and sql and files_complete and is_simple_command(command):
+    # The leading-CLI anchor matters on its own: `is_simple_command` is a lexical check, not
+    # a proof, and it cannot see inside an interpreter. `sh -c "…"` / `eval "…"` carry their
+    # payload in a quoted string the check masks before scanning, so without this anchor an
+    # interpreter invocation that merely mentions a warehouse CLI could reach `allow`.
+    starts_with_cli = re.match(rf"{re.escape(cli)}(\s|$)", command.strip()) is not None
+    if tier == READ and sql and files_complete and starts_with_cli and is_simple_command(command):
         emit("allow", f"read-only SQL — auto-approved by db_write_guard ({cli}).")
     return 0
 

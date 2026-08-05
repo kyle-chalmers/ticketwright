@@ -218,6 +218,22 @@ expect none "shell operator defeats the allow fast-path"      'snow sql -q "SELE
 expect none "command substitution defeats the fast-path"      'snow sql -q "SELECT $(whoami)"'
 expect none "unreadable -f file is never auto-allowed"        'snow sql -f /nonexistent/missing.sql'
 
+# --- command-injection regressions (all of these once returned `allow`) -----------
+# A newline separates commands exactly like `;`. While the operator scan omitted \n, a
+# read-only query with a second command on the next line was auto-approved — the guard
+# handing out `allow` for arbitrary follow-on commands, including a DROP.
+expect none "newline-chained second command is not auto-allowed" 'snow sql -q "SELECT 1"
+rm -rf /tmp/nope'
+expect ask  "newline-chained DROP is classified and asks"        'snow sql -q "SELECT 1"
+snow sql -q "DROP TABLE t"'
+expect none "carriage return is treated as a separator too"      'snow sql -q "SELECT 1"'$'\r''rm -rf /tmp/nope'
+# `is_simple_command` masks quoted spans before scanning, so it cannot see inside an
+# interpreter. The leading-CLI anchor is what keeps these off the fast-path.
+expect none "sh -c wrapping the CLI is not auto-allowed"         'sh -c "snow sql -q \"SELECT 1\""'
+expect none "eval wrapping the CLI is not auto-allowed"          'eval "snow sql -q \"SELECT 1\""'
+# Extraction reads every -q payload; `.search()` saw only the first and missed the rest.
+expect ask  "a second -q payload is classified, not ignored"     'snow sql -q "SELECT 1" -q "DROP TABLE t"'
+
 # --- warehouse-seam CLI harvest: scoped to the seam, indent-agnostic ---------------------------
 # The `cli:` scan must read the warehouse seam and nothing else. Each case builds a throwaway
 # project whose cwd the hook resolves stack.yaml from.
