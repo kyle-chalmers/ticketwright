@@ -152,6 +152,35 @@ def scan_stack(stack: Path) -> dict:
     return out
 
 
+def viewer_tool(root: Path, stack_text: str) -> str | None:
+    """The configured `viewer` tool, or None.
+
+    Unlike every other seam this one is PER-USER: which app opens a .sql is a personal choice, so
+    it lives in a gitignored file rather than the shared stack.yaml. Same first-hit-wins order
+    bin/handoff.sh uses. Returns None when nothing is configured or the user set enabled: false,
+    so the banner never advertises a gate that will not open anything.
+    """
+    candidates = [
+        root / ".claude/config/viewer.local.yaml",
+        Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "ticketwright/viewer.yaml",
+    ]
+    for path in candidates:
+        try:
+            if not path.is_file():
+                continue
+            text = path.read_text(errors="replace")
+        except OSError:
+            continue
+        # Trailing `# comment` must not defeat the opt-out: handoff.sh reads this through yq, which
+        # strips comments, so a stricter regex here would advertise a gate that opens nothing.
+        if re.search(r"^\s*enabled:\s*(false|no|off|0)\s*(#.*)?$", text, re.MULTILINE | re.IGNORECASE):
+            return None
+        m = re.search(r"^\s*tool:\s*([A-Za-z0-9_.-]+)", text, re.MULTILINE)
+        return m.group(1) if m else "configured"
+    tools = seam_tools(stack_text, "viewer")   # layer 3: a team-wide block in stack.yaml
+    return tools[0] if tools else None
+
+
 def main() -> int:
     root = project_root()
     stack = root / ".claude/config/stack.yaml"
@@ -169,11 +198,17 @@ def main() -> int:
         p.stem for p in (root / ".claude/commands").glob("*.md")
     ) if (root / ".claude/commands").is_dir() else []
 
+    try:
+        viewer = viewer_tool(root, stack.read_text(errors="replace"))
+    except OSError:
+        viewer = None
+    viewer_note = f" · viewer={viewer}" if viewer else ""
+
     lines = [
         "## Ticketwright — session context",
         f"Stack ({s['key_prefix'] + '-tickets' if s['key_prefix'] else root.name}): "
         f"tracker={s['tracker']} · warehouse={s['warehouse']} · "
-        f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}.",
+        f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}{viewer_note}.",
         "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",
     ]
     if skills:

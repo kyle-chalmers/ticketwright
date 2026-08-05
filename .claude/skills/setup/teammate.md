@@ -20,6 +20,11 @@ the relevant adapter's auth notes until green (MCP-only seams: confirm the serve
 session). Mention the `db_write_guard` hook so they know destructive warehouse statements prompt
 for confirmation **by design**.
 
+Then run `/setup viewer` with them. The repo's `human_review_handoff` policy already decides *when*
+work pauses for a human to eyeball deliverables; this is where **they** pick which of their own apps
+those files open in. It is per-user and gitignored, so whoever configured the repo could not answer
+it on their behalf — and skipping it just means the gate prints paths instead of opening anything.
+
 ## 4 · Read the map
 Point them at, in order: `AGENTS.md` (the rules — read end to end),
 `documentation/AI_LAYER_INDEX.md` (what exists), and the `documentation/` knowledge pack (built by

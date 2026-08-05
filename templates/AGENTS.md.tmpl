@@ -58,7 +58,7 @@ In Claude Code this is enforced mechanically by the `db_write_guard` PreToolUse 
 even if the agent forgets it. **For every other agent it is guidance, not enforcement** — hooks are
 the only mechanically enforced layer, so honoring this protocol is on you.
 
-## The 9 policies (inherited by every skill, from stack.yaml)
+## The 10 policies (inherited by every skill, from stack.yaml)
 1. **hard_halt_before_external_posts** — pause for human go before any tracker/chat/docstore write.
 2. **db_write_requires_approval** — `off` | `high_risk` (default) | `all`; show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
@@ -68,6 +68,11 @@ the only mechanically enforced layer, so honoring this protocol is on you.
 7. **commit_plan_before_implement** — `/spec-and-build` commits the spec before building (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
 9. **deterministic_outputs** — explicit `ORDER BY` on exports; productized skills ship golden-replay diffs.
+10. **human_review_handoff** — `off` | `review` (default) | `all`; open the deliverables in the
+    human's own apps and **wait for sign-off** before the verdict. Which apps is per-user and
+    gitignored (`.claude/config/viewer.local.yaml`); run `bash bin/handoff.sh <paths>`. Every other
+    pause guards something leaving the machine — this one makes sure a person actually saw the
+    output. If no viewer config exists, say so once and carry on; never block on it.
 
 ## Ticket folder
 ```

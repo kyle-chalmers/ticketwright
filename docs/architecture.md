@@ -21,12 +21,13 @@ weak models).
 
 ## Seams, adapters, and the verb contract
 
-A **seam** is a tool slot the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`.
-A seam may name one tool or several **named targets** (v1: `warehouse`), and a seam whose tool is
-absent can still be filled by an adapter over local files — that is how a repo with no tracker
-runs unchanged. The wiring is hybrid — config names the tools, verification proves them:
+A **seam** is a tool slot the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`,
+and the optional `viewer`. A seam may name one tool or several **named targets** (v1: `warehouse`),
+and a seam whose tool is absent can still be filled by an adapter over local files — that is how a
+repo with no tracker runs unchanged. The wiring is hybrid — config names the tools, verification
+proves them:
 
-1. **`.claude/config/stack.yaml`** names which tool fills each seam + project facts + the 9
+1. **`.claude/config/stack.yaml`** names which tool fills each seam + project facts + the 10
    policies. Schema: [.claude/config/stack.schema.md](../.claude/config/stack.schema.md).
 2. **`adapters/<seam>/<tool>.md`** maps the abstract **verb contract** (`fetch_ticket`, `query`,
    `draft`, `backup`, `commit`, …) to that tool's concrete commands. Contract:
@@ -49,6 +50,15 @@ docstore — the ticket folder is the tracker) — the same skills run against a
 **Adding a tool:** write one adapter (copy the closest reference in the same seam; implement every
 verb section; keep the frontmatter), add a `verify` line to your `stack.yaml` seam, run
 `bash bin/verify_stack.sh`. No skill edits.
+
+**The one seam whose config is not in `stack.yaml`:** `viewer` — which application opens a `.sql`
+or a `.csv` at a review gate. Every other seam names a tool the whole team shares; this one is a
+personal preference, and a committed entry could never ask a new cloner what *they* want. So the
+repo decides **when** a gate fires (policy `human_review_handoff`) and each person decides **what**
+it opens, in a gitignored `.claude/config/viewer.local.yaml` (or a user-level file covering all
+their repos). `bin/handoff.sh` resolves the layers and owns the rails — it never launches in CI or
+a headless session, never opens a path outside the project, and is a silent no-op when nothing is
+configured. Details: [.claude/config/viewer.example.yaml](../.claude/config/viewer.example.yaml).
 
 ## Policy enforcement (hooks)
 
@@ -85,13 +95,14 @@ protection. The policy value is the shared contract; only the enforcement mechan
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`
   delegates to (one per pyramid layer in `--deep` mode).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
-- **20 adapters** (`adapters/`) across 5 seams — full verb coverage each, including a `local`
-  tracker whose "API" is the ticket folder itself.
+- **23 adapters** (`adapters/`) across 6 seams — full verb coverage each, including a `local`
+  tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS).
 - **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
   README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via
   `*.private.csv` / a `private/` subfolder), role snippets, and the productized-skill skeleton.
 - **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
-  `split_and_export.sh`, `selftest.sh` (the CI suite + hook unit tests), and the index/recall
+  `split_and_export.sh`, `handoff.sh` (the review-gate opener),
+  `selftest.sh` (the CI suite + hook unit tests), and the index/recall
   engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`) —
   all stdlib-only.
 - **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via

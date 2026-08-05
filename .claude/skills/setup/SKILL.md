@@ -1,7 +1,7 @@
 ---
 name: setup
 description: Set up Ticketwright in a repo — detect your tools, ask at most 5 questions, write the config, scaffold folders. Also onboards a teammate (--teammate) and adopts existing repos.
-argument-hint: "(none) | --teammate [name] | <seam-to-add: chat|docstore|warehouse>"
+argument-hint: "(none) | --teammate [name] | <seam-to-add: chat|docstore|warehouse|viewer>"
 allowed-tools: [Read, Write, Edit, Bash, Glob, AskUserQuestion]
 disable-model-invocation: true
 ---
@@ -19,6 +19,22 @@ read-the-map → guided first-ticket dry run. Requires an existing `stack.yaml`.
 ## Mode: `<seam>` — add one tool to an existing config
 E.g. `/setup chat`. Detect candidates for just that seam, ask one question, add the seam block to
 `stack.yaml`, verify it, and re-render `AGENTS.md`. Nothing else changes.
+
+## Mode: `viewer` — which apps open *your* deliverables (per-user, not the repo's)
+The only seam that is **not** written to `stack.yaml`: which app opens a `.sql` is a personal
+choice, so it lives in a gitignored per-user file and each teammate answers for themselves. Ask:
+
+1. Which application should open `.sql` files? (or *none*)
+2. Which should open `.csv` files? (or *none*)
+3. This repo only, or all your ticket repos?
+
+Then write `.claude/config/viewer.local.yaml` (this repo) or
+`${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml` (all repos), copying the shape and the
+platform-matching `open_cmd`/`reveal_cmd` from `.claude/config/viewer.example.yaml` and pointing
+`adapter:` at the `adapters/viewer/` file for this OS. "None / don't ask again" ⇒ `enabled: false`.
+Confirm with
+`!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/handoff.sh" --dry-run <any ticket file>`,
+which prints the resolved commands without launching anything. Never commit this file.
 
 ## Default mode — configure the repo
 
@@ -41,13 +57,13 @@ One AskUserQuestion round covering only:
 5. **Assignee folder name** (default: the user's short name).
 Everything else ships as a **commented default** the user can edit later: chat + docstore seams
 (add via `/setup chat` / `/setup docstore`), `default_epic`, `terminal_status` (default `Done`),
-word limits, role (`generalist`), and all 9 policies at their defaults. Each chosen tool's required
+word limits, role (`generalist`), and all 10 policies at their defaults. Each chosen tool's required
 keys (per its adapter's `requires:` frontmatter): take the detected value where possible; otherwise
 include the key commented with a `# TODO` and keep going — `verify` will point at it.
 
 ### Phase 3 — Write & scaffold
 4. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen seams live; optional seams as
-   commented blocks; the 9 policies with a one-line "when to change this" comment each). Warn if a
+   commented blocks; the 10 policies with a one-line "when to change this" comment each). Warn if a
    chosen adapter is `status: stub`.
 5. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules),

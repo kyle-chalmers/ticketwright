@@ -14,6 +14,33 @@ an installed copy via autoUpdate (claude-code #52218), and an un-relaunched sess
 with old hooks — the display readers degrade to showing the first warehouse target rather than
 breaking, but `bin/verify_stack.sh` will flag the seam until you relaunch.
 
+### Added — human review handoff (the `viewer` seam)
+
+Every pause in the kit used to guard a side effect *leaving* the machine. This one guards the
+opposite: it stops so a person can **look at what was just produced**, in an application that can
+actually render it, before a verdict is written. `/review` layer ⑤ was named "Human sign-off" but
+only ever printed "flag for the human" — now it opens the deliverables and waits.
+
+- **New optional seam `viewer`** (verbs `open`, `reveal`) with three adapters —
+  `adapters/viewer/{macos-open,xdg-open,windows-start}.md`. Cross-platform is "pick the adapter for
+  your OS", the same one-file contribution model as every other seam.
+- **New policy `human_review_handoff`**: `off` | `review` (default) | `all`. The repo decides
+  *when* a gate fires. Under `all`, `spec-and-build` also hands over generated SQL before its first
+  warehouse run and CSVs after export.
+- **Per-user app routing, gitignored.** Which app opens a `.sql` is a personal choice, so it is
+  *not* in `stack.yaml`: `.claude/config/viewer.local.yaml` → a user-level file covering all your
+  repos → a team-wide `seams.viewer` block, first hit wins. `/setup viewer` runs the interview;
+  `/setup --teammate` now includes it, so each person answers for themselves.
+  Reference: `.claude/config/viewer.example.yaml`.
+- **New engine `bin/handoff.sh`** resolves routes deterministically, batches files sharing a route
+  into one launch, and owns the rails: never launches under CI, `TICKETWRIGHT_NO_OPEN=1`, or with
+  no desktop session; never opens a path outside the project; degrades soft when `yq` is missing;
+  silent no-op when nothing is configured. `--dry-run` prints resolved commands without launching.
+
+Enforcement is prose, like `hard_halt_before_external_posts` — analysis work has no fixed enough
+shape for a hook to gate it without getting in the way, and nothing auto-opens on file writes.
+Existing installs are unaffected: no viewer config means nothing opens and no behavior changes.
+
 ### Added
 - **Skills resolve a warehouse target.** `adapters/README.md` gains a canonical
   `## Multi-target seams` section — the five-step resolution order, the `-- warehouse-target:` header
@@ -66,6 +93,12 @@ breaking, but `bin/verify_stack.sh` will flag the seam until you relaunch.
   freshly created ticket branch could never resolve. It now prefers `git symbolic-ref`. In slug mode it
   also resolves by identity against the ids on disk rather than by tracker-key pattern, and a detached
   HEAD resolves nothing instead of guessing.
+- **`selftest.sh` died mid-run on macOS system bash (3.2) while CI stayed green.** An escaped quote
+  inside a python heredoc left bash 3.2 quote-unbalanced for the rest of the file — the suite
+  aborted at §14, so sections 14b–24 silently never ran for anyone on stock macOS. Also fixed the
+  latent `IndexError` the same line carried for an empty frontmatter value. New §20 E12 parse-checks
+  every shipped `.sh` under the running bash, which catches this class where it actually bites.
+- Renumbered the duplicate `hdr "21 · …"` section to `21b`.
 
 ## [3.4.1] — 2026-08-05
 

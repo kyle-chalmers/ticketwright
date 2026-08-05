@@ -50,11 +50,26 @@ canonical order resolves next — the ticket's declared target before the seam d
 - Sweep the full anti-pattern set (correctness, performance, data-quality, dialect-specific,
   maintainability). Classify each finding Critical / Should-fix / Review.
 
-**⑤ Human sign-off**
+**⑤ Human sign-off** — *the one layer a model cannot complete on its own*
 - Output format check (CSV headers row 1, no preamble/blank rows; filenames carry record counts;
   **ASCII punctuation only in cell values** — no em/en dashes, smart quotes, or ellipsis chars, which
   render as mojibake in Excel/CSV viewers).
-- README completeness (assumptions enumerated, QC results, business context). Flag for the human.
+- README completeness (assumptions enumerated, QC results, business context).
+- **Hand the deliverables to the human, then stop** (policy `human_review_handoff`; skip this whole
+  bullet when it is `off`). Layers ①–④ prove the query is *internally* consistent; only a person can
+  say the numbers are the right numbers. Do not emit a verdict before this:
+  1. `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/handoff.sh" <final_deliverables + qc_queries paths>`
+     — routes each file to the app that user chose. It exits 0 and stays silent when they have no
+     viewer config; in that case say so **once** and continue, never block.
+  2. If it produced no output and no config exists, offer the one-time setup: which app for `.sql`,
+     which for `.csv`, this repo only or all their repos. Their answers are written to
+     `.claude/config/viewer.local.yaml` (gitignored, per-user) or the user-level path — see
+     `.claude/config/viewer.example.yaml`. "None / don't ask again" writes `enabled: false`.
+  3. Print a short **what to look at** list — row counts, the grain key, and anything ②/③ flagged —
+     so they know where to aim, not just that files opened.
+  4. **Wait for explicit sign-off.** Under `all`, note what they already approved earlier in the
+     build and focus this pass on what changed since; never skip the gate silently just because an
+     earlier one fired.
 
 ## Tiers & halting
 - **Hard-halt** findings (Critical, count mismatch, dup gap, reconciliation break) → verdict

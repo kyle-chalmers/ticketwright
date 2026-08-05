@@ -71,6 +71,7 @@ Four steps — **plan → build → check → ship** — and one command to reme
                     and routes you to the right next step ↓
 /spec-and-build     spec mode writes the blueprint (committed first); build mode executes it
 /review [--deep]    independent QC pass: re-runs queries, walks the validation pyramid → APPROVE / REQUEST-CHANGES
+                    …and at the top of that pyramid, opens the deliverables in YOUR apps and waits
 /ship [--go]        backup → tracker comment → chat draft → commit + PR — HARD HALT before anything external
 ```
 
@@ -78,7 +79,7 @@ Three supporting skills you'll reach for occasionally:
 
 | Skill | What it does |
 |---|---|
-| `/setup` | Configure the repo (once) · add a tool later (`/setup chat`) · onboard a person (`/setup --teammate`) |
+| `/setup` | Configure the repo (once) · add a tool later (`/setup chat`) · pick which apps open your deliverables (`/setup viewer`) · onboard a person (`/setup --teammate`) |
 | `/refresh` | Rebuild the ticket catalog (`index`) or the domain knowledge pack (`context`) — day-to-day, hooks keep these fresh automatically |
 | `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
