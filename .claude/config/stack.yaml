@@ -68,7 +68,7 @@ seams:
 
 policies:
   hard_halt_before_external_posts: true
-  db_write_requires_approval: true
+  db_write_requires_approval: high_risk   # off | high_risk | all — see stack.schema.md
   chat_default_draft: true
   hyperlink_everything: true
   skillify_everything: true

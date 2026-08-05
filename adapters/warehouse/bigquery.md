@@ -47,5 +47,8 @@ Object inventory: `bq ls {dataset}`; lineage via `INFORMATION_SCHEMA.*` views.
   `WITH params AS (SELECT DATE '2026-06-30' AS anchor) SELECT … FROM t CROSS JOIN params WHERE dt <= params.anchor`.
 
 ## gotchas
-- Non-SELECT/DDL ⇒ policy `db_write_requires_approval`.
+- Mutations are tiered by policy `db_write_requires_approval` (`off` | `high_risk` | `all`):
+  high-risk SQL (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/`CREATE OR REPLACE`/non-ADD `ALTER`)
+  ⇒ show the SQL, explain, wait for explicit `yes`. Additive SQL (plain CREATE, INSERT INTO,
+  `ALTER … ADD`, COMMENT ON) runs without asking unless the policy is `all`.
 - Watch query cost — surface estimated bytes before running anything large.

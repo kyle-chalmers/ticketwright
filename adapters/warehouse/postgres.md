@@ -41,5 +41,8 @@ Inventory: `\dt <schema>.*`; lineage via `information_schema` / `pg_depend`.
   `CREATE OR REPLACE` / migrations.
 
 ## gotchas
-- Non-SELECT (UPDATE/INSERT/DELETE/DDL) ⇒ policy `db_write_requires_approval`.
+- Mutations are tiered by policy `db_write_requires_approval` (`off` | `high_risk` | `all`):
+  high-risk SQL (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/`CREATE OR REPLACE`/non-ADD `ALTER`)
+  ⇒ show the SQL, explain, wait for explicit `yes`. Additive SQL (plain CREATE, INSERT INTO,
+  `ALTER … ADD`, COMMENT ON) runs without asking unless the policy is `all`.
 - Wrap multi-statement deploys in a transaction (`BEGIN; … COMMIT;`) so a failure rolls back.

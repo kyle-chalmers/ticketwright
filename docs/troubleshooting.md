@@ -42,10 +42,30 @@ login, `config.toml`, MCP server connect). For a personalized walk-through, run
 
 ## The DB-write guard blocked something it shouldn't (or vice versa)
 
-The guard asks before destructive statements (including inside `-f` files and stdin redirects) and
-passes read-only ones. If a legitimate write keeps prompting, that's by design — answer once per
-statement. If it *missed* a destructive pattern for your warehouse CLI, that's a bug worth filing
-(include the exact command shape).
+First check which mode you're in — `policies.db_write_requires_approval` in
+`.claude/config/stack.yaml`:
+
+| Value | Prompts on |
+|---|---|
+| `off` | nothing |
+| `high_risk` *(default)* | `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `MERGE`, `GRANT`/`REVOKE`, every `CREATE OR REPLACE`, every `ALTER` except `ALTER … ADD`, and anything it can't classify |
+| `all` | every mutation, additive ones included |
+
+**Too many prompts?** If routine `CREATE`/`INSERT` work is prompting, you're probably on `all` (or
+on a legacy config whose value doesn't parse — anything unrecognized deliberately falls back to
+`all`). Set `high_risk` explicitly. If a *specific* statement keeps prompting under `high_risk`, the
+scanner didn't recognize it: classification is default-deny, so unknown SQL is treated as high-risk
+by design. Worth filing with the exact statement so the additive allowlist can grow.
+
+**Still prompting in `bypassPermissions`?** The guard suppresses its own prompt there and prints a
+`systemMessage` instead. If you still get a dialog, something else is producing it — another
+PreToolUse hook (when several match, the most restrictive wins), or an `ask` rule in your
+`permissions` settings, which `bypassPermissions` explicitly does not skip. Check for a second
+`Bash` hook at user scope before blaming this one.
+
+**Missed something destructive?** That's a bug worth filing — include the exact command shape. Note
+the guard only sees commands that invoke a *configured* warehouse CLI, and it is repo-gated: with no
+project `stack.yaml` it does nothing at all.
 
 ## Upgrading
 

@@ -57,5 +57,7 @@ Discover objects via `INFORMATION_SCHEMA.TABLES` + `ACCOUNT_USAGE.OBJECT_DEPENDE
   the query is one portable, export-clean statement.
 
 ## gotchas
-- Non-SELECT (UPDATE/CREATE/DELETE/DDL) ⇒ policy `db_write_requires_approval`: show the SQL, explain,
-  wait for explicit `yes` before running.
+- Mutations are tiered by policy `db_write_requires_approval` (`off` | `high_risk` | `all`):
+  high-risk SQL (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/`CREATE OR REPLACE`/non-ADD `ALTER`)
+  ⇒ show the SQL, explain, wait for explicit `yes`. Additive SQL (plain CREATE, INSERT INTO,
+  `ALTER … ADD`, COMMENT ON) runs without asking unless the policy is `all`.

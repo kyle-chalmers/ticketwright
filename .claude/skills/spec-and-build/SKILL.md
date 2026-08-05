@@ -46,8 +46,11 @@ context-engineering core idea: AI fails from missing context, not weak models.
    CTE params stay portable and keep CSV exports clean; explicit `ORDER BY` on any export
    (deterministic outputs).
 8. **Embed validation between steps** — after each, run the relevant gate from the spec; self-correct.
-9. **Any non-SELECT / DDL** ⇒ policy `db_write_requires_approval`: show the exact SQL, explain the
-   change, wait for explicit `yes`. Dev-env objects still get shown but are lower-risk.
+9. **Any mutation** ⇒ policy `db_write_requires_approval` (`off` | `high_risk` | `all`). Under the
+   default `high_risk`: show the exact SQL, explain the change, and wait for explicit `yes` before
+   anything irreversible or access-changing (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/
+   `CREATE OR REPLACE`/non-`ADD` `ALTER`); additive SQL may run without asking. Read the policy
+   rather than assuming. Dev-env objects still get shown but are lower-risk.
 10. **Hand off to the check step:** when the build passes its own gates, stop and recommend
     `/review <id>` for the independent pass. Do not ship from here.
 

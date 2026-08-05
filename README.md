@@ -108,8 +108,10 @@ renders on GitHub too. On by default; set `project.graph_notes: false` to turn o
 
 ## Safety rails (on by default)
 
-- **DB writes ask first** — a hook inspects every warehouse command and prompts before anything
-  destructive (`UPDATE`/`DROP`/`CREATE OR REPLACE`/…), *even SQL hidden in a `-f` file*.
+- **High-risk DB writes ask first** — a hook inspects every warehouse command and prompts before
+  anything irreversible (`DROP`/`DELETE`/`UPDATE`/`TRUNCATE`/`CREATE OR REPLACE`/…), *even SQL
+  hidden in a `-f` file*. Additive work (plain `CREATE`, `INSERT INTO`, `ALTER … ADD`) runs without
+  a prompt. Tune with `policies.db_write_requires_approval`: `off` | `high_risk` (default) | `all`.
 - **External posts hard-halt** — `/ship` prints exactly what it's about to post (tracker comment,
   chat message, PR) and waits for your explicit go.
 - **Chat defaults to draft** — you click send.
@@ -122,11 +124,18 @@ renders on GitHub too. On by default; set `project.graph_notes: false` to turn o
 
 Trust demands transparency: this plugin runs hooks, so here is every one of them. All are
 Python stdlib-only, make **no network calls**, never write outside the repo, and fail open —
-a hook error never blocks your session; a guard only ever *adds* a confirmation.
+a hook error never blocks your session.
+
+Two places where the DB guard *removes* a prompt rather than adding one, stated plainly: it
+auto-approves SQL it can verify is read-only (a single simple command, every referenced file read,
+every statement a `SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN`), and under `bypassPermissions` it prints a
+`systemMessage` instead of asking, because you already opted out of prompting for that session.
+Neither can loosen a `deny` rule in your settings — hooks can tighten permissions, not widen them
+past what your own rules allow.
 
 | Event | Script | What it does |
 |---|---|---|
-| PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying destructive SQL (including SQL hidden in `-f` files / stdin redirects) |
+| PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying high-risk SQL (including SQL hidden in `-f` files / stdin redirects); auto-approves verifiably read-only SQL |
 | PostToolUse (Write\|Edit) | `.claude/hooks/regenerate_ticket_index.py` | Regenerates `tickets/INDEX.md` / `OBJECTS.md` when the curated store changes |
 | SessionStart | `.claude/hooks/session_context.py`, `ticket_index_context.py` | Emits a short repo/catalog banner inside a ticketwright repo; silent elsewhere |
 

@@ -100,10 +100,10 @@ Postgres/Redshift/Synapse) — so configs written before `dev_target` existed ke
 
 ## `policies` (the 9 kit policies — see kit README "AI-layer" section)
 
-| Policy | Default | Enforced by |
-|---|---|---|
-| `hard_halt_before_external_posts` | `true` | `ship`, every productized skill — pause for human go before any tracker/chat/docstore write. |
-| `db_write_requires_approval` | `true` | any skill issuing a non-SELECT — show SQL, explain, wait for `yes`. |
+| Policy | Type | Default | Enforced by |
+|---|---|---|---|
+| `hard_halt_before_external_posts` | bool | `true` | `ship`, every productized skill — pause for human go before any tracker/chat/docstore write. |
+| `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
 | `chat_default_draft` | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
 | `hyperlink_everything` | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
 | `skillify_everything` | `true` | recurring work → a `/productize` skill the agent can invoke, not a one-off. |
@@ -111,6 +111,36 @@ Postgres/Redshift/Synapse) — so configs written before `dev_target` existed ke
 | `commit_plan_before_implement` | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
 | `system_evolution` | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
 | `deterministic_outputs` | `true` | data exports use explicit `ORDER BY`; productized skills ship golden-replay diffs. |
+
+All are booleans except `db_write_requires_approval`.
+
+### `db_write_requires_approval` — the one enum
+
+| Value | Behavior | Also accepts |
+|---|---|---|
+| `off` | Never ask. | `false`, `none`, `null` |
+| `high_risk` | **Default.** Ask only for irreversible, access-changing, or unrecognized SQL. | `true`, `destructive` |
+| `all` | Ask for any mutation at all. | `strict`, `always` |
+
+Reads (`SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN`/`WITH … SELECT`/`LIST`/`USE`) pass in every value;
+`all` means every *write*, not every command.
+
+Classification is **default-deny**. Only a narrow allowlist is treated as additive — plain
+`CREATE` (no `OR REPLACE`), `INSERT INTO` (no `OVERWRITE`), `ALTER … ADD`, and `COMMENT ON`.
+Everything else that mutates is high-risk, *including anything the scanner does not recognize*.
+Enumerating dangerous forms instead would leave holes: `ALTER TABLE … MODIFY COLUMN` can change
+a type and truncate data while matching no plausible "destructive verb" list.
+
+A missing, malformed, or unrecognized value resolves to `all`, never to something weaker —
+unparseable config must not quietly widen what runs unprompted. Note the asymmetry: an explicit
+legacy `true` *does* relax to `high_risk`, because it is a value someone chose rather than a
+value the parser failed on.
+
+Under `bypassPermissions` the hook stays silent and emits a `systemMessage` instead of asking —
+the operator has already opted out of prompting, so a prompt there is incoherent. Every other
+permission mode gets a normal `ask`. For agents other than Claude Code this policy is
+**guidance, not enforcement**: they read it in `AGENTS.md` and are trusted to honor it, since
+hooks are the only mechanically enforced layer.
 
 `always_include` (under `seams.chat`) — names always added to a chat message (e.g. `[Alice]`); the
 "never solo-DM a stakeholder" rule.
