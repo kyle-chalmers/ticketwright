@@ -55,6 +55,16 @@ leaks="$(grep -REn -i 'acli|\bsnow \b|snow sql|mcp__slack|slack_send|\bgh pr\b|\
 # A warehouse-specific *config key* is the same leak wearing a different hat: `dev_db` is Snowflake's
 # spelling, and naming it in a skill silently breaks that skill on BigQuery/Databricks/Postgres.
 # The tool-neutral reference is `dev_target` (with the adapter's `dev_key:` as the legacy fallback).
+# The CLI grep above catches `snow sql` but not a warehouse's PRODUCT NAME in prose — two skills
+# carried "works on Snowflake, BigQuery, Databricks" while claiming to be tool-neutral. Naming a
+# product in a skill is the same leak: it silently scopes the skill to one vendor's stack.
+# The CLI-detection probe in `setup` is a sanctioned exception (adapters/README.md) — it has to name
+# CLIs in order to detect them, exactly as the tool-name grep above exempts it.
+prodleaks="$(grep -REn -i 'snowflake|bigquery|databricks|redshift|synapse' \
+              .claude/skills .claude/commands .claude/agents 2>/dev/null \
+              | grep -v 'for c in snow acli gh' || true)"
+[ -z "$prodleaks" ] && ok "no warehouse product name appears in a skill/command/agent" \
+  || bad "a skill names a specific warehouse product (scopes a tool-neutral skill to one vendor)" "$prodleaks"
 devleaks="$(grep -REn 'dev_db|dev_dataset|dev_catalog|dev_schema' \
              .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
 [ -z "$devleaks" ] && ok "no warehouse-specific dev key named in a skill/command/agent" \
@@ -75,6 +85,7 @@ domain=data
 ticket_path=tickets/{assignee}/{id}
 tracker_tool=jira
 warehouse_tool=snowflake
+warehouse_adapter=`adapters/warehouse/snowflake.md`
 chat_tool=slack
 docstore_tool=gdrive
 vcs_tool=github
@@ -320,6 +331,97 @@ YAML
 )"
 out="$(gask 'cmtcli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "comment before the first seam doesn't hide it" || bad "a comment's indentation hid the warehouse seam (gating narrowed)" "$out"
+
+# Wrong-warehouse detection: right SQL, wrong target. A READ is gated too, because it returns
+# plausible numbers about the wrong system rather than erroring — the failure mode this feature
+# introduces. Only a CONFIRMED mismatch gates; an unknown name must never manufacture a prompt.
+d="$(gstack wrongwh <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    targets:
+      prod: {tool: snowflake, cli: snow}
+      lake: {tool: databricks, cli: dbsqlcli}
+YAML
+)"
+printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d/q.sql"
+out="$(gask "snow sql -f $d/q.sql" "$d")"
+grep -q 'wrong warehouse' <<<"$out" \
+  && ok "a read against the wrong target is gated (mismatched -- warehouse-target: header)" \
+  || bad "SQL declaring one target ran on another with no prompt" "$out"
+printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$d/ok.sql"
+out="$(gask "snow sql -f $d/ok.sql" "$d")"
+! grep -q 'wrong warehouse' <<<"$out" && ok "a matching target header raises no wrong-warehouse prompt" || bad "matching target wrongly gated" "$out"
+printf -- '-- warehouse-target: typo\nSELECT 1;\n' > "$d/typo.sql"
+out="$(gask "snow sql -f $d/typo.sql" "$d")"
+! grep -q 'wrong warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
+# A single-warehouse repo has no targets, so a stray header must not resolve to the seam's own cli.
+d1="$(gstack wrongwh1 <<'YAML'
+seams:
+  warehouse:
+    tool: snowflake
+    cli: snow
+YAML
+)"
+printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d1/q.sql"
+out="$(gask "snow sql -f $d1/q.sql" "$d1")"
+! grep -q 'wrong warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
+  || bad "a single-mapping seam resolved an undefined target and gated" "$out"
+# A quoted scalar is valid YAML. Leaving the quotes attached made every comparison mismatch, i.e. a
+# false prompt on a correct command — the worst outcome for a guard, since dismissed prompts stop working.
+dq="$(gstack quotedcli <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    targets:
+      prod: {tool: snowflake, cli: "snow"}
+      lake: {tool: databricks, cli: 'dbsqlcli'}
+YAML
+)"
+printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$dq/ok.sql"
+out="$(gask "snow sql -f $dq/ok.sql" "$dq")"
+! grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
+  || bad "quoted YAML scalars produced a bogus wrong-warehouse prompt" "$out"
+printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dq/bad.sql"
+out="$(gask "snow sql -f $dq/bad.sql" "$dq")"
+grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value still catches a real mismatch" \
+  || bad "quoting the cli hid a real mismatch" "$out"
+# Exotic YAML the stdlib scan doesn't read must fall through to NO gate, never to a guess.
+for shape in flowtargets aliastarget; do
+  case "$shape" in
+    flowtargets) y='seams:
+  warehouse:
+    cli: snow
+    targets: {prod: {cli: snow}, lake: {cli: dbsqlcli}}' ;;
+    aliastarget) y='seams:
+  warehouse:
+    cli: snow
+    targets:
+      lake: *shared' ;;
+  esac
+  dx="$TMP/exotic-$shape"; mkdir -p "$dx/.claude/config"
+  printf '%s\n' "$y" > "$dx/.claude/config/stack.yaml"
+  printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dx/q.sql"
+  out="$(gask "snow sql -f $dx/q.sql" "$dx")"
+  ! grep -q 'wrong warehouse' <<<"$out" && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
+    || bad "an unread YAML form produced a wrong-warehouse prompt ($shape)" "$out"
+done
+
+# Inheritance: two targets sharing one seam-level cli must both resolve to it.
+d2="$(gstack wrongwh2 <<'YAML'
+seams:
+  warehouse:
+    default: prod
+    cli: snow
+    targets:
+      prod: {tool: snowflake, default_warehouse: P}
+      sbx:  {tool: snowflake, default_warehouse: S}
+YAML
+)"
+printf -- '-- warehouse-target: sbx\nSELECT 1;\n' > "$d2/q.sql"
+out="$(gask "snow sql -f $d2/q.sql" "$d2")"
+! grep -q 'wrong warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
+  || bad "seam-level cli inheritance produced a bogus mismatch" "$out"
 
 # A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
 d="$(gstack yamlanchor <<'YAML'
@@ -941,7 +1043,11 @@ grep -q '▸ warehouse\[prod\]\*' <<<"$mtout" \
 grep -q 'databricks --profile DEFAULT current-user me' <<<"$mtout" \
   && ok "target verify interpolates that target's own tokens" || bad "target token scoping wrong" "$mtout"
 # Single-mapping stacks must still produce exactly one un-bracketed warehouse row.
-for s in .claude/config/stack.yaml .claude/config/stack.example.asana-bq.yaml .claude/config/stack.example.azure.yaml; do
+# Derived, not hardcoded: any config without a `targets:` map is a single-mapping stack and must
+# keep producing one plain row. A hardcoded list silently skipped the solo example when it was added.
+for s in $(for f in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
+             yq -e '.seams | to_entries | map(select(.value.targets)) | length > 0' "$f" >/dev/null 2>&1 || echo "$f"
+           done); do
   o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
   { [ "$(grep -c '▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '▸ warehouse\[' <<<"$o"; } \
     && ok "$(basename "$s"): still one plain warehouse row" || bad "$(basename "$s") regressed to target rows" "$o"
@@ -1039,6 +1145,523 @@ sed 's/default: prod/default: lake/' "$MT" > "$MTP/.claude/config/stack.yaml"
 o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$MTP" python3 .claude/hooks/session_context.py 2>&1)"
 grep -q 'warehouse=databricks+snowflake' <<<"$o" \
   && ok "banner puts the DEFAULT target first, not the file's first" || bad "banner ignores the default: pointer" "$o"
+# Two structural checks over every shipped config. yq is the authority for *which* seams have
+# targets and what they resolve to — it reads block and flow forms alike, and it can't be fooled by
+# an unrelated nested `targets:` elsewhere in the document. Duplicate keys are the one thing yq
+# cannot report (it silently keeps the last), so those are counted from the text.
+python3 - <<'PY2'
+import json, pathlib, re, subprocess, sys, glob
+
+def yq(expr, f):
+    r = subprocess.run(["yq", "-o=json", expr, f], capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return None
+
+files = [".claude/config/stack.yaml"] + sorted(glob.glob(".claude/config/stack.example.*.yaml"))
+missing_adapter, dupes, dangling = [], [], []
+
+for f in files:
+    seams = yq(".seams", f) or {}
+    text = pathlib.Path(f).read_text()
+    for seam, body in seams.items():
+        if not isinstance(body, dict) or "targets" not in body:
+            continue
+        targets = body.get("targets") or {}
+        # A target may INHERIT tool from the seam, so check the effective value, not just its own.
+        for name, tgt in targets.items():
+            tgt = tgt or {}
+            tool = (tgt.get("tool") if isinstance(tgt, dict) else None) or body.get("tool")
+            if not tool:
+                missing_adapter.append(f"{pathlib.Path(f).name}:{seam}/{name}: no tool (own or inherited)")
+            elif not pathlib.Path(f"adapters/{seam}/{tool}.md").is_file():
+                missing_adapter.append(f"{pathlib.Path(f).name}:{seam}/{name} -> {tool}")
+        # `default:` must name one of them. A missing default is a different assertion's job.
+        d = body.get("default")
+        if d is not None and d not in targets:
+            dangling.append(f"{pathlib.Path(f).name}:{seam}: default '{d}' not in {sorted(targets)}")
+        # Duplicate keys: compare yq's collapsed count against the raw keys in the targets region.
+        m = re.search(rf"(?m)^([ \t]*){re.escape(seam)}:[ \t]*$", text)
+        region = ""
+        if m:
+            base = len(m.group(1))
+            for ln in text[m.end():].splitlines():
+                if ln.strip() and (len(ln) - len(ln.lstrip())) <= base:
+                    break
+                region += ln + "\n"
+        tm = re.search(r"(?m)^([ \t]*)targets:[ \t]*(.*)$", region)
+        if tm:
+            if tm.group(2).strip().startswith("{"):
+                raw = len(re.findall(r"[{,]\s*(?:\"[^\"]+\"|'[^']+'|[A-Za-z0-9_.-]+)\s*:", tm.group(2)))
+            else:
+                tbase, raw, child = len(tm.group(1)), 0, None
+                for ln in region[tm.end():].splitlines():
+                    if not ln.strip() or ln.lstrip().startswith("#"):
+                        continue
+                    cur = len(ln) - len(ln.lstrip())
+                    if cur <= tbase:
+                        break
+                    if child is None:
+                        child = cur
+                    if cur == child and re.match(r"""^\s*(?:"[^"]+"|'[^']+'|[A-Za-z0-9_.-]+)\s*:""", ln):
+                        raw += 1
+            if raw and raw != len(targets):
+                dupes.append(f"{pathlib.Path(f).name}:{seam}: {raw} target keys in the text but "
+                             f"{len(targets)} survive — a duplicate name is silently dropped")
+
+out = {"adapter": missing_adapter, "dupes": dupes, "dangling": dangling}
+pathlib.Path(".selftest_targets.json").write_text(json.dumps(out))
+PY2
+tj="$(cat .selftest_targets.json 2>/dev/null || echo '{}')"; rm -f .selftest_targets.json
+jqf() { python3 -c "import json,sys;print(' '.join(json.loads(sys.argv[1]).get(sys.argv[2],[])))" "$1" "$2"; }
+a="$(jqf "$tj" adapter)"; du="$(jqf "$tj" dupes)"; dg="$(jqf "$tj" dangling)"
+[ -z "$a" ] && ok "every named target resolves a tool (own or inherited) with a shipped adapter" \
+  || bad "a target's effective tool has no adapter file" "$a"
+[ -z "$du" ] && ok "no multi-target seam silently drops a duplicate target name" \
+  || bad "duplicate target names — the earlier config is discarded" "$du"
+[ -z "$dg" ] && ok "every default: names a target that exists" || bad "a dangling default:" "$dg"
+
+hdr "25 · id_mode: slug (folder name IS the ticket id; no tracker required)"
+S="$TMP/slugmode"; mkdir -p "$S/.claude/config" "$S/bin"
+cp bin/build_ticket_index.py "$S/bin/"
+cat > "$S/.claude/config/stack.yaml" <<'EOF'
+project:
+  assignee_dir: kyle
+  id_mode: slug
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_url_template: null
+EOF
+mkdir -p "$S/tickets/kyle/refi-sms-lift-analysis" "$S/tickets/kyle/bounce-placement-audit" "$S/tickets/kyle/notes" "$S/tickets/kyle/data-quality"
+# Ordinary prose, deliberately loaded with hyphenated words. NONE may become a cross-reference:
+# that is the whole reason discovery and reference-resolution can't share one pattern.
+cat > "$S/tickets/kyle/refi-sms-lift-analysis/README.md" <<'EOF'
+# refi-sms-lift-analysis: Refi SMS incremental lift
+
+We ran a well-designed hold-out test on the refi-eligible population. The follow-up
+data-quality review was end-to-end and covered opt-in state, do-not-contact flags and
+long-standing send-time issues. See my notes for the day-by-day breakdown; the
+first-touch attribution model is unchanged.
+EOF
+# Genuine references, in the two explicit forms plus a self-mention that must not count.
+cat > "$S/tickets/kyle/bounce-placement-audit/README.md" <<'EOF'
+# bounce-placement-audit: Bounce file placement
+
+Follows on from [[refi-sms-lift-analysis]] and also [[notes]].
+Self-link [[bounce-placement-audit]] must not become a self-reference.
+An escaped \\[[notes]] is literal text, not a link.
+Nor is an example in code: `[[refi-sms-lift-analysis]]`.
+EOF
+CLAUDE_PROJECT_DIR="$S" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q 'refi-sms-lift-analysis' "$S/tickets/INDEX.md" 2>/dev/null \
+  && ok "slug mode: a folder with no tracker key IS catalogued" \
+  || bad "slug mode: slug folder never reached INDEX.md"
+# The load-bearing assertion for this whole mode.
+refs="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY'
+import os, pathlib, sys
+sys.path.insert(0, "bin")
+from build_ticket_index import build_rows
+rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
+print("PROSE=" + ",".join(rows["refi-sms-lift-analysis"]["cross_refs"]))
+print("REAL=" + ",".join(rows["bounce-placement-audit"]["cross_refs"]))
+print("TITLE=" + (rows["refi-sms-lift-analysis"]["title"] or ""))
+PY
+)"
+grep -q '^PROSE=$' <<<"$refs" \
+  && ok "slug mode: prose-only README yields ZERO cross-refs (hyphenated words aren't ids)" \
+  || bad "slug mode: ordinary prose became cross-references" "$refs"
+grep -q '^REAL=notes,refi-sms-lift-analysis$' <<<"$refs" \
+  && ok "slug mode: wiki-links resolve; escaped and code examples do not; no self-reference" \
+  || bad "slug mode: explicit references did not resolve as expected" "$refs"
+grep -q '^TITLE=Refi SMS incremental lift$' <<<"$refs" \
+  && ok "slug mode: H1 id prefix stripped from the title" \
+  || bad "slug mode: title still carries its slug prefix" "$refs"
+# SLUG_ID must reject ids that aren't safe as a git branch name (git rejects a..b, trailing '.', .lock).
+python3 - <<'PY2'
+import sys; sys.path.insert(0, "bin")
+from build_ticket_index import SLUG_ID
+bad_ids = ["a..b", "foo.", "foo.lock", ".hidden", "..", "Has-Upper", "has space", "-leading"]
+good_ids = ["refi-sms-lift-analysis", "notes", "a1", "x_y-z"]
+assert not any(SLUG_ID.match(b) for b in bad_ids), [b for b in bad_ids if SLUG_ID.match(b)]
+assert all(SLUG_ID.match(g) for g in good_ids), [g for g in good_ids if not SLUG_ID.match(g)]
+PY2
+[ $? -eq 0 ] && ok "SLUG_ID rejects branch-unsafe ids, accepts ordinary slugs" \
+  || bad "SLUG_ID admits an id that is unsafe as a git branch/filename"
+# Two folders reducing to one id must be reported, not silently dropped.
+mkdir -p "$S/tickets/kyle/dupe" "$S/tickets/kyle/☑️ dupe"
+warn="$(CLAUDE_PROJECT_DIR="$S" python3 bin/build_ticket_index.py 2>&1 >/dev/null)"
+grep -q 'two folders map to one id' <<<"$warn" \
+  && ok "colliding folder names are reported on stderr, not silently dropped" \
+  || bad "an on-disk ticket vanished from the catalog with no explanation" "$warn"
+rm -rf "$S/tickets/kyle/dupe" "$S/tickets/kyle/☑️ dupe"
+# Only a [[wiki-link]] is a reference. These constructs each defeated an earlier, looser attempt
+# (pattern-matched links, then filesystem-resolved destinations); none of them may create an edge.
+cat > "$S/tickets/kyle/data-quality/README.md" <<'EOF'
+# data-quality: Field null-rate review
+
+![diagram](/assets/notes)
+An [external](https://example.com/notes) link and an [absolute](/var/tmp/notes) one.
+\](notes) and a bare ](notes) are not links.
+Inline `` [[notes]] `` is an example, not a link.
+
+~~~
+[[notes]]
+~~~
+EOF
+refs2="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY2'
+import os, pathlib, sys
+sys.path.insert(0, "bin")
+from build_ticket_index import build_rows
+rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
+print("DQ=" + ",".join(rows["data-quality"]["cross_refs"]))
+PY2
+)"
+# KNOWN LIMITATION, deliberate: a wiki-link inside an INDENTED code block (4 spaces) still counts.
+# Treating every 4-space line as code silently dropped real links in list continuations, which is the
+# worse failure for this payload. Fenced and inline code — how examples are actually written — are
+# stripped. If this ever bites, fence the example.
+grep -q '^DQ=$' <<<"$refs2" \
+  && ok "slug mode: images, external URLs, absolute paths and fenced/inline code yield no references" \
+  || bad "a non-reference markdown construct became a cross-reference" "$refs2"
+# A markdown link destination is deliberately NOT a reference: only a [[wiki-link]] is. Three
+# attempts at honouring destinations (by pattern, then by resolving them on disk) each leaked a new
+# markdown construct, for a payload whose worst case is a spurious OBJECTS.md row.
+cat > "$S/tickets/kyle/data-quality/README.md" <<'EOF'
+# data-quality: Field null-rate review
+
+Detail in [the notes](../notes/README.md#summary), see also [go][k].
+[k]: ../refi-sms-lift-analysis/
+
+The wiki-link [[notes]] is what actually creates an edge.
+EOF
+refs3="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY3'
+import os, pathlib, sys
+sys.path.insert(0, "bin")
+from build_ticket_index import build_rows
+rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
+print("DQ=" + ",".join(rows["data-quality"]["cross_refs"]))
+PY3
+)"
+grep -q '^DQ=notes$' <<<"$refs3" \
+  && ok "slug mode: only wiki-links count — markdown destinations are not references" \
+  || bad "markdown link destinations leaked back in as references" "$refs3"
+# _strip_code is a line scanner, not a regex, because fences nested in a blockquote/list and a
+# closing fence LONGER than its opener each defeated a regex attempt. The second case matters most:
+# it used to swallow the rest of the README, losing genuine links.
+python3 - <<'PY2'
+import sys; sys.path.insert(0, "bin")
+from build_ticket_index import resolve_cross_refs, key_regex
+kr, known = key_regex([]), {"notes"}
+def r(x): return resolve_cross_refs(x, "self", kr, "slug", known)
+checks = [
+    ("> ~~~\n> [[notes]]\n> ~~~\n",            []),          # fence inside a blockquote
+    ("- ```\n  [[notes]]\n  ```\n",            []),          # fence inside a list item
+    ("~~~\ncode\n~~~~\nThen [[notes]].",       ["notes"]),   # closer longer than opener
+    ("```\n[[notes]]\n",                        []),          # unclosed fence blanks to EOF
+    ("[[\n  notes\n]]",                         []),          # not a single-line wiki-link
+    ("- parent\n\n    [[notes]]\n",            ["notes"]),   # list continuation is NOT code
+]
+for text, want in checks:
+    got = r(text)
+    assert got == want, (text, got, want)
+PY2
+[ $? -eq 0 ] && ok "code-stripping handles nested/oversized/unclosed fences without losing real links" \
+  || bad "_strip_code mishandled a fence form (stray edge, or a real link swallowed)"
+# keyed mode must NOT pick these up — that is what keeps adhoc-*/scratch-* folders out of the catalog.
+K="$TMP/keyedmode"; mkdir -p "$K/.claude/config" "$K/bin" "$K/tickets/kyle/refi-sms-lift-analysis"
+cp bin/build_ticket_index.py "$K/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: kyle\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$K/.claude/config/stack.yaml"
+printf '# refi-sms-lift-analysis: nope\n\nScratch work, not a ticket.\n' > "$K/tickets/kyle/refi-sms-lift-analysis/README.md"
+CLAUDE_PROJECT_DIR="$K" python3 bin/build_ticket_index.py >/dev/null 2>&1
+grep -q 'refi-sms-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
+  && bad "keyed mode catalogued a keyless folder (scratch dirs would flood INDEX.md)" \
+  || ok "keyed mode still skips keyless folders (default behavior unchanged)"
+
+hdr "26 · slug ids: ordering, branch resolution, prefix-free banner"
+# ticket_number must require the id to BE a tracker key. `search` grabbed digits from anywhere, so a
+# slug ending in a year sorted as that ticket number.
+python3 - <<'PY2'
+import sys; sys.path.insert(0, "bin")
+from build_ticket_index import ticket_number, key_regex
+# The configured prefixes are the authority on which ids carry a number — no fixed shape works,
+# since a prefix may contain _ or - or lead with a digit, and a slug may look exactly like a key.
+for prefix, tid, want in (("ENG","ENG-12",12), ("OPS","OPS-7",7), ("ACME_US","ACME_US-42",42),
+                          ("ACME-WEST","ACME-WEST-42",42), ("1ENG","1ENG-42",42)):
+    got = ticket_number(tid, key_regex([prefix]))
+    assert got == want, (tid, got, want)
+# In a slug repo a digit-suffixed folder must not read as a ticket number — including `a-1`, which
+# is shaped exactly like a key, and including a repo that still carries a stale key_prefix.
+# Includes a repo that kept a stale lowercase key_prefix matching the slug ('a' vs folder 'a-1'):
+# the prefixes are not evidence an id is keyed once id_mode is slug.
+from build_ticket_index import id_key_regex
+for cfg in ({"id_mode": "slug", "prefixes": []},
+            {"id_mode": "slug", "prefixes": ["ENG"]},
+            {"id_mode": "slug", "prefixes": ["a"]}):
+    kr = id_key_regex(cfg)
+    for slug in ("refi-sms-lift-2024", "q3-2026-audit", "a-1", "notes", "x2024"):
+        got = ticket_number(slug, kr)
+        assert got == 0, (cfg, slug, got)
+# ...while the SAME id in a keyed repo with that prefix legitimately is ticket 1.
+assert ticket_number("a-1", id_key_regex({"id_mode": "keyed", "prefixes": ["a"]})) == 1
+PY2
+[ $? -eq 0 ] && ok "ticket_number: keyed ids keep their number, slug ids score 0 (no phantom order)" \
+  || bad "a slug id ending in digits is still ordered as a ticket number"
+
+# --branch resolution. `claude` is kept OFF PATH so enrich_ticket stops at its own guard: reaching
+# "Enriching N ticket(s)" proves the id resolved, without spending a model call.
+BR="$TMP/brslug"; mkdir -p "$BR/.claude/config" "$BR/tickets/kyle/refi-sms-lift" "$BR/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BR/bin/"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$BR/.claude/config/stack.yaml"
+printf '# refi-sms-lift: Refi SMS\n\nBody.\n' > "$BR/tickets/kyle/refi-sms-lift/README.md"
+( cd "$BR" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+  && git checkout -q -b claude/refi-sms-lift ) 2>/dev/null
+out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$out" \
+  && ok "--branch resolves a slug branch (claude/<slug>) to its ticket" \
+  || bad "--branch could not resolve a slug branch — /ship's convenience path is dead in slug mode" "$out"
+# A branch that names no ticket must resolve to nothing rather than guessing.
+( cd "$BR" && git checkout -q -b claude/not-a-ticket ) 2>/dev/null
+out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'No ticket ids given' <<<"$out" \
+  && ok "--branch on an unrelated branch resolves nothing (identity, not pattern)" \
+  || bad "--branch invented a ticket id from an unrelated branch name" "$out"
+# Keyed mode's --branch path is untouched.
+BK="$TMP/brkeyed"; mkdir -p "$BK/.claude/config" "$BK/tickets/kyle/ENG-12 refi" "$BK/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BK/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: kyle\n' > "$BK/.claude/config/stack.yaml"
+printf '# ENG-12: Refi\n\nBody.\n' > "$BK/tickets/kyle/ENG-12 refi/README.md"
+( cd "$BK" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+  && git checkout -q -b ENG-12 ) 2>/dev/null
+out="$(cd "$BK" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BK" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$out" \
+  && ok "--branch still resolves a keyed branch (ENG-12)" \
+  || bad "keyed --branch regressed" "$out"
+
+# A trackerless repo has no key_prefix; neither reader may fall back to a bare "?".
+SB="$TMP/slugbanner/my-analysis-repo"; mkdir -p "$SB/.claude/config" "$SB/tickets/kyle/refi-sms-lift"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\nseams:\n  warehouse:\n    tool: snowflake\n' > "$SB/.claude/config/stack.yaml"
+o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$SB" python3 .claude/hooks/session_context.py 2>&1)"
+{ grep -q 'Stack (my-analysis-repo)' <<<"$o" && ! grep -q '?-tickets' <<<"$o"; } \
+  && ok "banner labels a prefix-free repo by its directory, not '?-tickets'" \
+  || bad "session banner shows a placeholder prefix on a trackerless repo" "$o"
+o="$(echo '{}' | CLAUDE_PROJECT_DIR="$SB" bash .claude/statusline.sh 2>&1)"
+{ grep -q 'my-analysis-repo' <<<"$o" && ! grep -q '⛭ ?' <<<"$o"; } \
+  && ok "statusline labels a prefix-free repo by its directory" \
+  || bad "statusline shows '?' on a trackerless repo" "$o"
+# Keyed banner unchanged.
+o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'Stack (ENG-tickets)' <<<"$o" \
+  && ok "keyed banner still reads '<PREFIX>-tickets'" || bad "keyed banner changed" "$o"
+# A keyed repo may configure ONLY the plural key_prefixes; it must still read as keyed rather than
+# falling through to the directory name (which is the trackerless signal).
+for shape in inline block; do
+  KP="$TMP/kp-$shape/keyed-repo"; mkdir -p "$KP/.claude/config"
+  if [ "$shape" = inline ]; then
+    printf 'project:\n  key_prefixes: [OPS, ENG]\n' > "$KP/.claude/config/stack.yaml"
+  else
+    printf 'project:\n  key_prefixes:\n    - OPS\n    - ENG\n' > "$KP/.claude/config/stack.yaml"
+  fi
+  o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KP" python3 .claude/hooks/session_context.py 2>&1)"
+  s="$(echo '{}' | CLAUDE_PROJECT_DIR="$KP" bash .claude/statusline.sh 2>&1)"
+  { grep -q 'Stack (OPS-tickets)' <<<"$o" && grep -q 'OPS' <<<"$s" && ! grep -q 'keyed-repo' <<<"$s"; } \
+    && ok "key_prefixes-only ($shape) still reads as keyed in banner + statusline" \
+    || bad "a key_prefixes-only keyed repo now looks trackerless ($shape)" "$o | $s"
+done
+# A ticket branch created before the first commit is an unborn branch; `rev-parse --abbrev-ref`
+# reports the literal "HEAD" there, so --branch could never resolve a fresh ticket branch.
+UB="$TMP/unborn"; mkdir -p "$UB/.claude/config" "$UB/tickets/kyle/refi-sms-lift" "$UB/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$UB/bin/"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$UB/.claude/config/stack.yaml"
+printf '# refi-sms-lift: R\n\nBody.\n' > "$UB/tickets/kyle/refi-sms-lift/README.md"
+( cd "$UB" && git init -q . && git checkout -q -b claude/refi-sms-lift ) 2>/dev/null
+out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$out" \
+  && ok "--branch resolves on an UNBORN branch (no commits yet)" \
+  || bad "--branch fails on a branch created before the first commit" "$out"
+# Detached HEAD must resolve nothing rather than guessing.
+( cd "$UB" && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m i && git checkout -q --detach HEAD ) 2>/dev/null
+out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
+grep -q 'No ticket ids given' <<<"$out" \
+  && ok "--branch on a detached HEAD resolves nothing" \
+  || bad "--branch guessed an id on a detached HEAD" "$out"
+# ingest persists ticket_url into index_data.json, and a persisted URL WINS over a re-render — so a
+# wrong {number} there is permanent. A slug shaped like a key (`a-1`) must not become ticket 1.
+IU="$TMP/ingesturl"; mkdir -p "$IU/.claude/config" "$IU/tickets/kyle/a-1" "$IU/bin"
+cp bin/build_ticket_index.py bin/ingest_index_records.py "$IU/bin/"
+printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_url_template: "https://x/browse/{number}"\n' > "$IU/.claude/config/stack.yaml"
+printf '# a-1: Looks like a key\n\nBody.\n' > "$IU/tickets/kyle/a-1/README.md"
+printf '{"records":[{"owner":"kyle","id":"a-1","summary":"s","status":"Completed","date":"2026-01-01"}]}' \
+  | CLAUDE_PROJECT_DIR="$IU" python3 "$IU/bin/ingest_index_records.py" --from-json - >/dev/null 2>&1
+grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/dev/null \
+  && bad "a slug shaped like a tracker key was persisted with {number}=1 (links to an unrelated ticket)" \
+  || ok "ingest does not invent a tracker number for a key-shaped slug id"
+
+hdr "27 · local tracker adapter (the filesystem IS the tracker)"
+# The whole point is zero skill edits: the adapter must satisfy the same 6-verb contract, so /ticket
+# and /ship keep calling tracker verbs without knowing there's no API.
+lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
+[ "$lv" -eq 6 ] && ok "local adapter implements all 6 tracker verbs" || bad "local adapter has $lv verbs, expected 6"
+lvmiss=""
+for v in fetch_ticket create_ticket transition comment search download_attachments; do
+  grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
+done
+[ -z "$lvmiss" ] && ok "local adapter verb NAMES match the contract exactly" \
+  || bad "local adapter verb names diverge from the contract" "$lvmiss"
+# It must not require any seam config or auth — that is what makes it usable with no tracker.
+grep -qE '^requires: \[\]' adapters/tracker/local.md \
+  && ok "local adapter requires no seam config" || bad "local adapter declares required seam keys"
+
+# The snippets are EXTRACTED from the adapter and executed, not reimplemented here — a copied
+# implementation would keep passing after the documented one drifted or broke.
+cat > "$TMP/extract_verb.py" <<'PY2'
+import pathlib, re, sys
+md, verb = pathlib.Path(sys.argv[1]).read_text(), sys.argv[2]
+sec = re.split(r"(?m)^## ", md)
+body = next(s for s in sec if s.startswith(f"verb: {verb}\n"))
+m = re.search(r"<<'PY'\n(.*?)\nPY\n", body, re.DOTALL)
+if not m:
+    sys.exit(f"no python snippet under 'verb: {verb}'")
+print(m.group(1))
+PY2
+LA="adapters/tracker/local.md"
+python3 "$TMP/extract_verb.py" "$LA" transition > "$TMP/transition.py" 2>"$TMP/x.err" \
+  && ok "transition snippet extracted from the adapter (tests bind to the doc)" \
+  || bad "could not extract the transition snippet" "$(cat "$TMP/x.err")"
+python3 "$TMP/extract_verb.py" "$LA" comment > "$TMP/comment.py" 2>"$TMP/x.err" \
+  && ok "comment snippet extracted from the adapter" \
+  || bad "could not extract the comment snippet" "$(cat "$TMP/x.err")"
+
+TL="$TMP/localadapter"; mkdir -p "$TL"
+hdr_readme() { printf '# refi-sms-lift: R\n\n## Ticket Information\n- **Link:** \n- **Type:** analysis\n- **Status:** In Progress\n- **Epic/Parent:** \n- **Assignee:** kyle\n\n## Business Context\nBrief.\n' > "$1"; }
+
+# Only the Status bullet changes, and it is re-runnable.
+hdr_readme "$TL/a.md"
+python3 "$TMP/transition.py" "$TL/a.md" Completed >/dev/null 2>&1
+python3 "$TMP/transition.py" "$TL/a.md" Done >/dev/null 2>&1
+b="$(grep -cE '^- \*\*(Link|Type|Status|Epic/Parent|Assignee):' "$TL/a.md")"
+{ grep -q '^- \*\*Status:\*\* Done$' "$TL/a.md" && [ "$b" -eq 5 ]; } \
+  && ok "local transition rewrites only the Status bullet and is re-runnable" \
+  || bad "local transition corrupted the README" "$(cat "$TL/a.md")"
+
+# A status is user input: in a replacement STRING, `\1` would expand and `\q` would raise.
+hdr_readme "$TL/b.md"
+python3 "$TMP/transition.py" "$TL/b.md" 'weird \1 \g<1> \q' >"$TMP/o.txt" 2>&1
+{ grep -qF -- '- **Status:** weird \1 \g<1> \q' "$TL/b.md" && ! grep -qi 'traceback' "$TMP/o.txt"; } \
+  && ok "local transition treats a status with regex escapes as literal text" \
+  || bad "a status containing backreferences/escapes corrupted the file or raised" "$(cat "$TMP/o.txt"; cat "$TL/b.md")"
+
+# Two Status bullets must not be left disagreeing with each other.
+printf '# x: y\n\n- **Status:** In Progress\n- **Type:** t\n- **Status:** Blocked\n' > "$TL/c.md"
+python3 "$TMP/transition.py" "$TL/c.md" Done >/dev/null 2>&1
+[ "$(grep -c '^- \*\*Status:\*\* Done$' "$TL/c.md")" -eq 2 ] \
+  && ok "local transition updates every Status bullet (no contradictory leftovers)" \
+  || bad "a duplicated Status bullet was left disagreeing" "$(cat "$TL/c.md")"
+
+# No bullet: say so, change nothing.
+printf '# x: y\n\nNo bullets.\n' > "$TL/d.md"; before="$(cat "$TL/d.md")"
+out="$(python3 "$TMP/transition.py" "$TL/d.md" Done 2>&1)"
+{ [ "$before" = "$(cat "$TL/d.md")" ] && grep -q 'no Status bullet' <<<"$out"; } \
+  && ok "local transition no-ops (and says so) when there is no Status bullet" \
+  || bad "local transition altered a README with no Status bullet" "$out"
+
+# comment: one heading, appended entries, and a fenced `## Log` example is not the real heading.
+printf '# x: y\n\nBody.\n' > "$TL/log1.md"
+python3 "$TMP/comment.py" "$TL/log1.md" 2026-08-04 "First." >/dev/null 2>&1
+python3 "$TMP/comment.py" "$TL/log1.md" 2026-08-04 "Second." >/dev/null 2>&1
+{ [ "$(grep -c '^## Log$' "$TL/log1.md")" -eq 1 ] && [ "$(grep -c '^\*\*2026-08-04\*\*' "$TL/log1.md")" -eq 2 ]; } \
+  && ok "local comment creates '## Log' once and appends dated entries" \
+  || bad "local comment duplicated the heading or lost an entry" "$(cat "$TL/log1.md")"
+printf '# x: y\n\n```\n## Log\n```\n' > "$TL/log2.md"
+python3 "$TMP/comment.py" "$TL/log2.md" 2026-08-04 "Note." >/dev/null 2>&1
+[ "$(grep -c '^## Log$' "$TL/log2.md")" -eq 2 ] \
+  && ok "local comment ignores a '## Log' inside a fenced block and creates a real one" \
+  || bad "a fenced '## Log' example suppressed the real log heading" "$(cat "$TL/log2.md")"
+# A README that OPENS with the heading must not gain a second one.
+printf '## Log\n\n**2026-01-01** — old.\n' > "$TL/log3.md"
+python3 "$TMP/comment.py" "$TL/log3.md" 2026-08-04 "New." >/dev/null 2>&1
+[ "$(grep -c '^## Log$' "$TL/log3.md")" -eq 1 ] \
+  && ok "local comment recognizes a leading '## Log' heading" \
+  || bad "a README opening with '## Log' gained a duplicate heading" "$(cat "$TL/log3.md")"
+
+# The clobber guard: /ticket creates via the adapter, THEN renders the template into the same file.
+# With a remote tracker those are different artifacts; here an unguarded render destroys the brief.
+printf '# refi-sms-lift: R\n\n## Business Context\nInterviewed brief worth keeping.\n' > "$TL/brief.md"
+printf 'ticket_id=refi-sms-lift\ntitle=R\n' > "$TL/vars.env"
+[ -s "$TL/brief.md" ] || bash bin/render.sh templates/ticket-README.md.tmpl --vars "$TL/vars.env" > "$TL/brief.md"
+grep -q 'Interviewed brief worth keeping' "$TL/brief.md" \
+  && ok "guarded render preserves an existing brief (the documented clobber guard)" \
+  || bad "the render overwrote an interviewed brief"
+grep -q 'Never render over a README that already has content' adapters/tracker/local.md \
+  && ok "adapter documents the render-clobber hazard" || bad "clobber hazard undocumented"
+
+# End to end: a slug folder under the solo stack reaches INDEX.md with a local link and no ↗.
+E2E="$TMP/e2e"; mkdir -p "$E2E/.claude/config" "$E2E/bin" "$E2E/tickets/kyle/refi-sms-lift"
+cp bin/build_ticket_index.py "$E2E/bin/"
+sed 's#^  assignee_dir: kyle#  assignee_dir: kyle#' .claude/config/stack.example.solo.yaml > "$E2E/.claude/config/stack.yaml"
+printf '# refi-sms-lift: Refi SMS lift\n\n## Business Context\nMeasure lift.\n' > "$E2E/tickets/kyle/refi-sms-lift/README.md"
+CLAUDE_PROJECT_DIR="$E2E" python3 "$E2E/bin/build_ticket_index.py" >/dev/null 2>&1
+{ grep -q 'refi-sms-lift' "$E2E/tickets/INDEX.md" && ! grep -q '↗' "$E2E/tickets/INDEX.md"; } \
+  && ok "solo stack: a slug ticket reaches INDEX.md with no external link (index path, not the skill flow)" \
+  || bad "solo stack did not produce a usable INDEX.md" "$(cat "$E2E/tickets/INDEX.md" 2>&1 | head -20)"
+
+hdr "28 · docs stay true to the code (counts and capabilities drift silently)"
+# These numbers were stale in three places before this section existed, so assert them rather than
+# trusting prose: the docs are the adoption surface.
+na="$(ls adapters/*/*.md | grep -v README | wc -l | tr -d ' ')"
+grep -q "\*\*$na adapters\*\*" docs/architecture.md \
+  && ok "architecture.md's adapter count matches the tree ($na)" \
+  || bad "architecture.md states the wrong adapter count (tree has $na)" "$(grep -o '\*\*[0-9]* adapters\*\*' docs/architecture.md)"
+grep -q "^- $na adapters across 5 seams" ROADMAP.md \
+  && ok "ROADMAP's adapter count matches the tree ($na)" || bad "ROADMAP adapter count stale (tree has $na)"
+ns="$(ls .claude/config/stack.yaml .claude/config/stack.example.*.yaml | wc -l | tr -d ' ')"
+grep -q "$ns worked stacks" ROADMAP.md \
+  && ok "ROADMAP's worked-stack count matches the configs ($ns)" || bad "ROADMAP worked-stack count stale (found $ns)"
+# Every shipped adapter must be listed in the adapters README, or adopters can't find it.
+sed -n '/^## Adapters shipped$/,/^## /p' adapters/README.md > "$TMP/shipped_list.txt"
+amiss=""
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  n="$(basename "$f" .md)"
+  grep -q "\`$n\`" "$TMP/shipped_list.txt" || amiss="$amiss $n"
+done
+[ -z "$amiss" ] && ok "every shipped adapter appears in adapters/README.md" \
+  || bad "an adapter ships but is undocumented" "$amiss"
+# The two new capabilities must be discoverable from the docs an adopter actually reads.
+dmiss=""
+for pair in "README.md:id_mode" ".claude/config/stack.schema.md:id_mode" \
+            "docs/ticket-index.md:id_mode" "docs/troubleshooting.md:id_mode"; do
+  f="${pair%%:*}"; k="${pair##*:}"
+  grep -q "$k" "$f" || dmiss="$dmiss $f"
+done
+[ -z "$dmiss" ] && ok "id_mode is documented in README, schema, ticket-index and troubleshooting" \
+  || bad "id_mode undocumented in an adoption-facing doc" "$dmiss"
+# stack.yaml's header and architecture.md's proof list both enumerate the shipped configs, and both
+# were stale. Assert every example file is named in each.
+cmiss=""
+for f in .claude/config/stack.example.*.yaml; do
+  n="$(basename "$f")"
+  grep -q "$n" .claude/config/stack.yaml || cmiss="$cmiss stack.yaml:$n"
+  grep -q "$n" docs/architecture.md || cmiss="$cmiss architecture.md:$n"
+done
+[ -z "$cmiss" ] && ok "every example stack is named in stack.yaml's header and architecture.md" \
+  || bad "an example stack ships but isn't listed where adopters look" "$cmiss"
+grep -qE '^  id_mode:[[:space:]]*slug([[:space:]]|#|$)' .claude/config/stack.example.solo.yaml \
+  && ok "the solo example config actually sets project.id_mode: slug" \
+  || bad "solo example does not set id_mode: slug (a comment mentioning it is not the setting)"
+# The slug cross-reference rule is the most surprising behaviour; it must be stated, not implied.
+grep -qi 'wiki-link' docs/ticket-index.md && grep -qi 'wiki-link' .claude/config/stack.schema.md \
+  && ok "the slug cross-reference rule (wiki-links only) is documented in both places" \
+  || bad "the wiki-links-only rule is not documented where adopters will look"
+
+# A stated check count goes stale on every added test, so the docs state a FLOOR. Assert it against
+# the live counter — a static scan can't work, since loop-driven call sites each yield many checks.
+# Counting this assertion itself is why it is the last one.
+floor="$(grep -oE '[0-9]+\+-check' docs/troubleshooting.md | head -1 | grep -oE '^[0-9]+')"
+{ [ -n "$floor" ] && [ "$((PASS + 1))" -ge "$floor" ]; } \
+  && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
+  || bad "the docs claim more checks than the suite runs" "floor=${floor:-unset} actual=$PASS"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

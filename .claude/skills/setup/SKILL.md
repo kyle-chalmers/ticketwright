@@ -31,10 +31,13 @@ E.g. `/setup chat`. Detect candidates for just that seam, ask one question, add 
 
 ### Phase 2 — Ask (≤ 5 questions, detected options pre-selected, defaults visible)
 One AskUserQuestion round covering only:
-1. **Tracker** (detected options first);
+1. **Tracker** (detected options first) — or *none*, which selects the `local` tracker: the ticket
+   folder itself, for a repo with no ticketing system. Choosing it sets `id_mode: slug` and
+   `ticket_url_template: null`, and skips the key-prefix question below;
 2. **Warehouse** (or *none* — non-data repos are fine);
 3. **VCS**;
-4. **Ticket key prefix** (e.g. `ENG`) — and accept the tracker's project key as the default;
+4. **Ticket key prefix** (e.g. `ENG`) — accept the tracker's project key as the default; skip
+   entirely for the `local` tracker, where the folder name is the id;
 5. **Assignee folder name** (default: the user's short name).
 Everything else ships as a **commented default** the user can edit later: chat + docstore seams
 (add via `/setup chat` / `/setup docstore`), `default_epic`, `terminal_status` (default `Done`),

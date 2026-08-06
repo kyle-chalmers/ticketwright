@@ -181,6 +181,143 @@ _FILE_FLAG = re.compile(r"(?:-f|-i|--file|--filename|--input-file)[=\s]+([^\s;|&
 _STDIN_REDIR = re.compile(r"<\s*([^\s;|&<>]+)")
 
 
+_TARGET_HEADER = re.compile(r"^[ \t]*--[ \t]*warehouse-target:[ \t]*([A-Za-z0-9_.-]+)")
+
+
+def leading_target(sql: str) -> str | None:
+    """The target declared in a file's LEADING comment block, per the one-file-one-target contract.
+
+    Only the run of `--` comment lines at the top of the file counts. Scanning the whole text would
+    accept the marker from inside a `/* … */` block or a multi-line string literal, which is prose
+    about a target, not a declaration of one.
+    """
+    for line in sql.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if not s.startswith("--"):
+            return None                     # first real SQL line ends the header block
+        m = _TARGET_HEADER.match(line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def referenced_targets(command: str, cwd: str) -> list[str]:
+    """Targets declared by the leading header of each `.sql` file this command runs."""
+    out = []
+    for raw in _FILE_FLAG.findall(command) + _STDIN_REDIR.findall(command):
+        p = Path(raw)
+        if not p.is_absolute() and cwd:
+            p = Path(cwd) / raw
+        try:
+            if p.is_file() and p.stat().st_size < 1_000_000:
+                t = leading_target(p.read_text(errors="replace"))
+                if t and t not in out:
+                    out.append(t)
+        except OSError:
+            continue
+    return out
+
+
+def target_cli(stack: Path | None, target: str) -> str | None:
+    """The CLI a named warehouse target would use — its own `cli:`, else the seam-level one.
+
+    **Best effort, and deliberately biased toward silence.** Returns None whenever the target can't be
+    resolved confidently — an unknown name, an empty `targets:`, or a form this stdlib scan doesn't
+    read (a flow mapping for the whole `targets:` value, or a target defined via a YAML alias). None
+    means "don't gate", so an exotic config loses this second net rather than gaining false prompts.
+
+    That trade is deliberate: the authoritative wrong-warehouse check is the `/review` Should-fix
+    finding, which reads the same header and needs no YAML parsing at all — and which is also the only
+    half that works outside Claude Code, since hooks don't run under other agents. A missed catch here
+    degrades to that. A *false* prompt would be worse than either, because prompts people learn to
+    dismiss stop working.
+    """
+    if not stack:
+        return None
+    try:
+        blk = seam_block(stack.read_text(errors="replace"), "warehouse")
+    except OSError:
+        return None
+    if not blk:
+        return None
+
+    lines = [l for l in blk.splitlines() if l.strip() and not l.lstrip().startswith("#")]
+    if not lines:
+        return None
+    base = min(len(l) - len(l.lstrip()) for l in lines)
+
+    def key_of(line):
+        """The mapping key on a line, unquoted, or None."""
+        m = re.match(r"""^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))\s*:(.*)$""", line)
+        if not m:
+            return None, ""
+        return (m.group(1) or m.group(2) or m.group(3)), m.group(4)
+
+    def unquote(v):
+        v = v.strip().split("#")[0].strip()
+        if len(v) > 1 and v[0] == v[-1] and v[0] in "\"'":
+            v = v[1:-1]
+        return v or None
+
+    def cli_in(rest):
+        m = re.search(r"""[\s{,]cli\s*:\s*("[^"]*"|'[^']*'|[A-Za-z0-9_.-]+)""", " " + rest)
+        return unquote(m.group(1)) if m else None
+
+    # The seam's own `cli:` — only at the seam's own indent, never a nested one.
+    seam_cli = None
+    for ln in lines:
+        if len(ln) - len(ln.lstrip()) != base:
+            continue
+        k, rest = key_of(ln)
+        if k == "cli":
+            seam_cli = unquote(rest)
+            break
+
+    # Locate `targets:` at the seam's indent, then consider ONLY its direct children. Matching the
+    # target name anywhere in the block is wrong: `default: prod` is a *selector*, not a target, and a
+    # nested `metadata.targets.lake` is not a warehouse target either.
+    ti = next((i for i, ln in enumerate(lines)
+               if len(ln) - len(ln.lstrip()) == base and key_of(ln)[0] == "targets"), None)
+    if ti is None:
+        return None                                  # single mapping: no named targets at all
+    child = None
+    for ln in lines[ti + 1:]:
+        cur = len(ln) - len(ln.lstrip())
+        if cur <= base:
+            break                                     # left the targets: block
+        if child is None:
+            child = cur                                # the depth of a target name
+        if cur != child:
+            continue                                   # deeper: a key inside some target
+        k, rest = key_of(ln)
+        if k != target:
+            continue
+        stripped = rest.strip().split("#")[0].strip()
+        if stripped.startswith("*"):
+            return None            # `prod: *ref` — the alias may carry its own cli; don't guess one
+        own = cli_in(rest)                             # flow form: prod: {tool: x, cli: y}
+        if own:
+            return own
+        # Block form: only this target's OWN keys count, at one consistent depth. A `cli:` nested
+        # deeper (say under an `opts:` sub-map) belongs to that sub-map, not to the target.
+        own_depth = None
+        for sub in lines[lines.index(ln) + 1:]:
+            scur = len(sub) - len(sub.lstrip())
+            if scur <= child:
+                break
+            if own_depth is None:
+                own_depth = scur
+            if scur != own_depth:
+                continue
+            sk, srest = key_of(sub)
+            if sk == "cli":
+                return unquote(srest) or seam_cli
+        return seam_cli                                # target exists, inherits the seam's cli
+    return None                                        # no such target
+
+
 def invokes_warehouse(command: str, clis: list[str]) -> str | None:
     for cli in clis:
         # word-boundary match so "show" doesn't match inside another word
@@ -349,6 +486,32 @@ def run() -> int:
 
     if policy == MODE_OFF:
         return 0
+
+    # Wrong warehouse: right SQL, wrong target. Checked independently of the tier, because a
+    # *read* against the wrong target is also wrong — it returns plausible numbers about a
+    # different system rather than erroring — and it must pre-empt the read-only allow
+    # fast-path below, which would otherwise auto-approve it. Placed after the MODE_OFF
+    # short-circuit: `off` means this hook stays silent, and that is an explicit instruction.
+    # Only a CONFIRMED mismatch gates; target_cli() returns None for anything it cannot
+    # resolve confidently, so a single-warehouse repo or a typo'd name changes nothing.
+    for named in referenced_targets(command, cwd):
+        want = target_cli(stack, named)
+        if want and want != cli:
+            detail = (
+                f"wrong warehouse: this command runs `{cli}`, but the SQL declares "
+                f"`-- warehouse-target: {named}`, which uses `{want}`. Confirm the target "
+                f"before running — a query against the wrong warehouse returns plausible "
+                f"wrong numbers rather than an error."
+            )
+            if payload.get("permission_mode") == "bypassPermissions":
+                emit(system_message=(
+                    f"db_write_guard: SQL declares target `{named}` (`{want}`) but the "
+                    f"command runs `{cli}`; approval not requested because the session is "
+                    f"in bypassPermissions mode."
+                ))
+                return 0
+            emit("ask", detail)
+            return 0
 
     threshold = HIGH if policy == MODE_HIGH_RISK else ADDITIVE
     if tier >= threshold:

@@ -24,6 +24,10 @@ resolves all I/O through adapters (no hardcoded tools).
 
 ## Phase 1 — Render & run steps
 {{render_run_steps}}
+In a multi-target repo, write `-- warehouse-target: <name>` as line 1 of each generated `.sql`
+(the real target name — `default` is the seam's *selector*, not a target). The templates carry no
+such header because `render_and_validate.sh` rejects mustache tokens inside SQL comments.
+
 Render each `sql/*.sql.tmpl` (or `bin/*`) through `bin/render_and_validate.sh` — it substitutes
 tokens **and** gates the result (zero leftover tokens, no token inside a comment, balanced
 single-quotes / parens, unquoted SQL literals flagged); **halt on any error**. Write the validated SQL

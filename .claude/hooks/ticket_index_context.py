@@ -30,6 +30,17 @@ def project_root() -> Path:
 
 
 def ticket_number(tid: str) -> int:
+    """The integer part of a tracker key, or 0.
+
+    Deliberately loose, unlike `build_ticket_index.ticket_number`. Being strict needs the configured
+    prefixes — no fixed shape works, since a prefix may contain `_` or `-` or lead with a digit
+    (`ACME_US-42`) — and this hook only lazily reaches into the kit for `discover`. Guessing a shape
+    here would silently drop the number from valid keyed ids and reorder them.
+
+    The cost of staying loose is that a slug id ending in digits gets a numeric tie-break in the
+    "recent tickets" line of the session banner. That is cosmetic ordering in a banner; mis-ordering
+    real tracker keys would not be.
+    """
     m = re.search(r"-(\d+)", tid)
     return int(m.group(1)) if m else 0
 

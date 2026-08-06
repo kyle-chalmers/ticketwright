@@ -30,15 +30,38 @@ pre-commit gate. So the model writes summaries into `index_data.json`; the rende
 
 ## What counts as a ticket
 
-Any immediate sub-folder of `tickets/<owner>/` whose name contains a **tracker key** — the prefixes
-come from `stack.yaml` (`key_prefixes`, else `key_prefix`; e.g. `ENG-12`). Emoji-prefixed names like
-`☑️ ENG-12_thing` work too (`☑️` = done, `🛠️` = in progress — an optional convention). Folders with
-**no** tracker key are treated as reference/scratch work and skipped (e.g. `adhoc-*`, `scratch-*`,
-`ℹ️ notes`). Rows key on **(owner, id)**, so the same id can appear under two owners.
+Depends on `project.id_mode`.
+
+**`keyed` (default).** Any immediate sub-folder of `tickets/<owner>/` whose name contains a **tracker
+key** — the prefixes come from `stack.yaml` (`key_prefixes`, else `key_prefix`; e.g. `ENG-12`).
+Emoji-prefixed names like `☑️ ENG-12_thing` work too (`☑️` = done, `🛠️` = in progress — an optional
+convention). Folders with **no** tracker key are treated as reference/scratch work and skipped (e.g.
+`adhoc-*`, `scratch-*`, `ℹ️ notes`).
+
+**`slug`.** For a repo with no ticketing system: any sub-folder whose whole name (after an optional
+status emoji) matches `[a-z0-9][a-z0-9_-]*`, and the **name itself is the id**. Nothing is skipped for
+lacking a key, so a scratch folder is either a ticket or shouldn't live under `tickets/`.
+
+Rows key on **(owner, id)**, so the same id can appear under two owners. Two folders that reduce to
+one id for one owner — `refi-lift` and `☑️ refi-lift` — are reported on stderr and the later one wins;
+don't keep both.
+
+### Cross-references
+
+In `keyed` mode a cross-reference is any tracker key found in a README's prose, so the index can name
+a ticket that has no folder here (`blocked by ENG-999`).
+
+In `slug` mode it is **only** a `[[wiki-link]]` naming a ticket that exists. This is not a shortcut:
+a slug is free to be an ordinary phrase, so pattern-matching prose would turn stray words like
+`data-quality` into `OBJECTS.md` rows and graph edges. A wiki-link inside a fenced or inline code
+block is read as an example, not a reference. Markdown link destinations are deliberately not
+consulted — earlier attempts at that kept leaking images, external URLs and escaped brackets.
 
 ## Configuration (in `stack.yaml`)
 
-- `key_prefix` / `key_prefixes` — which tracker keys the index recognizes in folder names.
+- `id_mode` — `keyed` (default) or `slug`; see "What counts as a ticket" above.
+- `key_prefix` / `key_prefixes` — which tracker keys the index recognizes in folder names. Not
+  needed under `id_mode: slug`.
 - `ticket_url_template` — e.g. `https://acme.atlassian.net/browse/{id}`; how `INDEX.md`/`OBJECTS.md`
   link each ticket. `{id}` = full key (`ENG-12`); `{number}` = trailing integer (for Azure Boards /
   GitHub Issues whose native id is a bare number). Omit/`null` to drop the `↗` link.
@@ -57,6 +80,10 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
   (`/ticket --recall --object VW_X` queries it live). A ticket's `objects` = **enrichment** (the model names them)
   **∪** a **deterministic grep** of its `*.sql`/`*.py`, keyword-anchored (`FROM`/`JOIN`/… `schema.object`,
   so `os.path.join` isn't a false positive). Rendered + `--check`-gated alongside `INDEX.md`.
+  **Known limitation:** object names are folded case-insensitively and are warehouse-blind, so
+  `ANALYTICS.CUSTOMERS` on one warehouse target and `analytics.customers` on another collapse into a
+  single node. Usually that is the useful reading — a same-named object in two warehouses is often a
+  real cross-system relationship — but it is not a per-target index.
 
 ## Graph layer (Obsidian)
 

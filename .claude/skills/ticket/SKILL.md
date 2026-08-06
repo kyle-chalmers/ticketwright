@@ -1,7 +1,7 @@
 ---
 name: ticket
 description: The front door — open or resume a ticket, auto-load its context and prior art, and route to the next step (spec, build, review, or ship). Start every ticket here.
-argument-hint: <ticket-id> | --create "<summary>" [--type T] [--worktree] | --recall "<topic>" | --recall --object <NAME>
+argument-hint: <ticket-id> [--warehouse <name>] | --create "<summary>" [--type T] [--worktree] | --recall "<topic>" | --recall --object <NAME>
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
 
@@ -38,7 +38,10 @@ this before?", "which tickets touched VW_X?").
 6. **Scaffold** `project.ticket_path` with `project.ticket_subdirs` (create the subdirs empty —
    **no `.gitkeep` placeholders**; they fill with real files during build and git picks them up
    then); tracker adapter `download_attachments` → `source_materials/` (silent if none); render
-   `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/ticket-README.md.tmpl` → the ticket dir.
+   `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/ticket-README.md.tmpl` → the ticket dir —
+   **only if that README doesn't already exist**. Where the tracker *is* the ticket folder, step 3's
+   `create_ticket` already wrote it, and re-rendering would replace a briefed ticket with empty
+   template tokens.
 6b. **Refresh the catalog** so the new ticket shows up immediately — it won't otherwise, because the
    PostToolUse index hook only fires on `Write`/`Edit` and scaffolding happens via Bash:
    `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py"` (writes this

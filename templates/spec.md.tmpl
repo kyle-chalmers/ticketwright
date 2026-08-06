@@ -1,3 +1,8 @@
+---
+warehouse_targets: [{{warehouse_targets}}]
+primary_target: {{primary_target}}
+---
+
 # Spec — {{ticket_id}}: {{thing}}
 
 > The committed blueprint `/spec-and-build build` executes. Front-loads decisions before code.
@@ -5,7 +10,7 @@
 
 ## Operation
 - **Type:** {{operation}}  (new / alter)  ·  **Scope:** {{scope}} (single / multiple objects)
-- **Target layer / dev env:** {{dev_target}}
+- **Target layer / dev env:** {{dev_target}}  ·  **Warehouse target:** {{primary_target}}
 
 ## Data grain
 {{grain}}  — the unique key; how duplicates are prevented.

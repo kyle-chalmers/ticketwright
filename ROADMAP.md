@@ -14,7 +14,7 @@ The ticket index is **active**, not just browsable, and observable.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
-- 19 adapters across 5 seams; 3 worked stacks; **95-check self-test**; GitHub Actions CI.
+- 20 adapters across 5 seams; 5 worked stacks; **200+-check self-test**; GitHub Actions CI.
 
 Lineage: Ticketwright is the canonical evolution of the earlier `crank-tickets` / GDD experiment — the
 advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *distribution* ideas
@@ -45,6 +45,42 @@ the lightweight stance.
   PII/customer data opts out via a `*.private.csv` name or a `private/` subfolder. *(3.1.0 flipped
   this from the earlier "all exports gitignored" default.)*
 - Runbook note: heavy/long pulls run in the background. Self-test now **109 checks** (§17–§20).
+
+## Shipped — v1.4 (more than one warehouse; no tracker at all)
+
+Two limits in the seam abstraction, both surfaced by the same question: what if my setup isn't
+one-Jira-one-Snowflake?
+
+- **Multi-target warehouse seam** — `seams.warehouse` is now *either* a single mapping or
+  `default:` + a `targets:` map. Targets inherit seam-level scalars (including `tool`/`adapter`/
+  `verify`) so two targets on one account share nearly everything; `verify_stack.sh` checks each and
+  fails closed on a missing or dangling `default:`. Skills resolve the active target per
+  `adapters/README.md` § Multi-target seams, and a `.sql` names its own target in a
+  `-- warehouse-target:` header. Existing single-warehouse configs are byte-identical.
+- **Trackerless work** — `project.id_mode: slug` makes a folder name the ticket id, and
+  `adapters/tracker/local.md` implements the tracker verbs against the ticket folder itself, so
+  `/ticket` and `/ship` run unchanged with no ticketing system. Cross-references in slug mode are
+  `[[wiki-links]]` only, because a folder name can be an ordinary phrase.
+- **`dev_target`** is the canonical dev-environment key, with each warehouse adapter declaring its
+  legacy spelling in `dev_key:` frontmatter.
+- **Two bugfixes surfaced by review**, both latent before this work: `db_write_guard` could harvest
+  another seam's CLI and raise a spurious approval prompt on an ordinary tracker command, and
+  `spec-and-build` named a Snowflake-only config key inside a deliberately tool-neutral skill.
+- **Wrong-warehouse guard** — the hook prompts when the invoked CLI doesn't match the SQL's declared
+  target, including for reads. `/review` is the authoritative half (no YAML parsing, and it works
+  under agents where hooks don't run); the hook is the earlier, best-effort one.
+- Two worked configs added: `stack.example.multi-warehouse.yaml`, `stack.example.solo.yaml`.
+
+Deferred out of this work, deliberately:
+
+- **Multi-target for the other four seams.** `verify_stack.sh` handles the shape generically, but no
+  skill resolves targets for tracker/chat/docstore/vcs and nothing tests it — so the mechanism is
+  documented and only `warehouse` is promised.
+- **Target-qualified object index.** `OBJECTS.md` folds object names case-insensitively and is
+  warehouse-blind, so the same name on two targets collapses to one node. Often that is the useful
+  reading; qualifying it bumps `index_data.json`'s schema across four call sites for a rare collision.
+- **Per-target policy overrides** (e.g. write-approval on prod but not a sandbox) — this needs a
+  policy-scoping vocabulary the kit doesn't have, and relaxing a *safety* policy deserves its own design.
 
 ## Field report — deferred (from adopt sessions)
 
@@ -85,7 +121,8 @@ artifact it touches:
 Surfaced by a two-AI (Codex + agent-panel) review as the top *coverage* gaps — the abstraction is
 solid for keyed trackers (Jira/Linear) and good-with-caveats for integer/label ones:
 
-- **Tracker `id_mode` contract** — `keyed | integer | gid` + a normalizer so integer trackers (Azure
+- **Tracker `id_mode` contract** — `slug` **shipped** (a folder name can be the id, for repos with no
+  tracker); `keyed | integer | gid` + a normalizer still open, so integer trackers (Azure
   Boards, GitHub Issues) stop being a silent abstraction leak (bare number for the CLI, `KEY-123` for
   branches/folders/index). *The single highest-value contract fix.*
 - **Semantic adapter lint** — verify each adapter's token references resolve and required frontmatter is
@@ -141,3 +178,11 @@ ai-data-security); apply here first since ticketwright is the design ancestor:
 Embeddings / vector retrieval (lexical rank→read-top-K scales to ~500 tickets), weight auto-tuning
 (`--eval` showed the hand-set `4/3/5/1` weights are robust — a tuner would overfit and erode
 transparency), and a standalone knowledge-base/orchestration service.
+
+**Joining data across warehouses.** Routing a query to the right target is the kit's job; being a
+query engine is not. Moving rows between warehouses is a write subject to
+`db_write_requires_approval`, the extract side is a governance call the kit has no vocabulary for
+(`pii_role` is per-target), and a hand-rolled bridge breaks `deterministic_outputs`. A team that
+needs it already has federation configured in the warehouse, where the federated objects are
+reachable from one target. Supported shape: two single-target queries → two exports → an explicit
+local combine step whose reconciliation is a validation gate.
