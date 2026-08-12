@@ -5,9 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
-Skills can now **resolve a warehouse target**, so the multi-target seam released in 3.4.0 is usable
-end to end — and a repo with **no ticketing system at all** can use the kit. Tool-agnostic and
-stdlib-only; no version bump here.
+## [3.5.0] — 2026-08-12
+
+Two features land together. **Human review handoff** — a gate that opens a ticket's deliverables in
+your own applications and waits for sign-off; the first pause in this kit that guards *seeing* the
+work rather than a side effect leaving the machine. And **skills now resolve a warehouse target**,
+so the multi-target seam released in 3.4.0 is usable end to end — plus a repo with **no ticketing
+system at all** can use the kit. Tool-agnostic and stdlib-only.
 
 Upgrade note: reinstall and relaunch **before** editing `stack.yaml`. Bundled hook changes don't reach
 an installed copy via autoUpdate (claude-code #52218), and an un-relaunched session reads a new config
