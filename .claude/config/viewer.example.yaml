@@ -1,0 +1,60 @@
+# viewer.example.yaml — the per-user "open my deliverables in my own apps" config.
+#
+# WHY THIS ISN'T IN stack.yaml: every other seam names a tool the whole team shares. Which
+# application opens a .sql file is a personal choice — one teammate wants a SQL IDE, another a text
+# editor, a third wants nothing to open at all. So the repo decides *when* a review gate fires
+# (policy `human_review_handoff` in stack.yaml) and each person decides *what* it opens (this file).
+#
+# Copy to ONE of these — the first that exists wins:
+#   1. .claude/config/viewer.local.yaml                          you, this repo   (gitignored)
+#   2. ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml you, every repo
+#   3. a `viewer:` seam block in .claude/config/stack.yaml        whole team       (committed)
+# None of them present = the feature is off and nothing ever opens.
+#
+# You normally do not write this by hand: the first time a review gate fires, Ticketwright asks
+# which apps you want and writes the file for you. `/setup viewer` re-runs that interview.
+#
+# Check it without launching anything:  bash bin/handoff.sh --dry-run <a file>
+
+enabled: true                            # false = "configured to stay off"; never prompts again
+
+tool: macos-open                         # adapters/viewer/: macos-open | xdg-open | windows-start
+adapter: adapters/viewer/macos-open.md
+
+# {app} and {path} arrive already shell-quoted. {path} expands to EVERY path sharing one route,
+# so five CSVs open in one launch instead of five.
+open_cmd: 'open -a {app} {path}'
+default_cmd: 'open {path}'               # when no route below matches → OS default association
+reveal_cmd: 'open -R {path}'             # used by --reveal
+
+# First matching glob wins. Match is on the FILENAME, not the full path.
+routes:
+  - glob: "*.sql"
+    app: DataGrip
+  - glob: "*.csv"
+    app: Microsoft Excel
+  - glob: "*.tsv"
+    app: Microsoft Excel
+
+verify: "command -v open"                # read-only reachability check
+
+# ── Linux ──────────────────────────────────────────────────────────────────────
+# tool: xdg-open
+# adapter: adapters/viewer/xdg-open.md
+# open_cmd: 'gtk-launch {app} {path}'    # {app} is a .desktop id
+# default_cmd: 'xdg-open {path}'
+# reveal_cmd: 'xdg-open {path}'
+# routes:
+#   - glob: "*.sql"
+#     app: datagrip.desktop
+#   - glob: "*.csv"
+#     app: libreoffice-calc.desktop
+# verify: "command -v xdg-open"
+#
+# ── Windows (Git Bash / WSL) ───────────────────────────────────────────────────
+# tool: windows-start
+# adapter: adapters/viewer/windows-start.md
+# open_cmd: 'cmd.exe /c start "" {app} {path}'
+# default_cmd: 'cmd.exe /c start "" {path}'
+# reveal_cmd: 'explorer.exe /select,{path}'
+# verify: "command -v cmd.exe"

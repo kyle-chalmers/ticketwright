@@ -35,7 +35,8 @@ done
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 6;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;; *) echo 0;;
+    tracker) echo 6;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
+    viewer) echo 2;; *) echo 0;;
   esac
 }
 for f in adapters/*/*.md; do
@@ -592,7 +593,15 @@ def check(f):
         k, v = mm.group(1), mm.group(2).strip()
         if k == "description" and v:
             desc = True
-        if v[:1] in '["\'':            # a flow node must be the WHOLE value (only trailing whitespace)
+        # A flow node must be the WHOLE value (only trailing whitespace). Spell the quote set as a
+        # tuple of one-char literals, never as a single string literal holding an escaped quote.
+        # Reason: bash 3.2 lexes heredoc bodies while scanning a command substitution for its
+        # closing paren, so an escaped quote in here leaves the shell quote-unbalanced for the
+        # WHOLE REST OF THE FILE. The suite then died mid-run on macOS system bash while CI bash 5
+        # parsed the same file fine. Keep this block free of stray quote and backtick characters.
+        # The tuple also fixes a latent IndexError: an empty value is a substring of any string, so
+        # the old membership test passed for it and then crashed indexing position 0.
+        if v[:1] in ('[', '"', "'"):
             if v[0] == "[":
                 depth = idx = 0; idx = -1
                 for i, c in enumerate(v):
@@ -682,6 +691,10 @@ cfgmiss=""
 for f in .claude/config/*; do
   [ -f "$f" ] || continue
   [ "$f" = ".claude/config/stack.yaml" ] && continue
+  # *.local.yaml is per-user and gitignored (viewer.local.yaml), so it is never shipped and
+  # must not demand a force-include line — otherwise this check fails for exactly the people
+  # who configured a viewer, which is the feature working as intended.
+  case "$f" in *.local.yaml) continue ;; esac
   grep -q "^\"$f\" = " pyproject.toml || cfgmiss="$cfgmiss $f"
 done
 [ -z "$cfgmiss" ] \
@@ -833,6 +846,19 @@ cf="$(grep -REn 'commandify' .claude/config .claude/skills templates 2>/dev/null
   && grep -q '^@AGENTS.md' templates/CLAUDE.md.tmpl; } \
   && ok "CLAUDE.md.tmpl is a bare @AGENTS.md import (Claude Code auto-loads the rules)" \
   || bad "templates/CLAUDE.md.tmpl must be exactly one line: @AGENTS.md"
+# E12 — every shipped shell script PARSES under the running bash. The kit targets bash 3.2 (macOS
+# system bash), and 3.2 lexes heredoc bodies while scanning a command substitution: one escaped
+# quote inside a python heredoc silently unbalanced the shell for the rest of the file. selftest
+# itself died mid-run on macOS while CI's bash 5 stayed green, so half the suite stopped running
+# with nothing to show for it. Parse-check on the CURRENT interpreter catches that class on the
+# machine that has the old bash, which is exactly where it matters.
+parse_bad=""
+for s in bin/*.sh .claude/statusline.sh templates/productized-skill/bin/*.sh; do
+  [ -f "$s" ] || continue
+  bash -n "$s" 2>/dev/null || parse_bad="$parse_bad $s"
+done
+[ -z "$parse_bad" ] && ok "every shipped .sh parses under bash $BASH_VERSION" \
+  || bad "a shipped shell script does not parse under bash $BASH_VERSION:$parse_bad"
 
 hdr "21 · Obsidian graph layer (tickets/graph/ + tickets/objects/)"
 GX="$TMP/graph"; mkdir -p "$GX/.claude/config" "$GX/tickets/alice/ENG-1" "$GX/tickets/alice/ENG-2" "$GX/tickets/bob/ENG-3"
@@ -906,7 +932,7 @@ grep -q 'graph_notes' .claude/config/stack.schema.md \
 grep -qi 'Obsidian' README.md \
   && ok "README documents the Obsidian graph view" || bad "README missing the Obsidian section"
 
-hdr "21 · project-scoped enablement is the default on plugin installs"
+hdr "21b · project-scoped enablement is the default on plugin installs"
 sc=".claude/skills/setup/scaffold.md"
 scflat="$(tr '\n' ' ' < "$sc")"   # flatten so word-wrapped phrases still match
 { grep -q 'extraKnownMarketplaces' "$sc" && grep -q 'enabledPlugins' "$sc" \
@@ -1613,8 +1639,16 @@ na="$(ls adapters/*/*.md | grep -v README | wc -l | tr -d ' ')"
 grep -q "\*\*$na adapters\*\*" docs/architecture.md \
   && ok "architecture.md's adapter count matches the tree ($na)" \
   || bad "architecture.md states the wrong adapter count (tree has $na)" "$(grep -o '\*\*[0-9]* adapters\*\*' docs/architecture.md)"
-grep -q "^- $na adapters across 5 seams" ROADMAP.md \
-  && ok "ROADMAP's adapter count matches the tree ($na)" || bad "ROADMAP adapter count stale (tree has $na)"
+# Derive the seam count too — hardcoding it just moves the staleness one line over, which is
+# what adding the `viewer` seam proved.
+ns=0
+for d in adapters/*/; do
+  [ "$(ls "$d"*.md 2>/dev/null | grep -cv 'README\.md$')" -gt 0 ] && ns=$((ns + 1))
+done
+grep -q "^- $na adapters across $ns seams" ROADMAP.md \
+  && ok "ROADMAP's adapter/seam counts match the tree ($na / $ns)" \
+  || bad "ROADMAP adapter or seam count stale (tree has $na adapters across $ns seams)" \
+         "$(grep -n '^- [0-9]* adapters across' ROADMAP.md)"
 ns="$(ls .claude/config/stack.yaml .claude/config/stack.example.*.yaml | wc -l | tr -d ' ')"
 grep -q "$ns worked stacks" ROADMAP.md \
   && ok "ROADMAP's worked-stack count matches the configs ($ns)" || bad "ROADMAP worked-stack count stale (found $ns)"
@@ -1662,6 +1696,192 @@ floor="$(grep -oE '[0-9]+\+-check' docs/troubleshooting.md | head -1 | grep -oE 
 { [ -n "$floor" ] && [ "$((PASS + 1))" -ge "$floor" ]; } \
   && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
   || bad "the docs claim more checks than the suite runs" "floor=${floor:-unset} actual=$PASS"
+
+hdr "25 · viewer seam + human review handoff (bin/handoff.sh)"
+# This seam launches DESKTOP APPS, so the assertions below are as much about what it must NOT do as
+# what it must. Everything runs --dry-run or with TICKETWRIGHT_NO_OPEN=1: selftest must never open a
+# window on a contributor's machine, and CI has no desktop to open into.
+vproj() {  # vproj NAME <<'YAML'  → writes a project fixture + viewer.local.yaml, echoes the dir
+  local d="$TMP/v-$1"
+  mkdir -p "$d/.claude/config" "$d/tickets"; : > "$d/.git"
+  cat > "$d/.claude/config/viewer.local.yaml"
+  printf 'SELECT 1;\n'  > "$d/tickets/q.sql"
+  printf 'a,b\n1,2\n'   > "$d/tickets/one.csv"
+  printf 'a,b\n3,4\n'   > "$d/tickets/two.csv"
+  printf 'hi\n'         > "$d/tickets/notes.md"
+  echo "$d"
+}
+hoff() {  # hoff PROJDIR ARGS... — never allowed to actually launch anything
+  local d="$1"; shift
+  CLAUDE_PROJECT_DIR="$d" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/noxdg" \
+    bash bin/handoff.sh "$@" 2>/dev/null
+}
+
+VP="$(vproj basic <<'YAML'
+tool: macos-open
+adapter: adapters/viewer/macos-open.md
+open_cmd: 'open -a {app} {path}'
+default_cmd: 'open {path}'
+reveal_cmd: 'open -R {path}'
+routes:
+  - glob: "*.sql"
+    app: SqlApp
+  - glob: "*.csv"
+    app: Sheet App
+YAML
+)"
+o="$(hoff "$VP" --dry-run "$VP/tickets/q.sql")"
+grep -q 'open -a SqlApp' <<<"$o" && ok "a .sql routes to its configured app" || bad "sql route not applied" "$o"
+
+# Batching: N files sharing a route must be ONE launch, not one window per file.
+o="$(hoff "$VP" --dry-run "$VP/tickets/one.csv" "$VP/tickets/two.csv")"
+{ [ "$(grep -c 'would run' <<<"$o")" = "1" ] && grep -q 'one.csv.*two.csv' <<<"$o"; } \
+  && ok "files sharing a route batch into one launch" || bad "csv batch split into separate launches" "$o"
+
+# Regression: the unrouted group used to be keyed by the EMPTY string, and $(...) strips trailing
+# newlines — so whenever the last file matched no route it silently never opened.
+o="$(hoff "$VP" --dry-run "$VP/tickets/q.sql" "$VP/tickets/notes.md")"
+grep -qE '^  would run: open [^-]' <<<"$o" \
+  && ok "an unrouted file still opens via default_cmd (even when it sorts last)" \
+  || bad "unrouted file dropped — the empty grouping key regressed" "$o"
+
+o="$(hoff "$VP" --dry-run --reveal "$VP/tickets/one.csv")"
+grep -q 'open -R' <<<"$o" && ok "--reveal resolves reveal_cmd" || bad "--reveal did not use reveal_cmd" "$o"
+
+# A real (non-dry) run must still refuse to launch when told not to, and say the command it skipped.
+o="$(hoff "$VP" "$VP/tickets/q.sql")"
+{ grep -q 'would run' <<<"$o" && ! grep -q 'opened:' <<<"$o"; } \
+  && ok "TICKETWRIGHT_NO_OPEN=1 prints instead of launching" || bad "guard did not stop a launch" "$o"
+o="$(CLAUDE_PROJECT_DIR="$VP" CI=true bash bin/handoff.sh "$VP/tickets/q.sql" 2>/dev/null)"
+{ grep -q 'would run' <<<"$o" && ! grep -q 'opened:' <<<"$o"; } \
+  && ok "CI=… prints instead of launching (no desktop in CI)" || bad "guard did not stop a launch under CI" "$o"
+
+# Containment: this hands paths to desktop apps, so it only ever touches the project.
+o="$(hoff "$VP" --dry-run /etc/hosts)"; rc=$?
+{ [ "$rc" -ne 0 ] && [ -z "$o" ]; } \
+  && ok "a path outside the project is refused" || bad "opened a path outside the project" "$o rc=$rc"
+# …and the containment check must resolve the FINAL component, not just its parent directory. A
+# ticket repo is shared, so an in-project symlink is something another author can commit; resolving
+# only the parent let `tickets/x.sql -> /etc/hosts` through as "inside the project".
+ln -sf /etc/hosts "$VP/tickets/escape.sql"
+o="$(hoff "$VP" --dry-run "$VP/tickets/escape.sql")"; rc=$?
+{ [ "$rc" -ne 0 ] && [ -z "$o" ]; } \
+  && ok "an in-project symlink pointing outside the project is refused" \
+  || bad "symlink escaped containment — the app would have opened the target" "$o rc=$rc"
+# A symlink that stays inside the project is legitimate and must still work.
+ln -sf "$VP/tickets/one.csv" "$VP/tickets/alias.csv"
+o="$(hoff "$VP" --dry-run "$VP/tickets/alias.csv")"
+grep -q 'one.csv' <<<"$o" && ok "an in-project symlink resolving inside the project still opens" \
+  || bad "a legitimate in-project symlink was refused" "$o"
+
+# Regression: `.enabled // "true"` in yq/jq treats a literal false as ABSENT, so the one value that
+# must be honored was being overridden by its own default.
+VOFF="$(vproj off <<'YAML'
+enabled: false
+tool: macos-open
+open_cmd: 'open -a {app} {path}'
+default_cmd: 'open {path}'
+routes:
+  - glob: "*.sql"
+    app: SqlApp
+YAML
+)"
+o="$(hoff "$VOFF" --dry-run "$VOFF/tickets/q.sql")"
+[ -z "$o" ] && ok "enabled: false is honored (opt-out never re-prompts)" || bad "enabled:false still opened files" "$o"
+# The opt-out must survive a trailing YAML comment, and the SessionStart banner has to agree with
+# the engine — a banner advertising `viewer=…` for a config that opens nothing is a lie about state.
+printf 'enabled: false # do not ask again\ntool: macos-open\n' > "$VOFF/.claude/config/viewer.local.yaml"
+# session_context bails out entirely without a stack.yaml, which would make the banner half of this
+# assertion pass for the wrong reason. Give it one so the banner actually renders.
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n' > "$VOFF/.claude/config/stack.yaml"
+o="$(hoff "$VOFF" --dry-run "$VOFF/tickets/q.sql")"
+b="$(echo '{"hook_event_name":"SessionStart"}' \
+      | CLAUDE_PROJECT_DIR="$VOFF" XDG_CONFIG_HOME="$TMP/noxdg" python3 .claude/hooks/session_context.py 2>/dev/null)"
+{ [ -z "$o" ] && ! grep -q 'viewer=' <<<"$b"; } \
+  && ok "enabled: false with a trailing comment: engine and banner agree it is off" \
+  || bad "trailing comment defeated the opt-out in the engine or the banner" "engine='$o' banner='$b'"
+
+# Optionality: an unconfigured repo behaves exactly as before this feature existed.
+VNONE="$TMP/v-none"; mkdir -p "$VNONE/.claude/config" "$VNONE/tickets"; : > "$VNONE/.git"
+printf 'project:\n  key_prefix: ENG\n' > "$VNONE/.claude/config/stack.yaml"
+printf 'SELECT 1;\n' > "$VNONE/tickets/q.sql"
+o="$(hoff "$VNONE" "$VNONE/tickets/q.sql")"; rc=$?
+{ [ -z "$o" ] && [ "$rc" -eq 0 ]; } \
+  && ok "no viewer config → silent, exit 0 (feature is off, nothing blocks)" || bad "unconfigured repo was not silent" "$o rc=$rc"
+
+# Resolution order: the per-user repo file must win over a team-wide seams.viewer in stack.yaml.
+VORD="$(vproj order <<'YAML'
+tool: macos-open
+open_cmd: 'open -a {app} {path}'
+default_cmd: 'open {path}'
+routes:
+  - glob: "*.sql"
+    app: PerUserApp
+YAML
+)"
+printf 'seams:\n  viewer:\n    tool: macos-open\n    open_cmd: %s\n    default_cmd: %s\n    routes:\n      - glob: "*.sql"\n        app: TeamApp\n' \
+  "'open -a {app} {path}'" "'open {path}'" > "$VORD/.claude/config/stack.yaml"
+o="$(hoff "$VORD" --dry-run "$VORD/tickets/q.sql")"
+grep -q 'PerUserApp' <<<"$o" && ok "per-user viewer.local.yaml beats a team-wide seams.viewer" \
+  || bad "resolution order wrong — stack.yaml won over the per-user file" "$o"
+# …and with the per-user file gone, the team-wide block is what answers.
+rm -f "$VORD/.claude/config/viewer.local.yaml"
+o="$(hoff "$VORD" --dry-run "$VORD/tickets/q.sql")"
+grep -q 'TeamApp' <<<"$o" && ok "seams.viewer in stack.yaml is the team-wide fallback" \
+  || bad "team-wide seams.viewer never resolved" "$o"
+# …and the user-level file sits between them.
+mkdir -p "$TMP/xdg/ticketwright"
+printf "tool: macos-open\nopen_cmd: 'open -a {app} {path}'\ndefault_cmd: 'open {path}'\nroutes:\n  - glob: \"*.sql\"\n    app: AllReposApp\n" \
+  > "$TMP/xdg/ticketwright/viewer.yaml"
+o="$(CLAUDE_PROJECT_DIR="$VORD" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/xdg" \
+      bash bin/handoff.sh --dry-run "$VORD/tickets/q.sql" 2>/dev/null)"
+grep -q 'AllReposApp' <<<"$o" && ok "user-level viewer.yaml beats stack.yaml, loses to the repo file" \
+  || bad "XDG user-level viewer config not resolved" "$o"
+
+# A missing dev tool must not turn a courtesy step into a hard failure.
+#
+# Hiding yq by narrowing PATH to /usr/bin:/bin does NOT work on images that ship yq there —
+# GitHub's ubuntu runners do — so that spelling passed locally (Homebrew keeps yq outside those
+# dirs) and failed in CI, i.e. it was green for the wrong reason. Build a scratch bin holding
+# only what handoff.sh needs, minus yq, and assert the precondition so this can never silently
+# stop exercising the branch it claims to cover.
+NOYQ="$TMP/noyq-bin"; mkdir -p "$NOYQ"
+for c in bash sh env printf awk sed grep tr cut basename dirname realpath python3; do
+  src="$(command -v "$c" 2>/dev/null)" && ln -sf "$src" "$NOYQ/$c"
+done
+if ( PATH="$NOYQ"; command -v yq >/dev/null 2>&1 ); then
+  bad "missing-yq test setup is broken: yq still resolves, so the branch was never exercised"
+else
+  o="$(CLAUDE_PROJECT_DIR="$VP" TICKETWRIGHT_NO_OPEN=1 PATH="$NOYQ" bash bin/handoff.sh \
+        --dry-run "$VP/tickets/q.sql" 2>&1)"; rc=$?
+  { [ "$rc" -eq 0 ] && grep -qi 'yq' <<<"$o"; } \
+    && ok "missing yq degrades soft (lists the files, exit 0)" || bad "missing yq was not handled" "$o rc=$rc"
+fi
+
+# The per-user file must never be committable — it is personal config, and in a work repo its app
+# paths can leak local directory structure.
+{ grep -q 'config/\*\.local\.yaml' .gitignore && grep -q 'config/\*\.local\.yaml' templates/gitignore.tmpl; } \
+  && ok "viewer.local.yaml is gitignored (kit + scaffold template)" \
+  || bad "per-user viewer config is not gitignored in .gitignore / templates/gitignore.tmpl"
+[ -z "$(git ls-files '.claude/config/*.local.yaml' 2>/dev/null)" ] \
+  && ok "no per-user viewer config is tracked in git" || bad "a *.local.yaml is tracked — untrack it"
+[ -f .claude/config/viewer.example.yaml ] \
+  && ok "viewer.example.yaml ships as the committed reference" || bad "viewer.example.yaml missing"
+
+# Wiring: the policy is documented everywhere a reader looks, and the skills call the engine rather
+# than naming anybody's application (the golden rule).
+{ grep -q 'human_review_handoff' .claude/config/stack.yaml \
+  && grep -q 'human_review_handoff' .claude/config/stack.schema.md \
+  && grep -q 'human_review_handoff' templates/AGENTS.md.tmpl; } \
+  && ok "human_review_handoff documented in stack.yaml + schema + AGENTS.md.tmpl" \
+  || bad "the new policy is missing from a config/doc surface"
+{ grep -q 'handoff.sh' .claude/skills/review/SKILL.md \
+  && grep -q 'handoff.sh' .claude/skills/spec-and-build/SKILL.md; } \
+  && ok "/review and /spec-and-build call bin/handoff.sh" || bad "a gate skill never invokes the handoff engine"
+appleak="$(grep -REn -i 'DataGrip|Microsoft Excel|open -a |xdg-open|explorer\.exe' \
+            .claude/skills .claude/commands 2>/dev/null || true)"
+[ -z "$appleak" ] && ok "no application name or OS open-command leaked into a skill" \
+  || bad "a skill names a concrete application (belongs in an adapter / per-user config)" "$appleak"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

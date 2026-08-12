@@ -66,6 +66,24 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 | `commit` | paths, message (semantic) | commit sha |
 | `open_pr` | title (semantic), body | PR URL |
 
+### `viewer` — hand an artifact to the human's own application *(optional)*
+| Verb | Inputs | Returns |
+|---|---|---|
+| `open` | one or more paths | each path handed to the application its glob route names |
+| `reveal` | a path | the containing folder shown in the OS file manager |
+
+The gate where a person actually *looks* at a deliverable — generated SQL into their IDE, result
+CSVs into their spreadsheet app — instead of the model declaring it correct on their behalf. Driven
+by policy `human_review_handoff` (`off` | `review` | `all`).
+
+**This seam's config is per-user, not in `stack.yaml`.** Which app opens a `.sql` is a personal
+choice, so it resolves first-hit-wins from `.claude/config/viewer.local.yaml` (gitignored) →
+`${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml` → a `seams.viewer` block in
+`stack.yaml` for a team that wants to standardize. Nothing configured ⇒ the feature is off and
+skills carry on unchanged. Shape: `.claude/config/viewer.example.yaml`. Skills never invoke these
+commands directly — `bin/handoff.sh` resolves the routes and enforces the rails (never launches in
+CI or a headless session, never opens a path outside the project).
+
 ---
 
 ## Multi-target seams
@@ -158,6 +176,7 @@ verb contract for their seam:
 - **chat:** `slack`, `teams`
 - **docstore:** `gdrive`, `sharepoint`
 - **vcs:** `github`, `gitlab`, `azure-repos`
+- **viewer** *(optional)*: `macos-open`, `xdg-open`, `windows-start` — pick the one for your OS
 
 Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Five worked
 `stack.yaml` configs ship — Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,

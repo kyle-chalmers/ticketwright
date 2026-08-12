@@ -135,21 +135,22 @@ Two consequences worth knowing before you adopt it:
 
 ---
 
-## `policies` (the 9 kit policies — see kit README "AI-layer" section)
+## `policies` (the 10 kit policies — see kit README "AI-layer" section)
 
 | Policy | Type | Default | Enforced by |
 |---|---|---|---|
 | `hard_halt_before_external_posts` | bool | `true` | `ship`, every productized skill — pause for human go before any tracker/chat/docstore write. |
 | `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
-| `chat_default_draft` | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
-| `hyperlink_everything` | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
-| `skillify_everything` | `true` | recurring work → a `/productize` skill the agent can invoke, not a one-off. |
-| `reduce_assumptions` | `true` | ask before building; still document every assumption in the ticket README. |
-| `commit_plan_before_implement` | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
-| `system_evolution` | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
-| `deterministic_outputs` | `true` | data exports use explicit `ORDER BY`; productized skills ship golden-replay diffs. |
+| `chat_default_draft` | bool | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
+| `hyperlink_everything` | bool | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
+| `skillify_everything` | bool | `true` | recurring work → a `/productize` skill the agent can invoke, not a one-off. |
+| `reduce_assumptions` | bool | `true` | ask before building; still document every assumption in the ticket README. |
+| `commit_plan_before_implement` | bool | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
+| `system_evolution` | bool | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
+| `deterministic_outputs` | bool | `true` | data exports use explicit `ORDER BY`; productized skills ship golden-replay diffs. |
+| `human_review_handoff` | enum | `review` | `review` layer ⑤ (and `spec-and-build` under `all`) — open deliverables in the user's own apps and wait for sign-off. See below. |
 
-All are booleans except `db_write_requires_approval`.
+All are booleans except `db_write_requires_approval` and `human_review_handoff`.
 
 ### `db_write_requires_approval` — the one enum
 
@@ -178,6 +179,49 @@ the operator has already opted out of prompting, so a prompt there is incoherent
 permission mode gets a normal `ask`. For agents other than Claude Code this policy is
 **guidance, not enforcement**: they read it in `AGENTS.md` and are trusted to honor it, since
 hooks are the only mechanically enforced layer.
+
+### `human_review_handoff` — the other enum
+
+Every other pause in the kit guards a side effect *leaving* the machine. This one guards the
+opposite: it stops the flow so a person can **look at what was just produced**, in an application
+that can actually render it, before the verdict is written.
+
+| Value | Behavior |
+|---|---|
+| `off` | Never hand files over automatically. |
+| `review` | **Default.** At `/review` layer ⑤ only: open `final_deliverables/` + `qc_queries/`, then wait for sign-off. |
+| `all` | Also in `spec-and-build build` — the generated SQL before its first warehouse run, and the CSVs after export. |
+
+Under `all` the earlier gates do **not** cancel the review gate: `/review` notes what was already
+signed off and focuses on what changed since. Skipping silently is how a deliverable reaches a
+verdict unseen, which is the failure this policy exists to prevent.
+
+On-demand is always available whenever the value is not `off` — ask to see anything and the skill
+calls `bash bin/handoff.sh <paths>`.
+
+Enforcement is **prose**, like `hard_halt_before_external_posts`: a skill contract, not a hook.
+Analysis work does not have a fixed enough shape for a hook to gate it without getting in the way,
+and a hook that launched a desktop app on every file write would be a nuisance rather than a gate.
+
+### `viewer` — per-user config, deliberately not in this file
+
+The policy above decides **when** a gate fires; it does not name a single application. Which app
+opens a `.sql` is a personal choice — one teammate wants a SQL IDE, another a text editor, a third
+wants nothing to open — so that config is **per-user and gitignored**, resolved first-hit-wins:
+
+| # | Path | Scope |
+|---|---|---|
+| 1 | `.claude/config/viewer.local.yaml` | you, this repo (gitignored) |
+| 2 | `${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml` | you, every repo |
+| 3 | a `viewer:` block under `seams:` in this file | the whole team (committed) |
+
+None present ⇒ nothing opens, regardless of the policy value. Layer 3 exists for a team that wants
+to standardize, but it is not the default: a committed entry cannot give each teammate their own
+apps, and it cannot ask a new cloner what they want.
+
+The file shape, all keys, and per-platform variants: `.claude/config/viewer.example.yaml`. Adapters:
+`adapters/viewer/{macos-open,xdg-open,windows-start}.md`. Check routing without launching anything
+with `bash bin/handoff.sh --dry-run <file>`.
 
 `always_include` (under `seams.chat`) — names always added to a chat message (e.g. `[Alice]`); the
 "never solo-DM a stakeholder" rule.

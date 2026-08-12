@@ -47,6 +47,13 @@ context-engineering core idea: AI fails from missing context, not weak models.
    CTE params stay portable and keep CSV exports clean; explicit `ORDER BY` on any export
    (deterministic outputs).
 8. **Embed validation between steps** — after each, run the relevant gate from the spec; self-correct.
+   **Under policy `human_review_handoff: all`** — the default `review` skips this, because the gate
+   lives in `/review` — put a human in the loop twice: hand the generated SQL over *before* its
+   first warehouse run (a bad join is cheapest to catch before it costs a warehouse-minute), and
+   hand the exported CSVs over after. Both via
+   `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/handoff.sh" <paths>`, then wait for
+   sign-off before continuing. It exits 0 and stays silent when that user has no viewer config —
+   note it once and carry on; this never blocks a build.
 9. **Any mutation** ⇒ policy `db_write_requires_approval` (`off` | `high_risk` | `all`). Under the
    default `high_risk`: show the exact SQL, explain the change, and wait for explicit `yes` before
    anything irreversible or access-changing (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/

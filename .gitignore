@@ -18,6 +18,10 @@ venv/
 .claude/settings.local.json
 .claude/worktrees/
 
+# Per-USER config (which apps open your deliverables). Personal, not a repo convention —
+# viewer.example.yaml is the committed reference. (selftest §25 guards this.)
+.claude/config/*.local.yaml
+
 # Local self-test / scratch output
 /tmp_selftest/
 *.log
