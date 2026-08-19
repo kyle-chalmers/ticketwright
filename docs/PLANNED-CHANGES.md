@@ -46,9 +46,16 @@ by adding the `viewer` seam. Specifically:
     a skill must stay tool-neutral. It whitelists the CLI-detector line in
     `.claude/skills/setup/SKILL.md` by matching the literal string `for c in snow acli gh`. REWORDING,
     REORDERING OR LINE-SPLITTING THAT PROBE BREAKS THE SUITE with "tool name leaked into a skill",
-    and the exemption appears in TWO separate greps. PROMPT 4 rewrites that file and is the most
-    likely to trip this — if you must change the detector line, update both exemptions in the same
-    change.
+    and the exemption appears in TWO separate greps. Worse, the probe line also contains
+    `databricks`, so breaking it trips the WAREHOUSE-PRODUCT grep as well — two failures with
+    different messages, neither of which says "you reworded the CLI probe". And the exemption matches
+    ONE literal string, so a SECOND detector line added anywhere gets no exemption at all. PROMPT 4
+    and any prompt rewriting the setup interview are the likely trippers — if you must change or add
+    a detector line, update every exemption in the same change.
+    Related dead-ish promises worth catching while in this file: `.claude/skills/setup/SKILL.md`
+    says the `<seam>` mode will "ask one question", and `.claude/skills/setup/adopt.md` says
+    "Confirm the inference with the user in ONE question" — both are question-count promises like the
+    retired five-question cap, and should be revisited by whoever reworks the interview.
 So "keep selftest green" is NOT a free constraint. Any prompt that adds an adapter, adds a verb, or
 restructures README/architecture MUST update those counts and preserve those tokens IN THE SAME
 CHANGE. Where a prompt below hits this, it says so explicitly.
@@ -493,11 +500,33 @@ It must:
   - Finish with verification bound to the EXPECTED target: assert the account/workspace identity
     matches what committed `stack.yaml` names. "The CLI responded" is not proof the person reached
     the right warehouse.
-  - Author every question as PROSE INSTRUCTIONS, not an `AskUserQuestion` tool-call payload, so other
-    runtimes render a numbered list and the interview means the same thing everywhere.
+  - (The prose-interview rule that used to sit here now applies to EVERY interview — see below.)
 
-State the invariant at the top of `.claude/skills/setup/SKILL.md` and enforce it: team verbs write
-team config, person verbs write person config, no mode writes both.
+EVERY INTERVIEW IN THIS SKILL IS PROSE — team modes included. Author questions as PROSE
+INSTRUCTIONS the skill states, never as an `AskUserQuestion` tool-call payload, so Claude renders
+option chips, other runtimes render a numbered list, and the interview means the same thing
+everywhere. This was previously written as a sub-bullet of the per-person flow, which wrongly scoped
+it to one mode; it derives from the harness-neutrality rule in this document's header and applies to
+the repo-configuration interview, the `/setup tool` interview, and the per-person flow alike.
+
+State the invariant at the top of `.claude/skills/setup/SKILL.md` and enforce it. STATE IT BY
+PURPOSE, NOT BY FILE OWNERSHIP — the mechanical version ("team verbs write team config, person verbs
+write person config, no mode writes both") is too blunt and forbids a legitimate team roster. What
+the invariant actually protects is:
+
+  A TEAM MODE MAY DECLARE THAT A PERSON EXISTS. ONLY THAT PERSON'S OWN FLOW MAY DECLARE WHO THEY
+  ARE OR HOW THEIR MACHINE CONNECTS.
+
+So a team mode may create an identity-free tier-2 placeholder for a teammate — id, display name, the
+folder that will be theirs. It may NEVER write another person's `identities:` list (the
+routing-critical field `whoami` matches on), never a voice-profile reference (what makes `/ship`
+speak as them), and never any tier-3 value (their machine, which the person running team setup is not
+sitting at). Where a placeholder and that person's own flow disagree about them, THE PERSON'S OWN
+FLOW WINS.
+Be honest about what a placeholder does NOT buy: an identity-free stub still returns `miss` from
+`whoami`, because resolution requires an identity-map hit. Its value is narrower — a team-visible
+roster, a way to tell "this repo just upgraded" from "this person is new", and a named set of
+candidates for the `whoami --bind` interview to offer on a miss.
 
 ---
 
@@ -579,6 +608,9 @@ PROMPT 5. Put both verdicts in the PR body.
    (`docs/architecture.md:38-52`). Define the verb's input/output contract, implement it for the
    adapters that can support it, and define the fallback where a tracker cannot expose activity:
    skip the ranking silently and ask as today.
+   FORWARD REFERENCE: this verb exists to be CALLED by the rewritten tracker question in the setup
+   interview. It lands in wave A while its caller lands later — make sure a later prompt actually
+   wires it up, or it ships stranded and untested against a real interview.
 
 ---
 
