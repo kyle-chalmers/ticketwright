@@ -25,7 +25,8 @@ Ask (AskUserQuestion) for:
   to assert; the byte-identical output file to diff against).
 
 ## Phase 2 — Stamp from the template
-1. Copy `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
+1. `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then copy
+   `"$KIT"/templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).
 2. Render `SKILL.md.tmpl` with the interview answers into the canonical phase shape:
    **Phase 0** pre-flight (validate params + `verify_stack` for touched seams + an object drift

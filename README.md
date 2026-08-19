@@ -296,11 +296,13 @@ pip install ticketwright                 # zero runtime dependencies; stdlib onl
 ticketwright init                        # vendor the kit into a repo (no plugin required)
 ticketwright recall --for ENG-123        # prior-art ranking      — no Claude Code needed
 ticketwright index --stats               # catalog coverage       — no Claude Code needed
-ticketwright enrich ENG-123              # curated index summary  — needs `claude` on PATH
+ticketwright enrich ENG-123              # curated index summary  — needs a model CLI on PATH
 ```
 
 - **`recall` and `index`** are pure stdlib and run anywhere.
-- **`enrich`** calls the model headlessly via `claude -p`, so it needs Claude Code installed.
+- **`enrich`** calls a model headlessly. Which command it runs is resolved per runtime from
+  `adapters/runtime/<name>.md` (`--model-cmd` overrides it), falling back to `claude -p`. A runtime
+  that documents no headless command says so and points at the agent-neutral ingest path instead.
 - **`init`** copies the kit's files — skills, agents, hooks, adapters, templates, `bin/` — and
   preserves your edits on re-runs (`--force` to overwrite).
 

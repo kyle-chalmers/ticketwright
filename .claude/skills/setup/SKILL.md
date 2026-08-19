@@ -8,6 +8,11 @@ disable-model-invocation: true
 
 # /setup
 
+> **Why this skill still spells out `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}` paths while every
+> other skill calls `bin/tw`:** `/setup` is the bootstrapper. On a plugin install the project has
+> no `bin/` until this skill puts one there, so it cannot resolve assets through the launcher it
+> is about to install. Leave these paths as they are.
+
 One skill, three jobs: **configure a repo** (run once), **add a tool later** (`/setup chat`), and
 **onboard a person** (`/setup --teammate`). Detect first, ask last: the goal is a working setup
 after **at most 5 questions**.

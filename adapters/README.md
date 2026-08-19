@@ -206,6 +206,9 @@ verb contract for their seam:
 - **docstore:** `gdrive`, `sharepoint`
 - **vcs:** `github`, `gitlab`, `azure-repos`
 - **viewer** *(optional)*: `macos-open`, `xdg-open`, `windows-start` — pick the one for your OS
+- **runtime** *(capability declarations, not a tool seam)*: `claude-code`, `codex-cli`, `cursor`,
+  `antigravity` (Google; aliased `gemini-cli`), `opencode`, `devin` (aliased `windsurf`), `cline`
+  — see below
 
 Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Five worked
 `stack.yaml` configs ship — Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
@@ -217,7 +220,43 @@ all five, unedited — which is the claim those configs exist to keep honest.
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on
 > your connected MCP server — confirm them once and adjust the adapter (never the skills).
 
+## Runtime adapters — the directory that has no verbs
+
+`adapters/runtime/` is the seventh adapter directory and the second that is **not** a `stack.yaml`
+seam. It answers a different question from every other directory here: not "which tool fills this
+slot for the project", but "which agent is running right now, and what can it actually do".
+
+That difference is the reason it has no verb contract. A seam is something the PROJECT depends on and
+the whole team shares, so it is resolved per repo and written to committed config. Which agent a
+given person happens to be running is per-machine — two teammates on the same repo may be on
+different ones — so it is never a `stack.yaml` entry. Runtime adapters declare capabilities in
+frontmatter instead, and `bin/kit_paths.py` reads them:
+
+```yaml
+skills_root:  session_start:  tool_gate:  subagents:  structured_questions:
+model_cmd:  model_sandbox:  detect_env:
+```
+
+`tool_gate` is the load-bearing one — it records whether that harness can intercept a command before
+it runs, which is what decides whether `db_write_requires_approval` is mechanically enforced or is
+guidance the model can forget. A value of `unknown` is a real answer and is treated as the floor: no
+capability is assumed.
+
+`model_cmd` and `model_sandbox` are a pair. The first is the headless one-shot command
+`bin/enrich_ticket.py` runs; the second records whether that command is *restricted*, because the
+prompt it receives is a ticket README — tracker-sourced text on most installs. Only a small allowlist
+of model CLIs may appear as `model_cmd`'s first word: adapters live inside the repo on a vendored
+install, and a markdown file reads as inert in review, so without that allowlist a `model_cmd:` line
+would be an easy place to hide an arbitrary command. The evidence behind every value, with sources and access dates, is in
+[docs/runtimes.md](../docs/runtimes.md).
+
+**So the two rules below do not apply to this directory:** there are no verb sections to implement,
+and there is no `stack.yaml` seam entry to add. Everything else — the frontmatter keys, the
+tool-neutrality rule for skills — is unchanged.
+
 ## Writing a new adapter
+
+*(For a **tool** seam. A `runtime` adapter skips steps 3 and 4 — see the section above.)*
 
 1. Copy the closest reference adapter in the same seam.
 2. Keep the frontmatter keys (`seam`, `tool`, `transport`, `requires`, `auth`). `requires:` is

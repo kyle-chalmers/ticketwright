@@ -15,11 +15,11 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 ## Phase 0 — Preflight
 1. Confirm `stack.yaml` has `key_prefix`/`key_prefixes` — or `id_mode: slug`, where folder names are
    the ids and no prefix is needed — and (optionally) `ticket_url_template`.
-2. `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py" --stats` — how
+2. `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py --stats` — how
    many tickets are discovered, enriched, un-enriched (`▱`), stale (`⚠`).
 
 ## Phase 1 — Render (always cheap, no model)
-3. `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py"` — every ticket
+3. `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py` — every ticket
    on disk now has a row (un-enriched ones get a deterministic title + first-paragraph summary,
    marked `▱`).
 
@@ -41,14 +41,20 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
    your judgment.** Status vocab: Completed · Deployed · In Review · In Progress · Blocked · Unknown.
 6. Collect them and upsert + re-render:
    ```bash
-   echo '{"records":[ ... ]}' | python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/ingest_index_records.py" --from-json -
-   python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py"
+   echo '{"records":[ ... ]}' | bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" ingest_index_records.py --from-json -
+   bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py
    ```
-   (Claude-Code convenience: `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/enrich_ticket.py" <ID>`
-   does steps 5–6 for one ticket via `claude -p`. The inline path above is agent-agnostic.)
+   **This inline path is the primary one** — it works under every runtime, because the host agent
+   you are already talking to writes the record. Skipping enrichment is what rots the corpus into a
+   folder of SQL nobody can find, so the path that always works is the one to lead with.
+
+   (Shortcut: `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" enrich_ticket.py <ID>` does steps 5–6 for one
+   ticket by calling a model headlessly. The command it runs resolves from the detected runtime's
+   `adapters/runtime/<name>.md`, so it is no longer Claude-only — but a runtime that documents no
+   headless command will tell you so and point back here.)
 
 ## Phase 3 — Verify
-7. `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py" --check` must
+7. `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py --check` must
    pass (INDEX.md + OBJECTS.md == fresh render).
 8. Report: total tickets, status breakdown, any still un-enriched. Commit `tickets/INDEX.md` +
    `tickets/OBJECTS.md` + `tickets/index_data.json` (all three — `--check` gates the two generated

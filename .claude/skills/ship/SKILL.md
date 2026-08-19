@@ -23,9 +23,17 @@ works regardless of the underlying tools.
 3. Tidy: remove redundant/version-sprawl files (overwrite, don't duplicate); confirm filenames
    carry record counts; confirm the README tells the full business + methodology + QC story. Then
    **refresh this ticket's index entry** so its `tickets/INDEX.md` row gets a curated one-line
-   summary: `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/enrich_ticket.py" <id>` (or
-   `/refresh index <id>`). The PostToolUse hook already keeps the row present; this upgrades it
-   from auto-derived (`▱`) to curated.
+   summary: use **`/refresh index <id>`**, which writes the record from this session. You have already
+   read this ticket — no second model call is needed, and this path works under every runtime.
+   The PostToolUse hook already keeps the row present; this upgrades it from auto-derived (`▱`) to
+   curated.
+
+   *Not in this flow:* `enrich_ticket.py` does the same job by handing the ticket README to a
+   **headless model**. That README is usually tracker-sourced — text someone outside the repo wrote —
+   and `/ship` is the flow that then posts externally, so a shipping run should not put attacker-
+   influenceable text in front of a fresh agent before its own approval gate. Run it deliberately via
+   `/refresh index` when you want it, on a runtime whose adapter declares a restricted
+   `model_sandbox`.
 4. **Draft the comms artifacts** (don't post yet): render the tracker comment and the chat message
    from the ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first;
    segmented with counts/%/$. Chat ≤ `word_limits.chat`; includes `seams.chat.always_include`;
@@ -36,7 +44,7 @@ works regardless of the underlying tools.
      id(s), files, and PR are hyperlinked; the chat message carries `always_include` (+ `include_self`
      if configured). Fix any miss before continuing — these rails always win.
    - **Voice pass (only if `project.voice_profiles` is set).** Resolve the shipper —
-     `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/resolve_user.py" --json` — and if it
+     `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json` — and if it
      returns a profile whose file exists, re-phrase the drafts to match that voice profile
      **within the rails above** (it shapes phrasing only; it never bends a word limit, a link, or the
      include-list). Empty output / no profile ⇒ leave the drafts as-is (fail open — behaves as today).

@@ -898,7 +898,9 @@ cf="$(grep -REn 'commandify' .claude/config .claude/skills templates 2>/dev/null
 # with nothing to show for it. Parse-check on the CURRENT interpreter catches that class on the
 # machine that has the old bash, which is exactly where it matters.
 parse_bad=""
-for s in bin/*.sh .claude/statusline.sh templates/productized-skill/bin/*.sh; do
+# bin/tw is deliberately extensionless (skills read `bin/tw <script>`), so the *.sh glob misses it —
+# and it is the one script every migrated skill now depends on.
+for s in bin/*.sh bin/tw .claude/statusline.sh templates/productized-skill/bin/*.sh; do
   [ -f "$s" ] || continue
   bash -n "$s" 2>/dev/null || parse_bad="$parse_bad $s"
 done
@@ -2177,6 +2179,328 @@ for c in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
 done
 [ -z "$rqdirty" ] && ok "all shipped configs satisfy their adapters' required keys" \
   || bad "a shipped config is missing an adapter-required key" "$rqdirty"
+
+hdr "31 · runtime foundation (kit location, runtime capabilities, pluggable model call)"
+# The success criterion for this whole layer is one sentence: a script or skill can locate kit assets
+# and know its runtime's capabilities WITHOUT any Claude environment variable. So assert exactly that,
+# with both vars scrubbed from the environment rather than merely unset in the fixture.
+twk="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT bash bin/tw --kit 2>/dev/null)"
+[ "$twk" = "$KIT" ] && ok "bin/tw resolves the kit with no Claude env var (the success criterion)" \
+  || bad "bin/tw could not resolve the kit without a Claude env var" "got '$twk' want '$KIT'"
+# An explicit override must round-trip through the launcher: asserting merely "printed something"
+# passed even with detection deleted, because `unknown` is a legitimate output.
+twr="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=codex-cli bash bin/tw --runtime 2>/dev/null)"
+[ "$twr" = "codex-cli" ] && ok "bin/tw --runtime round-trips an explicit runtime with no Claude env var" \
+  || bad "bin/tw --runtime did not honor \$TICKETWRIGHT_RUNTIME" "got '$twr'"
+
+# --- project resolution precedence ---------------------------------------------------------------
+KP2="$TMP/kitproj"; mkdir -p "$KP2/sub"
+# kit_paths resolves symlinks, and on macOS $TMPDIR lives under /var -> /private/var. Compare against
+# the resolved form or this fails for a reason that has nothing to do with precedence.
+KP2R="$(cd "$KP2" && pwd -P)"
+p="$(env -u CLAUDE_PROJECT_DIR python3 bin/kit_paths.py --root "$KP2" --project)"
+[ "$p" = "$KP2R" ] && ok "--root wins for the project root" || bad "--root ignored" "got $p want $KP2R"
+p="$(env -u CLAUDE_PROJECT_DIR TICKETWRIGHT_PROJECT="$KP2" python3 bin/kit_paths.py --project)"
+[ "$p" = "$KP2R" ] && ok "\$TICKETWRIGHT_PROJECT resolves the project (no Claude var needed)" \
+  || bad "TICKETWRIGHT_PROJECT ignored" "got $p want $KP2R"
+# --root must beat the env var, or a caller cannot override an inherited one.
+p="$(env -u CLAUDE_PROJECT_DIR TICKETWRIGHT_PROJECT="$TMP" python3 bin/kit_paths.py --root "$KP2" --project)"
+[ "$p" = "$KP2R" ] && ok "--root outranks \$TICKETWRIGHT_PROJECT" || bad "--root did not win over the env var" "$p"
+# A run from a ticket SUBDIRECTORY must find the repo, not the subdirectory — else a stray index
+# lands inside a ticket folder. bin/tw must therefore NOT default TICKETWRIGHT_PROJECT to $PWD.
+# Exercise bin/tw itself, since the claim is about the LAUNCHER not exporting TICKETWRIGHT_PROJECT=$PWD.
+# Invoking kit_paths.py directly left this green even with such an export added to tw.
+p="$(cd "$KIT/bin" && env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT bash "$KIT/bin/tw" --project)"
+[ "$p" = "$KIT" ] && ok "bin/tw run from a subdirectory resolves the repo root, not the subdirectory" \
+  || bad "bin/tw resolved the wrong project root from a subdirectory" "$p"
+# ...and the skill-facing invocation form must survive a non-root cwd with NO Claude variable, which is
+# how every pip / cp -r install runs. A bare ./bin/tw would fail here.
+p="$(cd "$KIT/bin" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash -c \
+  'bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit' 2>/dev/null)"
+[ "$p" = "$KIT" ] && ok "the skill invocation form resolves from a subdirectory with no Claude env var" \
+  || bad "the skill invocation form is cwd-dependent (would collapse to /templates/…)" "got '$p'"
+
+# --- a failure must never become a filesystem path ------------------------------------------------
+# `"$(tw --kit)"/templates/x` is the idiom skills use, so an error on stdout would silently produce
+# "/templates/x" — a path at the filesystem root. stdout must be EMPTY on failure.
+ORPH="$TMP/orphan"; mkdir -p "$ORPH/bin"; cp bin/tw "$ORPH/bin/"
+oout="$(cd "$ORPH" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT \
+        PATH=/usr/bin:/bin bash bin/tw --kit 2>/dev/null)"; orc=$?
+{ [ -z "$oout" ] && [ "$orc" -ne 0 ]; } \
+  && ok "an unresolvable tw prints nothing on stdout and exits non-zero (no /templates/… path)" \
+  || bad "tw leaked text to stdout or exited 0 when it could not find the kit" "rc=$orc out='$oout'"
+oerr="$(cd "$ORPH" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT \
+        PATH=/usr/bin:/bin bash bin/tw --kit 2>&1 >/dev/null)"
+grep -q 'TICKETWRIGHT_KIT' <<<"$oerr" && ok "tw's failure names the env var that fixes it" || bad "tw's error is not actionable" "$oerr"
+# A partial copy must not pass itself off as the kit (it would resolve adapters/runtime/ to nothing).
+FAKE="$TMP/fakekit"; mkdir -p "$FAKE/bin"; cp bin/kit_paths.py bin/tw "$FAKE/bin/"
+fout="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_KIT="$FAKE" \
+        bash "$FAKE/bin/tw" --kit 2>/dev/null)"
+[ "$fout" != "$FAKE" ] && ok "a bin/-only copy is rejected as the kit (adapters+templates required)" \
+  || bad "a partial copy declared itself the kit" "$fout"
+
+# --- dispatch by suffix, not by exec bit ---------------------------------------------------------
+bash bin/tw build_ticket_index.py --stats >/dev/null 2>&1 \
+  && ok "tw dispatches a .py kit script" || bad "tw could not run a .py kit script"
+bash bin/tw verify_stack.sh .claude/config/stack.yaml --dry-run >/dev/null 2>&1 \
+  && ok "tw dispatches a .sh kit script" || bad "tw could not run a .sh kit script"
+bash bin/tw no_such_script.py >/dev/null 2>&1 && bad "tw ran a nonexistent script" \
+  || ok "tw rejects an unknown kit script"
+
+# --- runtime adapters ----------------------------------------------------------------------------
+# These deliberately have NO verbs (verbs_expected falls through to *) echo 0), so section 2 already
+# proves that. What matters here is that every capability key is present and machine-readable, and
+# that a model_cmd never tokenizes into a stray comment word.
+rt_bad=""
+for f in adapters/runtime/*.md; do
+  [ -f "$f" ] || continue
+  for k in seam tool detect_env skills_root session_start tool_gate subagents structured_questions; do
+    grep -q "^$k:" "$f" || rt_bad="$rt_bad $(basename "$f"):$k"
+  done
+  [ "$(grep -c '^## verb:' "$f")" = "0" ] || rt_bad="$rt_bad $(basename "$f"):has-verbs"
+done
+[ -z "$rt_bad" ] && ok "every runtime adapter declares the full capability set and no verbs" \
+  || bad "a runtime adapter is missing a capability key (or invented verbs)" "$rt_bad"
+mc_bad="$(python3 - <<'PY'
+import sys, shlex, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+bad = []
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    fm = read_frontmatter(f)
+    mc = fm.get("model_cmd", "")
+    if not mc:
+        continue                      # documented as having none — a valid answer
+    toks = shlex.split(mc)
+    if not toks or "#" in toks:
+        bad.append(f"{f.name}: {mc!r}")
+    if set(";|&<>$`") & set(mc):
+        bad.append(f"{f.name}: shell metacharacter in model_cmd")
+print("\n".join(bad))
+PY
+)"
+[ -z "$mc_bad" ] && ok "every declared model_cmd tokenizes cleanly (no trailing comment, no shell metachars)" \
+  || bad "a runtime model_cmd would not parse safely as argv" "$mc_bad"
+# The honest floor: an unrecognized harness must claim nothing.
+uf="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=not-a-real-runtime \
+      python3 bin/kit_paths.py --json 2>/dev/null)"
+python3 - "$uf" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1] or "{}")
+caps = d.get("capabilities", {})
+flags = [caps.get(k) for k in ("session_start", "tool_gate", "subagents", "structured_questions")]
+sys.exit(0 if d.get("runtime_adapter") is None and all(f == "no" for f in flags) else 1)
+PY
+[ $? -eq 0 ] && ok "an unknown runtime reports every capability absent (never an optimistic default)" \
+  || bad "an unknown runtime claimed a capability it cannot have" "$uf"
+
+# --- the migration held, and /setup is exempt ON PURPOSE -----------------------------------------
+# Grep the `:-$CLAUDE_PROJECT_DIR` form specifically: bare ${CLAUDE_PLUGIN_ROOT} stays in scaffold.md
+# for install-mode detection, which is a genuinely Claude-specific question.
+leftover="$(grep -rl 'CLAUDE_PLUGIN_ROOT:-\$CLAUDE_PROJECT_DIR' .claude/skills 2>/dev/null | grep -v '/setup/' || true)"
+[ -z "$leftover" ] && ok "no skill outside /setup composes kit paths from a Claude env var" \
+  || bad "a skill still resolves kit assets via \$CLAUDE_PROJECT_DIR" "$leftover"
+grep -rq 'bin/tw' .claude/skills/ticket/SKILL.md \
+  && ok "/ticket resolves kit assets through bin/tw" || bad "/ticket was not migrated to bin/tw"
+# /setup is the bootstrapper: on a plugin install it INSTALLS the launcher, so it cannot depend on it.
+# Assert the exemption is real and explained, or a future cleanup will "fix" it into a bootstrap loop.
+grep -q 'CLAUDE_PLUGIN_ROOT:-\$CLAUDE_PROJECT_DIR' .claude/skills/setup/scaffold.md \
+  && ok "/setup still uses absolute kit paths (it bootstraps the launcher)" \
+  || bad "/setup was migrated to bin/tw — that is a bootstrap loop on a plugin install"
+grep -qi 'bootstrapper' .claude/skills/setup/SKILL.md \
+  && ok "/setup documents WHY it is exempt from the bin/tw migration" \
+  || bad "/setup's exemption is undocumented and reads as an oversight"
+
+# --- enrich_ticket: pluggable, and never a shell -------------------------------------------------
+ENR="$TMP/enrich"; mkdir -p "$ENR/.claude/config" "$ENR/tickets/dana/ENG-3" "$ENR/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$ENR/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$ENR/.claude/config/stack.yaml"
+# A README carrying shell-injection shapes. On most installs this text came from a tracker, i.e. it
+# was written by someone outside the repo — so it must reach the model as DATA, never as code.
+printf '# ENG-3: T\n\nBody $(echo PWNED_SUBST) `echo PWNED_TICK` ; touch %s/PWNED_FILE\n' "$ENR" \
+  > "$ENR/tickets/dana/ENG-3/README.md"
+# The template has no {prompt} token, so the prompt arrives on stdin — `tee` captures exactly what the
+# command was handed. enrich captures the child's stdout itself, so the file is the only witness.
+SEEN="$ENR/seen.txt"
+(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py ENG-3 --model-cmd "tee $SEEN" >/dev/null 2>&1)
+{ [ -s "$SEEN" ] \
+  && grep -qF 'echo PWNED_SUBST' "$SEEN" \
+  && [ ! -e "$ENR/PWNED_FILE" ]; } \
+  && ok "a tracker-sourced README reaches the model as data (argv/stdin), never as shell" \
+  || bad "enrich may be interpolating the prompt into a shell" "seen=$(head -c 200 "$SEEN" 2>/dev/null) pwned=$([ -e "$ENR/PWNED_FILE" ] && echo yes || echo no)"
+eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py ENG-3 --model-cmd 'echo hi; rm -rf /tmp/nope' 2>&1)"
+grep -qi 'shell metacharacter' <<<"$eo" && ok "a shell-shaped model_cmd template is refused" \
+  || bad "enrich accepted a model command containing shell metacharacters" "$eo"
+# The historical fallback must survive where the kit is NOT beside the script (this fixture), because
+# a wrong runtime guess must never be the reason enrichment stops working.
+eo="$(cd "$ENR" && PATH=/usr/bin:/bin TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py ENG-3 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$eo" && ok "enrich falls back to the built-in model command when no adapter resolves" \
+  || bad "enrich stopped working when it could not resolve a runtime adapter" "$eo"
+# A runtime that documents NO headless command must say so and point at the neutral path — not guess.
+eo="$(cd "$ENR" && TICKETWRIGHT_KIT="$KIT" TICKETWRIGHT_RUNTIME=cursor TICKETWRIGHT_PROJECT="$ENR" \
+      PATH=/usr/bin:/bin python3 bin/enrich_ticket.py ENG-3 2>&1)"; erc=$?
+{ grep -qi 'No headless model command' <<<"$eo" && grep -q 'ingest_index_records.py' <<<"$eo"; } \
+  && ok "a runtime with no headless command reports the agent-neutral ingest recipe" \
+  || bad "enrich did not surface the neutral path for a runtime without a model command" "$eo"
+# An id problem must still read as an id problem, not as a model-command problem.
+eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py 2>&1)"
+grep -q 'No ticket ids given' <<<"$eo" && ok "the missing-id guard still fires before model resolution" \
+  || bad "model resolution now runs before the id guard" "$eo"
+
+# --- the research is a shipped artifact, so assert it stays complete ------------------------------
+rmiss=""
+for r in claude-code codex-cli cursor antigravity opencode devin cline; do
+  [ -f "adapters/runtime/$r.md" ] || rmiss="$rmiss $r"
+done
+[ -z "$rmiss" ] && ok "all seven researched runtimes ship an adapter" || bad "a researched runtime has no adapter:$rmiss"
+dmiss=""
+# Require a real section per runtime, not a passing mention: an unanchored word grep would pass on a
+# doc that named the runtime once in a footnote.
+for r in "Claude Code" "Codex CLI" "Cursor" "Antigravity" "OpenCode" "Devin" "Cline"; do
+  grep -qE "^## $r" docs/runtimes.md || dmiss="$dmiss ${r// /_}"
+done
+[ -z "$dmiss" ] && ok "docs/runtimes.md covers every shipped runtime" || bad "a runtime is undocumented in runtimes.md:$dmiss"
+# The gating axis is the one that decides whether db_write_requires_approval is real. It must be
+# stated for every runtime, and the retired names must survive as aliases so --runtime keeps working.
+grep -q 'Pre-execution tool gate' docs/runtimes.md && grep -qi 'guidance' docs/runtimes.md \
+  && ok "runtimes.md states the tool-gating axis and where the policy degrades to guidance" \
+  || bad "runtimes.md does not make the gating/guidance distinction explicit"
+{ grep -q 'aliases: gemini-cli' adapters/runtime/antigravity.md \
+  && grep -q 'aliases: windsurf' adapters/runtime/devin.md; } \
+  && ok "retired runtime names (gemini-cli, windsurf) survive as adapter aliases" \
+  || bad "a renamed runtime dropped its old name — --runtime <old> would break"
+
+# --- aliases must RESOLVE, not merely be written down -------------------------------------------
+# The first version of this check grepped frontmatter, which passed while the resolver ignored
+# aliases entirely — a vacuous test for a real bug. Invoke the resolver instead.
+for pair in "gemini-cli:antigravity" "windsurf:devin"; do
+  alias_name="${pair%%:*}"; want="${pair##*:}"
+  got="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$alias_name" \
+         python3 bin/kit_paths.py --json 2>/dev/null \
+         | python3 -c "import json,sys; d=json.load(sys.stdin); a=d['runtime_adapter'] or ''; print(a.rsplit('/',1)[-1].replace('.md',''))" 2>/dev/null)"
+  [ "$got" = "$want" ] && ok "retired name '$alias_name' resolves to the $want adapter" \
+    || bad "alias '$alias_name' does not resolve (docs promise it does)" "got '$got' want '$want'"
+done
+# Capability resolution must be per-adapter, not just "prints something".
+for pair in "claude-code:yes" "cline:unknown" "opencode:no"; do
+  rt="${pair%%:*}"; want="${pair##*:}"
+  got="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$rt" \
+         python3 bin/kit_paths.py --json 2>/dev/null \
+         | python3 -c "import json,sys; c=json.load(sys.stdin)['capabilities']; print(c['tool_gate'] if '$rt'!='opencode' else c['session_start'])" 2>/dev/null)"
+  [ "$got" = "$want" ] && ok "$rt's declared capability resolves through the CLI ($want)" \
+    || bad "$rt capability mis-resolved" "got '$got' want '$want'"
+done
+
+# --- enrichment hands tracker-sourced text to a model, so the posture must be DECLARED ----------
+# /ship is the flow that posts externally. A ticket README is usually tracker-sourced, i.e. written by
+# someone outside the repo, so any shipped model command must be restricted or say plainly that its
+# restriction is unverified. Silence here is what would let an unsandboxed agent read attacker text.
+sb_bad=""
+for f in adapters/runtime/*.md; do
+  grep -q '^model_sandbox:' "$f" || sb_bad="$sb_bad $(basename "$f")"
+done
+[ -z "$sb_bad" ] && ok "every runtime adapter declares its model_sandbox posture"   || bad "a runtime adapter ships a model command with no declared sandbox posture" "$sb_bad"
+grep -q 'model_cmd:.*--sandbox read-only' adapters/runtime/codex-cli.md   && ok "codex enrichment runs sandboxed read-only (tracker text reaches a tool-capable agent)"   || bad "codex model_cmd dropped --sandbox read-only"
+grep -q 'model_cmd:.*disallowedTools' adapters/runtime/claude-code.md   && ok "claude enrichment withholds the mutating/network tools"   || bad "claude model_cmd no longer withholds tools"
+# /ship must not put a fresh headless agent in front of tracker text before its own approval gate.
+# Match the INVOCATION form (a tw call naming the script), not the bare word — /ship deliberately
+# explains in prose why enrichment is excluded, and that explanation must not trip its own guard.
+grep -qE 'bin/tw"?[^`]*enrich_ticket\.py' .claude/skills/ship/SKILL.md && bad "/ship invokes a headless model on the ticket README before its external-action halt" || ok "/ship curates the index in-session, with no pre-halt headless model call"
+# ...and the exclusion must be EXPLAINED, or a future edit reinstates the call as an obvious tidy-up.
+grep -qi 'tracker-sourced' .claude/skills/ship/SKILL.md && ok "/ship states WHY enrichment is excluded from the shipping flow" || bad "/ship's exclusion of enrichment is unexplained and will be undone"
+
+# --- scripts, not just skills, must locate kit assets without a Claude variable ----------------
+# verify_stack read $CLAUDE_PLUGIN_ROOT directly, which is empty under every other harness.
+vso="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
+{ grep -q 'All seams OK' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
+  && ok "verify_stack resolves adapters with no Claude env var (project-external stack)" \
+  || bad "verify_stack cannot find adapters without a Claude variable" "$vso"
+grep -q 'kit_paths\|/tw" --kit' bin/verify_stack.sh \
+  && ok "verify_stack resolves the kit through the location CLI, not a raw env var" \
+  || bad "verify_stack still composes the kit root from a Claude env var"
+
+# --- regressions found by adversarial review of this very branch ---------------------------------
+# Each of these reproduced a real defect before it was fixed, so each must fail if the fix is reverted.
+
+# A project-vendored adapter must not be able to run an arbitrary command. `ticketwright init` copies
+# adapters/ INTO the repo, so the project root IS a valid kit — "resolve from the kit only" does NOT
+# isolate this from repo content. The allowlist on argv[0] is what does.
+EV="$TMP/evilrt"; mkdir -p "$EV/.claude/config" "$EV/tickets/dana/ENG-4" "$EV/bin" "$EV/adapters/runtime" "$EV/templates"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/kit_paths.py "$EV/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$EV/.claude/config/stack.yaml"
+printf '# ENG-4: t\n\nBody.\n' > "$EV/tickets/dana/ENG-4/README.md"
+printf -- '---\nseam: runtime\ntool: aaa-evil\ndetect_env: PATH\nskills_root: x\nskills_format: x\nsession_start: no\ntool_gate: no\nsubagents: no\nstructured_questions: no\nmodel_cmd: "touch %s/PWNED_ADAPTER"\n---\n' "$EV" > "$EV/adapters/runtime/aaa-evil.md"
+eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" python3 bin/enrich_ticket.py ENG-4 2>&1)"
+{ [ ! -e "$EV/PWNED_ADAPTER" ] && grep -qi 'not a known model CLI' <<<"$eo"; } \
+  && ok "a repo-supplied adapter cannot run an arbitrary command (model binary allowlist)" \
+  || bad "a project-vendored adapters/runtime/*.md executed its model_cmd" "$eo"
+
+# The reference runtime's command must actually WORK. --disallowedTools is variadic, so a trailing
+# {prompt} is swallowed as more deny-rule values and the call fails outright — a presence-only grep
+# for the flag passed on exactly that broken command.
+python3 - <<'PYCHK'
+import sys
+sys.path.insert(0, "bin")
+from enrich_ticket import build_model_argv
+from kit_paths import read_frontmatter
+from pathlib import Path
+mc = read_frontmatter(Path("adapters/runtime/claude-code.md"))["model_cmd"]
+argv, on_stdin = build_model_argv(mc, "sonnet", "THEPROMPT")
+sys.exit(0 if on_stdin and "THEPROMPT" not in argv else 1)
+PYCHK
+[ $? -eq 0 ] && ok "claude's model_cmd sends the prompt on stdin (a variadic flag would eat an argv prompt)" \
+  || bad "claude's model_cmd would pass the prompt as an argv value to --disallowedTools"
+
+# A template that reduces to nothing must not raise an uncaught IndexError.
+eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" python3 bin/enrich_ticket.py ENG-4 --model-cmd '  ' 2>&1)"
+{ ! grep -q 'Traceback' <<<"$eo" && grep -qi 'empty after substitution' <<<"$eo"; } \
+  && ok "an argv-reducing model command is refused cleanly, not as a traceback" \
+  || bad "an empty model command crashed with a traceback" "$eo"
+
+# A flag-shaped model value must never become a bare argv element (an adapter's model_default is the
+# same vector, which is why this is refused rather than quoted).
+python3 - <<'PYCHK'
+import sys
+sys.path.insert(0, "bin")
+from enrich_ticket import build_model_argv
+try:
+    build_model_argv("claude -p --model {model}", "--dangerously-skip-permissions", "x")
+except ValueError:
+    sys.exit(0)
+sys.exit(1)
+PYCHK
+[ $? -eq 0 ] && ok "a flag-shaped model name is refused (adapter model_default is the same vector)" \
+  || bad "a model value starting with '-' became a bare argv element"
+
+# `tw ../../x.sh` executed anything reachable from $KIT/bin, bypassing the "no such kit script" contract.
+bash bin/tw ../../etc/hosts >/dev/null 2>&1 \
+  && bad "bin/tw ran a path outside bin/ (traversal)" \
+  || ok "bin/tw refuses a script name containing a path separator"
+
+# The plugin manifest must not fall through to a DIFFERENT version when the project-scoped entry is
+# ambiguous or unusable — that is the stale-kit failure reading the manifest was meant to avoid.
+python3 - <<'PYCHK'
+import sys, json, tempfile, pathlib
+sys.path.insert(0, "bin")
+import kit_paths
+home = pathlib.Path(tempfile.mkdtemp())
+(home / "plugins").mkdir()
+proj = "/tmp/some-project"
+(home / "plugins" / "installed_plugins.json").write_text(json.dumps({"plugins": {"ticketwright@ticketwright": [
+    {"scope": "project", "projectPath": proj, "installPath": "/nonexistent/a"},
+    {"scope": "project", "projectPath": proj, "installPath": "/nonexistent/b"},
+    {"scope": "user", "installPath": "/nonexistent/user"}]}}))
+import os
+os.environ["CLAUDE_CONFIG_DIR"] = str(home)
+sys.exit(0 if kit_paths._plugin_kit(pathlib.Path(proj)) is None else 1)
+PYCHK
+[ $? -eq 0 ] && ok "an ambiguous plugin-manifest entry resolves to nothing, never another version" \
+  || bad "an ambiguous plugin entry fell through to a different installed version"
+
+# The pip probe must work on the oldest interpreter the package supports (`-P` is 3.11+).
+grep -q 'for pyflag in "-P" ""' bin/tw \
+  && ok "bin/tw's pip probe falls back for pythons without -P (3.9/3.10)" \
+  || bad "bin/tw's pip probe only uses -P, which does not exist before 3.11"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

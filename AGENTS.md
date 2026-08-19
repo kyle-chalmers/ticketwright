@@ -85,6 +85,16 @@ frontmatter (`seam`, `tool`, `transport`, `requires`, `auth`), implement **every
 seam's contract lists, point a `stack.yaml` seam at it with a read-only `verify`, then run
 `verify_stack.sh` + `selftest.sh`. No skill edits.
 
+**Kit assets resolve through `bin/tw`, never through a raw env var.** `bin/kit_paths.py` is the one
+authority on where the kit is, where the project is, and what the running runtime can do
+(`--kit`/`--project`/`--runtime`/`--json`, no Claude variable required); `bin/tw` is the launcher that
+finds it. Skills call `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" <script>`. **That fallback is
+deliberate** — a plugin install has no project `bin/`, and a fresh worktree has no untracked files —
+so do not simplify it to a bare `bin/tw`. `.claude/skills/setup/` is exempt and still uses the old
+absolute form on purpose: it is the bootstrapper that installs the launcher, so it cannot depend on
+its own output. Runtime capabilities live in `adapters/runtime/*.md` frontmatter, with the sourced
+evidence in `docs/runtimes.md`.
+
 **Deterministic engines, no vector store.** Catalog rendering and prior-art recall are plain stdlib
 Python the model *calls*, not prose it approximates. Recall is lexical + structural (object match ×4,
 tag ×3, cross-ref +5, keyword ×1, IDF down-weighting, recency tiebreak). Engines:

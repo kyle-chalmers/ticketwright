@@ -22,7 +22,12 @@ command -v yq >/dev/null 2>&1 || { echo "verify_stack: 'yq' required (brew insta
 # Adapters are KIT assets (they ship with the plugin); stack.yaml is PROJECT data. On a plugin/pip
 # install those roots diverge, so resolve adapters against the kit ($CLAUDE_PLUGIN_ROOT, else this
 # script's own dir) and keep the project root as a fallback for repo-vendored/custom adapters.
-kit_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+# Adapters are KIT assets, so resolve them through the one authority (bin/kit_paths.py) rather than
+# reading a Claude variable directly — that variable is empty under every other harness. The old
+# expression stays as the fallback so this script keeps working if kit_paths.py is missing, which is
+# the shape a partial vendored copy takes. $CLAUDE_PLUGIN_ROOT is still honored, by the resolver.
+kit_root="$("$(dirname "$0")/tw" --kit 2>/dev/null)" || kit_root=""
+[[ -n "$kit_root" ]] || kit_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 proj_root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$stack")/../.." && pwd)}"
 
 # Flatten project.* into a token file (key<TAB>value) so verify strings like "{default_epic}" /
