@@ -3,6 +3,7 @@ seam: tracker
 tool: asana
 transport: mcp         # MCP; server name = seams.tracker.mcp ({mcp})
 requires: [workspace_gid, mcp]   # stack.yaml seams.tracker.{workspace_gid, default_project_gid, mcp}
+container_key: seams.tracker.default_project_gid   # which config key a ranked container fills (see rank_projects_by_activity)
 auth: |
   The Asana MCP server (`{mcp}`) must be connected (OAuth).
   Verify: an Asana MCP "list workspaces" / "typeahead search" call returns without error.
@@ -53,3 +54,31 @@ search-tasks(workspace={workspace_gid}, text=<topic>)   # or typeahead-search
 get-attachments-for-task(task_gid=<id>)  → download each attachment's `download_url` with curl
 ```
 (No prebuilt script like Jira's — fall back to curl per attachment.)
+
+## verb: rank_projects_by_activity
+The ranked container is an Asana **project** — the `default_project_gid` kind, not the "project
+section" this adapter uses as an epic stand-in. **In:** `scope` (the `workspace_gid`),
+`window_days` (90), `limit` (5), `scan_cap` (200), `container_cap` (25). **Out:** `{id, name,
+activity, last_activity, signal}` per project, most active first, `signal: items_updated`.
+Two steps — **candidates first**, then a count per candidate:
+```
+mcp__{mcp}__list-projects(workspace=<scope>, limit=<container_cap>)   # or the server's projects op
+mcp__{mcp}__search-tasks(workspace=<scope>, projects.any=<project gid>,
+                         modified_on.after=<ISO date>, limit=<scan_cap>)
+```
+Count per candidate project rather than grouping one broad search: a task carries **multiple**
+project memberships, so grouping search hits double-counts it into every project it belongs to.
+
+The projects-listing op is the one operation here this adapter does not use elsewhere, and its name
+varies by server (see the MCP caveat in `adapters/README.md`). Confirm it once against your
+connected server; if it exposes no way to enumerate a workspace's projects, there is no candidate
+set and the verb returns `unavailable` naming that — do not substitute `typeahead-search`, which
+ranks by name similarity and would reintroduce the exact bias this verb removes.
+
+Picking a project sets `seams.tracker.default_project_gid`; `workspace_gid` comes from `scope`.
+The key prefix is unaffected — per the note above, Asana has no native id prefix.
+
+**Return `unavailable` on a free workspace.** Asana's task-search endpoint is a paid-tier feature and
+will refuse outright there; it also has no offset pagination, so `scan_cap` is a ceiling you may not
+be able to reach on a busy project. Say which of the two happened rather than reporting a low count
+as if the project were quiet.

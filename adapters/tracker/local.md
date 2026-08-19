@@ -147,6 +147,20 @@ Nothing to download: there is no remote holding files. Report that plainly and p
 `<ticket-dir>/source_materials/` to drop files in by hand — a silent no-op would read as "there were
 no attachments", which is a different claim.
 
+## verb: rank_projects_by_activity
+**Unsupported — there is no account container to rank.** The ticket folder *is* the tracker, so
+there are no sibling projects, teams, or boards to compare and nothing an activity scan could
+choose between. Return `unsupported` with that reason; the caller skips the ranking silently and
+asks as it would have anyway.
+
+This is a different claim from `unavailable`, which means a rankable tracker refused the scan (auth,
+permissions, plan tier) and is worth a line to the human. Nothing is broken here, so nothing is
+reported.
+
+In practice the verb is also unreachable: choosing *no tracker* selects this adapter, which pairs
+with `id_mode: slug` — the folder name is the id, so there is no key prefix for a ranking to
+pre-fill. Documented for contract coverage, not for use.
+
 ## gotchas
 - **No ids are allocated for you.** The folder name is the id, so it must be unique per owner and
   stable — renaming it renames the ticket everywhere. Use `id_mode: slug`, which also constrains the

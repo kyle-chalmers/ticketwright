@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Seventh `tracker` verb — `rank_projects_by_activity`.** Setup could adopt a tracker project
+  because its *name* matched the repo, with no signal about whether anyone still works there. The
+  tracker contract can now rank an account's containers (Jira project / Azure Boards project /
+  GitHub repo / Linear team / Asana project / monday board) by items updated in a lookback window,
+  returning `{id, name, activity, last_activity, signal}`. It is a **bootstrap** verb: it needs auth
+  plus an account-level `scope` only, never the per-project keys the choice is about to fill, and it
+  runs outside the seam preflight. Read-only, and it produces a default a human confirms — never an
+  automatic selection. All seven tracker adapters implement it; `local` returns `unsupported`
+  (nothing to rank) and adapters blocked by auth, scope, or plan tier return `unavailable` + a
+  reason, which the caller surfaces rather than swallowing. Which config key a chosen container
+  fills is declared per-adapter in new `container_key:` frontmatter, following the `dev_key:`
+  precedent — it is not universal (Jira fills `project.key_prefix`, Azure Boards
+  `seams.tracker.project`). No skill calls it yet.
 - **Per-person comms voice profiles** — opt-in `project.voice_profiles` in `stack.yaml`. When set,
   `/ship` resolves the shipper (`bin/resolve_user.py`, offline, explicit identity→id map) and phrases
   the tracker comment / chat / PR draft to match their `voices/<id>.md` — *within* the hard comms

@@ -3,6 +3,7 @@ seam: tracker
 tool: linear
 transport: mcp         # MCP; server name = seams.tracker.mcp ({mcp})
 requires: [team_id, mcp]    # stack.yaml seams.tracker.{team_id, done_state_id, mcp}
+container_key: seams.tracker.team_id   # which config key a ranked container fills (see rank_projects_by_activity)
 auth: |
   The Linear MCP server (`{mcp}`) must be connected (OAuth).
   Verify: a read-only issue/team query returns without error.
@@ -50,6 +51,25 @@ list-issues(team={team_id}, query=<text>, filter={state, label, ...})
 
 ## verb: download_attachments
 Read the issue's `attachments{ url }`, `curl -L` each to the dest dir. (Linear attachments are URLs.)
+
+## verb: rank_projects_by_activity
+The ranked container is a Linear **team** — not a Linear *Project*, which is this adapter's stand-in
+for an epic (see the note above). **In:** `scope` (inert here — the workspace is whatever the OAuth
+token is bound to), `window_days` (90), `limit` (5), `scan_cap` (200), `container_cap` (25).
+**Out:** `{id, name, activity, last_activity, signal}` per team, most active first,
+`signal: items_updated`.
+```
+mcp__{mcp}__list-teams()                                    # first <container_cap> candidates
+mcp__{mcp}__list-issues(team=<teamId>, filter={updatedAt: {gte: <ISO date>}}, limit=<scan_cap>)
+```
+Count per team and take the newest `updatedAt` as `last_activity`. A team whose count equals
+`scan_cap` saturated the scan — rank saturated peers by `last_activity`.
+
+Picking a team sets `seams.tracker.team_id`. It does **not** settle `done_state_id`: workflow state
+ids are team-specific (see gotchas), so resolve them from the chosen team afterwards.
+
+Return `unavailable` with the reason when the MCP server is not connected or the token cannot list
+teams.
 
 ## gotchas
 - State ids are team-specific — don't hardcode; resolve from the team's workflow states.

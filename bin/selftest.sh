@@ -35,7 +35,7 @@ done
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 6;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
+    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
     viewer) echo 2;; *) echo 0;;
   esac
 }
@@ -45,6 +45,26 @@ for f in adapters/*/*.md; do
   got="$(grep -c '^## verb:' "$f")"
   [ "$got" -eq "$want" ] && ok "$f ($got/$want verbs)" || bad "$f has $got verbs, expected $want"
 done
+
+# Counting headings proves each adapter has the RIGHT NUMBER of verbs, not the RIGHT ONES: a typo'd
+# `rank_project_by_activity` still counts, still passes, and is still outside the contract every
+# skill calls. `local` has had a name check since it shipped (section 27); the newest verb gets one
+# across the whole seam, because it is the one verb added after six adapters were already written.
+rp_miss=""
+for f in adapters/tracker/*.md; do
+  grep -q '^## verb: rank_projects_by_activity$' "$f" || rp_miss="$rp_miss $(basename "$f")"
+done
+[ -z "$rp_miss" ] && ok "every tracker adapter names rank_projects_by_activity exactly" \
+  || bad "tracker adapter(s) miss or misspell rank_projects_by_activity" "$rp_miss"
+# The bootstrap verb declares which config key a ranked container fills, per-adapter (the `dev_key:`
+# precedent). Every adapter that CAN rank must declare it, or setup has a ranking it cannot apply.
+ck_miss=""
+for f in adapters/tracker/*.md; do
+  [ "$(basename "$f")" = "local.md" ] && continue      # unsupported: nothing to fill
+  grep -q '^container_key: ' "$f" || ck_miss="$ck_miss $(basename "$f")"
+done
+[ -z "$ck_miss" ] && ok "ranking tracker adapters declare container_key" \
+  || bad "tracker adapter(s) rank without declaring container_key" "$ck_miss"
 
 hdr "3 · no tool names leak into skill/command orchestration"
 # Two intentional matches are allowed: the CLI *detector* and the self-test *instruction* line.
@@ -1591,12 +1611,13 @@ grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/de
   || ok "ingest does not invent a tracker number for a key-shaped slug id"
 
 hdr "27 · local tracker adapter (the filesystem IS the tracker)"
-# The whole point is zero skill edits: the adapter must satisfy the same 6-verb contract, so /ticket
+# The whole point is zero skill edits: the adapter must satisfy the same 7-verb contract, so /ticket
 # and /ship keep calling tracker verbs without knowing there's no API.
 lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
-[ "$lv" -eq 6 ] && ok "local adapter implements all 6 tracker verbs" || bad "local adapter has $lv verbs, expected 6"
+[ "$lv" -eq 7 ] && ok "local adapter implements all 7 tracker verbs" || bad "local adapter has $lv verbs, expected 7"
 lvmiss=""
-for v in fetch_ticket create_ticket transition comment search download_attachments; do
+for v in fetch_ticket create_ticket transition comment search download_attachments \
+         rank_projects_by_activity; do
   grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
 done
 [ -z "$lvmiss" ] && ok "local adapter verb NAMES match the contract exactly" \
@@ -1604,6 +1625,13 @@ done
 # It must not require any seam config or auth — that is what makes it usable with no tracker.
 grep -qE '^requires: \[\]' adapters/tracker/local.md \
   && ok "local adapter requires no seam config" || bad "local adapter declares required seam keys"
+# A trackerless repo has no sibling projects to rank, and the contract distinguishes that
+# (`unsupported`, skip silently) from a tracker that refused the scan (`unavailable`, say one line).
+# Collapsing them here would teach the caller to swallow a fixable auth failure.
+sed -n '/^## verb: rank_projects_by_activity$/,/^## /p' adapters/tracker/local.md \
+  | grep -q 'unsupported' \
+  && ok "local adapter returns unsupported for rank_projects_by_activity" \
+  || bad "local adapter does not declare rank_projects_by_activity unsupported"
 
 # The snippets are EXTRACTED from the adapter and executed, not reimplemented here — a copied
 # implementation would keep passing after the documented one drifted or broke.

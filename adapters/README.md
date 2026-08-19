@@ -36,6 +36,35 @@ contract. A verb section gives the command(s), inputs, the expected output shape
 | `comment` | `id`, body, optional smart-link cards | ok/fail (rendered, not plain text) |
 | `search` | query (JQL/equivalent), limit | list of `{id, summary, status}` |
 | `download_attachments` | `id`, dest dir | files written (silent if none) |
+| `rank_projects_by_activity` | `scope`, `window_days`, `limit` | ranked tracker **containers** (Jira project / Azure Boards project / GitHub repo / Linear team / Asana project / monday board) as `{id, name, activity, last_activity, signal}` — or `unsupported` / `unavailable` + reason |
+
+`rank_projects_by_activity` is the seam's one **bootstrap** verb, and it breaks two rules the
+others follow — deliberately, because it runs *before* the seam is configured. Its job is to stop
+setup from adopting a dead project just because its name matched the repo, so it cannot depend on
+the per-project keys (`{key_prefix}`, `{repo}`, `{team_id}`, …) that the choice is about to fill,
+and it runs outside the hybrid preflight in step 4 above — a Jira `verify` embeds `{key_prefix}`,
+the very value being determined. It needs **auth plus an account-level `scope`** and nothing else.
+It is read-only.
+
+Two more inputs are tuning, not contract, so they stay out of the table above (no verb in any seam
+carries numeric defaults there) — but a caller can set both: `scan_cap` (default 200) bounds items
+counted per container, and `container_cap` (default 25) bounds containers scanned, so a site with
+400 projects does not turn one setup question into hundreds of API calls. An adapter whose scan hits
+`scan_cap` says so, because the counts are then `>=` it rather than exact.
+
+Which config key a chosen container fills is declared per-adapter in `container_key:` frontmatter,
+following the same principle as `dev_key:` below — adapters spell their own key, skills never name
+one. It is not a per-call return value, and it is not universal: Jira's container fills
+`project.key_prefix` while Azure Boards' fills `seams.tracker.project` and leaves `key_prefix` a
+display convention. A choice also never settles the *dependent* keys (`done_state_id`,
+`status_column_id`, `done_state`) — those are resolved from the chosen container afterwards.
+
+**Two failure returns, because they are different claims.** `unsupported` means the tool has no
+containers to rank at all (the `local` adapter) — the caller skips ranking **silently** and asks as
+it would have anyway. `unavailable` means a rankable tracker refused the scan: not authenticated,
+no org-read scope, or a plan tier that withholds the search API. That one gets a line to the human
+before the same fallback question, because it is fixable and hiding it wastes their time. Ranking
+always produces a *default the human confirms*, never an automatic selection.
 
 ### `warehouse` — the data/work backend
 | Verb | Inputs | Returns |
