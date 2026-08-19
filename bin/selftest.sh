@@ -924,15 +924,16 @@ printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GX/tickets/alice/ENG-2/q.sql"
 printf '# ENG-3: Unrelated\n\nx.\n' > "$GX/tickets/bob/ENG-3/README.md"
 printf 'SELECT * FROM OPS.VW_CALL;\n' > "$GX/tickets/bob/ENG-3/q.sql"
 CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
-{ [ -f "$GX/tickets/graph/ENG-1.md" ] && [ -f "$GX/tickets/graph/ENG-2.md" ] && [ -f "$GX/tickets/graph/ENG-3.md" ]; } \
-  && ok "graph stubs generated (one per ticket)" || bad "graph stubs missing"
+# Graph nodes are owner-qualified (<owner>.<id>.md) — owner is part of ticket identity (section 35).
+{ [ -f "$GX/tickets/graph/alice.ENG-1.md" ] && [ -f "$GX/tickets/graph/alice.ENG-2.md" ] && [ -f "$GX/tickets/graph/bob.ENG-3.md" ]; } \
+  && ok "graph stubs generated (one per ticket, owner-qualified filename)" || bad "graph stubs missing"
 { [ -f "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md" ] && [ -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
   && ok "object notes generated (one per object)" || bad "object notes missing"
-{ grep -q '(../graph/ENG-1.md)' "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md" \
-  && grep -q '(../graph/ENG-2.md)' "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md"; } \
+{ grep -q '(../graph/alice.ENG-1.md)' "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md" \
+  && grep -q '(../graph/alice.ENG-2.md)' "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md"; } \
   && ok "object note links the ticket stubs (VW_ORDERS -> ENG-1, ENG-2)" || bad "object note not linking stubs"
-grep -q '](ENG-1.md)' "$GX/tickets/graph/ENG-2.md" \
-  && ok "stub carries the cross-ref link (ENG-2 -> ENG-1)" || bad "stub missing cross-ref link"
+grep -q '\[ENG-1\](alice.ENG-1.md)' "$GX/tickets/graph/alice.ENG-2.md" \
+  && ok "stub carries the cross-ref link, resolved within its own owner (ENG-2 -> alice's ENG-1)" || bad "stub missing cross-ref link"
 if python3 - "$GX" <<'PY'
 import re, sys, pathlib
 root = pathlib.Path(sys.argv[1]); broken = 0
@@ -947,7 +948,7 @@ CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py --check >/dev/null 2>
   && ok "--check clean after render (graph layer deterministic)" || bad "--check stale right after render"
 rm -rf "$GX/tickets/bob/ENG-3"
 CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
-{ [ ! -f "$GX/tickets/graph/ENG-3.md" ] && [ ! -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
+{ [ ! -f "$GX/tickets/graph/bob.ENG-3.md" ] && [ ! -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
   && ok "orphan cleanup removes the stale stub + object note" || bad "orphan cleanup failed"
 GO="$TMP/graphoff"; mkdir -p "$GO/.claude/config" "$GO/tickets/alice/ENG-1"
 printf 'project:\n  key_prefix: ENG\n  graph_notes: false\n' > "$GO/.claude/config/stack.yaml"
@@ -955,14 +956,14 @@ printf '# ENG-1: x\n\nx.\n' > "$GO/tickets/alice/ENG-1/README.md"
 CLAUDE_PROJECT_DIR="$GO" python3 bin/build_ticket_index.py >/dev/null 2>&1
 { [ ! -d "$GO/tickets/graph" ] && [ ! -d "$GO/tickets/objects" ]; } \
   && ok "graph_notes: false disables the layer" || bad "graph_notes flag not honored"
-grep -q '(../objects/ANALYTICS.VW_ORDERS.md)' "$GX/tickets/graph/ENG-1.md" \
+grep -q '(../objects/ANALYTICS.VW_ORDERS.md)' "$GX/tickets/graph/alice.ENG-1.md" \
   && ok "stub links its object notes (../objects/...)" || bad "stub does not link objects"
 mkdir -p "$GX/tickets/alice/ENG-20"
 printf '# ENG-20: hook test\n\nx.\n' > "$GX/tickets/alice/ENG-20/README.md"
 printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GX/tickets/alice/ENG-20/q.sql"
 echo "{\"tool_input\":{\"file_path\":\"$GX/tickets/alice/ENG-20/README.md\"},\"cwd\":\"$GX\"}" \
   | CLAUDE_PROJECT_DIR="$GX" python3 .claude/hooks/regenerate_ticket_index.py >/dev/null 2>&1
-[ -f "$GX/tickets/graph/ENG-20.md" ] \
+[ -f "$GX/tickets/graph/alice.ENG-20.md" ] \
   && ok "PostToolUse hook regenerates the graph layer (ENG-20 stub appeared)" || bad "hook did not regenerate the graph layer"
 CF="$TMP/graphcf"; mkdir -p "$CF/.claude/config" "$CF/tickets/a/ENG-1" "$CF/tickets/a/ENG-2"
 printf 'project:\n  key_prefix: ENG\n' > "$CF/.claude/config/stack.yaml"
@@ -979,7 +980,7 @@ DR="$TMP/graphdr"; mkdir -p "$DR/.claude/config" "$DR/tickets/a/ENG-1"
 printf 'project:\n  key_prefix: ENG\n' > "$DR/.claude/config/stack.yaml"
 printf '# ENG-1: x\n\nRelated: ENG-999\n' > "$DR/tickets/a/ENG-1/README.md"
 CLAUDE_PROJECT_DIR="$DR" python3 bin/build_ticket_index.py >/dev/null 2>&1
-{ grep -q 'ENG-999' "$DR/tickets/graph/ENG-1.md" && ! grep -q '(ENG-999.md)' "$DR/tickets/graph/ENG-1.md"; } \
+{ grep -q 'ENG-999' "$DR/tickets/graph/a.ENG-1.md" && ! grep -qE '\((a\.)?ENG-999\.md\)' "$DR/tickets/graph/a.ENG-1.md"; } \
   && ok "dangling cross-ref shown as text, not a broken link" || bad "cross-ref to a nonexistent ticket was linked"
 grep -q 'graph_notes' .claude/config/stack.schema.md \
   && ok "graph_notes documented in stack.schema.md" || bad "graph_notes not documented in stack.schema.md"
@@ -3241,6 +3242,170 @@ grep 'acli jira project list' adapters/tracker/jira.md | grep -qE -- '--recent|-
   && grep -qi 'Expected-target evidence' adapters/warehouse/snowflake.md; } \
   && ok "warehouse adapters carry names-only enumeration + expected-target evidence notes" \
   || bad "per-person setup notes missing from a warehouse adapter"
+hdr "35 · owner is ticket identity (locator, graph separation, ambiguity hard stops, whoami wiring)"
+# Two owners, one slug — the case that used to collapse. Every engine must treat (owner, id) as the
+# identity: separate graph nodes, owner-qualified backlinks, within-owner-first link resolution, and
+# a HARD STOP wherever a bare id could mean two people's work. Never a guess, never "all of them".
+OI="$TMP/ownerid"; mkdir -p "$OI/.claude/config" "$OI/bin" \
+  "$OI/tickets/alice/chargeback-lift" "$OI/tickets/bob/chargeback-lift" \
+  "$OI/tickets/alice/other-work" "$OI/tickets/carol/third-thing"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$OI/bin/"
+printf 'project:\n  assignee_dir: alice\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$OI/.claude/config/stack.yaml"
+printf '# chargeback-lift: Alice chargeback lift\n\nAlice body.\n' > "$OI/tickets/alice/chargeback-lift/README.md"
+printf 'SELECT * FROM S.VW_SHARED;\n' > "$OI/tickets/alice/chargeback-lift/q.sql"
+printf '# chargeback-lift: Two-owner chargeback lift\n\nSecond body.\n' > "$OI/tickets/bob/chargeback-lift/README.md"
+printf 'SELECT * FROM S.VW_SHARED;\n' > "$OI/tickets/bob/chargeback-lift/q.sql"
+printf '# other-work: Other\n\nBuilds on [[chargeback-lift]] and [[bob/chargeback-lift]].\n' > "$OI/tickets/alice/other-work/README.md"
+printf '# third-thing: Third\n\nSee [[chargeback-lift]].\n' > "$OI/tickets/carol/third-thing/README.md"
+# A bare-id node left from before this rename must be swept by the normal orphan cleanup (migration).
+mkdir -p "$OI/tickets/graph"; printf 'old\n' > "$OI/tickets/graph/chargeback-lift.md"
+warn35="$(CLAUDE_PROJECT_DIR="$OI" python3 bin/build_ticket_index.py 2>&1 >/dev/null)"
+
+# (a) graph separation: two nodes, no merged bare node, each naming only its own owner.
+{ [ -f "$OI/tickets/graph/alice.chargeback-lift.md" ] && [ -f "$OI/tickets/graph/bob.chargeback-lift.md" ] \
+  && [ ! -f "$OI/tickets/graph/chargeback-lift.md" ]; } \
+  && ok "same-slug tickets under two owners get two graph nodes (stale bare-id node swept)" \
+  || bad "two owners' same-slug tickets merged into one node, or the bare-id node survived"
+{ grep -q '`alice`' "$OI/tickets/graph/alice.chargeback-lift.md" \
+  && ! grep -q 'bob' "$OI/tickets/graph/alice.chargeback-lift.md"; } \
+  && ok "each node names only its own owner (no pooled-owner line)" \
+  || bad "a graph node still pools owners" "$(cat "$OI/tickets/graph/alice.chargeback-lift.md")"
+CLAUDE_PROJECT_DIR="$OI" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
+  && ok "--check is clean right after the owner-keyed render (deterministic)" \
+  || bad "--check stale after render — owner keying broke determinism"
+
+# (b) object backlinks key by (owner, id): both owners listed, owner/id labels, qualified targets.
+{ grep -q '\[alice/chargeback-lift\](../graph/alice.chargeback-lift.md)' "$OI/tickets/objects/S.VW_SHARED.md" \
+  && grep -q '\[bob/chargeback-lift\](../graph/bob.chargeback-lift.md)' "$OI/tickets/objects/S.VW_SHARED.md"; } \
+  && ok "object-note backlinks key by (owner, id) with owner/id labels" \
+  || bad "object backlinks still collapse a shared id" "$(cat "$OI/tickets/objects/S.VW_SHARED.md")"
+{ grep -q '\[alice/chargeback-lift\]' "$OI/tickets/OBJECTS.md" && grep -q '\[bob/chargeback-lift\]' "$OI/tickets/OBJECTS.md"; } \
+  && ok "OBJECTS.md labels a shared id by its owner/id locator" \
+  || bad "OBJECTS.md renders two owners' tickets as indistinguishable bare labels"
+
+# (c) bare-link resolution order: current owner first; explicit owner honored; two foreign owners = error.
+grep -q '\[chargeback-lift\](alice.chargeback-lift.md)' "$OI/tickets/graph/alice.other-work.md" \
+  && ok "a bare [[wiki-link]] resolves within the CURRENT owner first" \
+  || bad "within-owner resolution failed" "$(grep 'Builds on' "$OI/tickets/graph/alice.other-work.md")"
+grep -q '\[bob/chargeback-lift\](bob.chargeback-lift.md)' "$OI/tickets/graph/alice.other-work.md" \
+  && ok "a qualified [[owner/id]] wiki-link is honored exactly (and the bare link beside it survives)" \
+  || bad "the qualified wiki-link was not honored" "$(grep 'Builds on' "$OI/tickets/graph/alice.other-work.md")"
+{ grep -q 'chargeback-lift' "$OI/tickets/graph/carol.third-thing.md" \
+  && ! grep -qE '\((alice|bob)\.chargeback-lift\.md\)' "$OI/tickets/graph/carol.third-thing.md"; } \
+  && ok "a bare ref two foreign owners share links NEITHER (plain text, never a guess)" \
+  || bad "an ambiguous bare ref was linked to a guessed owner"
+{ grep -qi 'multiple owners' <<<"$warn35" && grep -q 'alice' <<<"$warn35" && grep -q 'bob' <<<"$warn35"; } \
+  && ok "…and the render error names BOTH owners on stderr" \
+  || bad "the two-owner match was not reported as an error naming both" "$warn35"
+
+# (d) enrich_ticket: a bare id two owners share is a hard stop (exit 3) — enrich-every-owner is gone.
+# `claude` is kept OFF PATH (section 25/26 technique): reaching "Enriching 1 ticket(s)" proves the
+# locator resolved without spending a model call.
+amb="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py chargeback-lift 2>&1)"; arc35=$?
+{ [ "$arc35" -eq 3 ] && grep -q 'alice/chargeback-lift' <<<"$amb" && grep -q 'bob/chargeback-lift' <<<"$amb" \
+  && ! grep -q 'Enriching' <<<"$amb"; } \
+  && ok "enrich_ticket hard-stops (exit 3) on a shared bare id, naming both owner/id spellings" \
+  || bad "enrich_ticket guessed, enriched multiple owners, or mis-coded the stop" "rc=$arc35 $amb"
+eq35="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py alice/chargeback-lift 2>&1)"
+grep -q 'Enriching 1 ticket' <<<"$eq35" \
+  && ok "the owner/id locator resolves exactly one ticket" || bad "owner/id locator did not resolve" "$eq35"
+
+# (e) branch names: bare <id> stays the rule; the collision shape <owner>-<id> resolves its pair;
+# an ambiguous bare branch hard-stops instead of enriching everyone.
+( cd "$OI" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+  && git checkout -q -b bob-chargeback-lift ) 2>/dev/null
+bq35="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py --branch 2>&1)"
+{ grep -q 'Enriching 1 ticket' <<<"$bq35" && grep -q 'bob/chargeback-lift' <<<"$bq35"; } \
+  && ok "--branch resolves the collision-shape branch (<owner>-<id>) to that owner's ticket" \
+  || bad "--branch could not resolve <owner>-<id>" "$bq35"
+( cd "$OI" && git checkout -q -b chargeback-lift ) 2>/dev/null
+bq36="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py --branch 2>&1)"; brc35=$?
+{ [ "$brc35" -eq 3 ] && grep -qi 'multiple owners' <<<"$bq36"; } \
+  && ok "--branch on an ambiguous bare branch hard-stops too" \
+  || bad "--branch picked an owner for an ambiguous bare branch" "rc=$brc35 $bq36"
+
+# (f) recall: the --owner discipline holds, and the qualified locator is a first-class seed.
+ra35="$(CLAUDE_PROJECT_DIR="$OI" python3 bin/recall.py --for chargeback-lift 2>&1)"; rrc35=$?
+{ [ "$rrc35" -ne 0 ] && grep -qi 'multiple owners' <<<"$ra35"; } \
+  && ok "recall --for a shared bare id still hard-stops (the --owner precedent)" \
+  || bad "recall silently picked a seed owner" "rc=$rrc35 $ra35"
+rq35="$(CLAUDE_PROJECT_DIR="$OI" python3 bin/recall.py --for alice/chargeback-lift 2>&1)"
+grep -q 'Prior art for alice/chargeback-lift' <<<"$rq35" \
+  && ok "recall --for owner/id resolves the qualified seed and displays the locator" \
+  || bad "recall did not accept the owner/id locator" "$rq35"
+# Cross-ref scoring follows the locator's resolution order: other-work's bare ref names ALICE's
+# ticket (its own owner), its qualified ref names BOB's, and third-thing's bare ref from carol is
+# ambiguous and names NOBODY — never a guess, in scoring exactly as in the graph.
+CLAUDE_PROJECT_DIR="$OI" python3 - "$OI" <<'PY35'
+import json, os, subprocess, sys
+def whys(seed):
+    out = subprocess.run([sys.executable, "bin/recall.py", "--for", seed, "--json"],
+                         capture_output=True, text=True, env={**os.environ}).stdout
+    return {f"{r['owner']}/{r['id']}": r["why"] for r in json.loads(out)}
+a, b = whys("alice/chargeback-lift"), whys("bob/chargeback-lift")
+assert "ref" in a.get("alice/other-work", []), ("bare ref should name its own owner's seed", a)
+assert "ref" in b.get("alice/other-work", []), ("qualified ref should name bob's seed", b)
+assert "ref" not in a.get("carol/third-thing", []), ("ambiguous bare ref scored a ref for alice", a)
+assert "ref" not in b.get("carol/third-thing", []), ("ambiguous bare ref scored a ref for bob", b)
+PY35
+[ $? -eq 0 ] && ok "recall cross-ref scoring resolves bare refs within-owner-first and never guesses an ambiguous one" \
+  || bad "recall cross-ref scoring disagrees with the graph's resolution order"
+
+# (g) keyed mode separates the same way (the graph fix is not slug-only), and a qualified ref to a
+# ticket with NO folder keeps its owner — keyed refs could always name folderless tickets.
+KO="$TMP/ownerid-keyed"; mkdir -p "$KO/.claude/config" "$KO/tickets/alice/ENG-7" "$KO/tickets/bob/ENG-7"
+printf 'project:\n  key_prefix: ENG\n' > "$KO/.claude/config/stack.yaml"
+printf '# ENG-7: Alice half\n\nThe first half of the work.\n\nSee [[bob/ENG-999]] and [[graph/ENG-777]].\n' > "$KO/tickets/alice/ENG-7/README.md"
+printf '# ENG-7: Second half\n\nb.\n' > "$KO/tickets/bob/ENG-7/README.md"
+CLAUDE_PROJECT_DIR="$KO" python3 bin/build_ticket_index.py >/dev/null 2>&1
+{ [ -f "$KO/tickets/graph/alice.ENG-7.md" ] && [ -f "$KO/tickets/graph/bob.ENG-7.md" ]; } \
+  && ok "keyed mode: one tracker key under two owners still yields two nodes" \
+  || bad "keyed-mode same-key tickets merged"
+{ grep -q 'bob/ENG-999' "$KO/tickets/INDEX.md" && grep -q 'ENG-777' "$KO/tickets/INDEX.md" \
+  && ! grep -q 'graph/ENG-777' "$KO/tickets/INDEX.md"; } \
+  && ok "a qualified ref to a folderless keyed ticket keeps its owner; a path segment is never an owner" \
+  || bad "keyed qualified refs lost their owner (or a path-style link became one)" \
+         "$(grep 'ENG-7' "$KO/tickets/INDEX.md" 2>/dev/null)"
+
+# (h) the whoami wiring PROMPT 3 deferred: skills resolve WHO before rendering any ticket path.
+tk=".claude/skills/ticket/SKILL.md"; tflat="$(tr '\n' ' ' < "$tk")"
+wline=$(grep -n 'whoami.py' "$tk" | head -1 | cut -d: -f1)
+pline=$(grep -n 'ticket_path' "$tk" | head -1 | cut -d: -f1)
+{ [ -n "$wline" ] && [ -n "$pline" ] && [ "$wline" -lt "$pline" ] && grep -qi 'Working as' <<<"$tflat"; } \
+  && ok "/ticket calls whoami.py BEFORE rendering ticket_path and shows the display line" \
+  || bad "/ticket does not resolve WHO first (whoami at line ${wline:-none}, ticket_path at ${pline:-none})"
+{ grep -qi "locator's owner" <<<"$tflat" && grep -qi 'hard-stop' <<<"$tflat" && grep -q 'owner/id' <<<"$tflat"; } \
+  && ok "/ticket fills {assignee} from the locator's owner and hard-stops on a shared bare id" \
+  || bad "/ticket still sources {assignee} statically or guesses on ambiguity"
+grep -q '<owner>-<id>' "$tk" \
+  && ok "/ticket documents the branch-collision rule (bare <id>; <owner>-<id> when taken)" \
+  || bad "/ticket lost the branch-collision rule"
+{ grep -qi 'last resort' <<<"$tflat" && grep -c 'assignee_dir' "$tk" >/dev/null; } \
+  && ok "assignee_dir survives in /ticket only as the documented no-people-map last resort" \
+  || bad "/ticket's assignee_dir fallback lost its last-resort framing"
+sk35miss=""
+for s in ship review spec-and-build; do
+  f=".claude/skills/$s/SKILL.md"
+  grep -q 'whoami.py' "$f" && grep -q 'owner/id' "$f" || sk35miss="$sk35miss $s"
+  grep -q 'assignee_dir' "$f" && sk35miss="$sk35miss $s(assignee_dir)"
+done
+[ -z "$sk35miss" ] \
+  && ok "/ship, /review, /spec-and-build each resolve the locator via whoami (and never assignee_dir)" \
+  || bad "a lifecycle skill misses the locator wiring or reads assignee_dir:$sk35miss"
+# Locator PROPAGATION: a step's recommendation of the next step carries the qualified owner/id, so
+# a bare id can never be re-resolved to a different owner's ticket between steps (e.g. /review of
+# bob's ticket recommending a bare /ship that lands on the shipper's same-named one).
+{ grep -q 'spec <owner>/<id>' "$tk" && grep -q '/ship <owner>/<id>' "$tk" \
+  && grep -q 'refresh index <owner>/<id>' .claude/skills/ship/SKILL.md \
+  && grep -q '/ship <owner>/<id>' .claude/skills/review/SKILL.md \
+  && grep -q '/review <owner>/<id>' .claude/skills/spec-and-build/SKILL.md \
+  && grep -q 'recall.py --for <owner>/<id>' .claude/skills/ticket/priming.md; } \
+  && ok "every cross-step handoff passes the QUALIFIED locator (routing, refresh, recall, verdicts)" \
+  || bad "a cross-step handoff still passes a bare id — ownership drops between skills"
+oi_other="$(grep -rl 'assignee_dir' .claude/skills/ 2>/dev/null | grep -v 'skills/setup/' | grep -v 'skills/ticket/SKILL.md' || true)"
+[ -z "$oi_other" ] \
+  && ok "no skill outside /ticket's last resort (and setup's scaffolding) reads assignee_dir" \
+  || bad "a static assignee_dir read survives outside the documented last resort" "$oi_other"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

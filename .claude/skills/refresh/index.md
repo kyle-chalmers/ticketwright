@@ -26,7 +26,9 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 ## Phase 2 — Enrich (the model half)
 4. Decide scope (enrichment is the model (re)writing curated summaries — **never rewrite curated
    summaries silently**):
-   - a **specific ticket id (or ids)** — enrich just those;
+   - a **specific ticket id (or ids)** — enrich just those. An id is the ticket locator: bare when
+     one owner has it, `owner/id` when two do — a bare id under multiple owners is a hard stop
+     naming them, never "enrich all";
    - **default** (no flag): only the **un-enriched + stale** set from `--stats` — the safe day-to-day
      scope;
    - **`--all`**: cover every ticket **but skip those already enriched and fresh** — the bootstrap
@@ -48,7 +50,7 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
    you are already talking to writes the record. Skipping enrichment is what rots the corpus into a
    folder of SQL nobody can find, so the path that always works is the one to lead with.
 
-   (Shortcut: `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" enrich_ticket.py <ID>` does steps 5–6 for one
+   (Shortcut: `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" enrich_ticket.py <ID | owner/ID>` does steps 5–6 for one
    ticket by calling a model headlessly. The command it runs resolves from the detected runtime's
    `adapters/runtime/<name>.md`, so it is no longer Claude-only — but a runtime that documents no
    headless command will tell you so and point back here.)

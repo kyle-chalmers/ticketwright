@@ -1,7 +1,7 @@
 ---
 name: spec-and-build
 description: Research-rich spec then execute it. `spec` mode writes a PRP-style blueprint (committed before building); `build` mode implements it in fresh context with independent validation. The IMPLEMENT phase.
-argument-hint: spec <ticket-id> "<what to build>" [--warehouse <name>] | build <ticket-id> [spec-path]
+argument-hint: spec <ticket-id | owner/id> "<what to build>" [--warehouse <name>] | build <ticket-id | owner/id> [spec-path]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
 
@@ -14,6 +14,12 @@ spec first, execute in fresh context — to any warehouse via the adapter.
 Reads `.claude/config/stack.yaml`. Front-loads decisions into a spec **before** any code — the
 context-engineering core idea: AI fails from missing context, not weak models.
 
+**Ticket locator, both modes:** run
+`bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
+first (show the "Working as …" line). `<ticket-id>` is `owner/id` (exact) or a bare `id`, resolved
+against the resolved person's `tickets/<owner>/` first, then other owners — **a bare id two or more
+foreign owners share is a hard stop listing the `owner/id` choices, never a pick**.
+
 ---
 
 ## Mode: `spec` — author the blueprint (this is still PLAN-adjacent; no production writes)
@@ -25,7 +31,7 @@ context-engineering core idea: AI fails from missing context, not weak models.
    the priming slices from `/ticket` — see `skills/ticket/priming.md`):
    - explore the objects via `warehouse.describe` + samples; map dependencies + grain;
    - read the 2–4 closest prior tickets (from `/ticket`'s reuse brief, or
-     `bin/recall.py --for <id>`) and reuse their SQL/QC where it fits;
+     `bin/recall.py --for <owner>/<id>`) and reuse their SQL/QC where it fits;
    - pull the business rules from the `documentation/` glossary (the domain slice).
    Research agents return findings only; **they do not write code.**
 3. **Write the spec** — `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then render
@@ -61,7 +67,7 @@ context-engineering core idea: AI fails from missing context, not weak models.
    `CREATE OR REPLACE`/non-`ADD` `ALTER`); additive SQL may run without asking. Read the policy
    rather than assuming. Dev-env objects still get shown but are lower-risk.
 10. **Hand off to the check step:** when the build passes its own gates, stop and recommend
-    `/review <id>` for the independent pass. Do not ship from here.
+    `/review <owner>/<id>` (the qualified locator) for the independent pass. Do not ship from here.
 
 ## Pattern
 A PRP-style spec/execute split: the spec is committed before any code, then executed in fresh

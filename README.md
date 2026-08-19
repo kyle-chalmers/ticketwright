@@ -209,8 +209,9 @@ Details: [docs/ticket-index.md](docs/ticket-index.md).
 
 ## See it as a graph (Obsidian)
 
-Ticketwright writes a small, auto-maintained graph layer under `tickets/` — `graph/<id>.md` (a node
-per ticket) and `objects/<object>.md` (a node per data object) — so you can open the repo as an
+Ticketwright writes a small, auto-maintained graph layer under `tickets/` — `graph/<owner>.<id>.md`
+(a node per ticket, keyed by owner + id so two people's same-named tickets never merge) and
+`objects/<object>.md` (a node per data object) — so you can open the repo as an
 [Obsidian](https://obsidian.md) vault and *browse* your work.
 
 - **Open a table** like `ANALYTICS.VW_ORDERS` and its local graph is every ticket that touched it.

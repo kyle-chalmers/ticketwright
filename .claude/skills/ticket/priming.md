@@ -16,8 +16,10 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
 
 - **Rank candidates** (deterministic, instant — no vector store):
   ```
-  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" recall.py --for <id>
+  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" recall.py --for <owner>/<id>
   #  or: --query "<topic>"   |   --tags a,b   |   --object <NAME>   (add --json for structured)
+  #  pass the qualified locator you resolved in Phase 0 — a bare id works while one owner has it,
+  #  but an id under two owners hard-stops (equivalently: --for <id> --owner <owner>)
   ```
   Scoring is transparent: object match ×4, tag ×3, cross-ref link +5, keyword overlap ×1; recency
   is a tiebreak. The seed ticket is excluded.

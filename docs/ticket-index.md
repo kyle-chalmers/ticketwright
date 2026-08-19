@@ -46,6 +46,34 @@ Rows key on **(owner, id)**, so the same id can appear under two owners. Two fol
 one id for one owner — `signup-lift` and `☑️ signup-lift` — are reported on stderr and the later one wins;
 don't keep both.
 
+### The ticket locator
+
+Owner is part of a ticket's identity, and one grammar names a ticket everywhere:
+
+- **`owner/id`** — the CLI and display form (`alice/ENG-12`, `dana/signup-funnel-lift`). A bare
+  **`id`** is allowed whenever exactly one owner has it. Every engine takes it:
+  `enrich_ticket.py alice/ENG-12`, `recall.py --for alice/ENG-12` (equivalent to `--owner alice`).
+- **A bare id two or more owners share is a hard stop** naming every owner and the qualified
+  spellings — a CLI never picks one, and never operates on all of them. (`recall.py` established
+  this discipline with `--owner`; `enrich_ticket.py` exits 3 the same way instead of its old
+  enrich-every-owner behavior.)
+- **`owner/id` never becomes a filename or a git ref.** Files flatten the separator
+  (`tickets/graph/<owner>.<id>.md`, same rewrite as object notes); **branch names stay bare `<id>`**
+  — `/` is git's ref-namespace separator, so an `alice/x` branch would permanently forbid a branch
+  named `alice`. When a bare branch name is already taken, the branch is created as `<owner>-<id>`
+  and the skills say so.
+- **A bare `[[wiki-link]]` (or bare cross-ref) resolves within the CURRENT owner first, then across
+  owners.** If it matches two owners, that is an error naming both (the renderer links neither and
+  says so on stderr) — never a guess. A qualified `[[owner/id]]` wiki-link is honored exactly, in
+  both id modes; in keyed mode it may name a ticket with no local folder (as bare keys always
+  could) when the owner is known, while a slug pair must exist. The skills follow the same order:
+  the whoami-resolved person's folder first, then other owners, and a bare id two *foreign* owners
+  share is the hard stop. When one skill hands a ticket to the next, it passes the **qualified**
+  locator, so the next step can never re-resolve it to a different owner's ticket.
+- **Migration:** existing bare links keep resolving, because within-owner resolution is tried first;
+  no historical rewrite is needed. Old bare-id graph nodes (`graph/<id>.md`) are swept up by the
+  renderer's normal orphan cleanup on the next render.
+
 ### Cross-references
 
 In `keyed` mode a cross-reference is any tracker key found in a README's prose, so the index can name
@@ -90,9 +118,12 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
 Alongside `INDEX.md`/`OBJECTS.md`, the renderer writes an Obsidian-navigable graph layer under
 `tickets/` (on by default; `project.graph_notes: false` disables it):
 
-- `tickets/graph/<id>.md` — one small id-labeled node per ticket (its objects, the tickets it
-  **builds on** as links, and a link to its README).
-- `tickets/objects/<object>.md` — one node per data object, linking the ticket stubs that touched it.
+- `tickets/graph/<owner>.<id>.md` — one small node per ticket, keyed by **(owner, id)** so two
+  owners with the same slug get two nodes instead of one merged one (its objects, the tickets it
+  **builds on** as links, and a link to its README). "Builds on" links follow the ticket locator's
+  resolution order — see "The ticket locator" above.
+- `tickets/objects/<object>.md` — one node per data object, linking the ticket stubs that touched
+  it; a shared id is labeled `owner/id`.
 
 Object notes link the ticket stubs (so tickets cluster around shared objects) and stubs link their
 cross-refs (direct build-on lines). Plain relative markdown links — the graph works in stock Obsidian
@@ -146,7 +177,10 @@ README, writes the summary via the runtime's model command, ingests, re-renders)
 
 ```bash
 python3 bin/enrich_ticket.py ENG-123      # or --branch to use the current branch's id
+python3 bin/enrich_ticket.py alice/ENG-123   # the owner/id locator, when two owners share the id
 ```
+
+A bare id under multiple owners is a hard stop (exit 3) naming them — pass `owner/id` to pick one.
 
 Then commit `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json` with the ticket
 (all three — `--check` gates the two generated files). An agent closing the

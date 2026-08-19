@@ -1,7 +1,7 @@
 ---
 name: review
 description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
-argument-hint: <ticket-id> [--deep] [--warehouse <name>]
+argument-hint: <ticket-id | owner/id> [--deep] [--warehouse <name>]
 allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 
@@ -15,6 +15,12 @@ several, when a ticket spans more than one.
 Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 
 ## Phase 0 — Setup
+0. Resolve the **ticket locator**: run
+   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
+   (show the "Working as …" line), then resolve `owner/id` exactly, or a bare `<id>` against the
+   resolved person's `tickets/<owner>/` first and other owners second — **two or more foreign owners
+   sharing a bare id is a hard stop listing the `owner/id` choices, never a pick**. Reviewing
+   another person's ticket is normal; say whose work is under review.
 1. Read the merged config (`bin/effective_config.py --json`), not raw `stack.yaml`. Resolve every
    warehouse **target** this ticket touches and verify each one
    (halt with that target's adapter auth notes if unreachable) — resolution order in
@@ -113,4 +119,5 @@ the cost of a missed defect is high.
 ## Phase N — Verdict
 Emit the structured report (Summary · pyramid results per layer · findings by severity ·
 verification queries run · **APPROVE** or **REQUEST-CHANGES**). Save it into the ticket's
-`qc_queries/` for the audit trail. APPROVE ⇒ recommend `/ship <id>`.
+`qc_queries/` for the audit trail. APPROVE ⇒ recommend `/ship <owner>/<id>` — the qualified
+locator, so `/ship` cannot re-resolve a bare id to a different owner's ticket.

@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
-argument-hint: <ticket-id> [--go]   (--go authorizes the external Phase B after review)
+argument-hint: <ticket-id | owner/id> [--go]   (--go authorizes the external Phase B after review)
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
 disable-model-invocation: true
 ---
@@ -15,7 +15,13 @@ personal and machine override); routes through the docstore / tracker / chat / v
 works regardless of the underlying tools.
 
 ## Phase A — Finalize (no approval needed; internal to repo)
-1. Read the merged config (`bin/effective_config.py --json`) + the ticket README + the `/review` verdict. If the verdict isn't APPROVE,
+1. **Resolve WHO first** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
+   and show its one-line "Working as …" display; the resolved person is the shipper. Then resolve
+   the **ticket locator**: `owner/id` is exact; a bare `<id>` resolves against the shipper's
+   `tickets/<owner>/` first, then across other owners — **two or more foreign owners sharing it is a
+   hard stop listing the `owner/id` choices, never a pick**. Shipping a ticket whose owner isn't the
+   shipper is allowed — say so out loud before continuing.
+   Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the `/review` verdict. If the verdict isn't APPROVE,
    **stop** and send the user back to `/review`.
 2. If the stack has a warehouse seam, re-run the final deliverable queries once more; confirm
    **byte-identical** output to the committed files (`deterministic_outputs` — explicit `ORDER BY`).
@@ -24,7 +30,8 @@ works regardless of the underlying tools.
 3. Tidy: remove redundant/version-sprawl files (overwrite, don't duplicate); confirm filenames
    carry record counts; confirm the README tells the full business + methodology + QC story. Then
    **refresh this ticket's index entry** so its `tickets/INDEX.md` row gets a curated one-line
-   summary: use **`/refresh index <id>`**, which writes the record from this session. You have already
+   summary: use **`/refresh index <owner>/<id>`** (the qualified locator — a bare id two owners
+   share is a hard stop there), which writes the record from this session. You have already
    read this ticket — no second model call is needed, and this path works under every runtime.
    The PostToolUse hook already keeps the row present; this upgrades it from auto-derived (`▱`) to
    curated.
@@ -39,7 +46,7 @@ works regardless of the underlying tools.
    from the ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first;
    segmented with counts/%/$. Chat ≤ `word_limits.chat`; includes `seams.chat.always_include`;
    **hyperlink everything** (`hyperlink_everything`). If chat/docstore aren't configured, skip
-   those artifacts and note `/setup chat` / `/setup docstore` as the enabler — don't block.
+   those artifacts and note `/setup tool chat` / `/setup tool docstore` as the enabler — don't block.
    Then, in order:
    - **Comms-lint the drafts first (the hard rails):** each is within its `word_limits.*` cap; ticket
      id(s), files, and PR are hyperlinked; the chat message carries `always_include` (+ `include_self`
