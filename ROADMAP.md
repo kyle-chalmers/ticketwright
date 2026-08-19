@@ -14,7 +14,7 @@ The ticket index is **active**, not just browsable, and observable.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
-- 23 adapters across 6 seams; 6 worked stacks; **300+-check self-test**; GitHub Actions CI.
+- 30 adapters across 7 seams; 6 worked stacks; **300+-check self-test**; GitHub Actions CI.
 
 Lineage: Ticketwright is the canonical evolution of earlier prototypes — the advanced *engine*
 (recall, objects, deep-QC, eval, adapters, hooks) with their *distribution* ideas

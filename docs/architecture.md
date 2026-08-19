@@ -97,8 +97,10 @@ protection. The policy value is the shared contract; only the enforcement mechan
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`
   delegates to (one per pyramid layer in `--deep` mode).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
-- **23 adapters** (`adapters/`) across 6 seams — full verb coverage each, including a `local`
-  tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS).
+- **30 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
+  tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS). Six of
+  those directories are tool seams; the seventh, `runtime/`, declares what each agent harness can do
+  (see [runtimes.md](runtimes.md)) and carries no verbs, because it is not a tool the project calls.
 - **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
   README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via
   `*.private.csv` / a `private/` subfolder), role snippets, and the productized-skill skeleton.
