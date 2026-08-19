@@ -1,6 +1,6 @@
 # Ticketwright change prompts
 
-NINE prompts, in build order. Run each in a fresh session from the ticketwright repo. Each is
+ELEVEN prompts, in build order. Run each in a fresh session from the ticketwright repo. Each is
 self-contained. Do not reorder — later prompts assume earlier ones landed.
 
 ## Settled decisions — implement, do not re-open
@@ -91,9 +91,11 @@ unconfigured. That flow is correct and must keep working — note this constrain
 
 Work in WAVES. Inside a wave, sessions run concurrently in separate worktrees; between waves,
 everything merges first. The constraint is file collision, not sequence for its own sake: prompts 1,
-6 and 9 all touch the adapter/seam counts in `ROADMAP.md` and `docs/architecture.md`; 2 and 8 both
-own the resolver; 4 and 6 both touch `.claude/skills/setup/`; 5 and 8 both edit
-`.claude/skills/ship/SKILL.md`.
+6, 9 AND 10 all touch the adapter/seam counts in `ROADMAP.md` and `docs/architecture.md`; 2 and 8 both
+own the resolver; 4, 4b and 6 all touch `.claude/skills/setup/`; 5 and 8 both edit
+`.claude/skills/ship/SKILL.md`; and 4b additionally collides with 8-step-1 on
+`.claude/config/stack.schema.md` + `adapters/README.md` and with 9 on `README.md`, which is why it
+runs alone.
 
 | Wave | Runs concurrently | Effort | Why it is safe together |
 |---|---|---|---|
@@ -101,9 +103,11 @@ own the resolver; 4 and 6 both touch `.claude/skills/setup/`; 5 and 8 both edit
 | B | 3 | high | Needs tier 3 from prompt 2. |
 | C | 4, 5 | high, high | 4 owns `skills/setup/`; 5 owns `skills/ticket|ship|review|spec-and-build`. Disjoint. |
 | D | 8-step-1, 6-item-1 | high, medium | 8 edits `ship/SKILL.md` only after 5 has merged. 6-item-1 needs 4's wording. |
-| E | 9 | medium | LAST of the docs-touchers — 1, 6 and 8 must have settled the counts. |
-| F | 7 | high | Needs 1 plus everything 2-5 settled. Split further on arrival. |
-| G | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
+| E | 4b | high | ALONE, and it has to be. 4b collides with 8-step-1 on `stack.schema.md` + `adapters/README.md`, with 6-item-1 on `bin/selftest.sh`, and with 9 on `README.md` + `ROADMAP.md`. It also needs 4's verbs and invariant, 6-item-1's absent-seam token, and 6-item-2's tracker verb — all of which must have merged. |
+| F | 9 | medium | The docs restructure. 1, 6 and 8-step-1 must have settled the counts (8 steps 2-5 land later, in H, and move no counts), and 4b must have landed its setup-section rewrite — 9 restructures `README.md` around it and must preserve it. NOT the last docs-toucher any more: prompt 10 moves the adapter count again in wave I, which is why 10 is scheduled after this rather than beside it. |
+| G | 7 | high | Needs 1 plus everything 2-5 settled. Split further on arrival. |
+| H | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
+| I | 10 | high | Email adapters. LAST on purpose: a repo can hold only one `chat` seam until H lands, and email is where a wrong audience is least recoverable. It also moves the adapter counts, so it must not run beside 9. |
 
 WAVE A OWNERSHIP SPLIT — the one overlap that needs a rule. Prompts 1 and 2 both reach
 `bin/enrich_ticket.py` and both edit preflight prose in `.claude/skills/*/SKILL.md`:
@@ -115,6 +119,11 @@ WAVE A OWNERSHIP SPLIT — the one overlap that needs a rule. Prompts 1 and 2 bo
   - Prompt 6-item-2 touches only `adapters/tracker/*.md` and the `tracker) echo 6` line in
     `bin/selftest.sh` — no overlap with either.
 Expect a small textual conflict between 1 and 2 in skill preflight sections. Merge prompt 1 first.
+
+SPLIT PROMPT 4. Prompt 4 splits `/setup`'s VERBS; prompt 4b re-cuts its QUESTIONS. Both touch
+`.claude/skills/setup/`, so they must not run concurrently — 4 in wave C, 4b in wave E. Keeping them
+in one session would make it by far the largest prompt in the set, while wave C already runs 4
+alongside 5.
 
 SPLIT PROMPT 6. Its two items belong in different waves: item 2 (the tracker verb) is independent and
 runs in wave A; item 1 (the absent-seam token) needs prompt 4 and runs in wave D.
@@ -543,11 +552,268 @@ Be honest about what a placeholder does NOT buy: an identity-free stub still ret
 roster, a way to tell "this repo just upgraded" from "this person is new", and a named set of
 candidates for the `whoami --bind` interview to offer on a miss.
 
+SCOPE FENCE: this prompt does NOT touch the Phase-2 question list. Retiring the "at most 5 questions"
+cap, re-cutting the interview into rounds, and the roster/email/Obsidian questions are PROMPT 4b, in
+the next wave. Do not rewrite Phase 2 here — it would be rewritten twice.
+
 ---
 
 GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" above): run codex
 on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
 PROMPT 4. Put both verdicts in the PR body.
+
+## PROMPT 4b — Retire /setup's question cap and re-cut the interview
+
+Depends on PROMPT 4 (the canonical `/setup tool` wording, the restated invariant, the prose rule),
+PROMPT 3 (`whoami`), PROMPT 2 (tier files), and PROMPT 6 item 2 (`rank_projects_by_activity`, which
+lands in wave A and whose caller this prompt supplies).
+
+PROMPT 4 splits `/setup`'s verbs by scope. It does NOT touch the Phase-2 question list. This prompt
+does, and it is deliberately a separate session: appending it to 4 would make 4 the largest prompt
+in the set while wave C already runs 4 concurrently with 5.
+
+`/setup` promises a working config after "at most 5 questions". The cap encoded "detect first, ask
+last", but it is now the binding constraint on CORRECTNESS, and it ships repos configured wrong in
+ways nobody notices for weeks:
+  - Chat and docstore are never configured (`.claude/skills/setup/SKILL.md` defers both), so the two
+    seams that carry work OUT of the repo ship as commented blocks — so `seams.chat.always_include`,
+    the "never solo-DM a stakeholder" list, is ABSENT. Say absent, not "empty": an implementer who
+    reads "empty" may write `always_include: []`, which is WORSE than the key being missing, and
+    PROMPT 8's non-empty rule binds only when `targets:` is present.
+  - `role` and `domain` are never asked, so every rendered `AGENTS.md` says `generalist` /
+    `data analysis`.
+  - `ticket_url_template` is never asked, so every link in `INDEX.md` can be dead.
+  - Only one person folder is ever created. `bin/build_ticket_index.py` fully supports multi-owner
+    `tickets/<owner>/`; the writer never produces more than one.
+  - `write_obsidian_graph()` writes `.obsidian/graph.json` whether or not Obsidian is installed, and
+    `templates/gitignore.tmpl` leaves it TRACKED, so it lands in the repo when setup's commit offer
+    is accepted. No detection, no install guidance anywhere in the kit.
+
+### THE RULE THAT REPLACES THE CAP — get this right or the change is cosmetic
+The obvious phrasing, "never ask what has a safe default written as an editable commented line",
+LICENSES EVERY DEFECT ABOVE: `role`, `domain`, `terminal_status`, chat and docstore are all already
+commented lines. It restates the status quo. The load-bearing distinction is LOUD vs SILENT failure:
+
+  ASK when a wrong or absent value still yields a CONFIDENT-LOOKING OUTPUT. Leave it a commented
+  default when a wrong or absent value FAILS LOUDLY at `verify_stack.sh` or on first use.
+
+COROLLARY — AND THIS PROMPT IS WHERE THE `requires:` TRAP GETS RESOLVED. Adapter-required keys are
+the largest source of questions (Jira `site` + `cli`; Asana `workspace_gid`; monday `board_id`;
+Databricks `warehouse_id` + `catalog` + `schema`; gdrive `base_path` — plus the extra keys each
+adapter's frontmatter COMMENT names, which are NOT in its `requires:` list; do not conflate the two).
+It is tempting to leave them all `# TODO` on the grounds that they fail loudly. THEY DO NOT — see the
+live-false-promise entry in the SELFTEST TRAP section above, which this prompt must not re-derive.
+  TAKE THE FIRST OF THE TWO FIXES THE TRAP SECTION ALLOWS: ASK for every adapter-required key, and
+  accept "I'll fill it in later" as the answer that writes the `# TODO`. Asking costs one line and
+  is what "properly set up" means; silently deferring a key nothing checks is how a repo ends up
+  half-configured behind a green verify. Making `verify_stack.sh` read `requires:` is the other
+  sanctioned fix and is a fine follow-up, but it is not this prompt's job.
+
+SHIP NO NUMBER. Do not replace "≤5 questions" with "≤N questions" or with a per-round target.
+Nothing counts rounds at runtime, and the premise of this change is that a stated number did damage
+BECAUSE PEOPLE BELIEVED IT. State the discipline.
+
+### (i) Retire the cap — nine promise sites to rewrite, four to leave alone
+Rewrite: `SKILL.md` frontmatter `description`, the body intro, the Phase 2 header, and the `<seam>`
+mode's "ask one question"; `adopt.md`'s "(still ≤5-question) interview" AND its "Confirm the
+inference with the user in ONE question"; `README.md`'s three (the `≤5 questions` comment line, "at
+most five questions", and "What it then asks — at most five").
+KEEP, and do not let a selftest grep catch them: `SKILL.md`'s `--voice` summary and `voice.md`'s
+"≤5 short questions" — that is the voice interview's own cap, a separate and genuinely short
+feature. `CHANGELOG.md`'s two hits are the historical 2.0.0 record; add a new entry, never rewrite
+those.
+Also REMOVE `AskUserQuestion` from `allowed-tools` in `SKILL.md` frontmatter AND from the body
+("One AskUserQuestion round"), and convert the `voice.md` site the trap section names — mechanism to
+prose, its ≤5 cap kept. Then SWEEP for any other `AskUserQuestion` reference rather than fixing only
+the named sites: selftest section 4 checks frontmatter validity only, so every one of these survives
+silently.
+
+### (ii) Re-cut Phase 2 into rounds — BY SURVIVABILITY, NOT BY TOPIC
+Move the interview into a new `.claude/skills/setup/interview.md`, matching the existing
+reference-file pattern (`adopt.md` / `scaffold.md` / `teammate.md` / `voice.md`). `SKILL.md` keeps
+the map and the invariant. This is safe: selftest 14b forbids stray skill FOLDERS, not files, and
+`pyproject.toml` maps the whole `.claude/skills` directory into the wheel.
+
+Detection stays PHASE 1, as today. There is no "round 0". Rounds 1-4 ALWAYS RUN; rounds 5-6 are
+individually skippable. The split is drawn by whether skipping is survivable — which is why VCS and
+the owner name cannot sit in a skippable round, since `project.ticket_path` structurally needs
+`{assignee}`. A cut drawn by topic strands required facts in optional rounds.
+
+PHASE 1 — DETECT. See the SELFTEST TRAP entry before touching the probe line. New probes, all clear
+of the leak-grep patterns: Obsidian; the `origin` URL (which yields BOTH the public-remote privacy
+signal AND the VCS host; `default_branch` comes from `git symbolic-ref refs/remotes/origin/HEAD`,
+NOT from `git symbolic-ref HEAD`, which reports the branch that happens to be checked out and would
+misconfigure any setup run from a feature branch); an existing `people/` directory
+(which PROMPT 4's `(c0)` branches on); docstore mount roots.
+  MOUNT-ROOT DETECTION IS REPORT-ONLY. A mount root is tier 3. Default `/setup` writes tier-1 values
+  only, so the detected path is displayed and routed to the person flow. Writing it into committed
+  `stack.yaml` is the exact leak PROMPT 2 exists to fix.
+
+ROUND 1 — WHO. On `whoami` status `resolved`, CONFIRM rather than ask, using PROMPT 3's one-line
+display. On `miss`, run PROMPT 3's self-healing bind interview — one question, then `--bind`; on
+`ambiguous`, ask and never rank. "Confirms rather than asks" describes the resolved path ONLY, and
+must not be written in a way that suppresses the interview PROMPT 3 requires, since that interview is
+what makes identity self-healing.
+  Then the roster: ASK EXPLICITLY WHO ELSE IS ON THE TEAM — this is a first-class question, not a
+  by-product of `(c0)`'s bootstrap. Write one identity-free tier-2 placeholder per person named, per
+  PROMPT 4's restated invariant. `(c0)` covers the UPGRADED-REPO path (seed from what is already
+  known, then confirm); this question covers the FRESH-SETUP path, where there is nothing to seed
+  from. Both write the same shape.
+  Round 1 is FIRST because it costs almost nothing, it grounds every later answer, and the
+  public-remote privacy warning has to land BEFORE the user types colleagues' work emails, not after.
+
+ROUND 2 — WHERE WORK COMES FROM. Tracker (or none → `local` + `id_mode: slug` +
+`ticket_url_template: null`). THIS ROUND IS `rank_projects_by_activity`'S CALLER — ranked options
+first, silent fallback to a plain ask where a tracker cannot expose activity. Then key prefix;
+`ticket_url_template` (dead index links are the textbook silent-wrong failure — github-issues needs
+the repo and `{number}`; monday/asana are not derivable); and `terminal_status`.
+  ASK `terminal_status` PLAINLY — do not write "confirm the detected value". There is no
+  tool-agnostic way to detect it: the tracker verb contract in `adapters/README.md` has no
+  workflow-status discovery verb, and PROMPT 6 adds only `rank_projects_by_activity`. Reading
+  workflow states would mean a new verb in all seven tracker adapters and another `tracker) echo N`
+  bump. That may be worth doing later; it is not in scope here, and the interview must not imply a
+  detection that does not exist.
+  DROP `default_epic` FROM THE INTERVIEW. It is null-defaultable and NOT A NATIVE CONCEPT for five
+  of seven trackers — `adapters/tracker/asana.md` says outright that Asana has no epic. Asking every
+  user for a parent epic id they do not have yet is noise.
+
+ROUND 3 — WHERE THE DATA LIVES. Warehouse (or none); `dev_target`, which IS tier 1 because PROMPT 2
+forbids target selection being personal, and whose absence means dev DDL has no separate home; and a
+"more than one warehouse?" branch into the `targets:` shape, which has a whole schema section and a
+worked example. Tier-1 values only — never the machine-local connection or profile name.
+
+ROUND 4 — WHERE WORK GOES. VCS is CONFIRMED from the detected `origin`, not asked. Docstore — and
+split `base_path` the way PROMPT 2 mandates: team folder identity in tier 1, machine mount root in
+tier 3. Chat, its channel, and `always_include`.
+  Ask the channel question PER-ADAPTER: Slack reads `default_channel`, Teams reads `channel`. One
+  generic question writes the wrong key for one of them.
+  THIS ROUND'S CHAT QUESTION IS NOT FINAL, and this prompt must say so in the skill: PROMPT 8 states
+  that "`/setup`'s interview has no target-routing step" and will revise whatever Round 4 writes once
+  chat targets exist. Write it so adding a target later is an EXTENSION, not a rewrite.
+  EMAIL IS ONE QUESTION HERE, covering both directions — in, out, or both. Splitting intake into an
+  early round and delivery into a later one reads to a user as being asked about email twice.
+
+ROUND 5 — HOW YOU WORK (skippable). `project.role` + `project.domain` as ONE question. Be honest
+about the blast radius: `role` fills exactly one token, `{{role_focus}}`, from a
+`templates/roles/<role>.md` file of THREE TO SIX LINES; `domain` fills one word in one sentence.
+Nothing else reads either.
+  THE USER'S ACTUAL ASK WAS "tools for pulling data" VS "tools for doing actual analyses", AND
+  role/domain DOES NOT ANSWER THE SECOND HALF. dbt, Jupyter, pandas, R, Excel and Tableau have no
+  seam, no adapter directory and no key anywhere in `stack.schema.md`. Pick one and SAY WHICH,
+  rather than quietly substituting persona prose for the answer:
+    (a) declare analysis tooling out of scope for `stack.yaml`, and let round 5 tune prose only;
+    (b) add `project.analysis_tools: [...]` as a tier-1 list rendered into `AGENTS.md`;
+    (c) scope it as a new adapter directory.
+  DECIDED: (b). Do not re-open it and do not silently pick (a) — the user asked for analysis tools to
+  be covered, and (a) answers a different question while looking like an answer. Add
+  `project.analysis_tools` to `.claude/config/stack.schema.md` with a default of `[]`, render it into
+  `AGENTS.md`, and state in the schema row that it is descriptive context for the agent, not a seam:
+  nothing verifies it and nothing executes from it.
+  DO NOT auto-append analysis tooling to `permissions.allow`. That lives in `.claude/settings.json`
+  (Claude-Code-only, against PROMPT 1/7's harness-neutral direction), it is invisible to
+  `verify_stack.sh`, it does not travel to a teammate with a different environment, and it would
+  broaden Bash permission past today's read-only seam-derived additions.
+
+ROUND 6 — HOUSE RULES (skippable). Only `db_write_requires_approval` and `human_review_handoff` —
+the two whose default is plausibly wrong for a given team. The other eight policies stay commented
+defaults; asking all ten is the wall the cap existed to prevent.
+
+### (iii) SKIPPING: per-round, consequence-labeled, resumable
+DO NOT ship a global "answer the first two rounds and I'll take defaults for the rest" bail. Offered
+before round 1 the user cannot evaluate it — it reads as "skip four things I have not described" —
+and "documented defaults" for rounds 5-6 means EXACTLY the defects this prompt exists to fix. A
+global escape promotes the broken state from an accident to a menu item.
+  - Offer the skip AT EACH SKIPPABLE ROUND HEADER, LABELED WITH ITS COST: "Skip this and AGENTS.md
+    ships the generic persona."
+  - Write a skipped round as an explicit `# TODO` line in `stack.yaml` AND a punch-list section in
+    the Phase-4 report, each naming the re-entry command. Deferring must be TRACKABLE; "took
+    defaults" is indistinguishable from "chose".
+  - RE-ENTRY MUST ACTUALLY EXIST. PROMPT 4 defines only `/setup tool <chat|docstore|warehouse>`.
+    There is no verb for role/domain, the roster, or the policies, and `--teammate` is person-scoped
+    so it cannot write the team roster. Add the missing verbs (e.g. `/setup role`, `/setup team`,
+    `/setup policies`) or delete every claim that a round can be re-run. A promise with no mechanism
+    is worse than no promise.
+
+### (iv) EMAIL — ask here, adapters in PROMPT 10
+INTAKE needs no adapter, but it NEEDS A DEFINED KEY or it is an ignored value pretending to be
+configuration. Specify all four: the key (recommend `project.intake: [tracker, email, chat]`), its
+row in `.claude/config/stack.schema.md`, its default, and its CONSUMER — `/ticket`'s priming step
+looking for forwarded threads in `source_materials/`. No key, no question.
+DELIVERY needs a real chat adapter and is deferred to PROMPT 10. But "ask the direction and write a
+commented block" is NOT a configured repo — so on "yes", still run the configuration questions and
+record the answers, so PROMPT 10 has something to activate rather than a fresh interview to invent:
+WHICH PROVIDER (gmail | outlook), the SENDING IDENTITY or shared mailbox, and the DECLARED AUDIENCE
+plus its recipient list — which becomes that target's `always_include` under PROMPT 8's rules. Write
+them into a commented `seams.chat.targets.email` block with a `# TODO` naming what is missing
+(the adapter) and pointing at `adapters/README.md` § "Writing a new adapter". Say plainly in the
+setup report that email is CONFIGURED BUT NOT YET WIRED, so nobody believes a draft will send.
+
+### (v) OBSIDIAN — detect and guide, never ask
+`graph_notes` / `graph_config` already default correctly, so this spends no question. If Obsidian is
+absent, the Phase-4 report prints ONE line. Write `docs/obsidian.md` (install, open-the-repo-as-a-
+vault, what the two node types mean, the `graph_notes: false` opt-out) and link it from BOTH the
+README's Obsidian section AND its further-reading doc list — listed in only one of the two, it is
+half-discoverable.
+  `docs/` DOES NOT SHIP IN THE PACKAGE. `pyproject.toml` force-includes `bin`, `.claude/*`,
+  `adapters` and `templates`; its sdist list omits `docs` entirely. A setup report printing a bare
+  `docs/obsidian.md` path is BROKEN ON A PyPI INSTALL — print the GitHub URL, or inline the two
+  install lines.
+
+### (vi) Housekeeping to fold in, since this prompt is already in these files
+Deliberately bundled rather than tracked separately: every prompt that moves a count already has to
+reconcile `ROADMAP.md` / `docs/architecture.md` / `README.md`, and 4b is in those files anyway. If a
+reviewer would rather these were their own prompt, splitting them out costs nothing.
+  - `adapters/README.md` says "Five worked `stack.yaml` configs ship … The same skills run against
+    all five", while `ROADMAP.md` says 6 and selftest counts 6 (`stack.yaml` + 5 examples).
+    `.claude/config/stack.schema.md` likewise enumerates five and omits
+    `stack.example.no-warehouse.yaml`. Change ONLY those two — and re-read the trap section's
+    "know which copy is authoritative" entry first.
+  - `bin/selftest.sh` has a DUPLICATE `hdr "25 · …"` and its last section is 29 — do not assume
+    sequential numbering when adding one. Its check-floor comment ("Counting this assertion itself
+    is why it is the last one") is STALE: two sections already run after it, so a section appended
+    at the end contributes zero to the counted total. The floor is a floor (`PASS+1 >= floor`), so
+    ADDING CHECKS IS SAFE AND NEEDS NO BUMP either way.
+
+### (vii) SELFTEST — a new section that tests BEHAVIOR, not vocabulary
+A section that greps for round headings proves nothing. Drive fixture answers the way existing
+sections drive `verify_stack.sh`, and assert OUTCOMES:
+  - SCOPED cap grep: the count promise is absent from the DEFAULT-MODE section of `SKILL.md`, from
+    `adopt.md` and from `README.md` — scoped so it does NOT fail against the `--voice` line this
+    prompt deliberately keeps. A naive whole-file grep self-contradicts on day one.
+  - Rendered config, not prose: `always_include` non-empty, `ticket_url_template` set, `dev_target`
+    present, `project.intake` written, docstore's tier-1 half in `stack.yaml` and the mount root
+    ABSENT from it.
+  - Skip behavior: skipping rounds 5-6 emits the `# TODO` lines and the punch-list, and the config
+    still passes `verify_stack.sh`.
+  - Every re-entry verb advertised as re-runnable actually resolves.
+  - The CLI-probe exemption substring survives VERBATIM — its own assertion, with a comment naming
+    both greps, because this is the regression most likely to bite this prompt.
+  - The canonical `/setup tool chat` spelling is present. Do NOT assert that `/setup chat` is gone —
+    PROMPT 4 keeps old spellings working for ONE RELEASE with a deprecation line, so an assertion
+    demanding their absence and PROMPT 4 cannot both pass. Assert instead that every surviving old
+    spelling carries its deprecation line.
+  - `docs/obsidian.md` exists and is linked from both README locations; `AskUserQuestion` is gone
+    from `allowed-tools`.
+  - WHILE YOU ARE IN THIS FILE, GENERALIZE ONE EXISTING ASSERTION: the `include_self` documentation
+    check names `adapters/chat/slack.md` and `adapters/chat/teams.md` individually, so any chat
+    adapter added later escapes it silently. Rewrite it to loop over `adapters/chat/*.md`. An
+    assertion that enumerates its own subjects stops covering anything new — the same class of bug as
+    the literal-substring leak-grep exemption. PROMPT 10 adds two chat adapters and is relying on
+    this being fixed here; since 4b is wave E and 10 is wave I, the gate is generalized well before
+    the first new adapter arrives, which is why this is not landed early as a standalone fix.
+    THE ONE WINDOW THIS LEAVES OPEN: until 4b lands, the `include_self` gate covers `slack` and
+    `teams` only. A chat adapter added OUTSIDE this plan before wave E escapes it silently. If that
+    happens, generalize the assertion then rather than waiting for 4b.
+
+Success criterion: a team finishes `/setup` with chat, docstore, owner routing and the two
+behavioral policies actually configured — and a solo user with no tracker and no warehouse is not
+dragged through rounds that do not apply to them.
+
+---
+
+GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" above): run codex
+on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
+PROMPT 4b. Put both verdicts in the PR body.
 
 ## PROMPT 5 — Make owner part of ticket identity
 
@@ -871,3 +1137,85 @@ GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" abov
 on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
 PROMPT 9. Put both verdicts in the PR body.
 
+## PROMPT 10 — Email as a chat target (gmail + outlook adapters)
+
+Depends on PROMPT 8 SEQUENCE ITEM 2 (wave H), not merely on PROMPT 8 step 1. Read the dependency
+note below before scheduling this anywhere earlier.
+
+PROMPT 4b's interview asks whether email carries work in, out, or both, and on "out" records the
+provider, sending identity and declared audience in a commented chat target. This prompt turns that
+into a live one.
+PROVENANCE, since outbound email is a material expansion over "ask better setup questions": DELIVERY
+was explicitly requested — email is to serve as both intake and delivery. It is scoped into its own
+prompt, behind wave H, precisely so that expansion is visible and sequenced rather than smuggled into
+an interview change.
+
+EMAIL IS `chat` WITH A TARGET, NOT A SIXTH SEAM. It meets none of PROMPT 8's bar for a new seam
+kind: it has no verb contract of its own, no distinct lifecycle responsibility, and no separate
+safety boundary. "Another place to send a message" is explicitly the example PROMPT 8 gives of what
+does NOT justify a sixth kind. Do not add an `adapters/email/` directory.
+
+1. TWO ADAPTERS: `adapters/chat/gmail.md` and `adapters/chat/outlook.md`, implementing all four chat
+   verbs. THIS TRIPS THE SELFTEST TRAP — handle it head-on:
+     - Adding 2 adapters changes the DERIVED counts, so `docs/architecture.md`'s `**<N> adapters**`
+       and `ROADMAP.md`'s `- <N> adapters across <M> seams` MUST be updated in the same commit, and
+       both new adapters listed in `adapters/README.md` § "Adapters shipped".
+     - The chat seam asserts `chat) echo 4` by EXACT EQUALITY. Implement all four verbs in both
+       adapters; do not weaken the check.
+     - MCP TOOL-NAME ISOLATION: `bin/selftest.sh` fails any adapter containing a literal
+       `mcp__<name>__` that is not the templated `mcp__{mcp}__`. Both of these will almost certainly
+       be MCP-transport adapters, so this is the trap most likely to bite — write the token form.
+     - `adapters/README.md` carries a parenthetical list of the MCP-transport adapters
+       ("Asana, Linear, Monday, Teams, Slack"). Nothing asserts it, so it will go stale silently.
+       Update it in the same change.
+     - Document `include_self` in both new adapters. The assertion that it is documented names
+       `adapters/chat/slack.md` and `adapters/chat/teams.md` INDIVIDUALLY, so new chat adapters
+       escape it silently — PROMPT 4b generalizes that assertion to every `adapters/chat/*.md`, so by
+       the time this prompt runs the gate should already cover you. Verify that it does.
+     - `CHANGELOG.md`: a new delivery channel is user-facing, and `AGENTS.md` requires an entry.
+
+2. BE HONEST ABOUT THE VERB MAPPING RATHER THAN PRETENDING IT IS CLEAN. `draft` and `send` map
+   directly, and `lookup_user` maps to the address book. `lookup_channel` → a distribution list is a
+   STRETCH, and `always_include` / `default_channel` do not transfer cleanly to a medium with
+   to/cc/bcc. State the mapping and its rough edges in each adapter's frontmatter notes; a future
+   reader must not infer parity with Slack that does not exist.
+
+3. THE REAL BLOCKER IS PROMPT 8, NOT THE DOC COUNTS. A repo can hold only ONE `chat` seam today
+   because `.claude/config/stack.schema.md` scopes multi-target to `warehouse` in v1 — "no skill
+   resolves targets for the other four". Cite THAT, not the schema's "these five keys, no others"
+   line: that line is about seam KINDS rather than tools-per-kind, so it never supported this claim,
+   and PROMPT 8 step 1 replaces its exclusivity language outright, so by wave I it is gone. A team on Slack internally AND email for stakeholder delivery — precisely the team that
+   answers "yes" to 4b's email question — CANNOT EXPRESS BOTH until PROMPT 8 sequence item 2 lands.
+   That item is in WAVE H. Do not schedule this prompt against `8-step-1` in wave D; step 1 delivers
+   the docs fix and the resolver, not chat targets.
+
+4. INHERIT PROMPT 8'S SAFETY MACHINERY IN FULL — INHERIT, not extend. This prompt must not invent a
+   new approval model or change `/ship`'s routing design; wave H already built both, and a second
+   design here would fork the safety story. What follows is the existing model applied to a new
+   target. This is still the riskiest thing in the whole set.
+   Email is an external delivery path where a wrong audience is LEAST recoverable: you cannot unsend
+   it and you cannot scope it after the fact. This prompt is not four verb sections. It must also:
+     - give the email target its OWN declared audience and its OWN non-empty `always_include`,
+       applied AFTER routing and never inherited from another target;
+     - route only from an explicitly declared audience — NEVER infer internal-vs-external from
+       prose, address domains, or list names;
+     - surface the resolved delivery plan (target, platform, recipients, sharing scope, exact
+       actions) for human authorization, per PROMPT 8's replacement of `/ship`'s generic approval;
+     - never fall back to another chat target when email routing fails.
+
+5. DRAFT-FIRST FOR BOTH ADAPTERS. Be precise about where that guarantee actually lives: the
+   documented default is the POLICY `policies.chat_default_draft: true` in
+   `.claude/config/stack.schema.md`; `default_mode: draft` is a seam key the shipped examples set
+   explicitly, not a schema-level default. So do not rely on an unset `default_mode` meaning "draft"
+   — set it explicitly on both email targets and keep the policy honored. The gap between a draft a
+   human clicks and a message already gone is the whole safety margin here.
+
+Success criterion: a team can declare Slack for internal comms and email for stakeholder delivery in
+one `stack.yaml`, `/ship` names which target it resolved before doing anything, and no email path
+can send without an explicit declared audience.
+
+---
+
+GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" above): run codex
+on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
+PROMPT 10. Put both verdicts in the PR body.
