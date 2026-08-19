@@ -49,7 +49,7 @@ def _valid_date(v):
 
 
 def _clean_objects(v) -> list:
-    """Qualified object names only (must contain a dot) — drops bare prose like 'the loan view'."""
+    """Qualified object names only (must contain a dot) — drops bare prose like 'the orders view'."""
     seen: dict[str, str] = {}
     for o in _as_list(v):
         o = o.strip()

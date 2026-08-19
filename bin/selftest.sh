@@ -488,15 +488,15 @@ hdr "11 · prior-art recall + object reverse-index"
 R="$TMP/recall"
 mkdir -p "$R/.claude/config" "$R/tickets/dana/ENG-1" "$R/tickets/dana/ENG-2" "$R/tickets/dana/ENG-3"
 printf 'project:\n  key_prefix: ENG\n' > "$R/.claude/config/stack.yaml"
-printf '# ENG-1: Loan tape base\n\nbase pull.\n' > "$R/tickets/dana/ENG-1/README.md"
-printf 'SELECT * FROM BI.ANALYTICS.VW_LOAN;\n' > "$R/tickets/dana/ENG-1/q.sql"
-printf '# ENG-2: Loan tape follow-up\n\nFollow-on to ENG-1.\n' > "$R/tickets/dana/ENG-2/README.md"
-printf 'SELECT * FROM BI.ANALYTICS.VW_LOAN;\n' > "$R/tickets/dana/ENG-2/q.sql"
+printf '# ENG-1: Order feed base\n\nbase pull.\n' > "$R/tickets/dana/ENG-1/README.md"
+printf 'SELECT * FROM BI.ANALYTICS.VW_ORDERS;\n' > "$R/tickets/dana/ENG-1/q.sql"
+printf '# ENG-2: Order feed follow-up\n\nFollow-on to ENG-1.\n' > "$R/tickets/dana/ENG-2/README.md"
+printf 'SELECT * FROM BI.ANALYTICS.VW_ORDERS;\n' > "$R/tickets/dana/ENG-2/q.sql"
 printf '# ENG-3: Genesys call metrics\n\nunrelated work.\n' > "$R/tickets/dana/ENG-3/README.md"
 printf 'SELECT * FROM BI.OPS.VW_CALL;\n' > "$R/tickets/dana/ENG-3/q.sql"
 printf 'from os.path import join\nimport collections.abc\n' > "$R/tickets/dana/ENG-3/munge.py"  # must NOT be indexed
 CLAUDE_PROJECT_DIR="$R" python3 bin/build_ticket_index.py >/dev/null 2>&1
-if grep 'VW_LOAN' "$R/tickets/OBJECTS.md" 2>/dev/null | grep -q 'ENG-1' && grep 'VW_LOAN' "$R/tickets/OBJECTS.md" | grep -q 'ENG-2'; then
+if grep 'VW_ORDERS' "$R/tickets/OBJECTS.md" 2>/dev/null | grep -q 'ENG-1' && grep 'VW_ORDERS' "$R/tickets/OBJECTS.md" | grep -q 'ENG-2'; then
   ok "OBJECTS.md maps shared object → both tickets"; else bad "OBJECTS.md reverse map wrong" "$(cat "$R/tickets/OBJECTS.md" 2>/dev/null)"; fi
 CLAUDE_PROJECT_DIR="$R" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 && ok "--check covers INDEX.md + OBJECTS.md" || bad "--check failed after render"
 rj="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --for ENG-1 --json 2>/dev/null)"
@@ -504,11 +504,11 @@ top="$(python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); prin
 ids="$(python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(','.join(x['id'] for x in d))" <<<"$rj")"
 [ "$top" = "ENG-2" ] && ok "recall ranks the related ticket first (ENG-2)" || bad "recall mis-ranked" "top=$top ids=$ids"
 grep -q 'ENG-3' <<<"$ids" && bad "recall surfaced the unrelated ticket (ENG-3)" || ok "recall excludes the unrelated ticket"
-rl="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --object BI.ANALYTICS.VW_LOAN --json 2>/dev/null | python3 -c "import json,sys; print(sorted(x['id'] for x in json.load(sys.stdin)))")"
+rl="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --object BI.ANALYTICS.VW_ORDERS --json 2>/dev/null | python3 -c "import json,sys; print(sorted(x['id'] for x in json.load(sys.stdin)))")"
 [ "$rl" = "['ENG-1', 'ENG-2']" ] && ok "recall --object reverse lookup → ENG-1, ENG-2" || bad "reverse lookup wrong" "$rl"
 # regression: unqualified --object must leaf-match the qualified stored object
-ul="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --object VW_LOAN --json 2>/dev/null | python3 -c "import json,sys; print(sorted(x['id'] for x in json.load(sys.stdin)))")"
-[ "$ul" = "['ENG-1', 'ENG-2']" ] && ok "recall --object leaf match (unqualified VW_LOAN → ENG-1, ENG-2)" || bad "leaf-match lookup wrong" "$ul"
+ul="$(CLAUDE_PROJECT_DIR="$R" python3 bin/recall.py --object VW_ORDERS --json 2>/dev/null | python3 -c "import json,sys; print(sorted(x['id'] for x in json.load(sys.stdin)))")"
+[ "$ul" = "['ENG-1', 'ENG-2']" ] && ok "recall --object leaf match (unqualified VW_ORDERS → ENG-1, ENG-2)" || bad "leaf-match lookup wrong" "$ul"
 # regression: Python `from os.path import` must not be indexed as a data object
 grep -qi 'os\.path\|collections\.abc' "$R/tickets/OBJECTS.md" 2>/dev/null && bad "Python import indexed as object" "$(grep -i 'os.path\|collections' "$R/tickets/OBJECTS.md")" || ok "Python import lines excluded from object index"
 grep -q 'recall.py' .claude/skills/ticket/priming.md && ok "/ticket priming wires the recall engine" || bad "/ticket priming missing recall wiring"
@@ -527,8 +527,8 @@ idf="$(CLAUDE_PROJECT_DIR="$I" python3 bin/recall.py --for ENG-9 --json 2>/dev/n
 # regression: same id under two owners — --for --owner must keep the OTHER owner's ticket as a candidate
 M="$TMP/multiowner"; mkdir -p "$M/.claude/config" "$M/tickets/alice/ENG-5" "$M/tickets/bob/ENG-5"
 printf 'project:\n  key_prefix: ENG\n' > "$M/.claude/config/stack.yaml"
-printf '# ENG-5: alice payment recovery\n\nshared payment recovery loan tape work.\n' > "$M/tickets/alice/ENG-5/README.md"
-printf '# ENG-5: bob payment recovery\n\nshared payment recovery loan tape work.\n' > "$M/tickets/bob/ENG-5/README.md"
+printf '# ENG-5: alice inventory sync\n\nshared inventory sync order feed work.\n' > "$M/tickets/alice/ENG-5/README.md"
+printf '# ENG-5: bob inventory sync\n\nshared inventory sync order feed work.\n' > "$M/tickets/bob/ENG-5/README.md"
 mo="$(CLAUDE_PROJECT_DIR="$M" python3 bin/recall.py --for ENG-5 --owner alice --json 2>/dev/null | python3 -c "import json,sys; print(','.join(x['owner']+'/'+x['id'] for x in json.load(sys.stdin)))")"
 grep -q 'bob/ENG-5' <<<"$mo" && ok "recall --for keeps same-id ticket under another owner" || bad "seed exclusion dropped same-id/other-owner" "$mo"
 amb="$(CLAUDE_PROJECT_DIR="$M" python3 bin/recall.py --for ENG-5 2>&1 >/dev/null)"
@@ -569,6 +569,20 @@ else
 fi
 [ -f tickets/index_data.example.json ] && ok "index_data.example.json shipped as the schema reference" \
   || bad "tickets/index_data.example.json missing"
+
+# (13b) No domain vocabulary in fixtures or docs. A public kit's examples must read as obviously
+# invented — a real object name or a business-domain word borrowed from whatever repo the author
+# happened to be in is exactly how org-specific content leaks into an OSS release. Fixtures use a
+# generic orders/inventory domain; anything finance-flavoured is a leak, not a naming preference.
+domainre='(^|[^a-z])(loan|borrower|delinquen|charge.?off|fico|underwrit|servicing|disburse|repayment|payoff|lender|policyholder|claimant|patient)'
+dleak="$(grep -rIinE "$domainre" \
+          --include='*.md' --include='*.yaml' --include='*.py' --include='*.sh' \
+          --include='*.tmpl' --include='*.json' \
+          README.md docs bin adapters templates .claude tickets/index_data.example.json 2>/dev/null \
+        | grep -viE 'download|upload|reload|preload|standalone|payload' \
+        | grep -v 'domainre=' || true)"
+[ -z "$dleak" ] && ok "no business-domain vocabulary in fixtures, docs, or the kit" \
+  || bad "domain vocabulary leaked into the public kit (fixtures must be generic)" "$dleak"
 
 hdr "14 · scrub + structure (public-kit hygiene)"
 # scrub: generic secret / PII patterns must not appear in tracked kit files (selftest excluded — it
@@ -863,20 +877,20 @@ done
 hdr "21 · Obsidian graph layer (tickets/graph/ + tickets/objects/)"
 GX="$TMP/graph"; mkdir -p "$GX/.claude/config" "$GX/tickets/alice/ENG-1" "$GX/tickets/alice/ENG-2" "$GX/tickets/bob/ENG-3"
 printf 'project:\n  key_prefix: ENG\n' > "$GX/.claude/config/stack.yaml"
-printf '# ENG-1: Loan tape base\n\nbase.\n' > "$GX/tickets/alice/ENG-1/README.md"
-printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-1/q.sql"
-printf '# ENG-2: Loan tape follow-up to ENG-1\n\nsee ENG-1.\n' > "$GX/tickets/alice/ENG-2/README.md"
-printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-2/q.sql"
+printf '# ENG-1: Order feed base\n\nbase.\n' > "$GX/tickets/alice/ENG-1/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GX/tickets/alice/ENG-1/q.sql"
+printf '# ENG-2: Order feed follow-up to ENG-1\n\nsee ENG-1.\n' > "$GX/tickets/alice/ENG-2/README.md"
+printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GX/tickets/alice/ENG-2/q.sql"
 printf '# ENG-3: Unrelated\n\nx.\n' > "$GX/tickets/bob/ENG-3/README.md"
 printf 'SELECT * FROM OPS.VW_CALL;\n' > "$GX/tickets/bob/ENG-3/q.sql"
 CLAUDE_PROJECT_DIR="$GX" python3 bin/build_ticket_index.py >/dev/null 2>&1
 { [ -f "$GX/tickets/graph/ENG-1.md" ] && [ -f "$GX/tickets/graph/ENG-2.md" ] && [ -f "$GX/tickets/graph/ENG-3.md" ]; } \
   && ok "graph stubs generated (one per ticket)" || bad "graph stubs missing"
-{ [ -f "$GX/tickets/objects/ANALYTICS.VW_LOAN.md" ] && [ -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
+{ [ -f "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md" ] && [ -f "$GX/tickets/objects/OPS.VW_CALL.md" ]; } \
   && ok "object notes generated (one per object)" || bad "object notes missing"
-{ grep -q '(../graph/ENG-1.md)' "$GX/tickets/objects/ANALYTICS.VW_LOAN.md" \
-  && grep -q '(../graph/ENG-2.md)' "$GX/tickets/objects/ANALYTICS.VW_LOAN.md"; } \
-  && ok "object note links the ticket stubs (VW_LOAN -> ENG-1, ENG-2)" || bad "object note not linking stubs"
+{ grep -q '(../graph/ENG-1.md)' "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md" \
+  && grep -q '(../graph/ENG-2.md)' "$GX/tickets/objects/ANALYTICS.VW_ORDERS.md"; } \
+  && ok "object note links the ticket stubs (VW_ORDERS -> ENG-1, ENG-2)" || bad "object note not linking stubs"
 grep -q '](ENG-1.md)' "$GX/tickets/graph/ENG-2.md" \
   && ok "stub carries the cross-ref link (ENG-2 -> ENG-1)" || bad "stub missing cross-ref link"
 if python3 - "$GX" <<'PY'
@@ -901,11 +915,11 @@ printf '# ENG-1: x\n\nx.\n' > "$GO/tickets/alice/ENG-1/README.md"
 CLAUDE_PROJECT_DIR="$GO" python3 bin/build_ticket_index.py >/dev/null 2>&1
 { [ ! -d "$GO/tickets/graph" ] && [ ! -d "$GO/tickets/objects" ]; } \
   && ok "graph_notes: false disables the layer" || bad "graph_notes flag not honored"
-grep -q '(../objects/ANALYTICS.VW_LOAN.md)' "$GX/tickets/graph/ENG-1.md" \
+grep -q '(../objects/ANALYTICS.VW_ORDERS.md)' "$GX/tickets/graph/ENG-1.md" \
   && ok "stub links its object notes (../objects/...)" || bad "stub does not link objects"
 mkdir -p "$GX/tickets/alice/ENG-20"
 printf '# ENG-20: hook test\n\nx.\n' > "$GX/tickets/alice/ENG-20/README.md"
-printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GX/tickets/alice/ENG-20/q.sql"
+printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GX/tickets/alice/ENG-20/q.sql"
 echo "{\"tool_input\":{\"file_path\":\"$GX/tickets/alice/ENG-20/README.md\"},\"cwd\":\"$GX\"}" \
   | CLAUDE_PROJECT_DIR="$GX" python3 .claude/hooks/regenerate_ticket_index.py >/dev/null 2>&1
 [ -f "$GX/tickets/graph/ENG-20.md" ] \
@@ -958,8 +972,8 @@ grep -qi 'project-scoped' README.md \
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
 GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"
 printf 'project:\n  key_prefix: ENG\n' > "$GC/.claude/config/stack.yaml"
-printf '# ENG-1: base\n\nx.\n' > "$GC/tickets/a/ENG-1/README.md"; printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GC/tickets/a/ENG-1/q.sql"
-printf '# ENG-2: follow-up to ENG-1\n\nx.\n' > "$GC/tickets/a/ENG-2/README.md"; printf 'SELECT * FROM ANALYTICS.VW_LOAN;\n' > "$GC/tickets/a/ENG-2/q.sql"
+printf '# ENG-1: base\n\nx.\n' > "$GC/tickets/a/ENG-1/README.md"; printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GC/tickets/a/ENG-1/q.sql"
+printf '# ENG-2: follow-up to ENG-1\n\nx.\n' > "$GC/tickets/a/ENG-2/README.md"; printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$GC/tickets/a/ENG-2/q.sql"
 CLAUDE_PROJECT_DIR="$GC" python3 bin/build_ticket_index.py >/dev/null 2>&1
 python3 - "$GC/.obsidian/graph.json" <<'PY' && ok "graph.json created: valid JSON, tickets↔objects filter + 2 color groups" || bad "graph.json missing/malformed on create"
 import json, sys
