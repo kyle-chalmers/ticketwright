@@ -10,6 +10,11 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: no
+gate_ask_tier: yes
+gate_fail_mode: open        # documented: hooks fail open unless failClosed true is set
+subagent_isolation: documented
+reads_foreign_skills: .claude/skills, .codex/skills
+global_skills_root: ~/.cursor/skills
 model_cmd: ""
 model_sandbox: n/a   # no headless model command
 auth: |

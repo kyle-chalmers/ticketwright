@@ -334,12 +334,20 @@ frontmatter instead, and `bin/kit_paths.py` reads them:
 ```yaml
 skills_root:  session_start:  tool_gate:  subagents:  structured_questions:
 model_cmd:  model_sandbox:  detect_env:
+gate_ask_tier:  gate_fail_mode:  subagent_isolation:  reads_foreign_skills:  global_skills_root:
 ```
 
 `tool_gate` is the load-bearing one — it records whether that harness can intercept a command before
 it runs, which is what decides whether `db_write_requires_approval` is mechanically enforced or is
 guidance the model can forget. A value of `unknown` is a real answer and is treated as the floor: no
 capability is assumed.
+
+`gate_ask_tier` and `gate_fail_mode` refine that axis and are deliberately separate: whether a gate
+can *ask* a human and how it behaves when the hook *errors* are independent properties (the richest
+gate researched has no session hook; a runtime with a session hook has a gate that fails open by
+documented design), so nothing may average them into a single capability score. `gate_fail_mode`
+records the runtime's NATIVE default, not the installed state. Per-runtime values with footnoted
+caveats: `docs/runtimes.md` § "The matrix, machine-readable".
 
 `model_cmd` and `model_sandbox` are a pair. The first is the headless one-shot command
 `bin/enrich_ticket.py` runs; the second records whether that command is *restricted*, because the

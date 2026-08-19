@@ -10,6 +10,11 @@ session_start: unknown
 tool_gate: unknown
 subagents: no
 structured_questions: unknown
+gate_ask_tier: unknown      # the gate API itself is in flux; no return schema documented
+gate_fail_mode: unknown
+subagent_isolation: none    # subagents exist but are not user-definable — nothing to isolate for the kit
+reads_foreign_skills: .claude/skills
+global_skills_root: ~/.cline/skills   # documented for macOS/Linux (Windows: %USERPROFILE%\.cline\skills) — re-verified 2026-08-19
 model_cmd: ""
 model_sandbox: n/a   # no headless model command
 auth: |
@@ -29,8 +34,10 @@ mechanism it replaced.
 - **Rules + skills** — rules in `.clinerules/` (every `.md`/`.txt` inside), global under
   `~/Documents/Cline/Rules`; workspace wins on conflict. Skills at `.cline/skills/` (recommended),
   `.clinerules/skills/`, or `.claude/skills/`, with `SKILL.md` frontmatter whose `name` must match
-  the directory. The often-cited `.clinerules/workflows/` path is absent from the current
-  documentation index and appears to have been folded into skills.
+  the directory; global skills at `~/.cline/skills/` on macOS/Linux (re-verified 2026-08-19 — an
+  earlier revision of this adapter recorded only the global *rules* path). The often-cited
+  `.clinerules/workflows/` path is absent from the current documentation index and appears to have
+  been folded into skills.
 - **Session start** — **unknown.** A `TaskStart` file-based hook was documented in a
   2025-11 release post at `.clinerules/hooks/`; the current docs page is a stub pointing at SDK
   plugins, whose lifecycle does include `session_start` — but that is a TypeScript surface for

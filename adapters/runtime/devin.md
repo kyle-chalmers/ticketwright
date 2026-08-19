@@ -6,11 +6,16 @@ transport: native
 requires: []
 detect_env: DEVIN_SESSION_ID, DEVIN_HOME, WINDSURF_HOME
 skills_root: .devin/skills/<name>/SKILL.md
-skills_format: markdown + optional YAML frontmatter (no required field)
+skills_format: markdown + optional YAML frontmatter (name defaults to the directory)   # re-verified 2026-08-19
 session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: yes
+gate_ask_tier: no           # PreToolUse blocks via exit 2 only; PermissionRequest is approve/block — no ask
+gate_fail_mode: open        # documented design: any nonzero other than 2 is logged and does not block
+subagent_isolation: documented
+reads_foreign_skills: .claude/skills   # vendor-format reading is toggleable in Devin's config
+global_skills_root: ~/.config/devin/skills
 model_cmd: "devin -p {prompt}"
 model_sandbox: unverified   # docs mention a --sandbox mode, not verified for `devin -p`
 auth: |
@@ -34,7 +39,8 @@ auth: |
 ## Capabilities
 
 - **Skills** — `.devin/skills/<name>/SKILL.md` (project), `~/.config/devin/skills/` (user). The
-  frontmatter block is optional and no field is strictly required; `name` defaults to the directory.
+  frontmatter block is optional and no field is strictly required — re-verified 2026-08-19 against
+  the frontmatter reference table (`name` defaults to the directory name, `description` to none).
   Skills become slash commands — the directory name is the identifier. Rules resolve from
   `AGENTS.md` / `AGENT.md` / `CLAUDE.md` at the repo root plus `.devin/rules/*.md`, and Devin
   deliberately reads other vendors' formats (`.cursor/rules/`, `.windsurf/`, `.claude/`), toggleable
@@ -42,8 +48,10 @@ auth: |
 - **Session start** — `SessionStart`, one of eight events, injecting through
   `hookSpecificOutput.additionalContext`. This is a direct analogue of the Claude Code hook, so the
   priming banner ports over as-is.
-- **Tool gate** — `PreToolUse` returns `{"decision": "approve" | "block"}` on stdout, or exit 2 to
-  block. A static `permissions` layer supports `allow` / `ask` / `deny` with **deny > ask > allow**
+- **Tool gate** — `PreToolUse` blocks **only via exit code 2** (re-verified 2026-08-19). The
+  `{"decision": "approve" | "block"}` stdout schema belongs to the separate **`PermissionRequest`**
+  hook, not to `PreToolUse` — an earlier revision of this adapter attributed it to the wrong hook.
+  A static `permissions` layer supports `allow` / `ask` / `deny` with **deny > ask > allow**
   precedence, and the default when nothing matches is to prompt.
 - **Subagents** — `.devin/agents/<name>.md`, user-definable, and "each with its own context window".
   A skill can itself run as a subagent via `subagent: true`.
@@ -53,12 +61,14 @@ auth: |
 
 ## Gotchas
 
-- **No `ask` tier in the hook path.** The gate is approve-or-block only; the ask tier exists only in
-  the static permissions config. So `db_write_requires_approval: high_risk` cannot be expressed as a
-  hook-driven confirmation here — it collapses to deny-or-allow, and the installer must say which.
+- **No `ask` tier in the hook path.** `PreToolUse` can only pass (exit 0) or block (exit 2), and
+  `PermissionRequest` answers approve-or-block; the ask tier exists only in the static permissions
+  config. So `db_write_requires_approval: high_risk` cannot be expressed as a hook-driven
+  confirmation here — it collapses to deny-or-allow, and the installer must say which.
 - **The hook fails OPEN, and this is documented rather than inferred.** Exit 0 continues, exit 2
-  blocks, and any *other* nonzero code is "logged but doesn't block". A crashing or misconfigured
-  guard therefore stops gating silently — the guard must exit 2 deliberately, never merely fail.
+  blocks, and any *other* nonzero code is "logged but doesn't block" (exit table confirmed verbatim
+  2026-08-19). A crashing or misconfigured guard therefore stops gating silently — the guard must
+  exit 2 deliberately, never merely fail.
 - **Background subagents fail closed**, which is the opposite default and worth knowing: they
   inherit only already-granted permissions, cannot prompt for new ones, and anything unapproved is
   automatically denied. A `qc-reviewer` running in the background may simply be unable to re-run a

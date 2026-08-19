@@ -10,6 +10,11 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: no
+gate_ask_tier: no           # permissionDecision "ask" is parsed but not supported yet
+gate_fail_mode: unknown     # docs state the deny paths, not what a crashing hook does
+subagent_isolation: unestablished   # separate agent threads documented, "own context window" is not
+reads_foreign_skills: none
+global_skills_root: ~/.agents/skills
 model_cmd: "codex exec --sandbox read-only --skip-git-repo-check {prompt}"
 model_sandbox: read-only   # verified against `codex exec --help`: --sandbox read-only
 auth: |
@@ -30,7 +35,9 @@ auth: |
 - **Tool gate** — `PreToolUse` denies via
   `{"hookSpecificOutput": {"permissionDecision": "deny"}}` or exit 2. Read the gotchas before
   treating this as parity with Claude Code.
-- **Subagents** — `.codex/agents/*.toml`, spawned via `spawn_agent`.
+- **Subagents** — `.codex/agents/*.toml`, spawned via `spawn_agent`. The docs describe separate
+  agent threads returning summaries; they never state "own context window" as a spec line, so the
+  isolation guarantee is **unestablished**, not merely undocumented-in-passing.
 - **Structured questions** — none available to a skill author. `tool/requestUserInput` exists but is
   an experimental app-server protocol method for host clients, so **author every interview as a
   numbered prose list**.
@@ -49,3 +56,6 @@ auth: |
   and trusted *by hash* before it runs, and any edit re-arms that review.
 - The vendor's own documentation declines to call this an enforcement boundary, and some tool paths
   opt out of the hook path entirely. Treat it as a strong guardrail, not a guarantee.
+- **What a *crashing* hook does is undocumented** — the docs state the deny paths
+  (`permissionDecision: "deny"`, exit 2), not the failure behavior, so `gate_fail_mode` is declared
+  `unknown` rather than assumed either way.

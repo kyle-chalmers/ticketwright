@@ -2308,7 +2308,8 @@ bash bin/tw no_such_script.py >/dev/null 2>&1 && bad "tw ran a nonexistent scrip
 rt_bad=""
 for f in adapters/runtime/*.md; do
   [ -f "$f" ] || continue
-  for k in seam tool detect_env skills_root session_start tool_gate subagents structured_questions; do
+  for k in seam tool detect_env skills_root session_start tool_gate subagents structured_questions \
+           gate_ask_tier gate_fail_mode subagent_isolation reads_foreign_skills global_skills_root; do
     grep -q "^$k:" "$f" || rt_bad="$rt_bad $(basename "$f"):$k"
   done
   [ "$(grep -c '^## verb:' "$f")" = "0" ] || rt_bad="$rt_bad $(basename "$f"):has-verbs"
@@ -2335,18 +2336,23 @@ PY
 )"
 [ -z "$mc_bad" ] && ok "every declared model_cmd tokenizes cleanly (no trailing comment, no shell metachars)" \
   || bad "a runtime model_cmd would not parse safely as argv" "$mc_bad"
-# The honest floor: an unrecognized harness must claim nothing.
+# The honest floor: an unrecognized harness must claim nothing — PER KEY. A generic "no" is not a
+# legal value for the enum keys, so each floors to its own never-optimistic value ("unknown"/"none"),
+# and every consumer must treat those exactly as capability-absent.
 uf="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=not-a-real-runtime \
       python3 bin/kit_paths.py --json 2>/dev/null)"
 python3 - "$uf" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1] or "{}")
 caps = d.get("capabilities", {})
-flags = [caps.get(k) for k in ("session_start", "tool_gate", "subagents", "structured_questions")]
-sys.exit(0 if d.get("runtime_adapter") is None and all(f == "no" for f in flags) else 1)
+want = {"session_start": "no", "tool_gate": "no", "subagents": "no", "structured_questions": "no",
+        "gate_ask_tier": "unknown", "gate_fail_mode": "unknown", "subagent_isolation": "unknown",
+        "global_skills_root": "unknown", "reads_foreign_skills": "none"}
+sys.exit(0 if d.get("runtime_adapter") is None
+         and all(caps.get(k) == v for k, v in want.items()) else 1)
 PY
-[ $? -eq 0 ] && ok "an unknown runtime reports every capability absent (never an optimistic default)" \
-  || bad "an unknown runtime claimed a capability it cannot have" "$uf"
+[ $? -eq 0 ] && ok "an unknown runtime reports every capability at its declared per-key floor" \
+  || bad "an unknown runtime claimed a capability it cannot have (or a floor is mistyped)" "$uf"
 
 # --- the migration held, and /setup is exempt ON PURPOSE -----------------------------------------
 # Grep the `:-$CLAUDE_PROJECT_DIR` form specifically: bare ${CLAUDE_PLUGIN_ROOT} stays in scaffold.md
@@ -4110,6 +4116,159 @@ env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT CLAUDE_CONFI
 # tests/ is repo-only material: it must never ride into the wheel or sdist.
 grep -q '"tests' pyproject.toml && bad "tests/ leaked into pyproject packaging config" \
   || ok "tests/ fixtures stay out of the wheel and sdist (pyproject untouched by them)"
+hdr "40 · capability vocabulary: the 3b safety axes as data (PROMPT 7 / U5)"
+# Five additive keys on every runtime adapter. The values are DECLARATIONS backed by the dated,
+# cited research in docs/runtimes.md — what this section pins is declared-value consistency, so a
+# drive-by edit cannot flip a safety axis silently. The truth of the declarations rests on the
+# research and its live re-checks (the U6 punch list); no assertion here claims a live behavior.
+
+# --- closed vocabulary: an enum key holding a value outside its enum is a typo, not a finding ----
+cv_bad="$(python3 - <<'PY'
+import re, sys, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+ENUMS = {
+    "gate_ask_tier": {"yes", "no", "unknown"},
+    "gate_fail_mode": {"open", "closed", "unknown"},
+    "subagent_isolation": {"documented", "unestablished", "none"},
+}
+bad = []
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    if f.name == "README.md":
+        continue
+    fm = read_frontmatter(f)
+    for k, legal in ENUMS.items():
+        if fm.get(k) not in legal:
+            bad.append(f"{f.name}:{k}={fm.get(k)!r}")
+    # The two installer-driving keys have FORMS, not enums — and a malformed value here would send
+    # the installer down the wrong emit-vs-verify or --global path, so the form is validated too:
+    # reads_foreign_skills is `none` or a comma-separated list of dot-relative roots;
+    # global_skills_root is `unknown` or an absolute/home-anchored path.
+    rfs = fm.get("reads_foreign_skills", "")
+    if rfs != "none":
+        items = [i.strip() for i in rfs.split(",")]
+        if not items or any(not re.match(r"^\.[A-Za-z0-9._/-]+$", i) for i in items):
+            bad.append(f"{f.name}:reads_foreign_skills={rfs!r}")
+    gsr = fm.get("global_skills_root", "")
+    if gsr != "unknown" and not re.match(r"^(~/|/)[A-Za-z0-9._/-]+$", gsr):
+        bad.append(f"{f.name}:global_skills_root={gsr!r}")
+print("\n".join(bad))
+PY
+)"
+[ -z "$cv_bad" ] && ok "every runtime adapter's 3b keys hold closed-vocabulary/well-formed values (parsed as consumers parse them)" \
+  || bad "a runtime adapter declares an out-of-vocabulary or malformed capability value" "$cv_bad"
+
+# --- the load-bearing rows are PINNED, so a drive-by edit cannot flip a safety axis silently -----
+# gate_ask_tier is the 3b inversion: db_write_requires_approval's default (high_risk) is natively
+# expressible exactly where this is `yes`, and must collapse — visibly — exactly where it is `no`.
+for pair in "claude-code:yes" "cursor:yes" "antigravity:yes" "codex-cli:no" "opencode:no" "devin:no"; do
+  rt="${pair%%:*}"; want="${pair##*:}"
+  got="$(python3 -c "import sys; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter; \
+from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')).get('gate_ask_tier'))")"
+  [ "$got" = "$want" ] && ok "pinned: $rt gate_ask_tier=$want" \
+    || bad "$rt's gate_ask_tier flipped — that is a safety-axis edit, not a tidy-up" "got '$got' want '$want'"
+done
+# gate_fail_mode records the NATIVE default (cursor open is WHY an installer must set failClosed;
+# devin open is documented design; antigravity is undocumented and must stay honestly unknown).
+for pair in "cursor:open" "devin:open" "antigravity:unknown"; do
+  rt="${pair%%:*}"; want="${pair##*:}"
+  got="$(python3 -c "import sys; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter; \
+from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')).get('gate_fail_mode'))")"
+  [ "$got" = "$want" ] && ok "pinned: $rt gate_fail_mode=$want" \
+    || bad "$rt's gate_fail_mode changed — re-cite the vendor docs before touching this row" "got '$got' want '$want'"
+done
+# subagent_isolation decides whether /review --deep is an independent second context there.
+for pair in "cline:none" "codex-cli:unestablished" "opencode:unestablished"; do
+  rt="${pair%%:*}"; want="${pair##*:}"
+  got="$(python3 -c "import sys; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter; \
+from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')).get('subagent_isolation'))")"
+  [ "$got" = "$want" ] && ok "pinned: $rt subagent_isolation=$want" \
+    || bad "$rt's subagent_isolation was promoted without documentation" "got '$got' want '$want'"
+done
+
+# --- the CLI surfaces the new keys, each readable on its own ------------------------------------
+cli40="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=cursor \
+        python3 bin/kit_paths.py --json 2>/dev/null)"
+python3 - "$cli40" <<'PY'
+import json, sys
+c = json.loads(sys.argv[1] or "{}").get("capabilities", {})
+sys.exit(0 if c.get("gate_ask_tier") == "yes" and c.get("gate_fail_mode") == "open"
+         and c.get("subagent_isolation") == "documented"
+         and c.get("reads_foreign_skills") == ".claude/skills, .codex/skills"
+         and c.get("global_skills_root") == "~/.cursor/skills" else 1)
+PY
+[ $? -eq 0 ] && ok "kit_paths --json surfaces all five keys per adapter (cursor spot-check)" \
+  || bad "kit_paths --json does not surface the new capability keys" "$cli40"
+
+# --- the axes are INDEPENDENT, and the data proves it (nothing may average them into one score) --
+# Antigravity: the richest gate researched, and NO session hook. Devin: a session hook, and a gate
+# that fails open by documented design. Any single derived score would erase exactly this.
+ind40="$(python3 - <<'PY'
+import sys
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+from pathlib import Path
+agy = read_frontmatter(Path("adapters/runtime/antigravity.md"))
+dvn = read_frontmatter(Path("adapters/runtime/devin.md"))
+probs = []
+if not (agy.get("gate_ask_tier") == "yes" and agy.get("session_start") == "no"):
+    probs.append("antigravity no longer shows rich-gate-without-session-hook")
+if not (dvn.get("session_start") == "yes" and dvn.get("gate_fail_mode") == "open"):
+    probs.append("devin no longer shows session-hook-with-fail-open-gate")
+print("\n".join(probs))
+PY
+)"
+[ -z "$ind40" ] && ok "the 3b axes genuinely diverge in the data (richer gate != session hook != fail mode)" \
+  || bad "the axis-independence examples no longer hold — check what got edited" "$ind40"
+
+# --- the 2026-08-19 matrix corrections stay corrected --------------------------------------------
+# Positive pins where the fix ADDED the true claim; a negative pin only where the false claim's
+# exact wording must not return (the correction prose itself never uses that wording).
+{ grep -q 'PermissionRequest' adapters/runtime/devin.md && grep -q 'PermissionRequest' docs/runtimes.md; } \
+  && ok "devin's approve/block schema is attributed to PermissionRequest (adapter + runtimes.md)" \
+  || bad "the devin PreToolUse/PermissionRequest correction was reverted"
+{ grep -qE 'PreToolUse.*(exit code 2|exit 2)' adapters/runtime/devin.md || grep -q 'only via exit code 2' adapters/runtime/devin.md; } \
+  && ok "devin's PreToolUse is documented as blocking via exit 2" \
+  || bad "devin's adapter no longer states the exit-2-only PreToolUse contract"
+{ grep -q 'mode: "subagent"' adapters/runtime/opencode.md && grep -q 'mode: "subagent"' docs/runtimes.md; } \
+  && ok 'opencode subagent marking is mode: "subagent" (adapter + runtimes.md)' \
+  || bad "the opencode subagent-marking correction was reverted"
+grep -q 'only researched runtime' adapters/runtime/claude-code.md \
+  && bad "claude-code.md again claims to be the only runtime with a pre-tool ask (cursor + antigravity have it)" \
+  || ok "claude-code.md no longer claims the pre-tool ask tier is exclusive"
+
+# --- the human-readable matrix and the machine-readable frontmatter must agree ------------------
+mm_bad="$(python3 - <<'PY'
+import re, sys, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+DISPLAY = {"claude-code": "Claude Code", "codex-cli": "Codex CLI", "cursor": "Cursor",
+           "antigravity": "Antigravity", "opencode": "OpenCode", "devin": "Devin", "cline": "Cline"}
+doc = pathlib.Path("docs/runtimes.md").read_text(encoding="utf-8")
+sect = doc.split("## The matrix, machine-readable", 1)
+if len(sect) < 2:
+    print("runtimes.md lost its machine-readable matrix section"); raise SystemExit
+def norm(cell):
+    cell = re.sub(u"[¹²³⁴⁵⁶⁷⁸⁹`]", "", cell)
+    return re.sub(r"\s+", " ", cell).strip()
+rows = {}
+for line in sect[1].splitlines():
+    m = re.match(r"\|\s*\*\*(.+?)\*\*\s*\|(.+)\|", line)
+    if m:
+        rows[m.group(1)] = [norm(c) for c in m.group(2).split("|")[:5]]
+KEYS = ("gate_ask_tier", "gate_fail_mode", "subagent_isolation",
+        "reads_foreign_skills", "global_skills_root")
+bad = []
+for tool, name in DISPLAY.items():
+    fm = read_frontmatter(pathlib.Path(f"adapters/runtime/{tool}.md"))
+    want = [fm.get(k) for k in KEYS]
+    if rows.get(name) != want:
+        bad.append(f"{name}: doc says {rows.get(name)}, frontmatter says {want}")
+print("\n".join(bad))
+PY
+)"
+[ -z "$mm_bad" ] && ok "runtimes.md's machine-readable table matches the adapter frontmatter (all 7 x 5 keys)" \
+  || bad "runtimes.md's capability-key table drifted from the frontmatter it documents" "$mm_bad"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
