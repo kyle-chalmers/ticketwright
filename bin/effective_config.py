@@ -41,8 +41,18 @@ NOT A HOOK HELPER — a public CLI. No Claude environment variable is required a
   effective_config.py --root <repo> --key seams.warehouse.cli
   effective_config.py --root <repo> --verify-plan     # one JSON object per seam/target unit
   effective_config.py --root <repo> --viewer-plan     # the resolved viewer config
+  effective_config.py --root <repo> --seam <name> [--target <name>]   # select ONE unit
 
-EXIT CODES: 0 ok · 2 usage · 3 missing · 4 malformed · 5 stale · 6 prohibited override.
+TARGET SELECTION lives here, in the same binary that merges the tiers — never a second one (two
+binaries would mean two YAML parsers, two --root conventions, and two answers to "which warehouse
+am I on"). `--seam` alone resolves the seam's `default:` target (or the single mapping); `--target`
+names one explicitly. An unresolvable NAME is a hard error naming what is configured — never a
+fallback to another target, because falling back is precisely the wrong-warehouse (and, for chat,
+the wrong-audience) failure. Contract: adapters/README.md § "Selecting a target from config".
+
+EXIT CODES: 0 ok · 2 usage · 3 missing · 4 malformed · 5 stale · 6 prohibited override ·
+7 seam not configured · 8 target unresolvable (unknown name; `targets:` with a missing or invalid
+`default:`; an explicit --target on a single mapping).
 These are the CLI SURFACE ONLY. The library entry point `resolve()` never raises and never exits —
 two of its callers are hooks that must fail open, and `build_ticket_index.load_config()` must keep
 returning defaults for an absent file.
@@ -70,6 +80,7 @@ STACK_REL = ".claude/config/stack.yaml"
 LOCAL_REL = ".claude/config/connections.local.yaml"
 
 EXIT_OK, EXIT_USAGE, EXIT_MISSING, EXIT_MALFORMED, EXIT_STALE, EXIT_PROHIBITED = 0, 2, 3, 4, 5, 6
+EXIT_NO_SEAM, EXIT_NO_TARGET = 7, 8
 
 TIER_TEAM, TIER_PERSON, TIER_MACHINE, TIER_INHERITED = "team", "person", "machine", "inherited"
 
@@ -260,6 +271,71 @@ def _effective_target(seam: dict, target: dict) -> dict:
     for k, v in target.items():
         out[k] = v
     return out
+
+
+def select_unit(seams: dict, seam_name: str,
+                target_name: str | None) -> tuple[dict | None, dict | None]:
+    """The CONFIG half of target resolution: one seam, optionally one named target.
+
+    Returns (unit, None) or (None, error). The caller-context precedence (an explicit flag, the
+    `-- warehouse-target:` file header, the ticket's declaration) lives in adapters/README.md
+    § Multi-target seams and cannot be known here; this function owns only its config steps — an
+    explicit name, else the seam's `default:`, else the single mapping itself.
+
+    An unresolvable NAME is a hard error naming what IS configured, never a fallback to another
+    target: falling back is precisely the wrong-warehouse (and, for chat, the wrong-audience)
+    failure. That includes a `targets:` block whose `default:` is missing or names an unknown
+    target — the first-listed target is a display convention, not a selection rule.
+    """
+    seam = seams.get(seam_name)
+    if not isinstance(seam, dict):
+        return None, {"code": "no_such_seam",
+                      "message": f"seam `{seam_name}` is not configured in this stack",
+                      "configured": sorted(k for k, v in seams.items() if isinstance(v, dict))}
+    if not _is_multi_target(seam):
+        if "targets" in seam:
+            # `targets: null` / `targets: []` is a MALFORMED discriminator, not a single mapping.
+            # Resolving it as single would bypass every named-target rule downstream (including
+            # /ship's halt), so it is unresolvable — same hard edge as an unknown name.
+            return None, {"code": "no_such_target",
+                          "message": f"`{seam_name}` has a `targets:` key that is not a mapping "
+                                     f"of named targets — fix the config; a malformed `targets:` "
+                                     f"never resolves as a single mapping",
+                          "configured": []}
+        if target_name is not None:
+            return None, {"code": "no_such_target",
+                          "message": f"`{seam_name}` is a single mapping — no targets are "
+                                     f"configured, so `{target_name}` cannot be selected",
+                          "configured": []}
+        return {"seam": seam_name, "target": None, "is_default": True, "label": seam_name,
+                "values": dict(seam), "selected_by": "single"}, None
+    targets = seam["targets"]
+    names = sorted(t for t, v in targets.items() if isinstance(v, dict))
+    raw_default = seam.get("default")
+    # Normalize before ANY lookup: a malformed `default:` holding a list or mapping is unhashable,
+    # and `targets.get(unhashable)` raises instead of failing the selection cleanly.
+    default = raw_default if isinstance(raw_default, str) and raw_default.strip() else None
+    if target_name is None:
+        if not default or not isinstance(targets.get(default), dict):
+            what = (f"names unknown target `{default}`" if default
+                    else ("is missing" if raw_default in (None, "")
+                          else "is not a target name"))
+            return None, {"code": "no_such_target",
+                          "message": f"`{seam_name}` has targets but its `default:` {what} — an "
+                                     f"unresolvable selection never falls back to a listed target",
+                          "configured": names}
+        target_name, selected_by = str(default), "default"
+    elif not isinstance(targets.get(target_name), dict):
+        return None, {"code": "no_such_target",
+                      "message": f"`{seam_name}` has no target `{target_name}`",
+                      "configured": names}
+    else:
+        selected_by = "explicit"
+    mark = "*" if target_name == default else ""
+    return {"seam": seam_name, "target": target_name, "is_default": target_name == default,
+            "label": f"{seam_name}[{target_name}]{mark}",
+            "values": _effective_target(seam, targets[target_name]),
+            "selected_by": selected_by}, None
 
 
 # ── the overlay ────────────────────────────────────────────────────────────────────────────────
@@ -867,7 +943,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="effective_config.py",
         description="Merge stack.yaml + people/<id>.yaml + connections.local.yaml into one answer.",
-        epilog="Exit codes: 0 ok, 2 usage, 3 missing, 4 malformed, 5 stale, 6 prohibited override.")
+        epilog="Exit codes: 0 ok, 2 usage, 3 missing, 4 malformed, 5 stale, 6 prohibited override, "
+               "7 seam not configured, 8 target unresolvable.")
     ap.add_argument("--stack", default=None, help="explicit tier-1 stack.yaml path")
     ap.add_argument("--root", default=None, help="repo root (default: $CLAUDE_PROJECT_DIR, else cwd)")
     ap.add_argument("--person", default=None, help="person id for tier 2 (default: resolved)")
@@ -876,8 +953,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--verify-plan", action="store_true", help="one JSON row per seam/target unit")
     ap.add_argument("--viewer-plan", action="store_true", help="the resolved viewer config as JSON")
     ap.add_argument("--lint", action="store_true", help="warn about machine-local values in committed config")
+    ap.add_argument("--seam", default=None, metavar="NAME",
+                    help="select one seam as JSON, inheritance and overlays applied "
+                         "(adapters/README.md § Selecting a target from config)")
+    ap.add_argument("--target", default=None, metavar="NAME",
+                    help="with --seam: select this named target instead of the seam's default; "
+                         "an unknown name is a hard error (exit 8), never a fallback")
     ap.add_argument("--quiet", action="store_true", help="suppress the human-readable error report")
     args = ap.parse_args(argv)
+
+    # Presence is `is not None`, never truthiness: `--target ''` must be a usage error, not a
+    # silent fall-through to the full-config output.
+    if args.target is not None and args.seam is None:
+        ap.error("--target requires --seam")
+    if args.seam is not None:
+        if args.json or args.key or args.verify_plan or args.viewer_plan or args.lint:
+            ap.error("--seam is its own output mode — combine it only with --target "
+                     "(and --root/--stack/--person/--quiet)")
+        if not args.seam.strip() or (args.target is not None and not args.target.strip()):
+            ap.error("--seam and --target need a non-empty name")
 
     root = args.root
     if not root:
@@ -889,7 +983,40 @@ def main(argv: list[str] | None = None) -> int:
                     else os.getcwd()))
     res = resolve(root, args.person, args.stack)
 
-    if args.key:
+    sel_exit: int | None = None
+    if args.seam is not None:
+        unit, sel_err = select_unit(res.seams, args.seam, args.target)
+        if sel_err:
+            print(json.dumps({"schema": SCHEMA_VERSION, "seam": args.seam, "target": args.target,
+                              "error": sel_err,
+                              "errors": [e.as_dict() for e in res.errors],
+                              "warnings": res.warnings}, indent=2, default=str))
+            if not args.quiet:
+                hint = (" (configured: " + ", ".join(sel_err["configured"]) + ")"
+                        if sel_err["configured"] else "")
+                print(f"effective_config: {sel_err['code']}: {sel_err['message']}{hint}",
+                      file=sys.stderr)
+            # A stack that failed to LOAD is the real story — `no_such_seam` against zero seams
+            # would misdirect the fix — so missing/malformed keep their own exit codes.
+            if not any(e.code in ("missing", "malformed") and e.path == "stack.yaml"
+                       for e in res.errors):
+                sel_exit = EXIT_NO_SEAM if sel_err["code"] == "no_such_seam" else EXIT_NO_TARGET
+        else:
+            row = _unit_row(res, unit)
+            out = {"schema": SCHEMA_VERSION, "seam": row["seam"], "target": row["target"],
+                   "selected_by": unit["selected_by"], "is_default": row["is_default"],
+                   "label": row["label"], "tool": row["tool"], "adapter": row["adapter"],
+                   "values": unit["values"], "verify": row["verify"],
+                   "unresolved": row["unresolved"], "unsafe": row["unsafe"],
+                   "missing_required": row["missing_required"],
+                   "errors": [e.as_dict() for e in res.errors], "warnings": res.warnings}
+            if out["unresolved"] or out["unsafe"]:
+                # A command string is runnable or it is null — never a half-interpolated template,
+                # never one carrying an injected tier-3 value. Same refusal verify_stack.sh applies;
+                # the reason stays readable in `unresolved` / `unsafe`.
+                out["verify"] = None
+            print(json.dumps(out, indent=2, default=str))
+    elif args.key:
         val = res.get(args.key)
         if val is not None:
             print(scalar_str(val) if isinstance(val, bool) else
@@ -907,7 +1034,9 @@ def main(argv: list[str] | None = None) -> int:
     if res.errors and not args.quiet:
         for err in res.errors:
             print(f"effective_config: {err.code}: {err.path}: {err.message}", file=sys.stderr)
-    return res.exit_code()
+    # A failed selection (7/8) outranks a merely-degraded resolution; a SUCCESSFUL selection never
+    # masks a resolution error — a prohibited override still exits 6 with the selection printed.
+    return sel_exit if sel_exit is not None else res.exit_code()
 
 
 if __name__ == "__main__":

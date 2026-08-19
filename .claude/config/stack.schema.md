@@ -38,10 +38,13 @@ python3 bin/effective_config.py --root . --json          # everything, with per-
 python3 bin/effective_config.py --root . --key seams.warehouse.cli
 python3 bin/effective_config.py --root . --verify-plan   # one row per seam/target
 python3 bin/effective_config.py --root . --lint          # machine-local values in committed config
+python3 bin/effective_config.py --root . --seam warehouse --target lake   # select one target (inheritance applied)
 ```
 
 No agent-specific environment variable is required, so this works under any harness. Exit codes:
-`0` ok · `2` usage · `3` missing · `4` malformed · `5` stale · `6` prohibited override.
+`0` ok · `2` usage · `3` missing · `4` malformed · `5` stale · `6` prohibited override ·
+`7` tool slot not configured · `8` target unresolvable (unknown name, or `targets:` with a
+missing/invalid `default:`) — never a silent fallback to another target.
 
 ### THE SCOPE RULE — enforced in code, not documented
 
@@ -146,10 +149,20 @@ prefers privacy can gitignore their `voices/<id>.md`. Build/refine them with `/s
 
 ## `seams`
 
-These five keys: `tracker`, `warehouse`, `chat`, `docstore`, `vcs` — no others. A seam may be
-omitted when the repo genuinely has no such tool (see the per-seam notes below); the skills that use
-it then degrade rather than fail. Each present seam is **either** a single mapping (below) **or** a
-*multi-target* mapping — see "Multiple warehouses". Fields of a single mapping:
+Each entry under `seams:` fills one **tool slot**. Five slots carry a verb contract skills call
+through (see `adapters/README.md`): `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. They are not
+an exclusive list: an optional `viewer:` entry may also sit here, for a team that standardizes
+viewers (see "`viewer` — per-user config" below) — it has a real two-verb contract but is
+deliberately per-user config rather than team config. Runtime adapters (`adapters/runtime/`) are
+the other non-entry: which agent a person is running is per-machine, so it is never declared in
+this file at all. (`seams:` stays the literal key — "seam" is the internal name for a tool slot,
+and no config key is renamed.)
+
+A tool slot may be omitted when the repo genuinely has no such tool (see the per-slot notes below);
+the skills that use it then degrade rather than fail. Each present slot is **either** a single
+mapping (below) **or** a *multi-target* mapping — the `targets:` **shape** is generic to every
+slot, but which slots operationally resolve targets today is stated explicitly under "Named
+targets". Fields of a single mapping:
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -164,10 +177,11 @@ The `warehouse` seam may be `null`/omitted for non-data repos — `review`, `spe
 likewise be omitted: `/ship` skips those artifacts and names the `/setup` command that would enable
 them rather than blocking. `stack.example.solo.yaml` omits both.
 
-### Multiple warehouses (named targets)
+### Named targets (more than one tool in a slot)
 
-A repo that must reach more than one warehouse — prod Snowflake plus a Databricks lakehouse, or two
-Snowflake accounts — declares **named targets** instead of one flat mapping:
+A repo whose tool slot must hold more than one tool — prod Snowflake plus a Databricks lakehouse,
+or two Snowflake accounts — declares **named targets** instead of one flat mapping. The shape is
+generic to every slot; the worked (and today the only skill-routed) example is the warehouse:
 
 ```yaml
   warehouse:
@@ -193,11 +207,20 @@ Rules:
   and SessionStart banner) show the first target they find, so first == default keeps them honest.
   `bin/verify_stack.sh` warns when the default isn't first, and fails when `default` is missing or
   names an unknown target.
-- **Which target is active** is resolved per `adapters/README.md` § Multi-target seams. A `.sql` file
+- **Which target is active** is resolved per `adapters/README.md` § Multi-target seams — the
+  caller-context precedence lives there, and the config half is
+  `bin/effective_config.py --seam <slot> [--target <name>]`. A `.sql` file
   names its own target in a `-- warehouse-target: <name>` header comment; that never goes in a CSV,
   whose header must stay on row 1 with no preamble.
-- v1 implements multi-target for **`warehouse`** only. `verify_stack.sh` handles the shape for any
-  seam, but no skill resolves targets for the other four, so don't rely on it there yet.
+- **Operational support is per slot, and stated here explicitly.** The `targets:` shape is legal on
+  any slot — `bin/verify_stack.sh` validates it anywhere, and
+  `bin/effective_config.py --seam <slot> --target <name>` selects a target on any slot — but only
+  the **warehouse** slot is routed end to end by skills today (the `.sql` header, the dev-target
+  rule, and the `db_write_guard` cross-check all resolve warehouse targets). **chat** and
+  **docstore** have a published routing contract — the delivery plan in `adapters/README.md`
+  § Multi-target seams — that a later release implements; until then a multi-target chat/docstore
+  config validates, but no skill routes between its targets. **tracker** and **vcs** are deferred
+  (same section). Don't rely on target routing outside `warehouse` yet.
 
 **Known limitation:** `tickets/OBJECTS.md` and the graph layer fold object names case-insensitively
 and are warehouse-blind, so `ANALYTICS.CUSTOMERS` on one target and `analytics.customers` on another

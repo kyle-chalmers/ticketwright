@@ -146,6 +146,61 @@ First hit wins:
 An unresolvable name is a **halt**: say which names are configured. Never quietly fall back to the
 default, because that is precisely the wrong-warehouse failure.
 
+That halt rule is seam-generic, not a warehouse nicety: an unresolvable target name on ANY seam
+halts and lists the configured names. When chat and docstore grow targets (the delivery plan below),
+the same rule extends backward to the **initial** audience/classification resolution — a ticket with
+no declared audience is a halt, never a fall-through to the first-listed or default target, because
+the default may be the external one.
+
+### Selecting a target from config — the resolver contract
+
+Steps 1–3 above are caller context (a flag, a file header, the ticket's declaration) — the resolver
+cannot know them. What it owns is the config half: given a seam and optionally a target name, return
+the effective values with inheritance applied, or refuse loudly. Same binary that merges the three
+tiers — never a second one:
+
+    bin/effective_config.py --root <repo> --seam <seam>                  # the default target (or the single mapping)
+    bin/effective_config.py --root <repo> --seam <seam> --target <name>  # an explicitly named target
+
+Output is one JSON object:
+
+    {
+      "schema": 1,
+      "seam": "warehouse",
+      "target": "lake",              // null for a single-mapping seam
+      "selected_by": "explicit",     // "explicit" (--target) | "default" (the seam's default:) | "single"
+      "is_default": false,
+      "label": "warehouse[lake]",
+      "tool": "databricks",
+      "adapter": "adapters/warehouse/databricks.md",
+      "values": { ... },             // effective values: seam scalars inherited, the target's own keys
+                                     // winning, tier-2/3 overlays already merged. An explicit
+                                     // `verify: null` on the target stays null (skip, not fall-through).
+      "verify": "databricks --profile my-profile current-user me",
+      "unresolved": [],              // {token}s interpolation could not fill
+      "unsafe": [],                  // tokens whose value carries shell metacharacters (refused)
+      "missing_required": [],        // adapter `requires:` keys unset on this unit
+      "errors": [ ... ], "warnings": [ ... ]
+    }
+
+Rules a caller can rely on (the later chat/docstore routing release implements against exactly
+these):
+
+- **An unresolvable name is a hard error, never a fallback.** `--target ghost` exits **8**
+  (`no_such_target`) and the error names the configured targets. So does a multi-target seam whose
+  `default:` is missing or names an unknown target, and an explicit `--target` on a single-mapping
+  seam. Exit **7** (`no_such_seam`) means the seam is not configured at all — the one case a caller
+  may degrade (the way `/ship` already skips an absent chat/docstore) instead of halting.
+- **`verify` is a runnable command or `null`, nothing in between.** When interpolation leaves an
+  unresolved `{token}`, or a token's value carries shell metacharacters (the tier-3 injection
+  refusal), the emitted `verify` is `null` and the reason is in `unresolved` / `unsafe`. No
+  half-interpolated or injected command string ever leaves the CLI.
+- **A successful selection never masks a resolution error.** A prohibited tier-3 override still
+  exits 6 even when the selection itself succeeded — read `errors` before trusting `values`.
+- **For chat and docstore, `selected_by: "default"` is not audience resolution.** Once those seams
+  hold targets, callers must pass an explicit `--target` derived from the delivery plan's declared
+  audience/classification; the bare-default form is only step 4 of the warehouse precedence above.
+
 ### One file, one target
 
 Line 1 of every `.sql` file names its target:
@@ -176,6 +231,49 @@ Two things check it, deliberately:
 
 So the hook catches things earlier and the review catches them more reliably. Neither replaces the
 other, which is why both exist.
+
+### The delivery plan — the persisted routing record (contract published now; implemented in a later release)
+
+The warehouse gets away with a header comment because the `.sql` file IS the executable artifact.
+A chat message or a docstore backup has no such file, so its declaration lives in a **persisted
+delivery plan**: `delivery-plan.yaml` at the ticket root, committed with the ticket. Today `/ship`
+renders the resolved plan for human approval; the chat/docstore routing release will write this
+file and route on it. The schema is published ahead of that implementation on purpose — a fresh
+agent must not have to invent safety-critical storage rules:
+
+    schema_version: 1
+    audience: internal                 # DECLARED by a person (in the spec, or at the /ship approval).
+                                       # NEVER inferred from prose, channel names, or labels.
+    classification: internal_archive   # docstore routing input, e.g. internal_archive | client_delivery
+    chat:
+      target: internal                 # chosen chat target (null when the seam is a single mapping)
+      channel: "#eng-updates"          # the resolved destination
+      recipients: [Alice]              # the target's own always_include as applied (+ the shipper
+                                       # when include_self is set)
+    docstore:
+      target: archive                  # chosen docstore target (null when single)
+      destination: "Shared drives/Tickets/ENG-1234 example-analysis"
+      sharing_scope: team              # declared scope of the destination: team | org | external
+    delivered:                         # one row per delivered file, appended at delivery time
+      - file: final_deliverables/results_1234rows.csv
+        docstore_target: archive       # recorded so link_for is ALWAYS called against the same store
+        url: "https://example.invalid/d/abc123"
+
+Rules (these are the contract, not commentary):
+
+- **Audience and classification are declarations, not inferences.** When more than one target is
+  configured and no declaration exists, routing HALTS — the never-fall-back rule above, applied at
+  the initial resolution, because the fall-through target may be the external one.
+- **`sharing_scope` is declarative.** The kit verifies a docstore's mount (`test -d`), never a
+  destination's real sharing ACL — correct target *selection* is not proof the folder's actual
+  permissions match the declared classification. That is unmanaged infrastructure; a reader must
+  not infer protection the kit does not provide.
+- **Each chat target declares its own audience, channel, and `always_include`**, applied after
+  routing and never inherited from another target. The non-empty-`always_include` requirement binds
+  only when `targets:` is present — a single-target chat seam that omits it keeps validating.
+- **Seam-level `default_channel` / `default_mode` under `targets:`** are inherited by targets that
+  do not define their own (the standard inheritance rule) and are never a silent fallback when
+  routing fails.
 
 ### Resolving the dev target
 

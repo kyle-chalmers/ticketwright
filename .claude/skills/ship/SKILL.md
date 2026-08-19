@@ -64,8 +64,30 @@ works regardless of the underlying tools.
      for the voice-refine diff in Phase C. `comms/` is gitignored (unsent wording never rides the PR).
 
 ## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
-Print a summary of exactly what will happen, then **stop and wait** for the user. Only on explicit
-authorization, execute in order:
+Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
+THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong destination is a
+disclosure, not an inconvenience. Resolve each posting seam with
+`bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --seam <name>`
+and render one line per seam from the RESOLVED values, never from memory of the config. Every line
+names its resolved **target** — today that renders as `target: single` (the resolution's null
+target on a single mapping), and stating it is the point: the plan the human authorizes is
+target-aware even while every seam has one tool. The plan must show exactly what steps 5–9 will
+execute — nothing the steps don't do may appear in it:
+   - **docstore** — tool, target, the exact destination it will back up into, and the sharing
+     scope the delivery plan declares ("sharing scope: not declared — single destination" is the
+     honest line until one exists; see `adapters/README.md` § The delivery plan);
+   - **tracker** — tool, target, the exact ticket (`owner/id`) the comment lands on;
+   - **chat** — tool, target, channel, the FULL recipient list (`always_include` + the shipper
+     when `include_self`), and draft-vs-send mode;
+   - **vcs** — tool, target, the branch, and that a PR opens;
+   - then the exact actions, in order (the numbered steps below).
+   Resolver exit 7 (seam not configured) = skip that line and name the `/setup tool <name>` enabler,
+   as today. Exit 8, or a resolution whose `target` is non-null (a `targets:` block on one of these
+   seams) = **halt** naming the configured targets: this flow cannot route between named targets
+   yet, and rendering a target the steps below would not deliver to is an authorization mismatch —
+   never fall back to another target or to seam-level values. With today's single-target seams the
+   plan resolves trivially; render it anyway — the delivery-plan release inherits this rendering.
+   Only on explicit authorization, execute in order:
 5. **docstore.backup** the ticket folder (full-title dest name); then `docstore.link_for` each
    delivered file to get shareable URLs. Skip when the docstore seam isn't configured.
 6. **tracker.comment** — post via the adapter's rich path (smart-link cards for the docstore
