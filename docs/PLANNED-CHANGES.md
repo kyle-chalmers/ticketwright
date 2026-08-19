@@ -41,6 +41,14 @@ by adding the `viewer` seam. Specifically:
   - It requires `seam:` and `tool:` frontmatter in the first lines of every `adapters/*/*.md`.
   - It requires certain literal tokens to survive in prose, e.g. `id_mode` in `README.md`,
     `stack.schema.md`, `docs/ticket-index.md` and `docs/troubleshooting.md`.
+  - ⚠ IT GREPS SKILLS FOR LEAKED TOOL NAMES, AND EXEMPTS EXACTLY ONE LINE BY LITERAL SUBSTRING.
+    `bin/selftest.sh` fails any skill mentioning `acli`, `snow`, `mcp__slack`, `gh pr`, etc., because
+    a skill must stay tool-neutral. It whitelists the CLI-detector line in
+    `.claude/skills/setup/SKILL.md` by matching the literal string `for c in snow acli gh`. REWORDING,
+    REORDERING OR LINE-SPLITTING THAT PROBE BREAKS THE SUITE with "tool name leaked into a skill",
+    and the exemption appears in TWO separate greps. PROMPT 4 rewrites that file and is the most
+    likely to trip this — if you must change the detector line, update both exemptions in the same
+    change.
 So "keep selftest green" is NOT a free constraint. Any prompt that adds an adapter, adds a verb, or
 restructures README/architecture MUST update those counts and preserve those tokens IN THE SAME
 CHANGE. Where a prompt below hits this, it says so explicitly.
@@ -522,6 +530,11 @@ PROMPT 5. Put both verdicts in the PR body.
    agent which tokens to pass and currently says nothing about absent seams), and the `vars.env`
    fixture in `bin/selftest.sh` that feeds the zero-leftover-token check.
    Depends on PROMPT 4 for the canonical `/setup tool chat` wording.
+
+2a. DEAD PROMISE, fix while you are here: `.claude/skills/setup/SKILL.md` says "Warn if a chosen
+   adapter is `status: stub`", but NO adapter in the repo carries a `status:` key and
+   `adapters/README.md` does not list one in the frontmatter contract. Either add `status:` to the
+   contract and populate it, or delete the promise. Do not leave a warning the kit cannot emit.
 
 2. `/setup` asks for a tracker and a ticket key prefix but never checks whether the corresponding
    project is ALIVE. In a real run the Jira project whose name matched the repo best had exactly one
