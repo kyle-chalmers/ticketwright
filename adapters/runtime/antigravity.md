@@ -16,6 +16,7 @@ gate_fail_mode: unknown     # hook-failure behavior undocumented — stated, nev
 subagent_isolation: documented
 reads_foreign_skills: none
 global_skills_root: unknown # two official pages disagree — see gotchas; U6 resolves it live
+agents_root: .agents/agents/<name>.md
 model_cmd: "agy -p {prompt}"
 model_sandbox: unverified   # docs describe a commandExecutionPolicy for subagents, not a verified CLI flag for `agy -p`
 auth: |
@@ -76,3 +77,16 @@ auth: |
   consistent; prefer them until this settles.
 - Whether `.gemini/commands/*.toml` is still read at runtime is not documented — migration converts
   them, which is not the same as continued support.
+
+## Metadata mapping
+
+How the canonical source's control fields map here when `bin/emit_runtime.py` emits the kit into
+`.agents/skills/` (one emission serves Codex CLI and Antigravity both — each requires only
+`name` + `description`). A `lost` entry is never silent: it is named in the install report, and
+for user-invocable-only skills it is restated inside the emitted artifact itself.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | lost | the skill frontmatter here is `description` (+ optional `name`) — no per-skill tool restriction exists; named in the install report |
+| `disable-model-invocation` (skill frontmatter) | lost | no equivalent field — the skill is emitted anyway, with a topmost warning block stating that model invocation is not mechanically prevented here |
+| `tools:` (agent definition, qc-reviewer) | mapped (unverified) | carried verbatim into `.agents/agents/qc-reviewer.md` frontmatter; whether the runtime honors it is live-verification work |

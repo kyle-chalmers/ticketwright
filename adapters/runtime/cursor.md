@@ -15,6 +15,8 @@ gate_fail_mode: open        # documented: hooks fail open unless failClosed true
 subagent_isolation: documented
 reads_foreign_skills: .claude/skills, .codex/skills
 global_skills_root: ~/.cursor/skills
+agents_root: .cursor/agents/<name>.md
+foreign_skills_caveat: Cursor also reads .codex/skills/ and .agents/skills/, so a copy emitted there for another runtime's users is visible here too — which copy wins is unverified upstream (the live-verification punch list covers it).
 model_cmd: ""
 model_sandbox: n/a   # no headless model command
 auth: |
@@ -50,3 +52,17 @@ auth: |
   documented behavior, and no official acknowledgement was found — recorded so nobody reads
   "hooks can deny" as "hooks reliably deny on every platform".
 - The documentation moved from `docs.cursor.com` to `cursor.com/docs`; older deep links are dead.
+
+## Metadata mapping
+
+How the canonical source's control fields map here. Cursor reads the canonical `.claude/skills/`
+copy directly, which is why the installer verifies instead of emitting — and that is also the
+shared-file trap: one file, many readers, and a foreign reader ignores Claude-specific keys, so
+per-runtime skill metadata mapping is IMPOSSIBLE here. The losses are stated in the install
+verify report, per affected skill.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | lost | shared-file trap — Cursor reads the canonical file and ignores this Claude-specific key; stated in the verify report |
+| `disable-model-invocation` (skill frontmatter) | lost | shared-file trap — nothing here prevents model invocation of a user-invocable-only skill; the verify report warns per affected skill |
+| `tools:` (agent definition, qc-reviewer) | mapped (unverified) | emitted into `.cursor/agents/qc-reviewer.md` with `tools:` carried verbatim; whether the runtime honors it is live-verification work |

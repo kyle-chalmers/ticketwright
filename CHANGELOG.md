@@ -7,6 +7,33 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **The full emission matrix: `ticketwright install --runtime <name>` now covers all seven
+  runtimes** (PROMPT 7 / U2), driven entirely by adapter frontmatter — `reads_foreign_skills`
+  and `skills_root` decide emit-vs-verify, `agents_root` decides agent-definition emission,
+  `global_skills_root` drives `--global`; no runtime name is baked into branch logic. Where a
+  runtime reads the canonical `.claude/skills/` copy directly (cursor, opencode, cline, devin) the
+  installer VERIFIES it is reachable and emits no skills, printing each adapter's documented
+  caveat and the shared-file trap per affected skill: a foreign reader ignores Claude-specific
+  keys, so `allowed-tools` and `disable-model-invocation` are lost there exactly as on an emit
+  runtime lacking the primitive — plus a duplicate scan naming any same-named copy in another
+  root the runtime reads. Where it cannot (codex-cli, antigravity — one shared `.agents/skills/`
+  emission), every skill is now emitted, completing the U1 deferral: a user-invocable-only skill
+  (`disable-model-invocation: true`, enumerated from source frontmatter) carries a topmost
+  warning block stating that nothing mechanical prevents model invocation there. Every mapping
+  and loss is recorded per runtime in a new `## Metadata mapping` section on each
+  `adapters/runtime/*.md`. The `qc-reviewer` agent definition is emitted wherever subagents are
+  user-definable (`.codex/agents/qc-reviewer.toml`; markdown for cursor/devin/antigravity, with
+  `tools:` carried verbatim as an unverified mapping); cline (not user-definable) and opencode
+  (no documented definition path) get the stated loss instead of a guess. `--global` emits into
+  the declared per-user root, REFUSES where it is `unknown` (antigravity — its documented sources
+  disagree), and is a deliberate explained no-op on verify runtimes (a global copy would be a
+  permanent stale-duplicate risk). Collision handling is provenance-aware for every artifact:
+  the installer refreshes its own files on re-run and never overwrites a file it did not emit —
+  the install fails loudly instead. Selftest section 41 pins the per-runtime fixture trees
+  (`tests/emit/{codex-cli,antigravity,cursor,devin}/`), the warning coverage (enumerated from
+  source, in the artifact on emit runtimes and in the captured report on verify runtimes), the
+  verify runtimes' zero-skill-copy guarantee, and the `--global` contract; section 39's carve-out
+  assertions were updated to the completed behavior.
 - **The runtime installer skeleton: `ticketwright install --runtime <name>`** (also
   `bin/install.sh`, or `bin/emit_runtime.py` directly — one implementation, three ways in, never a
   competing install route). The canonical skill source stays `.claude/skills/`; the installer
@@ -15,14 +42,15 @@ All notable changes to this project are documented here. Format loosely follows
   nothing — the Claude Code path is unchanged), `--runtime codex-cli` EMITS
   `.agents/skills/<name>/SKILL.md` per skill (`name` + `description` frontmatter, body carried
   over, provenance header naming the emitting version and the re-run command — hand-copying
-  between layouts is unsupported). Skills whose source declares `disable-model-invocation: true`
-  (`setup`, `ship`, `productize` — enumerated from frontmatter, never hardcoded) are deferred
-  with a printed reason: Codex has no equivalent field yet, and emitting them would silently make
-  user-invocable-only skills model-invocable. A re-run also cleans up after that rule: a stale
-  emitted copy of a now-gated skill is removed (identified by its provenance header), and a
-  hand-copied one is never deleted but fails the install loudly. Renamed-runtime aliases resolve
-  through the existing adapter machinery (`--runtime windsurf` answers about `devin`);
-  known-but-unwired runtimes and `--global` exit non-zero naming the unit that adds them.
+  between layouts is unsupported). At this stage, skills whose source declared
+  `disable-model-invocation: true` (`setup`, `ship`, `productize` — enumerated from frontmatter,
+  never hardcoded) were deferred with a printed reason, a re-run removed a stale emitted copy of
+  a gated skill, and other runtimes plus `--global` exited non-zero naming the unit adding them —
+  all superseded within this same release by the emission-matrix entry above, which emits gated
+  skills with a topmost warning block, covers all seven runtimes, wires `--global`, and
+  generalizes the never-delete-a-hand-copied-file rule into provenance-aware collision handling
+  for every artifact. Renamed-runtime aliases resolve through the existing adapter machinery
+  (`--runtime windsurf` answers about `devin`).
   `ticketwright init` now writes a `bin/KIT_VERSION` marker so a vendored kit can stamp true
   provenance (same preserve/`--force` rule as every vendored file). Stdlib-only, takes
   `--root`, no Claude environment variable required. Selftest section 39 pins the emitted tree

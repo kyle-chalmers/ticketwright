@@ -1,38 +1,58 @@
 #!/usr/bin/env python3
-"""Install the kit's skills for a named runtime — verify where the runtime already sees the
-canonical copy, translate-on-emit where it cannot.
+"""Install the kit's skills and agent definitions for a named runtime — verify where the runtime
+already sees the canonical copy, translate-on-emit where it cannot.
 
   emit_runtime.py --runtime <name> [--local|--global] [--root <path>]
 
 The canonical skill source is `.claude/skills/` and it never moves (see docs/architecture.md,
 "Why the canonical source stays put"). This command is the compatibility layer between that source
-and each runtime's own skill layout:
+and each runtime's own layout, and the decision is DATA-DRIVEN off `adapters/runtime/*.md`
+frontmatter — never a runtime name in branch logic:
 
-  --runtime claude-code   VERIFY-ONLY. Claude Code reads the canonical copy natively (plugin or
-                          vendored install), so there is nothing to emit; the command reports the
-                          install's state and touches nothing.
-  --runtime codex-cli     EMIT. Codex CLI reads `.agents/skills/<name>/SKILL.md`, so each canonical
-                          skill is translated there: `name` + `description` frontmatter (the two
-                          fields Codex requires), a provenance header, and the body carried over.
-  everything else         Known runtimes that are not wired yet exit nonzero naming the unit that
-                          adds them; unknown names exit nonzero listing what exists.
+  NATIVE    the runtime's own `skills_root` IS the canonical copy (claude-code). Verify-only:
+            report the install's state, touch nothing.
+  VERIFY    the runtime's `reads_foreign_skills` includes `.claude/skills` (cursor, opencode,
+            cline, devin today). The runtime reads the canonical copy directly, so emitting a
+            translated duplicate would create the stale-copy-silently-wins failure mode — the
+            installer verifies the canonical copy is reachable, prints the documented caveats and
+            metadata losses, and emits NO skill files. (The shared-file trap: one file, many
+            readers — a foreign reader ignores Claude-specific keys, so `allowed-tools` and
+            `disable-model-invocation` are exactly as lost here as on an emit runtime lacking the
+            primitive. The verify report states that loss per affected skill.)
+  EMIT      everything else (codex-cli and antigravity today, sharing one `.agents/skills/`
+            emission). Each canonical skill is translated: `name` + `description` frontmatter,
+            a provenance header, and the body carried over.
 
-Safety carve-out: a skill whose SOURCE frontmatter declares `disable-model-invocation: true` is NOT
-emitted — Codex has no equivalent field yet, so emitting it would silently turn a user-invocable-only
-skill into a model-invocable one. The deferral is printed, never silent; the metadata mapping that
-lifts it lands in a later unit (U2).
+Metadata mapping (per-runtime record: adapters/runtime/<tool>.md § Metadata mapping): a source
+skill declaring `disable-model-invocation: true` IS emitted on emit runtimes, but with a topmost
+warning block stating that user-invocable-only cannot be expressed there — the loss rides in the
+artifact a user actually reads, never only in a report. `allowed-tools` has no equivalent on any
+emit runtime and is named as lost in the install report. Agent definitions (`.claude/agents/*.md`,
+qc-reviewer today) are emitted wherever the adapter declares an `agents_root` pattern; `none`
+(subagents not user-definable) and `unknown` (no documented definition path) are stated, not
+guessed around.
 
-Hand-copying skill files between runtime layouts is unsupported: a stale duplicate silently winning
-over the canonical copy is the failure mode this command exists to prevent. Re-run it to update.
+Collision handling is provenance-aware for every emitted artifact: a file this installer wrote
+(identified by its provenance header) is overwritten on re-run — that is what "re-run to update"
+means. A file it did NOT write is never touched: the install fails loudly instead, because
+hand-copying between runtime layouts is unsupported and silently clobbering a hand-maintained
+file would be worse.
+
+--global emits into the adapter's declared `global_skills_root` (skills only — no global agents
+root is researched). Where that key is `unknown` (antigravity: its documented sources disagree)
+the installer REFUSES with the explanation rather than guessing a path. On native/verify runtimes
+--global is a deliberate no-op with the reason printed: those runtimes read the canonical
+per-project copy, so a global emission would be a permanent stale-duplicate risk.
 
 Exposed three ways, one implementation: `ticketwright install` (the pip entrypoint),
 `bin/install.sh` (the shell convenience), and this script directly. Stdlib only; takes `--root`;
-no Claude environment variable required. Exit codes: 0 ok · 2 usage/not-installable · 3 kit not
-locatable. Diagnostics go to stderr; the install report goes to stdout.
+no Claude environment variable required. Exit codes: 0 ok · 2 usage/not-installable/verify-failed
+· 3 kit not locatable. Diagnostics go to stderr; the install report goes to stdout.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -43,13 +63,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kit_paths  # noqa: E402
 
-# What this skeleton can do per runtime. Everything else in adapters/runtime/ is known-but-not-wired
-# until the emission matrix (U2) extends coverage to all seven.
-WIRED = {"claude-code": "verify-only", "codex-cli": "emit"}
-NOT_WIRED_UNIT = "U2 (the emission matrix)"
+CANONICAL_SKILLS = ".claude/skills"
+CANONICAL_AGENTS = ".claude/agents"
 
-PROVENANCE_TEMPLATE = ("<!-- emitted by ticketwright install v{version} — do not hand-edit; "
-                       "re-run `ticketwright install --runtime {runtime}` to update. -->")
+# The literal marker substring is load-bearing: it identifies OUR emissions for provenance-aware
+# overwrites, and selftest greps for it in every emitted file. Do not reword it.
+PROVENANCE_MARK = "emitted by ticketwright install v"
+PROVENANCE_TEXT = ("emitted by ticketwright install v{version} — do not hand-edit; "
+                   "re-run `ticketwright install --runtime {runtime}` to update.")
 
 
 def kit_version(kit: Path) -> str:
@@ -77,7 +98,6 @@ def kit_version(kit: Path) -> str:
     except OSError:
         pass
     try:  # plugin cache install ships .claude-plugin/plugin.json
-        import json
         v = json.loads((kit / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("version")
         if v:
             return str(v)
@@ -96,20 +116,42 @@ def split_frontmatter(text: str) -> tuple[str, str] | None:
     return text[4:end + 1], text[end + 5:]
 
 
-def raw_description_line(fm_block: str) -> str | None:
-    """The source's own `description:` line, verbatim — reusing it keeps whatever quoting the
-    source needed, instead of re-serializing YAML and betting on the escaping. A block-scalar
-    description (`|`/`>`) cannot be carried by one line, so it is refused rather than mangled."""
+def raw_line(fm_block: str, key: str) -> str | None:
+    """The source's own `<key>:` line, verbatim — reusing it keeps whatever quoting the source
+    needed, instead of re-serializing YAML and betting on the escaping. A block-scalar value
+    (`|`/`>`) cannot be carried by one line, so it is refused rather than mangled."""
+    prefix = key + ":"
     for ln in fm_block.splitlines():
-        if ln.startswith("description:"):
+        if ln.startswith(prefix):
             if ln.partition(":")[2].strip()[:1] in ("|", ">"):
                 return None
             return ln
     return None
 
 
-def source_skills(kit: Path) -> list[Path]:
-    return sorted((kit / ".claude" / "skills").glob("*/SKILL.md"))
+def parse_list(value: str | None) -> list[str]:
+    items = [i.strip() for i in (value or "").split(",")]
+    return [i for i in items if i and i != "none"]
+
+
+def source_skills(root: Path) -> list[Path]:
+    return sorted((root / ".claude" / "skills").glob("*/SKILL.md"))
+
+
+def source_agents(kit: Path) -> list[Path]:
+    return sorted((kit / ".claude" / "agents").glob("*.md"))
+
+
+def gated_skills(root: Path) -> dict[str, str]:
+    """Every skill whose frontmatter declares disable-model-invocation: true, enumerated from the
+    SOURCE at run time (never a hardcoded list — a future gated skill is covered automatically),
+    mapped to its allowed-tools declaration for the warning text."""
+    out = {}
+    for src in source_skills(root):
+        fm = kit_paths.read_frontmatter(src)
+        if fm.get("disable-model-invocation") == "true":
+            out[src.parent.name] = fm.get("allowed-tools", "")
+    return out
 
 
 def skills_emit_root(fm: dict, tool: str) -> str:
@@ -125,25 +167,204 @@ def skills_emit_root(fm: dict, tool: str) -> str:
     return root[: -len(suffix)]
 
 
-def verify_claude_code(project: Path) -> int:
-    """Claude Code reads the canonical copy natively — report the install, write nothing.
+def emission_mode(fm: dict, tool: str) -> str:
+    """native | verify | emit, decided by adapter data alone (see the module docstring)."""
+    if skills_emit_root(fm, tool) == CANONICAL_SKILLS:
+        return "native"
+    if CANONICAL_SKILLS in parse_list(fm.get("reads_foreign_skills", "none")):
+        return "verify"
+    return "emit"
+
+
+def warning_block(tool: str, allowed_tools: str) -> str:
+    """The topmost rendered block of an emitted user-invocable-only skill: the loss rides in the
+    artifact itself, because a report scrolls away and this file does not."""
+    lines = [
+        f"> **User-invocable only — not enforced on {tool}.** The canonical source of this skill",
+        "> declares `disable-model-invocation: true`: a person invokes it deliberately; the model",
+        f"> must never choose it on its own. {tool} has no equivalent control, so nothing mechanical",
+        "> prevents model invocation here — treat any model-initiated use of this skill as a bug.",
+    ]
+    if allowed_tools:
+        lines.append(f"> Its canonical `allowed-tools` restriction ({allowed_tools}) is not "
+                     "enforced here either.")
+    return "\n".join(lines)
+
+
+def write_emitted(out: Path, content: str, foreign: list[Path]) -> bool:
+    """Provenance-aware write. Ours (provenance header present) -> overwrite; absent or identical
+    -> write; a DIFFERENT file we did not emit -> never touched, recorded as foreign so the
+    install fails loudly instead of clobbering a hand-maintained file."""
+    if out.exists():
+        try:
+            existing = out.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            existing = ""
+        if PROVENANCE_MARK not in existing and existing != content:
+            foreign.append(out)
+            return False
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(content, encoding="utf-8")
+    return True
+
+
+def report_foreign(foreign: list[Path]) -> int:
+    for p in foreign:
+        print(f"emit_runtime: {p} already exists and this installer did not emit it (no provenance "
+              f"header — hand-copying between runtime layouts is unsupported). It was not deleted "
+              f"and not overwritten; delete or move it yourself, then re-run.", file=sys.stderr)
+    return 2 if foreign else 0
+
+
+def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
+                foreign: list[Path]) -> list[str]:
+    """Translate every canonical skill into emit_root. Returns the names emitted."""
+    gated = gated_skills(kit)
+    emitted, warned, dropped_keys = [], [], set()
+    for src in source_skills(kit):
+        parts = split_frontmatter(src.read_text(encoding="utf-8"))
+        if not parts:
+            print(f"emit_runtime: {src} has no frontmatter block — skipping.", file=sys.stderr)
+            continue
+        fm_block, body = parts
+        name = src.parent.name
+        desc_line = raw_line(fm_block, "description")
+        if not desc_line:
+            print(f"emit_runtime: {src} has no description: line — skipping.", file=sys.stderr)
+            continue
+        skill_fm = kit_paths.read_frontmatter(src)
+        dropped_keys.update(k for k in skill_fm if k not in ("name", "description"))
+        header = "<!-- " + PROVENANCE_TEXT.format(version=version, runtime=tool) + " -->"
+        content = f"---\nname: {name}\n{desc_line}\n---\n\n{header}\n"
+        if name in gated:
+            # The warning is the FIRST RENDERED BLOCK (the provenance line above is an HTML
+            # comment): "model-invocable when the author said user-only" must be impossible to
+            # hit without having been told, in the file itself.
+            content += "\n" + warning_block(tool, gated[name]) + "\n"
+        content += body
+        out = emit_root / name / "SKILL.md"
+        if write_emitted(out, content, foreign):
+            emitted.append(name)
+            print(f"  emitted   {out}")
+            if name in gated:
+                warned.append(name)
+    for name in warned:
+        print(f"  warned    {name} — user-invocable-only (disable-model-invocation: true) cannot be "
+              f"expressed on {tool}; emitted with a topmost warning block "
+              f"(see adapters/runtime/{tool}.md § Metadata mapping).")
+    lost = sorted(k for k in dropped_keys if k in ("allowed-tools", "disable-model-invocation"))
+    other = sorted(k for k in dropped_keys if k not in ("allowed-tools", "disable-model-invocation"))
+    if lost:
+        print(f"  note: control fields not expressible here and therefore lost: {', '.join(lost)} — "
+              f"recorded per field in adapters/runtime/{tool}.md § Metadata mapping.")
+    if other:
+        print(f"  note: display-only source keys dropped (nothing a reader loses): {', '.join(other)}.")
+    print("  hand-copying these files between runtime layouts is unsupported — re-run this install to update.")
+    return emitted
+
+
+def emit_agents(kit: Path, project: Path, fm: dict, tool: str, version: str,
+                foreign: list[Path]) -> int:
+    """Emit .claude/agents/*.md as runtime-native agent definitions wherever the adapter declares
+    an agents_root pattern; state the loss where it declares none/unknown."""
+    names = ", ".join(src.stem for src in source_agents(kit)) or "qc-reviewer"
+    pattern = fm.get("agents_root", "unknown")
+    if pattern == "none":
+        print(f"  note: agent definitions ({names}) are NOT installable here — {tool} subagents "
+              f"are not user-definable, so the deep review degrades to an inline same-context pass "
+              f"and the /review verdict says so (adapters/runtime/{tool}.md § Metadata mapping).")
+        return 0
+    if pattern == "unknown":
+        print(f"  note: agent definitions ({names}) not emitted — {tool} documents user-definable "
+              f"subagents but no definition file path or format is established, and guessing one "
+              f"would emit a file nothing reads (see adapters/runtime/{tool}.md).")
+        return 0
+    fmt = "md" if pattern.endswith("/<name>.md") else "toml" if pattern.endswith("/<name>.toml") else None
+    if not fmt:
+        print(f"emit_runtime: the {tool} adapter's agents_root ({pattern!r}) matches neither "
+              f"'<dir>/<name>.md' nor '<dir>/<name>.toml' — fix the adapter frontmatter.",
+              file=sys.stderr)
+        return 2
+    root = pattern[: -len("/<name>." + fmt)]
+    if root == CANONICAL_AGENTS:
+        return 0  # native — the canonical copy is already the runtime's own format
+    rc = 0
+    for src in source_agents(kit):
+        parts = split_frontmatter(src.read_text(encoding="utf-8"))
+        if not parts:
+            print(f"emit_runtime: {src} has no frontmatter block — skipping.", file=sys.stderr)
+            continue
+        fm_block, body = parts
+        name = src.stem
+        agent_fm = kit_paths.read_frontmatter(src)
+        tools = agent_fm.get("tools", "")
+        prov = PROVENANCE_TEXT.format(version=version, runtime=tool)
+        if fmt == "md":
+            desc_line = raw_line(fm_block, "description")
+            tools_line = raw_line(fm_block, "tools")
+            if not desc_line:
+                print(f"emit_runtime: {src} has no description: line — skipping.", file=sys.stderr)
+                continue
+            lines = ["---", f"name: {name}", desc_line]
+            if tools_line:
+                lines.append(tools_line)
+            lines += ["---", "", f"<!-- {prov} -->"]
+            content = "\n".join(lines) + "\n" + body
+            note = ("tools: carried verbatim — whether the runtime honors it is live-verification "
+                    "work" if tools_line else "no tools: line in the source")
+        else:
+            if "'''" in body or "'''" in tools:
+                print(f"emit_runtime: {src} contains a TOML literal-string delimiter (''') and "
+                      f"cannot be emitted as {tool} TOML — rewrite the source without it.",
+                      file=sys.stderr)
+                rc = 2
+                continue
+            content = (
+                f"# {prov}\n"
+                f"#\n"
+                f"# Canonical source: {CANONICAL_AGENTS}/{name}.md, which restricts this agent to\n"
+                f"# tools: {tools or '(none declared)'}. No documented field of this format carries a tool\n"
+                f"# restriction, so it is NOT mechanically enforced here — the restriction is restated\n"
+                f"# in the instructions, and whether this definition is accepted at all is\n"
+                f"# live-verification work (see adapters/runtime/{tool}.md § Metadata mapping).\n"
+                f"\n"
+                f"description = {json.dumps(agent_fm.get('description', ''))}\n"
+                f"\n"
+                f"instructions = '''\n"
+                f"READ-ONLY BY DESIGN — not mechanically enforced on this runtime. Use only\n"
+                f"capabilities equivalent to: {tools or 'Read, Bash, Glob, Grep'}. Never edit files;"
+                f" never post externally.\n"
+                f"{body}'''\n"
+            )
+            note = "tools: lost — no documented field; the loss is restated inside the file"
+        out = project / root / f"{name}.{fmt}"
+        if write_emitted(out, content, foreign):
+            print(f"  emitted   {out} (agent definition; {note})")
+    return rc
+
+
+def verify_native(project: Path, tool: str) -> int:
+    """The runtime's own skills_root IS the canonical copy (claude-code) — report the install,
+    write nothing.
 
     "Some SKILL.md exists under .claude/skills/" is not evidence of a ticketwright install (any
     project can carry its own skills), so the vendored check requires the kit's own markers — the
     same is_kit test the launcher uses — with the canonical skills present alongside them. The
-    plugin check reads the same install manifest kit_paths trusts, never a glob.
+    plugin check reads the same install manifest kit_paths trusts, never a glob. (The manifest
+    probe is meaningful only for the runtime whose plugin cache it is; for the native runtime,
+    that is exactly the right question.)
     """
-    skills = sorted((project / ".claude" / "skills").glob("*/SKILL.md"))
+    skills = source_skills(project)
     if kit_paths.is_kit(project) and skills:
-        print(f"claude-code: verify-only — nothing to emit. Vendored install found (kit markers "
+        print(f"{tool}: verify-only — nothing to emit. Vendored install found (kit markers "
               f"present; {len(skills)} SKILL.md files under .claude/skills/).")
         return 0
     plugin = kit_paths._plugin_kit(project)
     if plugin:
-        print(f"claude-code: verify-only — nothing to emit. Installed as a Claude Code plugin "
+        print(f"{tool}: verify-only — nothing to emit. Installed as a Claude Code plugin "
               f"(kit at {plugin}).")
         return 0
-    print("claude-code: no ticketwright install found for this project — no plugin-manifest entry, "
+    print(f"{tool}: no ticketwright install found for this project — no plugin-manifest entry, "
           "and no vendored kit (bin/kit_paths.py + adapters/ + templates/ + .claude/skills/).",
           file=sys.stderr)
     if skills:
@@ -154,73 +375,93 @@ def verify_claude_code(project: Path) -> int:
     return 2
 
 
-def emit_codex(kit: Path, project: Path, fm: dict, tool: str) -> int:
-    emit_root = project / skills_emit_root(fm, tool)
-    version = kit_version(kit)
-    emitted, deferred, removed, foreign, dropped_keys = [], [], [], [], set()
-    for src in source_skills(kit):
-        parts = split_frontmatter(src.read_text(encoding="utf-8"))
-        if not parts:
-            print(f"emit_runtime: {src} has no frontmatter block — skipping.", file=sys.stderr)
-            continue
-        fm_block, body = parts
-        skill_fm = kit_paths.read_frontmatter(src)
-        name = src.parent.name
-        if skill_fm.get("disable-model-invocation") == "true":
-            deferred.append(name)
-            # "Deferred" must also mean "not left behind": a copy emitted before the skill was
-            # gated (or hand-copied in) would stay model-invocable on this runtime. Our own stale
-            # emission (identified by its provenance header) is removed — that is what "re-run to
-            # update" means. A file we did not emit is never deleted, but it fails the install
-            # loudly below rather than being silently tolerated.
-            existing = emit_root / name / "SKILL.md"
-            if existing.exists():
-                try:
-                    stale_text = existing.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    stale_text = ""
-                if "emitted by ticketwright install v" in stale_text:
-                    existing.unlink()
-                    try:
-                        existing.parent.rmdir()
-                    except OSError:
-                        pass
-                    removed.append(name)
-                else:
-                    foreign.append(existing)
-            continue
-        desc_line = raw_description_line(fm_block)
-        if not desc_line:
-            print(f"emit_runtime: {src} has no description: line — skipping.", file=sys.stderr)
-            continue
-        dropped_keys.update(k for k in skill_fm if k not in ("name", "description"))
-        out = emit_root / name / "SKILL.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        header = PROVENANCE_TEMPLATE.format(version=version, runtime=tool)
-        out.write_text(f"---\nname: {name}\n{desc_line}\n---\n\n{header}\n{body}", encoding="utf-8")
-        emitted.append(out)
-    print(f"{tool}: emitted {len(emitted)} skills into {emit_root}/")
-    for p in emitted:
-        print(f"  emitted   {p}")
-    for name in deferred:
-        print(f"  deferred  {name} — its source declares disable-model-invocation: true (user-invocable "
-              f"only); {tool} has no equivalent field yet, so emitting it now would silently make it "
-              f"model-invocable. {NOT_WIRED_UNIT} adds the metadata mapping and warning block.")
-    for name in removed:
-        print(f"  removed   stale emitted copy of {name} — its source declares "
-              f"disable-model-invocation: true, so leaving it would keep it model-invocable here.")
-    if dropped_keys:
-        print(f"  note: source frontmatter keys not carried over ({', '.join(sorted(dropped_keys))}) — "
-              f"per-runtime metadata mapping lands with {NOT_WIRED_UNIT}.")
-    print("  hand-copying these files between runtime layouts is unsupported — re-run this install to update.")
-    if foreign:
-        for p in foreign:
-            print(f"emit_runtime: {p} makes a user-invocable-only skill model-invocable on this "
-                  f"runtime, and this installer did not emit it (no provenance header — hand-copying "
-                  f"is unsupported). It was not deleted; delete or move it yourself, then re-run.",
-                  file=sys.stderr)
+def verify_foreign(kit: Path, project: Path, fm: dict, tool: str, version: str) -> int:
+    """The runtime reads the canonical .claude/skills/ copy natively: verify it is reachable and
+    emit NO skills — then state, per affected skill, every control field that shared file cannot
+    carry for this reader."""
+    skills = source_skills(project)
+    if not (kit_paths.is_kit(project) and skills):
+        plugin = kit_paths._plugin_kit(project)
+        print(f"{tool}: no canonical .claude/skills/ copy found in this project — {tool} reads the "
+              f"PROJECT's copy, so there is nothing for it to discover here.", file=sys.stderr)
+        if plugin:
+            print(f"  note: ticketwright IS installed as a Claude Code plugin (kit at {plugin}), "
+                  f"but {tool} cannot read Claude's plugin cache.", file=sys.stderr)
+        elif skills:
+            print("  note: this project has its own .claude/skills/ files, but a skills directory "
+                  "alone is not a ticketwright install.", file=sys.stderr)
+        print("  vendor the kit into the repo: pip install ticketwright && ticketwright init", file=sys.stderr)
         return 2
-    return 0
+    print(f"{tool}: verify-only — {tool} reads the canonical {CANONICAL_SKILLS}/ copy natively; "
+          f"found {len(skills)} skills at {project / '.claude' / 'skills'}. Emitting a translated "
+          f"duplicate could silently shadow the canonical copy, so nothing is emitted.")
+    caveat = fm.get("foreign_skills_caveat", "")
+    if caveat:
+        print(f"  caveat    {caveat}")
+    # The shared-file trap, stated per affected skill and enumerated from the canonical copy this
+    # runtime actually reads: one file, many readers, and a foreign reader ignores Claude-specific
+    # keys — so user-invocable-only is exactly as lost here as on an emit runtime lacking the field.
+    for name in sorted(gated_skills(project)):
+        print(f"  warning   {name} is user-invocable-only (disable-model-invocation: true) in its "
+              f"canonical frontmatter — {tool} reads the same file but ignores that key, so nothing "
+              f"here prevents the model from invoking it on its own.")
+    print(f"  note: allowed-tools restrictions in the canonical frontmatter are Claude-specific "
+          f"keys in a shared file — {tool} does not honor them "
+          f"(adapters/runtime/{tool}.md § Metadata mapping).")
+    # Duplicate scan: every OTHER root this runtime reads (its own skills_root included) that
+    # carries a same-named skill is the stale-copy-silently-wins risk, named while it is cheap.
+    other_roots = [skills_emit_root(fm, tool)] + [
+        r for r in parse_list(fm.get("reads_foreign_skills", "none")) if r != CANONICAL_SKILLS]
+    for root in other_roots:
+        for src in skills:
+            name = src.parent.name
+            dup = project / root / name / "SKILL.md"
+            if dup.exists():
+                print(f"  note: {root}/{name}/SKILL.md duplicates the canonical skill '{name}' — "
+                      f"{tool} reads both roots and which copy wins is unverified; keep one, or "
+                      f"re-run the install that emitted it to refresh it.")
+    foreign: list[Path] = []
+    rc = emit_agents(kit, project, fm, tool, version, foreign)
+    print("  note: hooks (the db-write guard, the session banners) are not emitted yet — until "
+          "they are, db_write_requires_approval is guidance on this runtime, not enforcement.")
+    return max(rc, report_foreign(foreign))
+
+
+def run_emit(kit: Path, project: Path, fm: dict, tool: str, version: str) -> int:
+    emit_root = project / skills_emit_root(fm, tool)
+    foreign: list[Path] = []
+    emitted = emit_skills(kit, emit_root, tool, version, foreign)
+    print(f"{tool}: emitted {len(emitted)} skills into {emit_root}/")
+    rc = emit_agents(kit, project, fm, tool, version, foreign)
+    print("  note: hooks (the db-write guard, the session banners) are not emitted yet — until "
+          "they are, db_write_requires_approval is guidance on this runtime, not enforcement.")
+    return max(rc, report_foreign(foreign))
+
+
+def run_global(kit: Path, fm: dict, tool: str, version: str, mode: str) -> int:
+    if mode != "emit":
+        print(f"{tool}: --global is deliberately a no-op here — {tool} reads the canonical "
+              f"{CANONICAL_SKILLS}/ copy inside each project, so a per-user global emission would "
+              f"be a permanent stale-duplicate risk (the exact failure mode the emit-vs-verify "
+              f"split exists to prevent). Run the per-project install instead (--local, the default).")
+        return 0
+    gsr = fm.get("global_skills_root", "unknown")
+    if gsr == "unknown":
+        print(f"emit_runtime: --global refused for {tool} — its adapter declares "
+              f"global_skills_root: unknown because the documented sources disagree or are silent "
+              f"on the per-user path, and guessing one would emit files nothing reads (see "
+              f"adapters/runtime/{tool}.md and docs/runtimes.md; resolving it is live-verification "
+              f"work). Use --local (the default).", file=sys.stderr)
+        return 2
+    emit_root = Path(gsr).expanduser()
+    foreign: list[Path] = []
+    emitted = emit_skills(kit, emit_root, tool, version, foreign)
+    print(f"{tool}: emitted {len(emitted)} skills into {emit_root}/ (global)")
+    print("  note: agent definitions are project-scoped (no global agents root is researched) — "
+          "run the per-project install for them.")
+    print("  note: hooks (the db-write guard, the session banners) are not emitted yet — until "
+          "they are, db_write_requires_approval is guidance on this runtime, not enforcement.")
+    return report_foreign(foreign)
 
 
 def main(argv=None) -> int:
@@ -232,7 +473,7 @@ def main(argv=None) -> int:
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--local", action="store_true", help="emit into the project repo (default)")
     scope.add_argument("--global", dest="global_scope", action="store_true",
-                       help="emit into the runtime's per-user global skills root (not wired yet)")
+                       help="emit into the runtime's declared per-user global skills root")
     ap.add_argument("--root", help="the project repo (default: $TICKETWRIGHT_PROJECT, git toplevel, cwd)")
     args = ap.parse_args(argv)
 
@@ -254,21 +495,16 @@ def main(argv=None) -> int:
         return 2
     _, fm = entry
     tool = fm["tool"]  # canonical: an alias like windsurf resolves to devin here
+    version = kit_version(kit)
+    mode = emission_mode(fm, tool)
 
     if args.global_scope:
-        print(f"emit_runtime: --global is not wired yet — it needs the per-runtime "
-              f"global_skills_root capability, which {NOT_WIRED_UNIT} adds. Use --local (the default).",
-              file=sys.stderr)
-        return 2
-
-    if tool not in WIRED:
-        print(f"emit_runtime: runtime '{tool}' is known but not wired yet — {NOT_WIRED_UNIT} adds it. "
-              f"Wired today: claude-code (verify-only), codex-cli (emit).", file=sys.stderr)
-        return 2
-
-    if tool == "claude-code":
-        return verify_claude_code(project)
-    return emit_codex(kit, project, fm, tool)
+        return run_global(kit, fm, tool, version, mode)
+    if mode == "native":
+        return verify_native(project, tool)
+    if mode == "verify":
+        return verify_foreign(kit, project, fm, tool, version)
+    return run_emit(kit, project, fm, tool, version)
 
 
 if __name__ == "__main__":

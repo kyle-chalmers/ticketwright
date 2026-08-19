@@ -16,6 +16,8 @@ gate_fail_mode: open        # documented design: any nonzero other than 2 is log
 subagent_isolation: documented
 reads_foreign_skills: .claude/skills   # vendor-format reading is toggleable in Devin's config
 global_skills_root: ~/.config/devin/skills
+agents_root: .devin/agents/<name>.md
+foreign_skills_caveat: Devin's reading of other vendors' formats (including .claude/skills/) is toggleable in its config — if the skills do not appear, check that setting before reinstalling.
 model_cmd: "devin -p {prompt}"
 model_sandbox: unverified   # docs mention a --sandbox mode, not verified for `devin -p`
 auth: |
@@ -74,3 +76,17 @@ auth: |
   automatically denied. A `qc-reviewer` running in the background may simply be unable to re-run a
   query the main session could.
 - Whether a hook decision can override a static `deny` rule is not documented.
+
+## Metadata mapping
+
+How the canonical source's control fields map here. Devin reads the canonical `.claude/skills/`
+copy directly (toggleable in its config), which is why the installer verifies instead of emitting —
+and that is also the shared-file trap: one file, many readers, and a foreign reader ignores
+Claude-specific keys, so per-runtime skill metadata mapping is IMPOSSIBLE here. The losses are
+stated in the install verify report, per affected skill.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | lost | shared-file trap — Devin reads the canonical file and ignores this Claude-specific key; stated in the verify report |
+| `disable-model-invocation` (skill frontmatter) | lost | shared-file trap — nothing here prevents model invocation of a user-invocable-only skill; the verify report warns per affected skill |
+| `tools:` (agent definition, qc-reviewer) | mapped (unverified) | emitted into `.devin/agents/qc-reviewer.md` with `tools:` carried verbatim; whether the runtime honors it is live-verification work |

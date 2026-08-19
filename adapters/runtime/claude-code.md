@@ -15,6 +15,7 @@ gate_fail_mode: open        # hooks fail open by design: a hook error never bloc
 subagent_isolation: documented
 reads_foreign_skills: none
 global_skills_root: ~/.claude/skills
+agents_root: .claude/agents/<name>.md   # native — this IS the canonical copy; the installer emits nothing
 model_cmd: "claude -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch"
 model_sandbox: tools-withheld   # verified against `claude --help`: --disallowedTools is honored
 model_default: sonnet
@@ -64,3 +65,15 @@ capabilities and carry no `## verb:` sections — see `adapters/README.md` § Ru
   never blocks a session, and a guard only ever *adds* a confirmation.
 - `${CLAUDE_PLUGIN_ROOT}` is set for plugin-provided hooks and commands, not universally in every
   shell. Nothing may *require* it; `bin/tw` treats it as a hint and falls through when it is absent.
+
+## Metadata mapping
+
+How the canonical source's control fields map here when `bin/emit_runtime.py` installs the kit.
+This is the reference runtime: the canonical files ARE the installed files, so nothing is
+translated and nothing can be lost in translation.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | native | the canonical `.claude/skills/` file is the installed file — honored as written |
+| `disable-model-invocation` (skill frontmatter) | native | honored as written |
+| `tools:` (agent definition, qc-reviewer) | native | `.claude/agents/qc-reviewer.md` is the canonical copy — nothing emitted |

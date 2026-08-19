@@ -175,19 +175,32 @@ to anyone adopting or extending the kit:
   repo-root `skills/` symlink already gives other tools a neutral alias to the same files. Moving
   the source would churn all three for zero functional gain, because the installer translates to
   each runtime's layout anyway.
-- **Emit only where the runtime cannot already see the canonical copy.** Several runtimes read
-  `.claude/skills/` natively — for those, the installer VERIFIES the canonical copy is reachable
-  and emits nothing (`--runtime claude-code` today; more verify-only runtimes land with the
-  emission matrix). A duplicate that exists only to be found is a duplicate that can go stale and
-  silently win over the real file — that is the failure mode, and not emitting is the fix.
-- **Where the runtime cannot see it, the emitted copy carries its provenance.** `--runtime
-  codex-cli` writes `.agents/skills/<name>/SKILL.md` per skill with the frontmatter that runtime
-  requires (`name` + `description`) and a header naming the emitting version and the re-run
-  command. Hand-copying between layouts is unsupported; the installer IS the compatibility layer.
-- **Safety metadata does not translate yet, so gated skills wait.** A skill whose source declares
-  `disable-model-invocation: true` is user-invocable-only by design; runtimes without that
-  primitive would silently make it model-invocable, so the installer defers those skills and prints
-  why. The per-runtime metadata mapping that lifts this lands with the emission matrix.
+- **Emit only where the runtime cannot already see the canonical copy.** The split is per-runtime
+  DATA (`reads_foreign_skills` / `skills_root` in `adapters/runtime/*.md` frontmatter), never a
+  name in code: claude-code reads the canonical copy natively, and cursor, opencode, cline and
+  devin read `.claude/skills/` directly — for all five the installer VERIFIES the canonical copy
+  is reachable and emits no skills. A duplicate that exists only to be found is a duplicate that
+  can go stale and silently win over the real file — that is the failure mode, and not emitting is
+  the fix. The verify report also states the shared-file trap: one file, many readers, and a
+  foreign reader ignores Claude-specific keys, so `allowed-tools` and `disable-model-invocation`
+  are lost on those runtimes exactly as on an emit runtime lacking the primitive — warned per
+  affected skill, and `--global` on them is a deliberate, explained no-op (a per-user copy would
+  be a permanent stale-duplicate risk).
+- **Where the runtime cannot see it, the emitted copy carries its provenance.** codex-cli and
+  antigravity share one `.agents/skills/<name>/SKILL.md` emission (`name` + `description`
+  frontmatter — the fields both accept) with a header naming the emitting version and the re-run
+  command. Hand-copying between layouts is unsupported; the installer IS the compatibility layer,
+  and it is provenance-aware — its own files are refreshed on re-run, a file it did not emit is
+  never overwritten and fails the install loudly instead. `--global` emits into the adapter's
+  declared `global_skills_root`, refusing where that value is `unknown` rather than guessing.
+- **Safety metadata that cannot translate rides in the artifact.** A skill whose source declares
+  `disable-model-invocation: true` is user-invocable-only by design; no emit runtime has that
+  primitive, so the emitted file opens with a warning block saying that nothing mechanical
+  prevents model invocation there. Every mapping and every loss — including the `qc-reviewer`
+  agent's `tools:` line — is recorded per runtime in `adapters/runtime/<name>.md` § Metadata
+  mapping; agent definitions are emitted wherever subagents are user-definable
+  (`.codex/agents/*.toml`, markdown for cursor/devin/antigravity) and the loss is stated where
+  they are not (cline) or the definition path is undocumented (opencode).
 
 One implementation, three ways in: `ticketwright install` (the pip entrypoint registers
 `bin/emit_runtime.py`), `bin/install.sh` (the shell convenience in the `bin/tw` launcher pattern),

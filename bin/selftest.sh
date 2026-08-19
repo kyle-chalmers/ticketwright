@@ -3945,15 +3945,16 @@ emit_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT 
   CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" python3 bin/emit_runtime.py --runtime codex-cli --root "$EMIT_P" 2>&1)"; emit_rc=$?
 [ "$emit_rc" -eq 0 ] && ok "codex-cli emit exits 0 in a fresh fixture project (no Claude env var)" \
   || bad "codex-cli emit failed (rc=$emit_rc)" "$(head -3 <<<"$emit_out")"
-ediff="$(diff -r "$EMIT_P/.agents" tests/emit/codex-cli/.agents 2>&1)" \
-  && ok "emitted tree is byte-for-byte identical to tests/emit/codex-cli/" \
+ediff="$(diff -r "$EMIT_P/.agents" tests/emit/codex-cli/.agents 2>&1 \
+        && diff -r "$EMIT_P/.codex" tests/emit/codex-cli/.codex 2>&1)" \
+  && ok "emitted tree (.agents + .codex) is byte-for-byte identical to tests/emit/codex-cli/" \
   || bad "emitted tree diverges from the golden fixtures (regenerate deliberately, per tests/emit/README.md)" \
         "$(head -3 <<<"$ediff")"
-# The carve-out, enumerated from SOURCE frontmatter rather than a hardcoded list: no skill whose
-# source declares disable-model-invocation: true may be emitted (Codex has no equivalent field yet;
-# emitting one would silently make a user-invocable-only skill model-invocable), and each deferral
-# must be PRINTED, never silent. The enumeration uses the SAME frontmatter parser as the emitter —
-# a literal grep would let a validly quoted `"true"` evade this assertion while the emitter gates it.
+# U1's temporary carve-out (defer gated skills entirely) was COMPLETED by U2's metadata mapping:
+# a skill whose source declares disable-model-invocation: true is now emitted, but the loss must
+# ride in the ARTIFACT — a topmost warning block — and be printed, never silent. Enumerated from
+# SOURCE frontmatter rather than a hardcoded list, with the SAME parser as the emitter — a literal
+# grep would let a validly quoted `"true"` evade this assertion while the emitter gates it.
 gated="$(python3 -c "
 import sys, pathlib
 sys.path.insert(0, 'bin')
@@ -3965,17 +3966,18 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
 [ -n "$gated" ] || bad "no source skill declares disable-model-invocation: true — the carve-out fixture premise broke"
 carve_bad=""
 for g in $gated; do
-  [ -e "$EMIT_P/.agents/skills/$g" ] && carve_bad="$carve_bad emitted:$g"
-  grep -q "deferred  $g" <<<"$emit_out" || carve_bad="$carve_bad unprinted:$g"
+  gf="$EMIT_P/.agents/skills/$g/SKILL.md"
+  [ -f "$gf" ] || carve_bad="$carve_bad unemitted:$g"
+  grep -q 'User-invocable only' "$gf" 2>/dev/null || carve_bad="$carve_bad unwarned:$g"
+  grep -q "warned    $g" <<<"$emit_out" || carve_bad="$carve_bad unprinted:$g"
 done
-[ -z "$carve_bad" ] && ok "safety carve-out: every disable-model-invocation skill is unemitted AND its deferral printed ($(echo $gated | tr ' ' ','))" \
-  || bad "the disable-model-invocation carve-out leaked or went silent" "$carve_bad"
-# The reverse guard: the carve-out must not quietly become "emit nothing".
+[ -z "$carve_bad" ] && ok "every disable-model-invocation skill is emitted WITH its warning block AND the loss printed ($(echo $gated | tr ' ' ','))" \
+  || bad "a user-invocable-only skill was emitted without its stated loss" "$carve_bad"
+# The count guard: the completion must not quietly drop skills either way.
 emitted_n="$(find "$EMIT_P/.agents/skills" -name SKILL.md | wc -l | tr -d ' ')"
 total_n="$(ls .claude/skills/*/SKILL.md | wc -l | tr -d ' ')"
-gated_n="$(echo "$gated" | wc -w | tr -d ' ')"
-[ "$emitted_n" -eq $((total_n - gated_n)) ] && ok "every non-gated skill is emitted ($emitted_n of $total_n)" \
-  || bad "emit count wrong" "emitted $emitted_n, expected $((total_n - gated_n))"
+[ "$emitted_n" -eq "$total_n" ] && ok "every skill is emitted ($emitted_n of $total_n)" \
+  || bad "emit count wrong" "emitted $emitted_n, expected $total_n"
 # The provenance header is the anti-hand-copy statement, carried in the artifact itself.
 prov_bad=""
 for f in "$EMIT_P"/.agents/skills/*/SKILL.md; do
@@ -3983,13 +3985,14 @@ for f in "$EMIT_P"/.agents/skills/*/SKILL.md; do
 done
 [ -z "$prov_bad" ] && ok "the provenance header is present in every emitted file" \
   || bad "an emitted file is missing its provenance header" "$prov_bad"
-grep -q 'metadata mapping lands with U2' <<<"$emit_out" \
-  && ok "dropped frontmatter keys are named on stdout as deferred-to-U2, not silently dropped" \
-  || bad "the dropped-keys statement is missing from the emit report"
-# A RE-RUN must not leave a stale gated skill active. Two pre-seeded cases: a copy WE emitted
-# earlier (provenance header present — removed, that is what "re-run to update" means) and a
-# hand-copied file (no header — never deleted, but the install fails loudly instead of silently
-# tolerating a model-invocable copy of a user-invocable-only skill).
+grep -q 'Metadata mapping' <<<"$emit_out" && grep -q 'not expressible here' <<<"$emit_out" \
+  && ok "lost control fields are named on stdout pointing at the adapter's Metadata mapping section" \
+  || bad "the lost-fields statement is missing from the emit report"
+# COLLISION HANDLING IS PROVENANCE-AWARE for every emitted artifact (U1's anti-clobber guarantee,
+# kept and generalized). Two pre-seeded cases: a copy WE emitted earlier (provenance header
+# present — overwritten with fresh content, that is what "re-run to update" means) and a
+# hand-copied file (no header — never overwritten, never deleted, and the install fails loudly
+# instead of silently clobbering a hand-maintained file).
 ST_P="$TMP/emit-stale"; mkdir -p "$ST_P/.agents/skills/ship" "$ST_P/.agents/skills/setup"
 printf -- '---\nname: ship\ndescription: stale\n---\n\n<!-- emitted by ticketwright install v0.0.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->\n\nstale body\n' \
   > "$ST_P/.agents/skills/ship/SKILL.md"
@@ -3997,16 +4000,16 @@ printf -- '---\nname: setup\ndescription: hand-copied\n---\nforeign body\n' \
   > "$ST_P/.agents/skills/setup/SKILL.md"
 st_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   python3 bin/emit_runtime.py --runtime codex-cli --root "$ST_P" 2>&1)"; st_rc=$?
-{ [ ! -e "$ST_P/.agents/skills/ship/SKILL.md" ] && grep -q 'removed   stale emitted copy of ship' <<<"$st_out"; } \
-  && ok "re-run removes OUR stale emitted copy of a gated skill (provenance header identifies it)" \
-  || bad "a stale emitted copy of a gated skill survived a re-run still model-invocable" "rc=$st_rc"
-{ [ -f "$ST_P/.agents/skills/setup/SKILL.md" ] && [ "$st_rc" -ne 0 ] \
-  && grep -q 'not deleted' <<<"$st_out" && grep -q 'hand-copying is unsupported' <<<"$st_out"; } \
-  && ok "a foreign copy of a gated skill is never deleted but fails the install loudly" \
-  || bad "a hand-copied gated skill was deleted, or tolerated silently" "rc=$st_rc"
+diff -q "$ST_P/.agents/skills/ship/SKILL.md" tests/emit/codex-cli/.agents/skills/ship/SKILL.md >/dev/null 2>&1 \
+  && ok "re-run overwrites OUR stale emitted copy with fresh content (provenance header identifies it)" \
+  || bad "a stale emitted copy survived a re-run unrefreshed" "rc=$st_rc"
+{ [ "$st_rc" -ne 0 ] && grep -q 'hand-copied' "$ST_P/.agents/skills/setup/SKILL.md" \
+  && grep -q 'not deleted' <<<"$st_out" && grep -q 'unsupported' <<<"$st_out"; } \
+  && ok "a hand-copied file is never overwritten or deleted, and the install fails loudly" \
+  || bad "a hand-copied file was clobbered, or tolerated silently" "rc=$st_rc"
 [ -f "$ST_P/.agents/skills/ticket/SKILL.md" ] \
-  && ok "the stale-cleanup run still emits the non-gated skills" \
-  || bad "the stale-cleanup path stopped the normal emission"
+  && ok "the collision run still emits the untouched skills" \
+  || bad "the collision path stopped the normal emission"
 
 # --- claude-code: verify-only must leave the tree byte-identical -----------------------------------
 # A vendored install is recognized by the kit's own markers (the launcher's is_kit test) with the
@@ -4046,18 +4049,13 @@ env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
   && ok "claude-code verify-only: a plugin-manifest install verifies with nothing vendored, nothing written" \
   || bad "the plugin-manifest verify route failed or wrote files" "rc=$pl_rc"
 
-# --- aliases resolve through kit_paths; not-yet-wired names the CANONICAL runtime ------------------
-ws_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
+# --- aliases resolve through kit_paths and run the CANONICAL runtime's mode ------------------------
+ws_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   python3 bin/emit_runtime.py --runtime windsurf --root "$EMPTY_P" 2>&1)"; ws_rc=$?
-{ [ "$ws_rc" -ne 0 ] && grep -q "runtime 'devin'" <<<"$ws_err" && ! grep -q 'windsurf' <<<"$ws_err" \
-  && grep -q 'U2' <<<"$ws_err"; } \
-  && ok "--runtime windsurf resolves to devin: the not-yet-wired error names devin (never windsurf) and U2" \
-  || bad "the windsurf alias did not resolve to a devin-named U2 error" "rc=$ws_rc: $(head -2 <<<"$ws_err")"
-gl_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
-  python3 bin/emit_runtime.py --runtime codex-cli --global --root "$EMPTY_P" 2>&1)"; gl_rc=$?
-{ [ "$gl_rc" -ne 0 ] && grep -q 'U2' <<<"$gl_err" && grep -q 'global_skills_root' <<<"$gl_err"; } \
-  && ok "--global is parsed but exits non-zero naming U2 and the missing global_skills_root capability" \
-  || bad "--global did not refuse with the U2 pointer" "rc=$gl_rc: $(head -2 <<<"$gl_err")"
+{ [ "$ws_rc" -ne 0 ] && grep -q 'devin' <<<"$ws_err" && ! grep -q 'windsurf' <<<"$ws_err" \
+  && grep -q 'ticketwright init' <<<"$ws_err"; } \
+  && ok "--runtime windsurf resolves to devin: its verify fails on an empty project naming devin (never windsurf) with the vendor fix" \
+  || bad "the windsurf alias did not run devin's verify mode" "rc=$ws_rc: $(head -2 <<<"$ws_err")"
 [ -z "$(find "$EMPTY_P" -type f)" ] || bad "an error path wrote files into the fixture project"
 un_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
   python3 bin/emit_runtime.py --runtime not-a-runtime --root "$EMPTY_P" 2>&1)"; un_rc=$?
@@ -4077,6 +4075,7 @@ SH_P="$TMP/emit-sh"; mkdir -p "$SH_P"
 env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   bash bin/install.sh --runtime codex-cli --root "$SH_P" >/dev/null 2>&1 \
   && diff -r "$SH_P/.agents" tests/emit/codex-cli/.agents >/dev/null 2>&1 \
+  && diff -r "$SH_P/.codex" tests/emit/codex-cli/.codex >/dev/null 2>&1 \
   && ok "bin/install.sh (the shell convenience) reaches the same implementation, same bytes" \
   || bad "bin/install.sh diverged from the python entrypoint"
 # The packaged path, end to end and offline: a wheel-shaped install (the package + _kit, which is
@@ -4092,6 +4091,7 @@ cp -R bin "$SITE/ticketwright/_kit/bin"
 cp -R adapters "$SITE/ticketwright/_kit/adapters"
 cp -R templates "$SITE/ticketwright/_kit/templates"
 cp -R .claude/skills "$SITE/ticketwright/_kit/.claude/skills"
+cp -R .claude/agents "$SITE/ticketwright/_kit/.claude/agents"
 (cd "$TMP" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR PYTHONPATH="$SITE" \
   python3 -c "import sys; from ticketwright.cli import main; sys.exit(main(['init', '$WP']))" >/dev/null 2>&1) \
   && [ -s "$WP/bin/KIT_VERSION" ] && [ -f "$WP/bin/emit_runtime.py" ] \
@@ -4105,12 +4105,14 @@ WI="$TMP/wheelinstall"; mkdir -p "$WI"
 (cd "$TMP" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" PYTHONPATH="$SITE" \
   python3 -c "import sys; from ticketwright.cli import main; sys.exit(main(['install', '--runtime', 'codex-cli', '--root', '$WI']))" >/dev/null 2>&1) \
   && diff -r "$WI/.agents" tests/emit/codex-cli/.agents >/dev/null 2>&1 \
+  && diff -r "$WI/.codex" tests/emit/codex-cli/.codex >/dev/null 2>&1 \
   && ok "ticketwright install from the wheel-shaped kit emits the fixture-identical tree" \
   || bad "the packaged install route diverged from the golden fixtures"
 VI="$TMP/vendoredinstall"; mkdir -p "$VI"
 env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   bash "$WP/bin/install.sh" --runtime codex-cli --root "$VI" >/dev/null 2>&1 \
   && diff -r "$VI/.agents" tests/emit/codex-cli/.agents >/dev/null 2>&1 \
+  && diff -r "$VI/.codex" tests/emit/codex-cli/.codex >/dev/null 2>&1 \
   && ok "the init-vendored bin/install.sh emits the same bytes (KIT_VERSION feeds the provenance header)" \
   || bad "the vendored install route diverged (provenance version or emit path broke off-repo)"
 # tests/ is repo-only material: it must never ride into the wheel or sdist.
@@ -4269,6 +4271,228 @@ PY
 )"
 [ -z "$mm_bad" ] && ok "runtimes.md's machine-readable table matches the adapter frontmatter (all 7 x 5 keys)" \
   || bad "runtimes.md's capability-key table drifted from the frontmatter it documents" "$mm_bad"
+
+hdr "41 · the emission matrix: all seven runtimes, metadata mapping, agent definitions (PROMPT 7 / U2)"
+# U2 extends the installer to every runtime, data-driven off adapter frontmatter: NATIVE verify
+# where skills_root IS the canonical copy, VERIFY-not-emit where reads_foreign_skills includes it,
+# EMIT elsewhere. What this section pins: the per-runtime fixture trees; that every
+# disable-model-invocation skill is covered by a warning IN AN ARTIFACT THIS INSTALL PRODUCES
+# (the emitted file's topmost block on emit runtimes, the printed verify report on verify
+# runtimes), enumerated from source frontmatter, never a hardcoded list; that verify runtimes
+# provably emit no duplicate skills; and that --global is driven by global_skills_root, refusing
+# on unknown.
+E41="$TMP/e41"; mkdir -p "$E41"
+
+# --- structure: the two installer-driving adapter keys hold legal forms ---------------------------
+ar_bad="$(python3 - <<'PY'
+import sys, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+bad = []
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    if f.name == "README.md":
+        continue
+    fm = read_frontmatter(f)
+    ar = fm.get("agents_root", "")
+    if ar not in ("none", "unknown") and not (ar.endswith("/<name>.md") or ar.endswith("/<name>.toml")):
+        bad.append(f"{f.name}:agents_root={ar!r}")
+    foreign = [i.strip() for i in fm.get("reads_foreign_skills", "").split(",") if i.strip()]
+    if ".claude/skills" in foreign and not fm.get("foreign_skills_caveat"):
+        bad.append(f"{f.name}: verify-mode adapter with no foreign_skills_caveat to print")
+print("\n".join(bad))
+PY
+)"
+[ -z "$ar_bad" ] && ok "every adapter declares a legal agents_root, and every verify-mode adapter carries its printed caveat" \
+  || bad "an adapter's installer-driving key is malformed or missing" "$ar_bad"
+# The emit-vs-verify split is a safety-relevant declaration — pin the verify set so a drive-by
+# edit to reads_foreign_skills cannot silently flip a runtime between emitting and verifying.
+verify_rts="$(python3 - <<'PY'
+import sys, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    if f.name == "README.md":
+        continue
+    fm = read_frontmatter(f)
+    foreign = [i.strip() for i in fm.get("reads_foreign_skills", "").split(",")]
+    if ".claude/skills" in foreign:
+        print(fm["tool"])
+PY
+)"
+[ "$(echo $verify_rts | tr ' ' ',')" = "cline,cursor,devin,opencode" ] \
+  && ok "pinned: the verify-not-emit set is exactly cline, cursor, devin, opencode (from reads_foreign_skills)" \
+  || bad "the emit-vs-verify split flipped for some runtime — that is a safety-axis edit" "got: $verify_rts"
+
+# --- the metadata mapping table: all three fields x seven runtimes, closed statuses --------------
+mt_bad="$(python3 - <<'PY'
+import re, pathlib
+FIELDS = ("`allowed-tools`", "`disable-model-invocation`", "`tools:`")
+LEGAL = {"native", "mapped (unverified)", "lost"}
+bad = []
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    if f.name == "README.md":
+        continue
+    text = f.read_text(encoding="utf-8")
+    m = re.search(r"^## Metadata mapping$(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        bad.append(f"{f.name}: no '## Metadata mapping' section")
+        continue
+    for field in FIELDS:
+        row = next((l for l in m.group(1).splitlines() if l.startswith("| " + field)), None)
+        if not row:
+            bad.append(f"{f.name}: no mapping row for {field}")
+            continue
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        if len(cells) < 3 or cells[1] not in LEGAL or not cells[2]:
+            bad.append(f"{f.name}: {field} status must be native|mapped (unverified)|lost with a non-empty how-cell")
+print("\n".join(bad))
+PY
+)"
+[ -z "$mt_bad" ] && ok "every adapter's Metadata mapping table covers all three fields with closed-vocabulary statuses (losses named, never empty)" \
+  || bad "a metadata mapping table is missing a field, an illegal status, or an unexplained loss" "$mt_bad"
+
+# --- emit runtimes: antigravity shares the .agents emission, gated warnings ride topmost ----------
+gated41="$(python3 -c "
+import sys, pathlib
+sys.path.insert(0, 'bin')
+import kit_paths
+for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
+    if kit_paths.read_frontmatter(f).get('disable-model-invocation') == 'true':
+        print(f.parent.name)
+")"
+[ -n "$gated41" ] || bad "no source skill declares disable-model-invocation: true — the warning-coverage premise broke"
+AG_P="$E41/agy"; mkdir -p "$AG_P"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime antigravity --root "$AG_P" >/dev/null 2>&1; ag_rc=$?
+agdiff="$(diff -r "$AG_P/.agents" tests/emit/antigravity/.agents 2>&1)" && [ "$ag_rc" -eq 0 ] \
+  && ok "antigravity emission is byte-for-byte identical to tests/emit/antigravity/ (skills + agent definition)" \
+  || bad "antigravity emission diverged from its golden fixtures" "rc=$ag_rc $(head -3 <<<"$agdiff")"
+# The warning must be the FIRST RENDERED BLOCK of every gated emitted file (the provenance line
+# above it is an HTML comment): the loss rides in the artifact, not only in a report that scrolls.
+pos_bad=""
+for g in $gated41; do
+  for tree in "$EMIT_P" "$AG_P"; do
+    f="$tree/.agents/skills/$g/SKILL.md"
+    first="$(awk 'NR==1{infm=1; next} infm && /^---$/{infm=0; next} infm{next} /^$/{next} /^<!--/{next} {print; exit}' "$f" 2>/dev/null)"
+    case "$first" in "> **User-invocable only"*) ;; *) pos_bad="$pos_bad $f";; esac
+  done
+done
+[ -z "$pos_bad" ] && ok "every gated skill's warning is the topmost rendered block on both emit runtimes ($(echo $gated41 | tr ' ' ','))" \
+  || bad "a gated skill's warning block is missing or not topmost" "$pos_bad"
+grep -q 'NOT mechanically enforced' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
+  && grep -q 'tools: Read, Bash, Glob, Grep' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
+  && ok "the codex agent TOML states its tools: loss inside the artifact (lost, but never silently)" \
+  || bad "the codex agent TOML dropped the tools: restriction without stating it"
+grep -q '^tools: Read, Bash, Glob, Grep' tests/emit/antigravity/.agents/agents/qc-reviewer.md \
+  && ok "the antigravity agent definition carries tools: verbatim (mapped, acceptance is live-verification work)" \
+  || bad "the antigravity agent definition lost the tools: line"
+# One .agents/skills emission serves both runtimes: re-emitting for the other runtime refreshes
+# our provenance-marked files rather than failing them as foreign.
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime antigravity --root "$EMIT_P" >/dev/null 2>&1 \
+  && grep -q 'runtime antigravity' "$EMIT_P/.agents/skills/ticket/SKILL.md" \
+  && ok "the shared .agents/skills root re-emits cleanly across codex-cli and antigravity (provenance identifies our files)" \
+  || bad "re-emitting the shared .agents root for the sibling runtime failed"
+
+# --- verify runtimes: canonical copy verified, NO skill copies, losses printed per skill ----------
+VD_P="$E41/vend"; mkdir -p "$VD_P/adapters" "$VD_P/templates" "$VD_P/bin" "$VD_P/.claude"
+cp bin/kit_paths.py "$VD_P/bin/"
+cp -R .claude/skills "$VD_P/.claude/skills"
+for rt in $verify_rts; do
+  (cd "$VD_P" && find . -type f | sort) > "$E41/before.$rt"
+  vout="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+    python3 bin/emit_runtime.py --runtime "$rt" --root "$VD_P" 2>&1)"; vrc=$?
+  (cd "$VD_P" && find . -type f | sort) > "$E41/after.$rt"
+  # The durable no-duplicate proof: the ONLY files a verify run may create are the agent
+  # definitions its adapter's agents_root declares — computed from the same data the emitter
+  # uses, so a regression that wrote a skill copy under ANY root (its own, .agents/, anywhere)
+  # shows up as an unexpected new file, not just as a miss on one probed directory.
+  vnew="$(comm -13 "$E41/before.$rt" "$E41/after.$rt")"
+  want="$(python3 -c "import sys, pathlib; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter
+fm = read_frontmatter(pathlib.Path('adapters/runtime/$rt.md'))
+ar = fm.get('agents_root', '')
+if ar not in ('none', 'unknown'):
+    for a in sorted(pathlib.Path('.claude/agents').glob('*.md')):
+        print('./' + ar.replace('<name>', a.stem))
+")"
+  sroot="$(python3 -c "import sys; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter; \
+from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md'))['skills_root'].rsplit('/<name>/',1)[0])")"
+  vbad=""
+  [ "$vrc" -eq 0 ] || vbad="$vbad rc=$vrc"
+  [ "$vnew" = "$want" ] || vbad="$vbad unexpected-new-files:[$(echo $vnew | tr ' ' ',')]"
+  [ -e "$VD_P/$sroot" ] && vbad="$vbad emitted-skills-copy:$sroot"
+  grep -q 'caveat' <<<"$vout" || vbad="$vbad no-caveat"
+  for g in $gated41; do
+    grep -q "warning   $g is user-invocable-only" <<<"$vout" || vbad="$vbad unwarned:$g"
+  done
+  grep -q 'allowed-tools restrictions' <<<"$vout" || vbad="$vbad allowed-tools-loss-unstated"
+  [ -z "$vbad" ] && ok "$rt: verify-not-emit — canonical copy verified, the only new files are its declared agent definitions, every gated skill warned" \
+    || bad "$rt's verify run broke its contract" "$vbad"
+done
+vdiff="$(diff -r "$VD_P/.cursor" tests/emit/cursor/.cursor 2>&1)" \
+  && ok "cursor's emitted agent definition matches tests/emit/cursor/ (and nothing else was written)" \
+  || bad "cursor's agent emission diverged" "$(head -3 <<<"$vdiff")"
+vdiff="$(diff -r "$VD_P/.devin" tests/emit/devin/.devin 2>&1)" \
+  && ok "devin's emitted agent definition matches tests/emit/devin/" \
+  || bad "devin's agent emission diverged" "$(head -3 <<<"$vdiff")"
+{ [ ! -e "$VD_P/.cline" ] && [ ! -e "$VD_P/.opencode" ]; } \
+  && ok "cline and opencode runs emit no artifacts at all (nothing to pin — absence is the fixture)" \
+  || bad "cline or opencode wrote files their adapters do not declare a home for"
+cl_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime cline --root "$VD_P" 2>&1)"
+grep -q 'not user-definable' <<<"$cl_out" \
+  && ok "cline's report states the qc-reviewer loss: subagents are not user-definable there" \
+  || bad "cline's agent-definition loss went unstated"
+oc_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime opencode --root "$VD_P" 2>&1)"
+grep -q 'no definition file path' <<<"$oc_out" \
+  && ok "opencode's report states why no agent is emitted (definition path not established — never guessed)" \
+  || bad "opencode's agent-definition refusal went unstated"
+# A plugin-cache-only install is invisible to a foreign runtime — the verify must FAIL and say why.
+PC_P="$E41/plugonly"; mkdir -p "$PC_P"
+pc_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
+  python3 bin/emit_runtime.py --runtime cursor --root "$PC_P" 2>&1)"; pc_rc=$?
+{ [ "$pc_rc" -ne 0 ] && grep -q 'plugin cache' <<<"$pc_err" && grep -q 'ticketwright init' <<<"$pc_err" \
+  && [ -z "$(find "$PC_P" -type f)" ]; } \
+  && ok "a plugin-cache-only install fails a foreign runtime's verify, naming the vendor fix, writing nothing" \
+  || bad "the plugin-cache-only case was blessed, silent, or wrote files" "rc=$pc_rc"
+# The duplicate scan: a same-named skill in another root this runtime reads is the stale-copy risk.
+mkdir -p "$VD_P/.codex/skills/ticket"
+printf -- '---\nname: ticket\ndescription: planted duplicate\n---\nbody\n' > "$VD_P/.codex/skills/ticket/SKILL.md"
+dup_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime cursor --root "$VD_P" 2>&1)"
+grep -q "duplicates the canonical skill 'ticket'" <<<"$dup_out" \
+  && ok "the verify report names a same-named copy in another readable root (the stale-copy risk, caught while cheap)" \
+  || bad "a duplicate skill copy in a foreign root went unnamed"
+
+# --- --global: driven by global_skills_root, refusing on unknown ----------------------------------
+GH="$E41/home"; GP="$E41/gproj"; mkdir -p "$GH" "$GP"
+g_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
+  python3 bin/emit_runtime.py --runtime codex-cli --global --root "$GP" 2>&1)"; g_rc=$?
+{ [ "$g_rc" -eq 0 ] && [ -f "$GH/.agents/skills/ticket/SKILL.md" ] \
+  && grep -q 'User-invocable only' "$GH/.agents/skills/ship/SKILL.md" \
+  && [ ! -e "$GH/.codex" ] && grep -q 'project-scoped' <<<"$g_out" \
+  && [ -z "$(find "$GP" -type f)" ]; } \
+  && ok "--global emits skills into the declared global_skills_root under \$HOME (warnings intact; agents stay project-scoped, stated)" \
+  || bad "--global emission into the declared root broke its contract" "rc=$g_rc"
+ga_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
+  python3 bin/emit_runtime.py --runtime antigravity --global --root "$GP" 2>&1)"; ga_rc=$?
+{ [ "$ga_rc" -ne 0 ] && grep -q 'global_skills_root: unknown' <<<"$ga_err" && grep -q 'refused' <<<"$ga_err"; } \
+  && ok "--global REFUSES where global_skills_root is unknown, with the explanation (never a guessed path)" \
+  || bad "--global on an unknown global root did not refuse with the explanation" "rc=$ga_rc"
+# Every verify runtime, not just one: --global must be the same deliberate, explained no-op on
+# each, with $HOME left byte-untouched (the codex-cli emission above is the only thing in it).
+(cd "$GH" && find . -type f | sort) > "$E41/home.before"
+gv_bad=""
+for rt in $verify_rts; do
+  gv_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
+    python3 bin/emit_runtime.py --runtime "$rt" --global --root "$GP" 2>&1)"; gv_rc=$?
+  { [ "$gv_rc" -eq 0 ] && grep -q 'stale-duplicate risk' <<<"$gv_out"; } || gv_bad="$gv_bad $rt(rc=$gv_rc)"
+done
+(cd "$GH" && find . -type f | sort) > "$E41/home.after"
+diff -q "$E41/home.before" "$E41/home.after" >/dev/null 2>&1 || gv_bad="$gv_bad home-tree-changed"
+[ -z "$gv_bad" ] && ok "--global on every verify runtime is a deliberate, explained no-op, \$HOME untouched (a global copy would shadow the canonical per-project one)" \
+  || bad "--global on a verify runtime emitted something or went silent" "$gv_bad"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
