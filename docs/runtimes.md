@@ -9,6 +9,19 @@ every row as "true on that date" and re-check before relying on it. Where the pu
 or contradictory, this page says so rather than guessing — an honest *unclear* is more useful than a
 confident wrong answer, because the capability that matters most here is a safety gate.
 
+**Re-verified 2026-08-19**, before wave F2 encoded the load-bearing rows as machine-readable adapter
+frontmatter (see "The matrix, machine-readable" below). The gating picture held; three claims did
+not, and each correction is marked inline at its bullet with the new access date: Devin's
+approve/block stdout schema belongs to its separate `PermissionRequest` hook, not `PreToolUse`
+(which blocks only via exit 2); OpenCode subagents are marked `mode: "subagent"` (invoked by
+`@`-mention or the Task tool), not `subtask: true`; and Cline **does** document a global skills
+path (`~/.cline/skills/` on macOS/Linux), which this page previously omitted. One planned
+correction did **not** survive contact with its source and is recorded here so nobody re-applies
+it: Devin skill frontmatter was reported as requiring `name` + `description`, but the cited
+frontmatter reference table lists both with defaults (`name` → the directory name, `description` →
+none), so the original "optional" reading stands. Bullets without a re-verified date carry the
+original 2026-08-18 one.
+
 **Two of the seven changed identity during this research**, which is itself a finding worth
 recording: Google retired the standalone **Gemini CLI** on 2026-06-18 and consolidated on
 **Antigravity** (`agy`), and Cognition renamed **Windsurf** to **Devin**. Both are documented under
@@ -55,6 +68,51 @@ protection a team is getting.
 
 ✅ documented and unambiguous · ⚠ available with a caveat that changes its meaning · ❌ absent ·
 ❓ docs neither confirm nor deny
+
+## The matrix, machine-readable
+
+Since wave F2 (2026-08-19) the load-bearing rows above also live as frontmatter keys on every
+`adapters/runtime/*.md`, read through `bin/kit_paths.py --json` — so installers and skills consume
+declared data, never a parse of this page. The five keys, with the shipped values:
+
+| Runtime | `gate_ask_tier` | `gate_fail_mode` ¹ | `subagent_isolation` | `reads_foreign_skills` ² | `global_skills_root` |
+|---|---|---|---|---|---|
+| **Claude Code** | yes | open | documented | none | `~/.claude/skills` |
+| **Codex CLI** | no | unknown ³ | unestablished | none | `~/.agents/skills` |
+| **Cursor** | yes | open | documented | `.claude/skills`, `.codex/skills` | `~/.cursor/skills` |
+| **Antigravity** | yes | unknown | documented | none | unknown ⁴ |
+| **OpenCode** | no | closed ⁵ | unestablished | `.claude/skills`, `.agents/skills` | `~/.config/opencode/skills` |
+| **Devin** | no | open | documented | `.claude/skills` ⁶ | `~/.config/devin/skills` |
+| **Cline** | unknown | unknown | none ⁷ | `.claude/skills` | `~/.cline/skills` ⁸ |
+
+¹ The runtime's **native default** when a hook errors — not the installed state. Cursor is `open`
+here precisely because an installer must set `failClosed: true` to compensate; the key records what
+the runtime does on its own.
+² What decides emit-vs-verify for an installer: where a runtime already reads the canonical
+`.claude/skills/` copy, emitting a translated duplicate creates the stale-copy-silently-wins failure
+mode, so the installer verifies reachability and emits nothing.
+³ The docs state the deny paths, not what a crashing hook does.
+⁴ Two official pages disagree on the global skills path — see the Antigravity section.
+⁵ The deny mechanism *is* throwing ("throwing an error prevents the tool from executing"), so a hook
+that errors denies; what an entirely-failed plugin *load* does is undocumented.
+⁶ Devin's reading of other vendors' formats is toggleable in its config.
+⁷ Subagents exist and are isolated, but are not user-definable — there is no kit-defined subagent to
+isolate, so for the kit's purposes the answer is `none`.
+⁸ macOS/Linux; Windows is `%USERPROFILE%\.cline\skills` (re-verified 2026-08-19 — this page
+previously recorded only the global *rules* path, `~/Documents/Cline/Rules`).
+
+Two rules the encoding carries, stated here so nobody re-derives them wrongly:
+
+- **"Richer gate" and "has a session hook" are independent axes.** Antigravity has the richest gate
+  researched and *no* session start; Devin has `SessionStart` and a gate that fails open *by
+  documented design*. `gate_ask_tier`, `gate_fail_mode` and `session_start` therefore stay separate
+  keys, and nothing may average them into a single capability score.
+- **`unknown` and `none` are legal, permanent values.** Forcing a yes/no where the docs are silent
+  manufactures a confident wrong answer. An unrecognized runtime floors per key —
+  `gate_ask_tier` / `gate_fail_mode` / `subagent_isolation` / `global_skills_root` to `unknown`,
+  `reads_foreign_skills` to `none`, the boolean rows to `no` — and every consumer must treat
+  `unknown` as the never-optimistic case. Each `unknown` or `unverified` value here is owed a live
+  re-check (the wave-F2 punch list, `docs/live-verification.md`, once U6 lands).
 
 ---
 
@@ -186,17 +244,21 @@ The repository moved from `sst/opencode` to `anomalyco/opencode`.
   not. Treat the banner as unavailable here.
 - **Pre-execution gate** — `tool.execute.before`; "throwing an error prevents the tool from
   executing." That is a hard deny. *Caveat:* a `permission.ask` hook exists in the SDK types but
-  [issue #7006](https://github.com/anomalyco/opencode/issues/7006) (open since 2026-01-05) reports it
-  is never triggered, so there is no documented way to escalate to a confirmation rather than refuse.
+  [issue #7006](https://github.com/anomalyco/opencode/issues/7006) (open since 2026-01-05, still
+  open as of 2026-08-19) reports it is never triggered, so there is no documented way to escalate to
+  a confirmation rather than refuse.
   A separate static layer (`permission` in `opencode.json`) supports `allow` / `ask` / `deny` with
   wildcards.
-- **Subagents** — documented, invoked by `@`-mention or `subtask: true` on a command. *Docs unclear:*
-  the official pages never state "own context window"; that phrasing appears only on unofficial
-  mirrors, so the isolation guarantee is not established.
+- **Subagents** — documented: an agent is marked `mode: "subagent"` and invoked by `@`-mention or
+  via the Task tool (re-verified 2026-08-19 — an earlier revision of this page said `subtask: true`
+  on a command; that key does not exist). *Docs unclear:* the official pages never state "own
+  context window"; that phrasing appears only on unofficial mirrors, so the isolation guarantee is
+  not established.
 - **Structured questions** — built-in `question` tool: header, question text, and a list of options,
   with a custom-answer fallback.
 
-Sources (accessed 2026-08-18): [skills](https://opencode.ai/docs/skills) · [plugins](https://opencode.ai/docs/plugins/) ·
+Sources (accessed 2026-08-18; agents re-verified 2026-08-19): [skills](https://opencode.ai/docs/skills) ·
+[plugins](https://opencode.ai/docs/plugins/) ·
 [permissions](https://opencode.ai/docs/permissions/) · [agents](https://opencode.ai/docs/agents/) ·
 [tools](https://opencode.ai/docs/tools/)
 
@@ -212,23 +274,30 @@ event, `pre_user_prompt`, is per-prompt) and **no** subagents at all — which w
 for the rewrite.
 
 - **Skills** — `.devin/skills/<name>/SKILL.md` (project), `~/.config/devin/skills/` (user). The
-  frontmatter block is optional and no field is strictly required. Skills become slash commands, the
-  directory name being the identifier. Rules come from `AGENTS.md` / `AGENT.md` / `CLAUDE.md` at the
+  frontmatter block is optional and no field is strictly required — re-verified 2026-08-19 against
+  the frontmatter reference table (`name` defaults to the directory name, `description` to none; a
+  planned correction claiming both were required did not match the cited page and was not applied).
+  Skills become slash commands, the directory name being the identifier. Rules come from `AGENTS.md` / `AGENT.md` / `CLAUDE.md` at the
   repo root plus `.devin/rules/*.md`, and Devin deliberately reads other vendors' formats
   (`.cursor/rules/`, `.windsurf/`, `.claude/`), toggleable in config.
 - **Session start** — `SessionStart`, one of eight events, injecting via
   `hookSpecificOutput.additionalContext`. A direct analogue of the Claude Code hook, so the priming
   banner ports across unchanged.
-- **Pre-execution gate** — `PreToolUse` returns `{"decision": "approve" | "block"}` on stdout, or
-  exit 2 to block. A static `permissions` layer offers `allow` / `ask` / `deny` with **deny > ask >
-  allow** precedence, defaulting to a prompt when nothing matches.
+- **Pre-execution gate** — `PreToolUse` blocks **only via exit code 2**; the
+  `{"decision": "approve" | "block"}` stdout schema belongs to the separate **`PermissionRequest`**
+  hook (re-verified 2026-08-19 — an earlier revision of this page attributed that schema to
+  `PreToolUse`). The exit table is documented: 0 continues, 2 blocks, and any other nonzero is
+  logged and does not block. A static `permissions` layer offers `allow` / `ask` / `deny` with
+  **deny > ask > allow** precedence, defaulting to a prompt when nothing matches.
 - **Subagents** — `.devin/agents/<name>.md`, user-definable, "each with its own context window". A
   skill can itself run as a subagent via `subagent: true`.
 - **Structured questions** — an `ask_user_question` tool exists, standardized over ACP elicitation.
   *Caveat:* evidenced by changelog entries rather than a reference page, so its option/multi-select
   schema is unverified.
 
-Sources (accessed 2026-08-18): [hooks](https://docs.devin.ai/cli/extensibility/hooks/overview) ·
+Sources (accessed 2026-08-18; hooks and skills re-verified 2026-08-19):
+[hooks](https://docs.devin.ai/cli/extensibility/hooks/overview) ·
+[lifecycle hooks](https://docs.devin.ai/cli/extensibility/hooks/lifecycle-hooks) ·
 [skills](https://docs.devin.ai/cli/extensibility/skills/creating-skills) ·
 [subagents](https://docs.devin.ai/cli/subagents) ·
 [permissions](https://docs.devin.ai/cli/reference/permissions) ·
@@ -240,8 +309,9 @@ Cline is the least settled of the seven, and the write-up reflects that rather t
 
 - **Rules + skills** — rules in `.clinerules/` (all `.md`/`.txt` inside), global under
   `~/Documents/Cline/Rules`; workspace wins on conflict. Skills at `.cline/skills/` (recommended),
-  `.clinerules/skills/`, or `.claude/skills/`; `SKILL.md` frontmatter `name` (must match the
-  directory) + `description`. *Docs unclear:* the widely-cited `.clinerules/workflows/` path is
+  `.clinerules/skills/`, or `.claude/skills/`; global skills at `~/.cline/skills/` on macOS/Linux
+  (re-verified 2026-08-19 — this page previously recorded only the global rules path); `SKILL.md`
+  frontmatter `name` (must match the directory) + `description`. *Docs unclear:* the widely-cited `.clinerules/workflows/` path is
   absent from the current docs index and appears to have been folded into skills.
 - **Session start** — ⚠ **conflicted.** A v3.36 blog (2025-11-06) documents file-based hooks including
   `TaskStart`, at `.clinerules/hooks/`. The current docs page for hooks is a **stub** redirecting to
@@ -263,7 +333,7 @@ Cline is the least settled of the seven, and the write-up reflects that rather t
   but the current tools reference documents only `ask_question` with no parameter schema; the
   `options` shape is confirmed only from a repo issue. Multi-select is an open request.
 
-Sources (accessed 2026-08-18): [rules](https://docs.cline.bot/customization/cline-rules) ·
+Sources (accessed 2026-08-18; skills re-verified 2026-08-19): [rules](https://docs.cline.bot/customization/cline-rules) ·
 [skills](https://docs.cline.bot/customization/skills) ·
 [SDK plugins](https://docs.cline.bot/sdk/plugins) ·
 [auto-approve](https://docs.cline.bot/features/auto-approve) ·

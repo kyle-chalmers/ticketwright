@@ -28,6 +28,34 @@ All notable changes to this project are documented here. Format loosely follows
   `--root`, no Claude environment variable required. Selftest section 39 pins the emitted tree
   byte-for-byte against `tests/emit/codex-cli/` across all three routes, including an offline
   wheel-shaped `init` → `install` end-to-end.
+- **Five machine-readable capability keys on every runtime adapter** (PROMPT 7 / U5):
+  `gate_ask_tier` (can the pre-tool gate *ask* a human — the axis `tool_gate: yes` alone hides),
+  `gate_fail_mode` (the runtime's NATIVE default when a hook errors — not the installed state),
+  `subagent_isolation` (`documented`/`unestablished`/`none`), `reads_foreign_skills` (which
+  foreign skills roots the runtime scans — drives the installer's emit-vs-verify branch), and
+  `global_skills_root` (where `--global` artifacts belong, `unknown` where the docs disagree).
+  `bin/kit_paths.py --json` surfaces all five, with per-key floors for an unrecognized runtime
+  (booleans `no`; the enum keys `unknown`; `reads_foreign_skills` `none`) — a generic `no` is not
+  a legal value for an enum, and forcing one manufactures a confident wrong answer. The
+  load-bearing safety rows are pinned by selftest section 40, section 31's required-key and floor
+  checks are extended, and `docs/runtimes.md` § "The matrix, machine-readable" documents the
+  values with footnoted caveats — including the rule that "richer gate" and "has a session hook"
+  are independent axes nothing may average into one score.
+
+### Fixed
+- **Runtime capability matrix corrections, re-verified against vendor docs 2026-08-19** (in
+  `adapters/runtime/*.md` + `docs/runtimes.md`, each marked inline with the access date): Devin's
+  `{"decision": "approve"|"block"}` stdout schema belongs to its separate `PermissionRequest`
+  hook — `PreToolUse` blocks only via exit code 2 (the fail-open exit table is confirmed:
+  0 continues, 2 blocks, any other nonzero is logged and does not block); OpenCode subagents are
+  marked `mode: "subagent"` and invoked by `@`-mention or the Task tool, not `subtask: true`;
+  Cline documents a global skills path after all (`~/.cline/skills/` on macOS/Linux — previously
+  only the global *rules* path was recorded); and `adapters/runtime/claude-code.md` no longer
+  calls itself "the only researched runtime" with a pre-tool `ask` — Cursor and Antigravity have
+  one too, as `docs/runtimes.md` already said. One planned correction was checked and NOT
+  applied: Devin skill frontmatter stays optional (`name` defaults to the directory) — the cited
+  frontmatter reference table contradicts the claim that `name` + `description` are required, and
+  `docs/runtimes.md` records that negative finding so nobody re-applies it.
 - **`/setup`'s question cap is retired, and the interview is re-cut into rounds.** The "at most 5
   questions" promise had become the binding constraint on correctness — chat and docstore never
   configured, `role`/`domain` never asked, dead `ticket_url_template` links, one person folder

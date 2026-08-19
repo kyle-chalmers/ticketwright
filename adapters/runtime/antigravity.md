@@ -11,6 +11,11 @@ session_start: no
 tool_gate: yes
 subagents: yes
 structured_questions: unknown
+gate_ask_tier: yes          # richest gate researched: allow, deny, ask, force_ask, deny_unless_prior_grant
+gate_fail_mode: unknown     # hook-failure behavior undocumented — stated, never assumed
+subagent_isolation: documented
+reads_foreign_skills: none
+global_skills_root: unknown # two official pages disagree — see gotchas; U6 resolves it live
 model_cmd: "agy -p {prompt}"
 model_sandbox: unverified   # docs describe a commandExecutionPolicy for subagents, not a verified CLI flag for `agy -p`
 auth: |

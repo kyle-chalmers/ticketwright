@@ -34,7 +34,28 @@ KIT_MARKERS = ("adapters", "templates", "bin/kit_paths.py")
 CAPABILITY_KEYS = (
     "skills_root", "skills_format", "session_start", "tool_gate",
     "subagents", "structured_questions", "model_cmd", "model_sandbox", "detect_env",
+    # The 3b safety axes and the installer-driving keys (PROMPT 7 / U5). gate_ask_tier and
+    # gate_fail_mode are DELIBERATELY separate: Antigravity has the richest gate and no session
+    # hook, Devin has a session hook and a gate that fails open by documented design — nothing may
+    # average them into one capability score. gate_fail_mode records the runtime's NATIVE default,
+    # not the installed state (cursor is `open` here precisely because an installer must set
+    # failClosed: true to compensate).
+    "gate_ask_tier", "gate_fail_mode", "subagent_isolation",
+    "reads_foreign_skills", "global_skills_root",
 )
+
+# Floors for a runtime we cannot identify, per key. A generic "no" is not a legal value for the
+# non-boolean keys, and forcing one would manufacture a confident wrong answer — `unknown` IS the
+# honest floor for an enum, and every consumer must treat it as the never-optimistic case (an
+# unknown gate is not a gate; an unknown isolation is not isolation).
+_FLOOR = {
+    "skills_root": "", "skills_format": "", "model_cmd": "", "detect_env": "",
+    "session_start": "no", "tool_gate": "no", "subagents": "no", "structured_questions": "no",
+    "model_sandbox": "unknown",
+    "gate_ask_tier": "unknown", "gate_fail_mode": "unknown",
+    "subagent_isolation": "unknown", "global_skills_root": "unknown",
+    "reads_foreign_skills": "none",
+}
 
 
 def is_kit(path: Path | None) -> bool:
@@ -244,20 +265,18 @@ def detect_runtime(kit: Path | None) -> tuple[str, str]:
 
 
 def capabilities(kit: Path | None, runtime: str) -> dict:
-    """Capability flags for `runtime`, defaulting to the honest floor.
+    """Capability flags for `runtime`, defaulting to the honest per-key floor.
 
-    An unknown runtime reports every capability as absent. That is deliberate: a wrong `yes` here
-    would let a caller believe `db_write_requires_approval` is mechanically enforced when nothing is
+    An unknown runtime reports every capability at its declared floor (`_FLOOR`): booleans absent,
+    enums `unknown`, foreign-skill reading `none`. That is deliberate: a wrong `yes` here would let
+    a caller believe `db_write_requires_approval` is mechanically enforced when nothing is
     enforcing it, which is the failure mode this whole file exists to prevent.
     """
-    floor = {k: "" if k in ("skills_root", "skills_format", "model_cmd", "detect_env") else "no"
-             for k in CAPABILITY_KEYS}
-    floor["model_sandbox"] = "unknown"
     entry = runtime_adapters(kit).get(runtime)
     if not entry:
-        return floor
+        return dict(_FLOOR)
     _, fm = entry
-    return {k: fm.get(k, floor[k]) for k in CAPABILITY_KEYS}
+    return {k: fm.get(k, _FLOOR[k]) for k in CAPABILITY_KEYS}
 
 
 def main() -> int:
