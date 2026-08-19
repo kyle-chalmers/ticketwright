@@ -965,20 +965,59 @@ scflat="$(tr '\n' ' ' < "$sc")"   # flatten so word-wrapped phrases still match
   && grep -qi 'formal release' <<<"$scflat"; } \
   && ok "setup/scaffold.md documents the project-scoped enablement block (autoUpdate, release-gated)" \
   || bad "setup/scaffold.md must document extraKnownMarketplaces + enabledPlugins + autoUpdate (release-gated)"
-python3 - "$sc" <<'PY' && ok "enablement snippet is valid JSON, targets kyle-chalmers/ticketwright, autoUpdate on" || bad "enablement snippet in scaffold.md is malformed / wrong repo"
+{ grep -qi 'merge' <<<"$scflat" && grep -qi 'never overwrite' <<<"$scflat" \
+  && grep -qi 'keep its .source. exactly as written' <<<"$scflat"; } \
+  && ok "setup/scaffold.md tells setup to MERGE the enablement (preserve an existing source, not overwrite)" \
+  || bad "setup/scaffold.md must tell setup to merge (preserve existing source/autoUpdate), never overwrite"
+python3 - "$sc" README.md <<'PY' && ok "enablement snippet is valid JSON, source is the CLI-written git form, autoUpdate on, README block agrees" || bad "enablement snippet malformed / wrong source discriminator / README block disagrees with scaffold.md"
 import json, re, sys
-t = open(sys.argv[1]).read()
-m = re.search(r'```json\s*(\{.*?"enabledPlugins".*?\})\s*```', t, re.S)
-if not m: sys.exit(1)
-d = json.loads(m.group(1))
-mk = d["extraKnownMarketplaces"]["ticketwright"]
-ok = (mk["source"] == {"source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git"}
-      and mk["autoUpdate"] is True
-      and d["enabledPlugins"]["ticketwright@ticketwright"] is True)
-sys.exit(0 if ok else 1)
+
+# The canonical marketplace source: exactly what `claude plugin marketplace add <https://...git>`
+# writes itself. Asserted LITERALLY, not just "both docs agree" -- equality alone would let both
+# files drift to the same wrong value, which is how the earlier `"source": "url"` bug survived.
+CANON = {"source": "git", "url": "https://github.com/kyle-chalmers/ticketwright.git"}
+
+def enablement_block(path, fence, after=None):
+    """Pull the enablement block out by its FENCE LABEL, optionally only from the section
+    starting at `after`. Both guards matter: the Quickstart's first fenced block is bash, so
+    'first fence' logic grabs the wrong one, and without `after` an unrelated earlier json
+    fence could be validated in place of the real thing."""
+    t = open(path).read()
+    if after is not None:
+        i = t.find(after)
+        if i == -1:
+            print("no %r section in %s" % (after, path), file=sys.stderr)
+            sys.exit(1)
+        t = t[i:]
+    # [^`]* keeps the match inside ONE fenced block -- a `.*?` here could span from an
+    # earlier fence into a later block and silently validate the wrong snippet.
+    m = re.search(r'```' + fence + r'\n([^`]*?"enabledPlugins"[^`]*)```', t, re.S)
+    if not m:
+        print("no ```%s enablement block in %s" % (fence, path), file=sys.stderr)
+        sys.exit(1)
+    return json.loads(m.group(1))   # strict JSON: no comments, no trailing commas
+
+scaffold = enablement_block(sys.argv[1], "json")
+# Anchored to the section that documents the committed block, so an unrelated json fence
+# elsewhere in the README can never stand in for it.
+readme = enablement_block(sys.argv[2], "json", after="### Project-scoped by default")
+for label, d in (("scaffold.md", scaffold), ("README.md", readme)):
+    mk = d["extraKnownMarketplaces"]["ticketwright"]
+    if mk["source"] != CANON:
+        print("%s: marketplace source is %s, expected %s" % (label, mk["source"], CANON), file=sys.stderr)
+        sys.exit(1)
+    if mk.get("autoUpdate") is not True or d["enabledPlugins"]["ticketwright@ticketwright"] is not True:
+        print("%s: autoUpdate/enabledPlugins not both true" % label, file=sys.stderr)
+        sys.exit(1)
 PY
 grep -qi 'project-scoped' README.md \
   && ok "README documents the project-scoped install as the team default" || bad "README missing the project-scoped section"
+# The Quickstart must actually PRODUCE a project-scoped install. Match the two specific command
+# lines, not incidental occurrences of the flag elsewhere in the file.
+{ grep -qE '^claude plugin marketplace add https://github\.com/kyle-chalmers/ticketwright\.git --scope project$' README.md \
+  && grep -qE '^claude plugin install ticketwright@ticketwright --scope project$' README.md; } \
+  && ok "README Quickstart installs at project scope (--scope project on both commands)" \
+  || bad "README Quickstart must pass --scope project to BOTH marketplace add and plugin install (both default to user scope)"
 
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
 GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"

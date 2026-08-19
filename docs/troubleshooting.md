@@ -100,9 +100,30 @@ project `stack.yaml` it does nothing at all.
 
 | Install method | Upgrade | Notes |
 |---|---|---|
-| Claude Code plugin | `claude plugin update ticketwright` | v1 command names were removed in v3.0.0; use the v2 names (rename map below) |
+| Claude Code plugin (project scope) | the committed `autoUpdate` is meant to pick up each tagged release | not guaranteed for git-sourced marketplaces — to pull manually: `claude plugin marketplace update ticketwright`, or `claude plugin update ticketwright --scope project` |
+| Claude Code plugin (user scope) | `claude plugin update ticketwright` | defaults to `--scope user`, matching a no-`--scope` install |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
 | vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
+
+**Installed at the wrong scope?** Both `claude plugin marketplace add` and `claude plugin install`
+default to `--scope user`, so leaving the flag off installs Ticketwright into your own
+`~/.claude/settings.json` — nothing lands in the repo and teammates get nothing. Symptom: the repo has
+no `.claude/settings.json` (or one with no `extraKnownMarketplaces`), and `claude plugin list` reports
+scope `user`. To move it, uninstall at user scope and reinstall at project scope from inside the repo:
+
+```bash
+claude plugin uninstall ticketwright@ticketwright --scope user
+claude plugin marketplace remove ticketwright --scope user
+```
+
+```bash
+claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project
+claude plugin install ticketwright@ticketwright --scope project
+```
+
+Pass `--scope user` to `marketplace remove` explicitly — with no `--scope` it drops the declaration from
+**every** scope, including other repos' project-scoped ones. Then commit the repo's
+`.claude/settings.json`.
 
 **v1 → v2 rename map:** `configure-workspace`+`onboard-teammate` → `setup` ·
 `start-ticket`+`prime-*`+`recall` → `ticket` · `qc-review` → `review` · `deliver-ticket` → `ship` ·

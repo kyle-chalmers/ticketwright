@@ -35,7 +35,7 @@ itself:
 {
   "extraKnownMarketplaces": {
     "ticketwright": {
-      "source": { "source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git" },
+      "source": { "source": "git", "url": "https://github.com/kyle-chalmers/ticketwright.git" },
       "autoUpdate": true
     }
   },
@@ -47,12 +47,35 @@ itself:
 
 The source is an explicit `https://…git` URL, not the `owner/repo` shorthand — the shorthand can
 resolve to SSH and fail for users without GitHub SSH keys, whereas the URL clones over HTTPS via the
-git credential helper. A fork edits just this URL.
+git credential helper. A fork edits just this URL. `source: "git"` is the discriminator
+`claude plugin marketplace add <https://…git>` writes itself — `git` and `url` are *different*
+marketplace source types, so don't substitute one for the other.
+
+**Merge — never overwrite.** The repo often already carries this block, because the documented install
+is `claude plugin marketplace add … --scope project` + `claude plugin install … --scope project`, which
+writes everything above *except* `autoUpdate`. So:
+
+- Merge **into** `extraKnownMarketplaces` and `enabledPlugins`; never replace either map wholesale —
+  unrelated marketplaces and plugins in those maps must survive untouched.
+- If a `ticketwright` marketplace entry already exists, **keep its `source` exactly as written**. A fork
+  will have edited that URL, and rewriting it silently repoints the fork at upstream.
+- Add `autoUpdate: true` only when the key is **absent**. An explicit `false` is a deliberate choice —
+  preserve it.
+- An explicit `"ticketwright@ticketwright": false` means someone disabled the plugin on purpose. Leave it
+  as-is and say so in the setup summary rather than flipping it back.
+- **Absent ⇒ create.** If `extraKnownMarketplaces`, `enabledPlugins`, the `ticketwright` entry, or its
+  `source` object is missing, write it from the block above. "Merge" never means "skip".
+- **Malformed ⇒ repair and say so.** If a key is present but the wrong type (e.g. `source` is a bare
+  string, `autoUpdate` is `"true"`, `enabledPlugins.ticketwright@ticketwright` is not a boolean), replace
+  that key with the correct value and name the repair in the setup summary. Don't silently work around it,
+  and don't abort the whole scaffold over one bad key.
 
 `autoUpdate` re-installs **only when the plugin's version string changes** — i.e. only on a formal
 release (the release commit bumps `plugin.json`/`marketplace.json`/`__init__.py` in lockstep and tags
 `v*`). Between releases, ordinary commits to the default branch leave the version untouched, so
-teammates are never pulled onto un-released mid-flight work. Do **not** add these keys on a vendored
+teammates are never pulled onto un-released mid-flight work. The refresh itself is not guaranteed for
+git-sourced marketplaces (see the upstream caveat in `ROADMAP.md`); `claude plugin marketplace update
+ticketwright` is the manual pull. Do **not** add these keys on a vendored
 (`cp -r`/pip) install — there's no marketplace to enable from; the kit is already in-repo.
 
 Then append the chosen warehouse/tracker/vcs **read-only** CLI allows to `permissions.allow` (e.g.

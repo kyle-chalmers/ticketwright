@@ -34,12 +34,26 @@ It works with **your** tools, through one config file:
 
 ## Quickstart (5 minutes)
 
+From inside the repo you want to work tickets in:
+
 ```bash
-claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git
-claude plugin install ticketwright@ticketwright
+claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project
+claude plugin install ticketwright@ticketwright --scope project
 ```
 
-Then, in your repo:
+That writes the repo's own `.claude/settings.json`. Add one more key by hand to its `"ticketwright"`
+marketplace entry — no CLI flag sets this one — so teammates pick up tagged releases:
+
+```json
+"autoUpdate": true
+```
+
+Then **commit the file**, and Ticketwright travels with the repo. `/ticketwright:setup` adds that key for
+you if you'd rather not hand-edit; see [Project-scoped by default](#project-scoped-by-default) for the
+finished file. Both commands default to `--scope user`, so **omit `--scope project` only if you want
+Ticketwright for yourself across every repo** rather than for this repo's team.
+
+Now, in that repo:
 
 ```
 /ticketwright:setup          # detects your tools, asks ≤5 questions, writes the config — once per repo
@@ -50,32 +64,80 @@ That's it. `setup` also handles repos that **already have** ticket history — i
 existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
 [Adopting an existing repo](#adopting-an-existing-repo)).
 
-**Project-scoped by default.** A plugin can't set its own install scope — so instead, `setup` commits
-the enablement into the repo's `.claude/settings.json`. That's the *repo* opting in at project scope:
-it travels *with the repo*, so every teammate who opens (and trusts) the repo is prompted to install
-Ticketwright (no marketplace to add, no config to write), and it keeps working after the person who
-set it up moves on:
+### What `setup` actually does
 
-```jsonc
+It runs once per repo, and **detects before it asks** — the goal is a working config after at most five
+questions.
+
+**What it looks at first, before asking you anything:**
+
+- **Which CLIs are on your PATH** — `snow`, `acli`, `gh`, `glab`, `bq`, `databricks`, `yq`, `jq`, `git` —
+  to pre-select the tools you already have.
+- **Which MCP servers are connected** in the session (tracker / chat / warehouse).
+- **What's already in the repo** — an existing `.claude/config/stack.yaml` (it offers to edit and never
+  overwrites), or existing ticket folders and indexes, which switch it into adopt mode.
+
+**What it then asks — at most five, detected answers pre-selected:** tracker (or *none*), warehouse (or
+*none*), git host, ticket key prefix (e.g. `ENG`), and your assignee folder name. Everything else ships
+as a commented default you can edit later, including all 10 policies.
+
+**What it writes:**
+
+- **`.claude/config/stack.yaml`** — your chosen seams live, optional ones as commented blocks, each
+  policy with a one-line "when to change this" note.
+- **`autoUpdate: true` on the marketplace entry** — the one key no CLI flag can set, so running `setup`
+  is how auto-update gets turned on at all. It *merges*: an existing entry keeps the `source` you have
+  (forks edit that URL), and a deliberate `false` is left alone.
+- **`AGENTS.md`** (rules, tuned to your role) and a one-line **`CLAUDE.md`** that imports it.
+- **`.claude/settings.json`** — read-only CLI allows, plus the hooks on a vendored install (omitted on a
+  plugin install, where `plugin.json` already wires them).
+- **Folders + `.gitignore`** — `tickets/<you>/`, `documentation/`, `resources/`, `specs/`; deliverable
+  CSVs committed by default, PII opting out via `*.private.csv` or a `private/` folder.
+- **The AI-layer index and a seeded ticket index.**
+
+**Then it verifies and hands off:** two clearly-labelled checks — `selftest.sh` for kit integrity and
+`verify_stack.sh` for whether *your* seams are actually reachable (an unreachable seam isn't fatal at
+setup time; it prints the auth fix) — then offers to commit the scaffold, since an uncommitted setup
+means later ticket PRs reference rules that aren't in the repo's history.
+
+### Project-scoped by default
+
+A plugin can't set its own install scope — the **repo** does. `--scope project` writes the enablement
+into the repo's `.claude/settings.json`, so it travels *with the repo*: every teammate who opens (and
+trusts) it is prompted to install Ticketwright (no marketplace to add, no config to write), and it keeps
+working after the person who set it up moves on. Commit the file. This is what the two Quickstart
+commands produce, plus the one key they don't write:
+
+```json
 {
   "extraKnownMarketplaces": {
-    "ticketwright": { "source": { "source": "url", "url": "https://github.com/kyle-chalmers/ticketwright.git" }, "autoUpdate": true }
+    "ticketwright": {
+      "source": { "source": "git", "url": "https://github.com/kyle-chalmers/ticketwright.git" },
+      "autoUpdate": true
+    }
   },
   "enabledPlugins": { "ticketwright@ticketwright": true }
 }
 ```
 
-Two details in that block are deliberate:
+Three details in that block are deliberate:
 
 - **The source is an explicit `https://…git` URL**, not the `owner/repo` shorthand. The shorthand can
   resolve to SSH and fail for anyone without GitHub SSH keys; the URL clones over HTTPS through your
   existing git credential helper (keychain / `gh auth login`). A fork edits just this one URL.
-- **`autoUpdate` re-installs only on a formal release.** Claude Code refreshes when the plugin's
-  *version* changes, and the version only moves in a tagged release commit — so day-to-day commits to
-  `main` never pull teammates onto un-released work.
+- **`source: "git"` is the discriminator `claude plugin marketplace add` writes** for an `https://…git`
+  URL — that `source` object is copied from the CLI's own output rather than hand-authored. (`git` and
+  `url` are *different* marketplace source types; don't swap one for the other.)
+- **`autoUpdate` is scoped to formal releases.** Claude Code re-installs when the plugin's *version*
+  changes, and the version only moves in a tagged release commit — so day-to-day commits to `main` don't
+  pull teammates onto un-released work. Neither Quickstart command writes this key (no flag sets it);
+  `/ticketwright:setup` adds it, or add it by hand. Note the refresh itself is **not** guaranteed for
+  git-sourced marketplaces (see the upstream caveat in [ROADMAP.md](ROADMAP.md)) — if teammates land on a
+  stale version, `claude plugin marketplace update ticketwright` is the manual pull.
 
-Prefer the user-level `/plugin install` above for personal, cross-repo use; use the committed block
-when you want the whole team on it.
+Installing without `--scope project` puts Ticketwright in your own `~/.claude/settings.json` instead —
+right for personal, cross-repo use, but your teammates get nothing. Use the committed block when you
+want the whole team on it.
 
 ## How work flows
 
