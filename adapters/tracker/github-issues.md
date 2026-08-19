@@ -61,9 +61,11 @@ already configured), `window_days` (90), `limit` (5), `scan_cap` (200), `contain
 **Out:** `{id, name, activity, last_activity, signal}` per repo, most active first, `id` = `owner/name`,
 `signal: items_updated`.
 ```bash
-gh search issues "org:<scope> updated:>=<YYYY-MM-DD>" --limit <scan_cap> \
+gh search issues "updated:>=<YYYY-MM-DD>" --owner <scope> --limit <scan_cap> \
   --sort updated --order desc --json repository,updatedAt
 ```
+`--owner` accepts a user **or** an organization; the `org:` search qualifier does not, and would
+silently return nothing for a personal account.
 One call: each hit already names its repo, so group client-side rather than looping repos.
 **`--sort updated` is not optional.** `gh search issues` defaults to *best-match* relevance, so on an
 org with more than `scan_cap` matching issues the truncated sample is an arbitrary slice — it can

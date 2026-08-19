@@ -46,6 +46,12 @@ and it runs outside the hybrid preflight in step 4 above — a Jira `verify` emb
 the very value being determined. It needs **auth plus an account-level `scope`** and nothing else.
 It is read-only.
 
+Two more inputs are tuning, not contract, so they stay out of the table above (no verb in any seam
+carries numeric defaults there) — but a caller can set both: `scan_cap` (default 200) bounds items
+counted per container, and `container_cap` (default 25) bounds containers scanned, so a site with
+400 projects does not turn one setup question into hundreds of API calls. An adapter whose scan hits
+`scan_cap` says so, because the counts are then `>=` it rather than exact.
+
 Which config key a chosen container fills is declared per-adapter in `container_key:` frontmatter,
 following the same principle as `dev_key:` below — adapters spell their own key, skills never name
 one. It is not a per-call return value, and it is not universal: Jira's container fills
