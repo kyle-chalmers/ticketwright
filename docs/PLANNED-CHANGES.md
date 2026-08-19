@@ -1323,7 +1323,7 @@ so the offline evidence is STRUCTURAL — the skill contains the capability prob
 branches; the verdict-record template carries `review_mode` with both values and the weaker-check
 sentence on the inline branch; no runtime name appears in the skill; the unknown-runtime case maps
 to the degraded branch. That an agent actually follows the branch is not offline-checkable — a live
-inline-degradation run is parked as U6 #9.
+inline-degradation run is parked as U6 #11.
 
 Honesty requirements: the verdict record must say WHICH review the ticket actually got. An
 inline-degraded APPROVE that reads identically to an independent-subagent APPROVE would be the

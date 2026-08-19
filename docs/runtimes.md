@@ -386,8 +386,10 @@ documented way to inject context. On both, the banner's content belongs in the a
 file. Codex, Cursor and Devin all have a genuine `SessionStart` with context injection.
 
 **`qc-reviewer` cannot be a user-defined subagent on Cline**, and context isolation is unestablished
-on OpenCode and Codex. Where an independent second context cannot be guaranteed, the review must say
-so — a same-context pass is a weaker check than the validation pyramid assumes. Antigravity, Cursor
+on OpenCode and Codex. Where an independent second context cannot be guaranteed, the review says so
+mechanically: `/review` probes `subagents` + `subagent_isolation` through the kit CLI and records
+`review_mode` (plus the isolation posture, verbatim) in the verdict — a same-context pass is a
+weaker check than the validation pyramid assumes, and the record states it. Antigravity, Cursor
 and Devin all document their own context window, so the deep review ports cleanly there.
 
 **Two runtimes changed identity mid-research**, which is the strongest argument for keeping this page
