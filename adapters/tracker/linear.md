@@ -40,7 +40,7 @@ Fetch the team's states once to map `project.terminal_status` → `{done_state_i
 ```
 create-comment(issueId=<id>, body=<markdown>)
 ```
-Linear comments support full markdown links — `[DI-123](url)`, file links, PR links. Honor
+Linear comments support full markdown links — `[ENG-123](url)`, file links, PR links. Honor
 `word_limits.tracker_comment`; never post before human review.
 
 ## verb: search

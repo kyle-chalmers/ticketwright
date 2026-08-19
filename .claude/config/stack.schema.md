@@ -34,6 +34,8 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
 | `word_limits` | map | `{tracker_comment: 100, chat: 100, pr: 200, ticket: 200}` | Hard caps the comms skills enforce. |
+| `role` | enum | `generalist` | Persona for the rendered `AGENTS.md` role-focus snippet: `generalist`, `analyst`, `engineer`, or `scientist` (see `templates/roles/`). Optional; defaults to `generalist`. |
+| `domain` | string | `data analysis` | Short phrase naming the team's kind of work; fills the `{{domain}}` token in the rendered `AGENTS.md` ("Ticket-driven *{{domain}}* work"). Optional; defaults to `data analysis`. |
 | `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 | `graph_config` | bool | `true` | Also write/merge `.obsidian/graph.json` (tickets↔objects filter + color groups) so the Graph view opens ready-to-read. Create/merge-only — never clobbers manual tweaks. On by default; set `false` to keep the nodes but not manage the Obsidian config. Ignored when `graph_notes` is `false`. |
 | `voice_profiles` | map \| null | *(see below)* | Per-person comms **voice profiles**. Omit/null (the default) = feature off; `/ship` drafts exactly as today. Set it (via `/setup --voice`) to have comms drafts match the shipper's writing. |
@@ -147,7 +149,7 @@ Two consequences worth knowing before you adopt it:
 - **The folder name is the id, so renaming it renames the ticket** — in `INDEX.md`, in `OBJECTS.md`,
   in the graph, and as the branch name. The character set is restricted precisely so an id stays valid
   as a git branch and a filename (dots are excluded because git rejects `a..b`, a trailing `.`, and a
-  `.lock` suffix). Two folders that reduce to one id (`refi-lift` and `☑️ refi-lift`) are reported on
+  `.lock` suffix). Two folders that reduce to one id (`signup-lift` and `☑️ signup-lift`) are reported on
   stderr, and the later one wins.
 
 ---

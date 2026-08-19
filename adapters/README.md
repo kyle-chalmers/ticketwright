@@ -10,7 +10,7 @@ skill  ──calls──▶  verb (e.g. tracker.fetch_ticket)
    stack.yaml ──picks──▶ adapter (tracker/jira.md)
                      │
                      ▼
-            concrete command (acli jira workitem view DI-123)
+            concrete command (acli jira workitem view ENG-123)
 ```
 
 A skill resolves a verb like this:

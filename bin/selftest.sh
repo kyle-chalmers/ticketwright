@@ -492,8 +492,8 @@ printf '# ENG-1: Order feed base\n\nbase pull.\n' > "$R/tickets/dana/ENG-1/READM
 printf 'SELECT * FROM BI.ANALYTICS.VW_ORDERS;\n' > "$R/tickets/dana/ENG-1/q.sql"
 printf '# ENG-2: Order feed follow-up\n\nFollow-on to ENG-1.\n' > "$R/tickets/dana/ENG-2/README.md"
 printf 'SELECT * FROM BI.ANALYTICS.VW_ORDERS;\n' > "$R/tickets/dana/ENG-2/q.sql"
-printf '# ENG-3: Genesys call metrics\n\nunrelated work.\n' > "$R/tickets/dana/ENG-3/README.md"
-printf 'SELECT * FROM BI.OPS.VW_CALL;\n' > "$R/tickets/dana/ENG-3/q.sql"
+printf '# ENG-3: Sensor uptime metrics\n\nunrelated work.\n' > "$R/tickets/dana/ENG-3/README.md"
+printf 'SELECT * FROM BI.OPS.VW_SENSOR;\n' > "$R/tickets/dana/ENG-3/q.sql"
 printf 'from os.path import join\nimport collections.abc\n' > "$R/tickets/dana/ENG-3/munge.py"  # must NOT be indexed
 CLAUDE_PROJECT_DIR="$R" python3 bin/build_ticket_index.py >/dev/null 2>&1
 if grep 'VW_ORDERS' "$R/tickets/OBJECTS.md" 2>/dev/null | grep -q 'ENG-1' && grep 'VW_ORDERS' "$R/tickets/OBJECTS.md" | grep -q 'ENG-2'; then
@@ -563,18 +563,18 @@ print(" ".join(bad))
 PY
 )"
   [ -z "$realids" ] && ok "tracked index_data.json is empty/fixture-only" \
-    || bad "REAL ticket ids committed to the public kit — scrub before pushing" "$realids"
+    || bad "non-fixture ticket ids in the tracked store — committed ids must use ENG-/DEMO-/TEST-/SAMPLE-" "$realids"
 else
   ok "tickets/index_data.json is gitignored (a private store can't be committed)"
 fi
 [ -f tickets/index_data.example.json ] && ok "index_data.example.json shipped as the schema reference" \
   || bad "tickets/index_data.example.json missing"
 
-# (13b) No domain vocabulary in fixtures or docs. A public kit's examples must read as obviously
-# invented — a real object name or a business-domain word borrowed from whatever repo the author
-# happened to be in is exactly how org-specific content leaks into an OSS release. Fixtures use a
-# generic orders/inventory domain; anything finance-flavoured is a leak, not a naming preference.
-domainre='(^|[^a-z])(loan|borrower|delinquen|charge.?off|fico|underwrit|servicing|disburse|repayment|payoff|lender|policyholder|claimant|patient)'
+# (13b) Fixture vocabulary stays in the kit's invented orders/inventory domain. A public kit's
+# examples must read as obviously invented — industry-specific vocabulary (finance, insurance,
+# healthcare terms, or a vendor product name that isn't a supported adapter) appearing in a
+# fixture or doc is a leak, not a naming preference.
+domainre='(^|[^a-z])(loan|borrower|delinquen|charge.?off|fico|underwrit|servicing|disburse|repayment|payoff|lender|policyholder|claimant|patient|diagnos[ei]s|genesys|talkdesk|five9|(dpd|refi)([^a-z]|$))'
 dleak="$(grep -rIinE "$domainre" \
           --include='*.md' --include='*.yaml' --include='*.py' --include='*.sh' \
           --include='*.tmpl' --include='*.json' \
@@ -586,7 +586,7 @@ dleak="$(grep -rIinE "$domainre" \
 
 hdr "14 · scrub + structure (public-kit hygiene)"
 # scrub: generic secret / PII patterns must not appear in tracked kit files (selftest excluded — it
-# carries the patterns themselves; we deliberately do NOT hardcode any employer name here).
+# carries the patterns themselves).
 scrub="$(grep -rIlE 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[0-9]{3}-[0-9]{2}-[0-9]{4}' \
   --exclude-dir=.git --exclude=selftest.sh . 2>/dev/null || true)"
 [ -z "$scrub" ] && ok "no secret/PII patterns in tracked files" || bad "scrub hit" "$scrub"
@@ -827,10 +827,21 @@ ve="$(grep -REn 'verify.*\{default_epic\}' .claude/config/*.yaml 2>/dev/null || 
 va="$(sed -n '/^auth:/,/^---/p' adapters/tracker/jira.md | grep -c 'default_epic' || true)"
 { [ -z "$ve" ] && [ "$va" = "0" ]; } && ok "no seam verify references the nullable {default_epic}" \
   || bad "a verify depends on {default_epic} (fails when a project has no required epic)" "$ve"
-# E6 — no org-specific business vocabulary leaked into an adapter (public plugin).
-leak="$(grep -REn 'Data Pull|Data Engineering Task|Data Engineering Bug|every DI type' adapters/ || true)"
-[ -z "$leak" ] && ok "no org-specific Jira vocabulary in adapters" \
-  || bad "org-specific business content leaked into an adapter (public plugin!)" "$leak"
+# E6 — adapter examples stay org-neutral: any ticket key shown in an adapter doc must use a
+# fixture prefix (ENG/DEMO/TEST/SAMPLE), never a project key copied from a live tracker.
+leak="$(python3 - <<'PY'
+import pathlib, re
+pat = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-\d+\b")
+allow = {"ENG", "DEMO", "TEST", "SAMPLE", "UTF", "SHA", "ISO", "RFC", "CVE", "PEP", "SOC"}
+hits = []
+for f in sorted(pathlib.Path("adapters").rglob("*.md")):
+    for n, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+        hits += [f"{f}:{n}:{m.group(0)}" for m in pat.finditer(ln) if m.group(1) not in allow]
+print("\n".join(hits))
+PY
+)"
+[ -z "$leak" ] && ok "adapter examples use fixture ticket keys only" \
+  || bad "non-fixture ticket key in an adapter (public plugin!)" "$leak"
 # E7 — the DECLARE→CTE-params portability guardrail shipped where scripting is common.
 wq_bad=""
 for w in bigquery snowflake synapse; do
@@ -1085,8 +1096,10 @@ grep -q 'databricks --profile DEFAULT current-user me' <<<"$mtout" \
 # Single-mapping stacks must still produce exactly one un-bracketed warehouse row.
 # Derived, not hardcoded: any config without a `targets:` map is a single-mapping stack and must
 # keep producing one plain row. A hardcoded list silently skipped the solo example when it was added.
+# Configs with no warehouse seam at all are skipped — they have no row to produce.
 for s in $(for f in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
-             yq -e '.seams | to_entries | map(select(.value.targets)) | length > 0' "$f" >/dev/null 2>&1 || echo "$f"
+             yq -e '.seams.warehouse' "$f" >/dev/null 2>&1 || continue
+             yq -e '.seams.warehouse.targets' "$f" >/dev/null 2>&1 || echo "$f"
            done); do
   o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
   { [ "$(grep -c '▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '▸ warehouse\[' <<<"$o"; } \
@@ -1269,33 +1282,33 @@ S="$TMP/slugmode"; mkdir -p "$S/.claude/config" "$S/bin"
 cp bin/build_ticket_index.py "$S/bin/"
 cat > "$S/.claude/config/stack.yaml" <<'EOF'
 project:
-  assignee_dir: kyle
+  assignee_dir: dana
   id_mode: slug
   ticket_path: "tickets/{assignee}/{id}"
   ticket_url_template: null
 EOF
-mkdir -p "$S/tickets/kyle/refi-sms-lift-analysis" "$S/tickets/kyle/bounce-placement-audit" "$S/tickets/kyle/notes" "$S/tickets/kyle/data-quality"
+mkdir -p "$S/tickets/dana/signup-funnel-lift-analysis" "$S/tickets/dana/late-shipment-audit" "$S/tickets/dana/notes" "$S/tickets/dana/data-quality"
 # Ordinary prose, deliberately loaded with hyphenated words. NONE may become a cross-reference:
 # that is the whole reason discovery and reference-resolution can't share one pattern.
-cat > "$S/tickets/kyle/refi-sms-lift-analysis/README.md" <<'EOF'
-# refi-sms-lift-analysis: Refi SMS incremental lift
+cat > "$S/tickets/dana/signup-funnel-lift-analysis/README.md" <<'EOF'
+# signup-funnel-lift-analysis: Signup funnel incremental lift
 
-We ran a well-designed hold-out test on the refi-eligible population. The follow-up
+We ran a well-designed hold-out test on the signup-eligible population. The follow-up
 data-quality review was end-to-end and covered opt-in state, do-not-contact flags and
 long-standing send-time issues. See my notes for the day-by-day breakdown; the
 first-touch attribution model is unchanged.
 EOF
 # Genuine references, in the two explicit forms plus a self-mention that must not count.
-cat > "$S/tickets/kyle/bounce-placement-audit/README.md" <<'EOF'
-# bounce-placement-audit: Bounce file placement
+cat > "$S/tickets/dana/late-shipment-audit/README.md" <<'EOF'
+# late-shipment-audit: Late shipment placement
 
-Follows on from [[refi-sms-lift-analysis]] and also [[notes]].
-Self-link [[bounce-placement-audit]] must not become a self-reference.
+Follows on from [[signup-funnel-lift-analysis]] and also [[notes]].
+Self-link [[late-shipment-audit]] must not become a self-reference.
 An escaped \\[[notes]] is literal text, not a link.
-Nor is an example in code: `[[refi-sms-lift-analysis]]`.
+Nor is an example in code: `[[signup-funnel-lift-analysis]]`.
 EOF
 CLAUDE_PROJECT_DIR="$S" python3 bin/build_ticket_index.py >/dev/null 2>&1
-grep -q 'refi-sms-lift-analysis' "$S/tickets/INDEX.md" 2>/dev/null \
+grep -q 'signup-funnel-lift-analysis' "$S/tickets/INDEX.md" 2>/dev/null \
   && ok "slug mode: a folder with no tracker key IS catalogued" \
   || bad "slug mode: slug folder never reached INDEX.md"
 # The load-bearing assertion for this whole mode.
@@ -1304,18 +1317,18 @@ import os, pathlib, sys
 sys.path.insert(0, "bin")
 from build_ticket_index import build_rows
 rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
-print("PROSE=" + ",".join(rows["refi-sms-lift-analysis"]["cross_refs"]))
-print("REAL=" + ",".join(rows["bounce-placement-audit"]["cross_refs"]))
-print("TITLE=" + (rows["refi-sms-lift-analysis"]["title"] or ""))
+print("PROSE=" + ",".join(rows["signup-funnel-lift-analysis"]["cross_refs"]))
+print("REAL=" + ",".join(rows["late-shipment-audit"]["cross_refs"]))
+print("TITLE=" + (rows["signup-funnel-lift-analysis"]["title"] or ""))
 PY
 )"
 grep -q '^PROSE=$' <<<"$refs" \
   && ok "slug mode: prose-only README yields ZERO cross-refs (hyphenated words aren't ids)" \
   || bad "slug mode: ordinary prose became cross-references" "$refs"
-grep -q '^REAL=notes,refi-sms-lift-analysis$' <<<"$refs" \
+grep -q '^REAL=notes,signup-funnel-lift-analysis$' <<<"$refs" \
   && ok "slug mode: wiki-links resolve; escaped and code examples do not; no self-reference" \
   || bad "slug mode: explicit references did not resolve as expected" "$refs"
-grep -q '^TITLE=Refi SMS incremental lift$' <<<"$refs" \
+grep -q '^TITLE=Signup funnel incremental lift$' <<<"$refs" \
   && ok "slug mode: H1 id prefix stripped from the title" \
   || bad "slug mode: title still carries its slug prefix" "$refs"
 # SLUG_ID must reject ids that aren't safe as a git branch name (git rejects a..b, trailing '.', .lock).
@@ -1323,22 +1336,22 @@ python3 - <<'PY2'
 import sys; sys.path.insert(0, "bin")
 from build_ticket_index import SLUG_ID
 bad_ids = ["a..b", "foo.", "foo.lock", ".hidden", "..", "Has-Upper", "has space", "-leading"]
-good_ids = ["refi-sms-lift-analysis", "notes", "a1", "x_y-z"]
+good_ids = ["signup-funnel-lift-analysis", "notes", "a1", "x_y-z"]
 assert not any(SLUG_ID.match(b) for b in bad_ids), [b for b in bad_ids if SLUG_ID.match(b)]
 assert all(SLUG_ID.match(g) for g in good_ids), [g for g in good_ids if not SLUG_ID.match(g)]
 PY2
 [ $? -eq 0 ] && ok "SLUG_ID rejects branch-unsafe ids, accepts ordinary slugs" \
   || bad "SLUG_ID admits an id that is unsafe as a git branch/filename"
 # Two folders reducing to one id must be reported, not silently dropped.
-mkdir -p "$S/tickets/kyle/dupe" "$S/tickets/kyle/☑️ dupe"
+mkdir -p "$S/tickets/dana/dupe" "$S/tickets/dana/☑️ dupe"
 warn="$(CLAUDE_PROJECT_DIR="$S" python3 bin/build_ticket_index.py 2>&1 >/dev/null)"
 grep -q 'two folders map to one id' <<<"$warn" \
   && ok "colliding folder names are reported on stderr, not silently dropped" \
   || bad "an on-disk ticket vanished from the catalog with no explanation" "$warn"
-rm -rf "$S/tickets/kyle/dupe" "$S/tickets/kyle/☑️ dupe"
+rm -rf "$S/tickets/dana/dupe" "$S/tickets/dana/☑️ dupe"
 # Only a [[wiki-link]] is a reference. These constructs each defeated an earlier, looser attempt
 # (pattern-matched links, then filesystem-resolved destinations); none of them may create an edge.
-cat > "$S/tickets/kyle/data-quality/README.md" <<'EOF'
+cat > "$S/tickets/dana/data-quality/README.md" <<'EOF'
 # data-quality: Field null-rate review
 
 ![diagram](/assets/notes)
@@ -1368,11 +1381,11 @@ grep -q '^DQ=$' <<<"$refs2" \
 # A markdown link destination is deliberately NOT a reference: only a [[wiki-link]] is. Three
 # attempts at honouring destinations (by pattern, then by resolving them on disk) each leaked a new
 # markdown construct, for a payload whose worst case is a spurious OBJECTS.md row.
-cat > "$S/tickets/kyle/data-quality/README.md" <<'EOF'
+cat > "$S/tickets/dana/data-quality/README.md" <<'EOF'
 # data-quality: Field null-rate review
 
 Detail in [the notes](../notes/README.md#summary), see also [go][k].
-[k]: ../refi-sms-lift-analysis/
+[k]: ../signup-funnel-lift-analysis/
 
 The wiki-link [[notes]] is what actually creates an edge.
 EOF
@@ -1410,12 +1423,12 @@ PY2
 [ $? -eq 0 ] && ok "code-stripping handles nested/oversized/unclosed fences without losing real links" \
   || bad "_strip_code mishandled a fence form (stray edge, or a real link swallowed)"
 # keyed mode must NOT pick these up — that is what keeps adhoc-*/scratch-* folders out of the catalog.
-K="$TMP/keyedmode"; mkdir -p "$K/.claude/config" "$K/bin" "$K/tickets/kyle/refi-sms-lift-analysis"
+K="$TMP/keyedmode"; mkdir -p "$K/.claude/config" "$K/bin" "$K/tickets/dana/signup-funnel-lift-analysis"
 cp bin/build_ticket_index.py "$K/bin/"
-printf 'project:\n  key_prefix: ENG\n  assignee_dir: kyle\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$K/.claude/config/stack.yaml"
-printf '# refi-sms-lift-analysis: nope\n\nScratch work, not a ticket.\n' > "$K/tickets/kyle/refi-sms-lift-analysis/README.md"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$K/.claude/config/stack.yaml"
+printf '# signup-funnel-lift-analysis: nope\n\nScratch work, not a ticket.\n' > "$K/tickets/dana/signup-funnel-lift-analysis/README.md"
 CLAUDE_PROJECT_DIR="$K" python3 bin/build_ticket_index.py >/dev/null 2>&1
-grep -q 'refi-sms-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
+grep -q 'signup-funnel-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
   && bad "keyed mode catalogued a keyless folder (scratch dirs would flood INDEX.md)" \
   || ok "keyed mode still skips keyless folders (default behavior unchanged)"
 
@@ -1440,7 +1453,7 @@ for cfg in ({"id_mode": "slug", "prefixes": []},
             {"id_mode": "slug", "prefixes": ["ENG"]},
             {"id_mode": "slug", "prefixes": ["a"]}):
     kr = id_key_regex(cfg)
-    for slug in ("refi-sms-lift-2024", "q3-2026-audit", "a-1", "notes", "x2024"):
+    for slug in ("signup-funnel-lift-2024", "q3-2026-audit", "a-1", "notes", "x2024"):
         got = ticket_number(slug, kr)
         assert got == 0, (cfg, slug, got)
 # ...while the SAME id in a keyed repo with that prefix legitimately is ticket 1.
@@ -1451,12 +1464,12 @@ PY2
 
 # --branch resolution. `claude` is kept OFF PATH so enrich_ticket stops at its own guard: reaching
 # "Enriching N ticket(s)" proves the id resolved, without spending a model call.
-BR="$TMP/brslug"; mkdir -p "$BR/.claude/config" "$BR/tickets/kyle/refi-sms-lift" "$BR/bin"
+BR="$TMP/brslug"; mkdir -p "$BR/.claude/config" "$BR/tickets/dana/signup-funnel-lift" "$BR/bin"
 cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BR/bin/"
-printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$BR/.claude/config/stack.yaml"
-printf '# refi-sms-lift: Refi SMS\n\nBody.\n' > "$BR/tickets/kyle/refi-sms-lift/README.md"
+printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$BR/.claude/config/stack.yaml"
+printf '# signup-funnel-lift: Signup funnel\n\nBody.\n' > "$BR/tickets/dana/signup-funnel-lift/README.md"
 ( cd "$BR" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
-  && git checkout -q -b claude/refi-sms-lift ) 2>/dev/null
+  && git checkout -q -b claude/signup-funnel-lift ) 2>/dev/null
 out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
 grep -q 'Enriching 1 ticket' <<<"$out" \
   && ok "--branch resolves a slug branch (claude/<slug>) to its ticket" \
@@ -1468,10 +1481,10 @@ grep -q 'No ticket ids given' <<<"$out" \
   && ok "--branch on an unrelated branch resolves nothing (identity, not pattern)" \
   || bad "--branch invented a ticket id from an unrelated branch name" "$out"
 # Keyed mode's --branch path is untouched.
-BK="$TMP/brkeyed"; mkdir -p "$BK/.claude/config" "$BK/tickets/kyle/ENG-12 refi" "$BK/bin"
+BK="$TMP/brkeyed"; mkdir -p "$BK/.claude/config" "$BK/tickets/dana/ENG-12 signup" "$BK/bin"
 cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BK/bin/"
-printf 'project:\n  key_prefix: ENG\n  assignee_dir: kyle\n' > "$BK/.claude/config/stack.yaml"
-printf '# ENG-12: Refi\n\nBody.\n' > "$BK/tickets/kyle/ENG-12 refi/README.md"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$BK/.claude/config/stack.yaml"
+printf '# ENG-12: Signup\n\nBody.\n' > "$BK/tickets/dana/ENG-12 signup/README.md"
 ( cd "$BK" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
   && git checkout -q -b ENG-12 ) 2>/dev/null
 out="$(cd "$BK" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BK" python3 bin/enrich_ticket.py --branch 2>&1)"
@@ -1480,8 +1493,8 @@ grep -q 'Enriching 1 ticket' <<<"$out" \
   || bad "keyed --branch regressed" "$out"
 
 # A trackerless repo has no key_prefix; neither reader may fall back to a bare "?".
-SB="$TMP/slugbanner/my-analysis-repo"; mkdir -p "$SB/.claude/config" "$SB/tickets/kyle/refi-sms-lift"
-printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\nseams:\n  warehouse:\n    tool: snowflake\n' > "$SB/.claude/config/stack.yaml"
+SB="$TMP/slugbanner/my-analysis-repo"; mkdir -p "$SB/.claude/config" "$SB/tickets/dana/signup-funnel-lift"
+printf 'project:\n  assignee_dir: dana\n  id_mode: slug\nseams:\n  warehouse:\n    tool: snowflake\n' > "$SB/.claude/config/stack.yaml"
 o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$SB" python3 .claude/hooks/session_context.py 2>&1)"
 { grep -q 'Stack (my-analysis-repo)' <<<"$o" && ! grep -q '?-tickets' <<<"$o"; } \
   && ok "banner labels a prefix-free repo by its directory, not '?-tickets'" \
@@ -1511,11 +1524,11 @@ for shape in inline block; do
 done
 # A ticket branch created before the first commit is an unborn branch; `rev-parse --abbrev-ref`
 # reports the literal "HEAD" there, so --branch could never resolve a fresh ticket branch.
-UB="$TMP/unborn"; mkdir -p "$UB/.claude/config" "$UB/tickets/kyle/refi-sms-lift" "$UB/bin"
+UB="$TMP/unborn"; mkdir -p "$UB/.claude/config" "$UB/tickets/dana/signup-funnel-lift" "$UB/bin"
 cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$UB/bin/"
-printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$UB/.claude/config/stack.yaml"
-printf '# refi-sms-lift: R\n\nBody.\n' > "$UB/tickets/kyle/refi-sms-lift/README.md"
-( cd "$UB" && git init -q . && git checkout -q -b claude/refi-sms-lift ) 2>/dev/null
+printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$UB/.claude/config/stack.yaml"
+printf '# signup-funnel-lift: R\n\nBody.\n' > "$UB/tickets/dana/signup-funnel-lift/README.md"
+( cd "$UB" && git init -q . && git checkout -q -b claude/signup-funnel-lift ) 2>/dev/null
 out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
 grep -q 'Enriching 1 ticket' <<<"$out" \
   && ok "--branch resolves on an UNBORN branch (no commits yet)" \
@@ -1528,11 +1541,11 @@ grep -q 'No ticket ids given' <<<"$out" \
   || bad "--branch guessed an id on a detached HEAD" "$out"
 # ingest persists ticket_url into index_data.json, and a persisted URL WINS over a re-render — so a
 # wrong {number} there is permanent. A slug shaped like a key (`a-1`) must not become ticket 1.
-IU="$TMP/ingesturl"; mkdir -p "$IU/.claude/config" "$IU/tickets/kyle/a-1" "$IU/bin"
+IU="$TMP/ingesturl"; mkdir -p "$IU/.claude/config" "$IU/tickets/dana/a-1" "$IU/bin"
 cp bin/build_ticket_index.py bin/ingest_index_records.py "$IU/bin/"
-printf 'project:\n  assignee_dir: kyle\n  id_mode: slug\n  ticket_url_template: "https://x/browse/{number}"\n' > "$IU/.claude/config/stack.yaml"
-printf '# a-1: Looks like a key\n\nBody.\n' > "$IU/tickets/kyle/a-1/README.md"
-printf '{"records":[{"owner":"kyle","id":"a-1","summary":"s","status":"Completed","date":"2026-01-01"}]}' \
+printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_url_template: "https://x/browse/{number}"\n' > "$IU/.claude/config/stack.yaml"
+printf '# a-1: Looks like a key\n\nBody.\n' > "$IU/tickets/dana/a-1/README.md"
+printf '{"records":[{"owner":"dana","id":"a-1","summary":"s","status":"Completed","date":"2026-01-01"}]}' \
   | CLAUDE_PROJECT_DIR="$IU" python3 "$IU/bin/ingest_index_records.py" --from-json - >/dev/null 2>&1
 grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/dev/null \
   && bad "a slug shaped like a tracker key was persisted with {number}=1 (links to an unrelated ticket)" \
@@ -1574,7 +1587,7 @@ python3 "$TMP/extract_verb.py" "$LA" comment > "$TMP/comment.py" 2>"$TMP/x.err" 
   || bad "could not extract the comment snippet" "$(cat "$TMP/x.err")"
 
 TL="$TMP/localadapter"; mkdir -p "$TL"
-hdr_readme() { printf '# refi-sms-lift: R\n\n## Ticket Information\n- **Link:** \n- **Type:** analysis\n- **Status:** In Progress\n- **Epic/Parent:** \n- **Assignee:** kyle\n\n## Business Context\nBrief.\n' > "$1"; }
+hdr_readme() { printf '# signup-funnel-lift: R\n\n## Ticket Information\n- **Link:** \n- **Type:** analysis\n- **Status:** In Progress\n- **Epic/Parent:** \n- **Assignee:** dana\n\n## Business Context\nBrief.\n' > "$1"; }
 
 # Only the Status bullet changes, and it is re-runnable.
 hdr_readme "$TL/a.md"
@@ -1627,8 +1640,8 @@ python3 "$TMP/comment.py" "$TL/log3.md" 2026-08-04 "New." >/dev/null 2>&1
 
 # The clobber guard: /ticket creates via the adapter, THEN renders the template into the same file.
 # With a remote tracker those are different artifacts; here an unguarded render destroys the brief.
-printf '# refi-sms-lift: R\n\n## Business Context\nInterviewed brief worth keeping.\n' > "$TL/brief.md"
-printf 'ticket_id=refi-sms-lift\ntitle=R\n' > "$TL/vars.env"
+printf '# signup-funnel-lift: R\n\n## Business Context\nInterviewed brief worth keeping.\n' > "$TL/brief.md"
+printf 'ticket_id=signup-funnel-lift\ntitle=R\n' > "$TL/vars.env"
 [ -s "$TL/brief.md" ] || bash bin/render.sh templates/ticket-README.md.tmpl --vars "$TL/vars.env" > "$TL/brief.md"
 grep -q 'Interviewed brief worth keeping' "$TL/brief.md" \
   && ok "guarded render preserves an existing brief (the documented clobber guard)" \
@@ -1637,12 +1650,12 @@ grep -q 'Never render over a README that already has content' adapters/tracker/l
   && ok "adapter documents the render-clobber hazard" || bad "clobber hazard undocumented"
 
 # End to end: a slug folder under the solo stack reaches INDEX.md with a local link and no ↗.
-E2E="$TMP/e2e"; mkdir -p "$E2E/.claude/config" "$E2E/bin" "$E2E/tickets/kyle/refi-sms-lift"
+E2E="$TMP/e2e"; mkdir -p "$E2E/.claude/config" "$E2E/bin" "$E2E/tickets/dana/signup-funnel-lift"
 cp bin/build_ticket_index.py "$E2E/bin/"
-sed 's#^  assignee_dir: kyle#  assignee_dir: kyle#' .claude/config/stack.example.solo.yaml > "$E2E/.claude/config/stack.yaml"
-printf '# refi-sms-lift: Refi SMS lift\n\n## Business Context\nMeasure lift.\n' > "$E2E/tickets/kyle/refi-sms-lift/README.md"
+cp .claude/config/stack.example.solo.yaml "$E2E/.claude/config/stack.yaml"
+printf '# signup-funnel-lift: Signup funnel lift\n\n## Business Context\nMeasure lift.\n' > "$E2E/tickets/dana/signup-funnel-lift/README.md"
 CLAUDE_PROJECT_DIR="$E2E" python3 "$E2E/bin/build_ticket_index.py" >/dev/null 2>&1
-{ grep -q 'refi-sms-lift' "$E2E/tickets/INDEX.md" && ! grep -q '↗' "$E2E/tickets/INDEX.md"; } \
+{ grep -q 'signup-funnel-lift' "$E2E/tickets/INDEX.md" && ! grep -q '↗' "$E2E/tickets/INDEX.md"; } \
   && ok "solo stack: a slug ticket reaches INDEX.md with no external link (index path, not the skill flow)" \
   || bad "solo stack did not produce a usable INDEX.md" "$(cat "$E2E/tickets/INDEX.md" 2>&1 | head -20)"
 
@@ -1698,6 +1711,13 @@ done
 grep -qE '^  id_mode:[[:space:]]*slug([[:space:]]|#|$)' .claude/config/stack.example.solo.yaml \
   && ok "the solo example config actually sets project.id_mode: slug" \
   || bad "solo example does not set id_mode: slug (a comment mentioning it is not the setting)"
+# The no-warehouse example must genuinely omit the seam (a commented-out block doesn't count),
+# and must still resolve end-to-end like every other shipped config (section 1 covers that).
+if yq -e '.seams.warehouse' .claude/config/stack.example.no-warehouse.yaml >/dev/null 2>&1; then
+  bad "no-warehouse example config actually configures a warehouse seam"
+else
+  ok "the no-warehouse example config genuinely omits the warehouse seam"
+fi
 # The slug cross-reference rule is the most surprising behaviour; it must be stated, not implied.
 grep -qi 'wiki-link' docs/ticket-index.md && grep -qi 'wiki-link' .claude/config/stack.schema.md \
   && ok "the slug cross-reference rule (wiki-links only) is documented in both places" \

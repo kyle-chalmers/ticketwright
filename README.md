@@ -6,8 +6,10 @@
 ![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
 ![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20git-success)
 
-**Ticketwright turns a Claude Code session into a careful data analyst.** Point it at a
-ticket-driven work repo — data intelligence, analytics, ops, regulatory reporting — and it:
+**Ticketwright turns a Claude Code session into a careful data analyst.** It's built for the broad
+group of people who touch and interact with data — analysts, BI, ops, research, reporting — and it
+works for any team storing ticket- or task-driven analysis work in a repo, database or not.
+Install it per repo, point it at your team's work, and it:
 
 - **opens tickets** and loads exactly the context each one needs
 - **remembers every past ticket**, so you never rebuild what's already been built
@@ -19,12 +21,14 @@ It works with **your** tools, through one config file:
 | Seam | Works with |
 |---|---|
 | Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues — or **none at all** |
-| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse |
+| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse — or **none at all** |
 | Chat | Slack · Teams |
 | Docs | Google Drive · SharePoint |
 | Git | GitHub · GitLab · Azure Repos |
 
 - **More than one warehouse is fine** — name the targets.
+- **No warehouse is fine too** — a team whose deliverables are documents, models, or reports just
+  omits the seam ([worked example](.claude/config/stack.example.no-warehouse.yaml)).
 - **No ticketing system is fine too** — set `id_mode: slug` and a folder you name becomes the ticket.
 - **Don't see yours?** Adding it is [a single adapter file](adapters/README.md).
 

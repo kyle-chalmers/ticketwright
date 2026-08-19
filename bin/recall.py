@@ -8,7 +8,7 @@ score breakdown. The `/ticket --recall` command runs this, then reads the top hi
 
 Usage:
   recall.py --for ENG-12 [--top 5] [--min-score N] [--json]   # query = that ticket's fields
-  recall.py --query "genesys call metrics" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
+  recall.py --query "orders feed latency" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
   recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
 
@@ -32,8 +32,8 @@ STOPWORDS = {
     "fix", "ticket", "data", "report", "list", "file", "files", "table", "view",
 }
 W_OBJECT, W_TAG, W_REF, W_KEYWORD, KEYWORD_CAP = 4, 3, 5, 1, 6
-OBJ_IDF_FLOOR = 0.4  # ubiquitous object still counts, but < a rare shared one. 0.4 tuned via --eval:
-# strict Pareto gain on a 139-ticket corpus (MRR .550->.571, P@1 .408->.421, P@3 .618->.671, rec@5 .462->.494)
+OBJ_IDF_FLOOR = 0.4  # ubiquitous object still counts, but < a rare shared one. 0.4 tuned via --eval
+# on a benchmark corpus: strict Pareto gain (MRR .550->.571, P@1 .408->.421, P@3 .618->.671, rec@5 .462->.494)
 DEFAULT_WEIGHTS = {"obj": W_OBJECT, "tag": W_TAG, "ref": W_REF, "kw": W_KEYWORD}
 
 

@@ -14,10 +14,10 @@ The ticket index is **active**, not just browsable, and observable.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
-- 23 adapters across 6 seams; 5 worked stacks; **300+-check self-test**; GitHub Actions CI.
+- 23 adapters across 6 seams; 6 worked stacks; **300+-check self-test**; GitHub Actions CI.
 
-Lineage: Ticketwright is the canonical evolution of the earlier `crank-tickets` / GDD experiment — the
-advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *distribution* ideas
+Lineage: Ticketwright is the canonical evolution of earlier prototypes — the advanced *engine*
+(recall, objects, deep-QC, eval, adapters, hooks) with their *distribution* ideas
 (plugin packaging, role modes) folded in here.
 
 ## Shipped — v1.3 (distribution)
@@ -32,7 +32,7 @@ advanced *engine* (recall, objects, deep-QC, eval, adapters, hooks) with GDD's *
 
 ## Shipped — v1.3.2 (author-time hardening)
 
-Generalized from dogfooding a productized quarterly pull. All stdlib-only, tool-agnostic; none changes
+Hardened by exercising a productized recurring pull end-to-end. All stdlib-only, tool-agnostic; none changes
 the lightweight stance.
 
 - **Render gate** (`bin/render_and_validate.sh`) for `/productize` — errors on a `{{token}}`
@@ -84,7 +84,7 @@ Deferred out of this work, deliberately:
 
 ## Field report — deferred (from adopt sessions)
 
-Surfaced by two real installs (2026-07-06); the highest-value, lowest-risk fixes landed in the
+Surfaced by early install sessions (2026-07-06); the highest-value, lowest-risk fixes landed in the
 [core bundle](CHANGELOG.md) (HTTPS marketplace source, multi-location README locator, orphan
 `--prune`, verify labeling, `--all`/`--force`). These remain — each issue-ready and named by the
 artifact it touches:

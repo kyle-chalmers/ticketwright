@@ -35,9 +35,9 @@ Full contributor map: `docs/architecture.md`. The load-bearing ideas:
 
 **Seams + adapters + a verb contract.** A *seam* is a tool slot: `tracker`, `warehouse`, `chat`,
 `docstore`, `vcs`. Three layers wire it:
-1. `.claude/config/stack.yaml` — names which tool fills each seam, plus project facts and the 9
-   `policies`. Schema in `.claude/config/stack.schema.md`; three worked examples ship
-   (`stack.yaml` + `stack.example.*.yaml`) and selftest runs skills against all three.
+1. `.claude/config/stack.yaml` — names which tool fills each seam, plus project facts and the 10
+   `policies`. Schema in `.claude/config/stack.schema.md`; six worked examples ship
+   (`stack.yaml` + `stack.example.*.yaml`) and selftest runs skills against all of them.
 2. `adapters/<seam>/<tool>.md` — maps the abstract **verbs** (`fetch_ticket`, `query`, `draft`,
    `backup`, `commit`, …) to that tool's concrete commands. Contract + per-seam verb counts in
    `adapters/README.md`.
@@ -85,8 +85,8 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
   package dir — keep the layout the plugin and `cp -r`/`ticketwright init` installs expect. Scripts
   and hooks must resolve sibling files from their own kit dir (`__file__`/`CLAUDE_PLUGIN_ROOT`),
   never the project root (selftest section 20 guards this — it's a class of real install bugs).
-- **This is a PUBLIC kit — no org-specific content.** No employer names, real ticket IDs, business
-  vocabulary, secrets, or PII in tracked files. `tickets/index_data.json` is a per-install private
+- **This is a PUBLIC kit — no org-specific content.** No organization names, real ticket IDs,
+  industry vocabulary, secrets, or PII in tracked files. `tickets/index_data.json` is a per-install private
   store (gitignored); anything tracked must be fixture-only (`ENG-`/`DEMO-`/`TEST-`/`SAMPLE-`).
   Selftest sections 13, 14, and 20 enforce this.
 - **The `AGENTS.md` / `CLAUDE.md` under `templates/` are user-repo scaffolds**, rendered by

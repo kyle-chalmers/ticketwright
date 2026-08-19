@@ -18,6 +18,23 @@ All notable changes to this project are documented here. Format loosely follows
   never silent). Kept separate from the `system_evolution` retro.
 - **`seams.chat.include_self`** — optional self-mention token resolved via `bin/resolve_user.py`,
   *in addition to* the fixed `always_include` stakeholder list (never overloads it).
+- **No-warehouse worked example** — `stack.example.no-warehouse.yaml`: a team whose deliverables are
+  documents, models, or reports simply omits the `warehouse` seam. Selftest asserts the seam is
+  genuinely absent and runs the config through the full example matrix (now 6 worked stacks).
+- **`project.role` and `project.domain` documented** — both now appear in `stack.schema.md` and the
+  example config; `project.domain` fills the rendered `AGENTS.md`'s `{{domain}}` token ("Ticket-driven
+  *data analysis* work" by default — set any phrase that names your team's work).
+
+### Changed
+- **The no-warehouse path is explicit in the skills.** `/ship` re-verifies non-query deliverables by
+  their own checks; `/review` documents the claims-vs-evidence walk (layer ⑤) for repos with nothing
+  to re-run; `/refresh context` builds the glossary/domain-notes pack when there is no warehouse to
+  introspect. Rendered `AGENTS.md` and ticket-README templates note which sections drop out without
+  a warehouse seam. Data-first framing is unchanged — the warehouse seam is simply optional in
+  practice, not just in the schema.
+- **Fixture vocabulary tightened.** Fixtures standardize further on the invented orders/inventory
+  domain (example slugs, owner names, engine docstrings); selftest 13b's vocabulary guard covers more
+  industries and vendor product names, and §20 E6 now checks ticket-key prefixes structurally.
 
 ## [3.5.0] — 2026-08-12
 
@@ -100,7 +117,7 @@ Existing installs are unaffected: no viewer config means nothing opens and no be
   fails if a warehouse product name appears in any skill, command or agent — the existing guard
   caught CLI invocations like `snow sql` but not product names in prose.
 - **A slug id ending in digits no longer sorts as a ticket number.** `ticket_number()` searched for
-  `-\d+` anywhere in an id, so a folder called `refi-sms-lift-2024` ranked as ticket 2024 among real
+  `-\d+` anywhere in an id, so a folder called `signup-funnel-lift-2024` ranked as ticket 2024 among real
   keys, in `INDEX.md`, `OBJECTS.md`, the graph notes and `recall.py`. Numbering is now decided by the
   configured prefixes (`id_key_regex`), which also fixes a pre-existing case: a prefix containing `_`
   or `-` or leading with a digit (`ACME_US-42`, `1ENG-42`) is matched correctly. Notably
@@ -361,9 +378,9 @@ archive as a knowledge graph.
   rules in the rendered `.gitignore` (documented in-file).
 - **Adapters de-hardcoded for a clean first run on any stack.** MCP server names now use the `{mcp}`
   token from `stack.yaml` (was `mcp__atlassian__…` / `mcp__slack__…` / `mcp__plugin_productivity_*__…`);
-  the Jira and Azure DevOps `verify` no longer depend on the nullable `default_epic`; removed
-  org-specific Jira issue-type / mandatory-Epic / terminal-state content; `--parent` is now conditional
-  on `default_epic` being set. Added `mcp` to the asana/linear/monday adapter `requires`.
+  the Jira and Azure DevOps `verify` no longer depend on the nullable `default_epic`; adapters make
+  no assumptions about custom issue types, required epics, or terminal states — those come from
+  `stack.yaml`; `--parent` is now conditional on `default_epic` being set. Added `mcp` to the asana/linear/monday adapter `requires`.
 - **`/setup` is install-mode aware.** On a plugin install it omits the settings.json `hooks` block
   (`plugin.json` already wires them — duplicating double-fired), copies `statusline.sh` into the repo
   so the statusline resolves, and offers to commit the scaffold at the end (so a later ticket PR
@@ -462,8 +479,8 @@ in v3.
 
 ## [1.3.2] — 2026-06-30
 
-Author-time hardening for `/productize-workflow`, surfaced by dogfooding a productized quarterly pull
-in the wild. Six generalizable defect classes, all stdlib-only and tool-agnostic.
+Author-time hardening for `/productize-workflow`, surfaced by exercising a productized recurring pull
+end-to-end. Six generalizable defect classes, all stdlib-only and tool-agnostic.
 
 ### Added
 - **`bin/render_and_validate.sh`** — a render gate wrapping `render.sh` that catches the two authoring
@@ -513,7 +530,7 @@ in the wild. Six generalizable defect classes, all stdlib-only and tool-agnostic
 
 ## [1.3.0] — 2026-06-28
 
-Fold the best of the earlier `crank-tickets`/GDD experiment into Ticketwright (now the canonical line),
+Fold the best ideas from earlier prototypes into Ticketwright (now the canonical line),
 and make it installable as a Claude Code plugin.
 
 ### Added
@@ -535,8 +552,8 @@ and make it installable as a Claude Code plugin.
 
 ## [1.2.0] — 2026-06-27
 
-Sharpen recall and make the index observable — informed by dogfooding against a 139-ticket archive and
-a two-AI (Codex + agent panel) improvement review. Everything stays stdlib-only and tool-agnostic.
+Sharpen recall and make the index observable — informed by benchmarking recall on a large ticket
+corpus and a two-AI (Codex + agent panel) improvement review. Everything stays stdlib-only and tool-agnostic.
 
 ### Added
 - **`recall.py --eval [--sweep]`** — read-only recall-quality diagnostic: holds out each ticket's curated

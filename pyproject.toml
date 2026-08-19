@@ -55,6 +55,7 @@ packages = ["ticketwright"]
 ".claude/config/stack.example.asana-bq.yaml" = "ticketwright/_kit/.claude/config/stack.example.asana-bq.yaml"
 ".claude/config/stack.example.azure.yaml" = "ticketwright/_kit/.claude/config/stack.example.azure.yaml"
 ".claude/config/stack.example.solo.yaml" = "ticketwright/_kit/.claude/config/stack.example.solo.yaml"
+".claude/config/stack.example.no-warehouse.yaml" = "ticketwright/_kit/.claude/config/stack.example.no-warehouse.yaml"
 ".claude/config/stack.example.multi-warehouse.yaml" = "ticketwright/_kit/.claude/config/stack.example.multi-warehouse.yaml"
 ".claude/config/viewer.example.yaml" = "ticketwright/_kit/.claude/config/viewer.example.yaml"
 ".claude/settings.json.tmpl" = "ticketwright/_kit/.claude/settings.json.tmpl"

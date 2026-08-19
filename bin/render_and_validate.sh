@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # render_and_validate.sh — render a SQL template AND gate the result. Wraps bin/render.sh so the
-# token substitution stays single-sourced; adds the two authoring rules that bit a productized pull
-# in the wild, plus a cheap structural check on the rendered SQL:
+# token substitution stays single-sourced; adds two authoring rules that catch failure-prone
+# template patterns, plus a cheap structural check on the rendered SQL:
 #
 #   1. No {{token}} inside a SQL comment (ERROR). The renderer expands tokens everywhere — including
 #      inside a `--` comment. A multi-line value (e.g. a 75-row VALUES list) then spills past the

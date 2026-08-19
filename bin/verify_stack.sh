@@ -3,7 +3,7 @@
 #
 # Reads a stack.yaml, and for each seam: confirms the adapter file exists, then runs the seam's
 # read-only `verify` command (with {token} interpolation) to confirm the tool is reachable.
-# Mirrors the repo's existing bin/view_drift_check.sh halt-on-fail pattern.
+# Halts on the first failing seam so a broken tool is caught before any skill relies on it.
 #
 # Usage:
 #   bin/verify_stack.sh [STACK_YAML]            # default: .claude/config/stack.yaml
