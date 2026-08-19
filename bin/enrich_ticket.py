@@ -51,6 +51,11 @@ DEFAULT_MODEL = "sonnet"
 # executable code during an unattended /ship. These characters are refused in a template so nobody
 # can reintroduce that by writing an adapter that looks shell-shaped.
 SHELL_METACHARS = set(";|&<>$`\n")
+# Only these may be argv[0] of a model command resolved FROM AN ADAPTER. Adapters live inside the repo
+# on a vendored install, so without this an adapters/runtime/x.md added by a pull request runs any
+# command during /ship — verified reproducible before this existed. --model-cmd is deliberately exempt:
+# that is a human typing at their own terminal, not repo content.
+ALLOWED_MODEL_BINARIES = frozenset({"claude", "codex", "agy", "devin", "opencode", "gemini"})
 
 INGEST_RECIPE = """No headless model command is available for this runtime.
 
@@ -72,9 +77,15 @@ def _kit_runtime_model_cmd() -> tuple[str | None, str | None, str]:
     top-level import would turn that into a crash. A miss returns (None, None, ...) so the caller
     falls back to the historical default rather than failing.
 
-    Adapters resolve from the KIT ONLY — never a project-vendored copy. verify_stack.sh deliberately
-    allows a repo-local adapter for tool seams, but replicating that here would let a pull request
-    into someone's repo drop in adapters/runtime/x.md and execute an arbitrary command during /ship.
+    TRUST MODEL — read this before loosening anything. `ticketwright init` copies adapters/ INTO the
+    target repo, so on a vendored install the project root IS a valid kit and adapters/runtime/*.md is
+    project-controlled. "Resolve from the kit only" therefore does NOT isolate this from repo content,
+    and an earlier version of this docstring wrongly claimed it did.
+
+    What actually contains the risk is ALLOWED_MODEL_BINARIES. A markdown file reads as inert in code
+    review, so a `model_cmd:` line is a uniquely easy place to hide an executable payload — a reviewer
+    skims a .md diff far less carefully than a .py one. The allowlist means the worst a crafted adapter
+    can do is pick a different MODEL CLI, not run `curl` or `rm`.
     """
     try:
         # Look beside this script first, then under an explicit $TICKETWRIGHT_KIT — otherwise the
@@ -95,7 +106,20 @@ def _kit_runtime_model_cmd() -> tuple[str | None, str | None, str]:
         if not entry:
             return None, None, f"runtime {runtime} has no adapter"
         fm = entry[1]
-        return fm.get("model_cmd", ""), fm.get("model_default") or None, f"adapters/runtime/{runtime}.md"
+        cmd = fm.get("model_cmd", "")
+        if cmd.strip():
+            try:
+                argv0 = shlex.split(cmd)[0]
+            except (ValueError, IndexError):
+                argv0 = ""
+            if Path(argv0).name not in ALLOWED_MODEL_BINARIES:
+                print(f"enrich_ticket: refusing model_cmd from adapters/runtime/{runtime}.md — "
+                      f"'{argv0}' is not a known model CLI. Adapters ship inside the repo on a "
+                      f"vendored install, so this allowlist is what stops a markdown file from "
+                      f"running an arbitrary command. Use --model-cmd if you meant to run it.",
+                      file=sys.stderr)
+                return "", None, f"adapters/runtime/{runtime}.md (refused)"
+        return cmd, fm.get("model_default") or None, f"adapters/runtime/{runtime}.md"
     except Exception:
         return None, None, "kit_paths unavailable"
 
@@ -111,6 +135,8 @@ def build_model_argv(template: str, model: str | None, prompt: str) -> tuple[lis
     dropped along with an immediately preceding flag, so `--model {model}` disappears cleanly and the
     tool applies its own default.
     """
+    if model and model.startswith("-"):
+        raise ValueError(f"model name may not start with '-' (got {model!r}) — it would read as a flag")
     bad = SHELL_METACHARS & set(template)
     if bad:
         raise ValueError(
@@ -136,6 +162,8 @@ def build_model_argv(template: str, model: str | None, prompt: str) -> tuple[lis
         if "{prompt}" in part:
             part = part.replace("{prompt}", prompt)
         out.append(part)
+    if not out:
+        raise ValueError("model command is empty after substitution — nothing to run")
     return out, "{prompt}" not in template
 
 PROMPT = """You are writing one catalog record for a single ticket in this repo. The ticket's \

@@ -233,13 +233,21 @@ different ones — so it is never a `stack.yaml` entry. Runtime adapters declare
 frontmatter instead, and `bin/kit_paths.py` reads them:
 
 ```yaml
-skills_root:  session_start:  tool_gate:  subagents:  structured_questions:  model_cmd:  detect_env:
+skills_root:  session_start:  tool_gate:  subagents:  structured_questions:
+model_cmd:  model_sandbox:  detect_env:
 ```
 
 `tool_gate` is the load-bearing one — it records whether that harness can intercept a command before
 it runs, which is what decides whether `db_write_requires_approval` is mechanically enforced or is
 guidance the model can forget. A value of `unknown` is a real answer and is treated as the floor: no
-capability is assumed. The evidence behind every value, with sources and access dates, is in
+capability is assumed.
+
+`model_cmd` and `model_sandbox` are a pair. The first is the headless one-shot command
+`bin/enrich_ticket.py` runs; the second records whether that command is *restricted*, because the
+prompt it receives is a ticket README — tracker-sourced text on most installs. Only a small allowlist
+of model CLIs may appear as `model_cmd`'s first word: adapters live inside the repo on a vendored
+install, and a markdown file reads as inert in review, so without that allowlist a `model_cmd:` line
+would be an easy place to hide an arbitrary command. The evidence behind every value, with sources and access dates, is in
 [docs/runtimes.md](../docs/runtimes.md).
 
 **So the two rules below do not apply to this directory:** there are no verb sections to implement,

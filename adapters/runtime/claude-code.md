@@ -10,7 +10,7 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: yes
-model_cmd: "claude -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch {prompt}"
+model_cmd: "claude -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch"
 model_sandbox: tools-withheld   # verified against `claude --help`: --disallowedTools is honored
 model_default: sonnet
 auth: |
@@ -50,6 +50,10 @@ capabilities and carry no `## verb:` sections — see `adapters/README.md` § Ru
   catalog summary needs no tools at all, and the prompt carries a ticket README — tracker-sourced text
   on most installs. Argv construction stops shell injection; withholding the tools is what stops that
   text from talking an agent into using them.
+- **`model_cmd` deliberately has NO `{prompt}` token, so the prompt goes on stdin.**
+  `--disallowedTools` is variadic (`<tools...>`), so a trailing prompt argument is swallowed as more
+  deny-rule values — which fails the call outright and turns README words into permission rules. Do
+  not "fix" this by appending `{prompt}`.
 - Hooks are the one Claude-Code-specific layer in the kit. They fail open by design — a hook error
   never blocks a session, and a guard only ever *adds* a confirmation.
 - `${CLAUDE_PLUGIN_ROOT}` is set for plugin-provided hooks and commands, not universally in every

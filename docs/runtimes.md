@@ -73,7 +73,7 @@ protection a team is getting.
 - **Structured questions** — `AskUserQuestion`, 1–4 questions × 2–4 options. Not available inside
   subagents spawned via the Agent tool.
 
-Sources: [skills](https://code.claude.com/docs/en/skills) ·
+Sources (accessed 2026-08-18): [skills](https://code.claude.com/docs/en/skills) ·
 [hooks](https://code.claude.com/docs/en/hooks) ·
 [sub-agents](https://code.claude.com/docs/en/sub-agents) ·
 [permission modes](https://code.claude.com/docs/en/permission-modes)
@@ -99,7 +99,7 @@ Sources: [skills](https://code.claude.com/docs/en/skills) ·
   app-server protocol method** for host clients. *Docs unclear:* no authorable CLI-side equivalent of
   `AskUserQuestion` is documented, so treat interviews here as prose.
 
-Sources: [hooks](https://learn.chatgpt.com/docs/hooks) ·
+Sources (accessed 2026-08-18): [hooks](https://learn.chatgpt.com/docs/hooks) ·
 [skills](https://learn.chatgpt.com/docs/build-skills) ·
 [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) ·
 [approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)
@@ -127,7 +127,7 @@ Sources: [hooks](https://learn.chatgpt.com/docs/hooks) ·
 
 Note: the docs moved from `docs.cursor.com` to `cursor.com/docs`; older deep links are dead.
 
-Sources: [hooks](https://cursor.com/docs/hooks) · [rules](https://cursor.com/docs/rules) ·
+Sources (accessed 2026-08-18): [hooks](https://cursor.com/docs/hooks) · [rules](https://cursor.com/docs/rules) ·
 [skills](https://cursor.com/docs/context/commands) · [subagents](https://cursor.com/docs/subagents)
 
 ## Antigravity (Google)
@@ -165,7 +165,7 @@ hooks no longer stalling the agent suggest fail-open, but that is inference and 
 unknown. Two official pages also disagree on the *global* skills path
 (`~/.gemini/config/skills/` vs `~/.gemini/antigravity-cli/skills/`).
 
-Sources: [hooks](https://antigravity.google/docs/hooks) ·
+Sources (accessed 2026-08-18): [hooks](https://antigravity.google/docs/hooks) ·
 [skills](https://antigravity.google/docs/skills/) ·
 [subagents](https://antigravity.google/docs/subagents/) ·
 [CLI permissions](https://antigravity.google/docs/cli/permissions/) ·
@@ -196,7 +196,7 @@ The repository moved from `sst/opencode` to `anomalyco/opencode`.
 - **Structured questions** — built-in `question` tool: header, question text, and a list of options,
   with a custom-answer fallback.
 
-Sources: [skills](https://opencode.ai/docs/skills) · [plugins](https://opencode.ai/docs/plugins/) ·
+Sources (accessed 2026-08-18): [skills](https://opencode.ai/docs/skills) · [plugins](https://opencode.ai/docs/plugins/) ·
 [permissions](https://opencode.ai/docs/permissions/) · [agents](https://opencode.ai/docs/agents/) ·
 [tools](https://opencode.ai/docs/tools/)
 
@@ -228,7 +228,7 @@ for the rewrite.
   *Caveat:* evidenced by changelog entries rather than a reference page, so its option/multi-select
   schema is unverified.
 
-Sources: [hooks](https://docs.devin.ai/cli/extensibility/hooks/overview) ·
+Sources (accessed 2026-08-18): [hooks](https://docs.devin.ai/cli/extensibility/hooks/overview) ·
 [skills](https://docs.devin.ai/cli/extensibility/skills/creating-skills) ·
 [subagents](https://docs.devin.ai/cli/subagents) ·
 [permissions](https://docs.devin.ai/cli/reference/permissions) ·
@@ -263,7 +263,7 @@ Cline is the least settled of the seven, and the write-up reflects that rather t
   but the current tools reference documents only `ask_question` with no parameter schema; the
   `options` shape is confirmed only from a repo issue. Multi-select is an open request.
 
-Sources: [rules](https://docs.cline.bot/customization/cline-rules) ·
+Sources (accessed 2026-08-18): [rules](https://docs.cline.bot/customization/cline-rules) ·
 [skills](https://docs.cline.bot/customization/skills) ·
 [SDK plugins](https://docs.cline.bot/sdk/plugins) ·
 [auto-approve](https://docs.cline.bot/features/auto-approve) ·

@@ -17,6 +17,11 @@
 # off Claude, silently turning the path into a bare relative one. Prompt 7 may tighten this to a
 # plain `bin/tw` once an installer guarantees the launcher is present and committed.
 #
+# The git-toplevel half is not decoration either: a bare `./bin/tw` is CWD-RELATIVE, so a command run
+# from inside a ticket folder would miss the launcher entirely and `"$(tw --kit)"/templates/x` would
+# collapse to `/templates/x`. $CLAUDE_PROJECT_DIR used to supply that absolute anchor; it is empty off
+# Claude Code, so git supplies it instead.
+#
 # Every diagnostic goes to stderr and stdout stays empty on failure, so "$(bash bin/tw --kit)" can
 # never capture an error string and turn it into a filesystem path.
 #
@@ -60,9 +65,13 @@ find_kit() {
   fi
   # 4. installed wheel's bundled _kit. -P keeps cwd off sys.path: a plain import from a repo that HAS
   #    a ticketwright/ directory would import the source tree instead of the installed package.
-  cand="$(cd / && PYTHONSAFEPATH=1 python3 -P -c \
-    "import ticketwright,pathlib;print(pathlib.Path(ticketwright.__file__).parent/'_kit')" 2>/dev/null)"
-  if is_kit "$cand"; then printf '%s' "$cand"; return 0; fi
+  # `-P` is 3.11+ and this kit supports 3.9, so try it and then fall back. cwd="/" is what actually
+  # keeps a repo-local ticketwright/ source tree off sys.path on the older interpreters.
+  for pyflag in "-P" ""; do
+    cand="$(cd / && PYTHONSAFEPATH=1 python3 $pyflag -c \
+      "import ticketwright,pathlib;print(pathlib.Path(ticketwright.__file__).parent/'_kit')" 2>/dev/null)"
+    if is_kit "$cand"; then printf '%s' "$cand"; return 0; fi
+  done
   return 1
 }
 
@@ -79,6 +88,11 @@ case "$1" in
 esac
 
 script="$1"; shift
+# A kit script is a bare filename. Without this, `tw ../../outside.sh` runs anything reachable from
+# $KIT/bin, which makes the "no such kit script" contract bypassable.
+case "$script" in
+  */*|.*) die "not a kit script name: $script (expected a bare filename under bin/)" ;;
+esac
 target="$KIT/bin/$script"
 [ -f "$target" ] || die "no such kit script: bin/$script"
 

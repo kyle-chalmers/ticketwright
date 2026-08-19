@@ -33,7 +33,7 @@ KIT_MARKERS = ("adapters", "templates", "bin/kit_paths.py")
 
 CAPABILITY_KEYS = (
     "skills_root", "skills_format", "session_start", "tool_gate",
-    "subagents", "structured_questions", "model_cmd", "detect_env",
+    "subagents", "structured_questions", "model_cmd", "model_sandbox", "detect_env",
 )
 
 
@@ -45,8 +45,10 @@ def _pip_kit() -> Path | None:
     """The installed wheel's bundled _kit, probed with cwd off sys.path.
 
     A plain `import ticketwright` run from a repo that HAS a ticketwright/ directory imports the
-    source tree instead of the installed package, so -P (and PYTHONSAFEPATH for 3.9/3.10) matters.
+    source tree instead of the installed package. `-P` handles that on 3.11+; on 3.9/3.10 the
+    protection is cwd="/" (neither -P nor PYTHONSAFEPATH exists there).
     """
+    # `-P` is 3.11+ and this kit supports 3.9; cwd="/" is what protects the older interpreters.
     code = "import ticketwright, pathlib; print(pathlib.Path(ticketwright.__file__).parent / '_kit')"
     for argv in ([sys.executable, "-P", "-c", code], [sys.executable, "-c", code]):
         try:
@@ -80,8 +82,13 @@ def _plugin_kit(project: Path | None) -> Path | None:
         rows.extend(r for r in installs if isinstance(r, dict))
     if project:
         exact = [r for r in rows if r.get("projectPath") and Path(r["projectPath"]) == project]
-        if len(exact) == 1 and is_kit(Path(exact[0].get("installPath", ""))):
-            return Path(exact[0]["installPath"])
+        if exact:
+            # A project-scoped entry exists, so it is the answer or there is no answer. Falling through
+            # to the user-scope entry here would silently run a DIFFERENT version of the kit — the same
+            # stale-kit failure that reading this manifest instead of globbing was meant to avoid.
+            if len(exact) == 1 and is_kit(Path(exact[0].get("installPath", ""))):
+                return Path(exact[0]["installPath"])
+            return None
     user = [r for r in rows if r.get("scope") == "user"]
     if len(user) == 1 and is_kit(Path(user[0].get("installPath", ""))):
         return Path(user[0]["installPath"])
@@ -245,6 +252,7 @@ def capabilities(kit: Path | None, runtime: str) -> dict:
     """
     floor = {k: "" if k in ("skills_root", "skills_format", "model_cmd", "detect_env") else "no"
              for k in CAPABILITY_KEYS}
+    floor["model_sandbox"] = "unknown"
     entry = runtime_adapters(kit).get(runtime)
     if not entry:
         return floor

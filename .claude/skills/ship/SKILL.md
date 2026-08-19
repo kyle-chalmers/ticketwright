@@ -44,7 +44,7 @@ works regardless of the underlying tools.
      id(s), files, and PR are hyperlinked; the chat message carries `always_include` (+ `include_self`
      if configured). Fix any miss before continuing — these rails always win.
    - **Voice pass (only if `project.voice_profiles` is set).** Resolve the shipper —
-     `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" resolve_user.py --json` — and if it
+     `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json` — and if it
      returns a profile whose file exists, re-phrase the drafts to match that voice profile
      **within the rails above** (it shapes phrasing only; it never bends a word limit, a link, or the
      include-list). Empty output / no profile ⇒ leave the drafts as-is (fail open — behaves as today).
