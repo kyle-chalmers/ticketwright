@@ -2912,5 +2912,233 @@ grep -q 'voice_profiles.map. holds personal identities' \
   && ok "…and resolve_user stays silent when stderr is not a TTY (hooks, statusline, CI)" \
   || bad "resolve_user warns on every invocation, spamming unrelated commands"
 
+hdr "33 · whoami — who is working (harness-neutral identity resolution + --bind self-healing)"
+# Owner routing hangs on one question — who is at the keyboard? — and a wrong answer silently
+# misfiles work or drafts comms in a colleague's voice. So these assertions are about what whoami
+# REFUSES (guessing, ranking, assignee_dir fallback, cross-person binds) as much as what it resolves.
+WHO="$KIT/bin/whoami.py"
+# (A) hygiene: stdlib-only, offline, parseable.
+who_imp="$(grep -nE '^\s*(import|from)\s+(requests|urllib|http|socket|ssl|yaml)\b' bin/whoami.py || true)"
+[ -z "$who_imp" ] && ok "whoami.py imports are stdlib-only, no network modules" \
+  || bad "whoami.py pulls a non-stdlib/network module" "$who_imp"
+python3 -c "import ast; ast.parse(open('bin/whoami.py').read())" 2>/dev/null \
+  && ok "whoami.py parses" || bad "whoami.py is not valid Python"
+
+WI="$TMP/who"; mkdir -p "$WI/.claude/config" "$WI/people" "$TMP/who-noxdg"
+git -C "$WI" init -q 2>/dev/null
+git -C "$WI" config user.email "alice@acme.example"; git -C "$WI" config user.name "Alice Example"
+# assignee_dir is set ON PURPOSE: (E) asserts it is never a fallback owner.
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: founder\n' > "$WI/.claude/config/stack.yaml"
+printf 'display_name: Alice Example\nidentities:\n  - alice@acme.example\n  - "Alice Example"\n' > "$WI/people/alice.yaml"
+printf 'display_name: Carol\nidentities: [carol-login]\n' > "$WI/people/carol.yaml"
+# One runner, fully isolated: no Claude env var (the harness-neutral criterion), no ambient
+# $TICKETWRIGHT_PERSON, an unmapped $USER, and an empty XDG home so a real machine never bleeds in.
+whorun() { env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT \
+  USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" python3 "$WHO" --root "$WI" "$@"; }
+
+# (B) each resolution tier, in order.
+b1="$(whorun --field id)"; [ "$b1" = "alice" ] \
+  && ok "tier: git email resolves via the enumerated identity map (alice)" || bad "email tier wrong" "got=$b1"
+disp="$(whorun)"
+grep -q "Working as Alice Example (alice)" <<<"$disp" && grep -q "tickets/alice/" <<<"$disp" \
+  && ok "the display line names the person AND where new analyses go" || bad "display line wrong" "$disp"
+git -C "$WI" config user.email "ghost@void"
+b2="$(whorun --field id)"; [ "$b2" = "alice" ] \
+  && ok "tier: git user.name is matched when the email misses (Alice Example)" || bad "name tier wrong" "got=$b2"
+git -C "$WI" config user.name "Ghost Nobody"   # BOTH git identities must miss before $USER is reached
+b3="$(env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR USER=carol-login XDG_CONFIG_HOME="$TMP/who-noxdg" \
+  python3 "$WHO" --root "$WI" --field id)"
+[ "$b3" = "carol" ] \
+  && ok "tier: \$USER resolves when both git identities miss (carol)" || bad "\$USER tier wrong" "got=$b3"
+git -C "$WI" config user.email "ALICE@ACME.EXAMPLE"
+b4="$(whorun --field id)"; [ "$b4" = "alice" ] \
+  && ok "matching case-folds (ALICE@ACME.EXAMPLE → alice) — the only normalization permitted" \
+  || bad "case-fold matching broken" "got=$b4"
+git -C "$WI" config user.email "ghost@void"
+b5="$(env -u CLAUDE_PROJECT_DIR TICKETWRIGHT_PERSON=bob USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" \
+  python3 "$WHO" --root "$WI" --field id)"
+[ "$b5" = "bob" ] && ok "tier: \$TICKETWRIGHT_PERSON resolves for CI/headless (bob)" || bad "env tier wrong" "got=$b5"
+printf 'person: dana\n' > "$WI/.claude/config/connections.local.yaml"
+b6="$(env -u CLAUDE_PROJECT_DIR TICKETWRIGHT_PERSON=bob USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" \
+  python3 "$WHO" --root "$WI" --field id 2>/dev/null)"
+[ "$b6" = "dana" ] && ok "tier-3 \`person:\` beats \$TICKETWRIGHT_PERSON (first-hit-wins, PROMPT 3 order)" \
+  || bad "tier-3 pin did not win over the env var" "got=$b6"
+
+# (C) machine-vs-git conflict: tier 3 still wins, but the warning names BOTH people.
+git -C "$WI" config user.email "alice@acme.example"
+cj="$(whorun --json 2>/dev/null)"
+python3 -c 'import json,sys
+d=json.loads(sys.argv[1])
+w=d.get("warning") or ""
+sys.exit(0 if d["status"]=="conflict" and d["id"]=="dana" and "dana" in w and "alice" in w else 1)' "$cj" \
+  && ok "conflict: tier 3 wins (dana) and the one-line warning names both people" \
+  || bad "conflict status/warning wrong" "$cj"
+whorun >/dev/null 2>"$TMP/who-conflict.err"; crc=$?
+{ [ "$crc" -eq 0 ] && grep -q "dana" "$TMP/who-conflict.err" && grep -q "alice" "$TMP/who-conflict.err"; } \
+  && ok "conflict exits 0 (an owner IS determined) with the warning on stderr, never stdout" \
+  || bad "conflict exit/stderr wrong" "rc=$crc $(cat "$TMP/who-conflict.err")"
+rm -f "$WI/.claude/config/connections.local.yaml"
+
+# (D) ambiguous: one identity enumerated by two people — ASK, never rank or pick.
+printf 'display_name: Bob Fixture\nidentities:\n  - alice@acme.example\n' > "$WI/people/bob.yaml"
+whorun --field id > "$TMP/who-amb.out" 2>/dev/null; arc=$?
+{ [ "$arc" -eq 4 ] && [ -z "$(cat "$TMP/who-amb.out")" ]; } \
+  && ok "ambiguous: no id is picked and the exit code says so (4)" || bad "ambiguity was ranked or mis-coded" "rc=$arc got=$(cat "$TMP/who-amb.out")"
+aj="$(whorun --json 2>/dev/null)"
+python3 -c 'import json,sys
+d=json.loads(sys.argv[1])
+sys.exit(0 if d["status"]=="ambiguous" and d["candidates"]==["alice","bob"] else 1)' "$aj" \
+  && ok "…and --json names both candidates for the host agent to ask about" || bad "candidates wrong" "$aj"
+# The email is ambiguous while git user.name would uniquely resolve alice: falling through to the
+# weaker identity would be ranking by the back door, so the status must STAY ambiguous.
+git -C "$WI" config user.name "Alice Example"
+as="$(whorun --field status)"; [ "$as" = "ambiguous" ] \
+  && ok "no fall-through past an ambiguous hit to a weaker identity" || bad "a weaker identity overrode an ambiguity" "got=$as"
+git -C "$WI" config user.name "Ghost Nobody"; rm -f "$WI/people/bob.yaml"
+
+# (E) non-interactive miss: NO owner — and NEVER project.assignee_dir.
+git -C "$WI" config user.email "ghost@void"
+whorun --field id > "$TMP/who-miss.out" 2>/dev/null; mrc=$?
+{ [ "$mrc" -eq 3 ] && [ -z "$(cat "$TMP/who-miss.out")" ]; } \
+  && ok "miss: resolves to NO owner, exit 3 (the host agent interviews; scripts get nothing)" \
+  || bad "a miss produced an owner or the wrong code" "rc=$mrc got=$(cat "$TMP/who-miss.out")"
+grep -q "founder" <<<"$(whorun --json 2>/dev/null)" \
+  && bad "project.assignee_dir leaked into a miss — the exact silent-misfiling fallback PROMPT 3 forbids" \
+  || ok "project.assignee_dir is never a fallback owner (founder appears nowhere)"
+
+# (F) self-healing --bind: append the identity, pin tier 3, resolve forever after.
+printf 'schema_version: 1\n' > "$WI/.claude/config/connections.local.yaml"
+whorun --bind alice > "$TMP/who-bind.out" 2>/dev/null; brc=$?
+{ [ "$brc" -eq 0 ] && grep -q "Working as" "$TMP/who-bind.out" \
+  && grep -q 'ghost@void' "$WI/people/alice.yaml" \
+  && grep -q '^person: alice' "$WI/.claude/config/connections.local.yaml"; } \
+  && ok "--bind appends the unrecognized identity to people/alice.yaml AND pins person: in tier 3" \
+  || bad "--bind did not self-heal" "rc=$brc $(cat "$TMP/who-bind.out")"
+grep -q '^schema_version: 1' "$WI/.claude/config/connections.local.yaml" \
+  && ok "…pinning APPENDS to tier 3 — unrelated keys in the file survive" \
+  || bad "the pin rewrote connections.local.yaml and lost other keys"
+[ "$(whorun --field id)" = "alice" ] \
+  && ok "…and the next resolution hits exactly (miss → bound → resolved, forever)" \
+  || bad "a bound identity still misses"
+whorun --bind alice >/dev/null 2>&1
+[ "$(grep -c 'ghost@void' "$WI/people/alice.yaml")" = "1" ] \
+  && ok "re-binding the same identity appends nothing (re-read before write; no duplicates)" \
+  || bad "a concurrent/duplicate bind duplicated the identity"
+python3 -c 'import sys; sys.path.insert(0,"bin"); import _yamlite
+d=_yamlite.parse_file(sys.argv[1])
+ids=[str(i).lower() for i in d.get("identities") or []]
+sys.exit(0 if "ghost@void" in ids and d.get("display_name") else 1)' "$WI/people/alice.yaml" \
+  && ok "the appended file still parses under _yamlite with the identity in the list" \
+  || bad "--bind wrote a people file the kit's own parser cannot read"
+# A people file OUTSIDE the supported YAML subset must fail the bind LOUDLY (exit 1, tracked file
+# untouched) — never crash past bind()'s handler or write blind. The gitignored tier-3 pin lands
+# FIRST on purpose: the machine is fixed with zero disclosure even when the tracked write fails.
+printf 'identities: &x\n  - gwen-login\n' > "$WI/people/gwen.yaml"
+gwen_before="$(cat "$WI/people/gwen.yaml")"
+whorun --bind gwen --identity gwen-login --confirm-cross-person >/dev/null 2>"$TMP/who-badfile.err"; grc=$?
+{ [ "$grc" -eq 1 ] && grep -q "does not parse" "$TMP/who-badfile.err" \
+  && [ "$(cat "$WI/people/gwen.yaml")" = "$gwen_before" ] \
+  && grep -q '^person: gwen' "$WI/.claude/config/connections.local.yaml"; } \
+  && ok "binding into an unparseable people file fails loudly (exit 1), tracked file untouched, machine still pinned" \
+  || bad "a malformed people file crashed --bind or was half-written" "rc=$grc $(cat "$TMP/who-badfile.err")"
+rm -f "$WI/people/gwen.yaml"
+printf 'person: alice\n' > "$WI/.claude/config/connections.local.yaml"   # restore for (G)
+
+# (G) cross-person binds: a person may bind to their OWN file only.
+whorun --bind bob > "$TMP/who-cross.out" 2>&1; xrc=$?
+{ [ "$xrc" -eq 5 ] && grep -q "alice" "$TMP/who-cross.out" && grep -q "bob" "$TMP/who-cross.out" \
+  && [ ! -f "$WI/people/bob.yaml" ]; } \
+  && ok "binding someone else's id while resolved is REFUSED (exit 5), naming both people" \
+  || bad "a cross-person bind slipped through or the refusal named one person" "rc=$xrc $(cat "$TMP/who-cross.out")"
+whorun --bind bob --confirm-cross-person >/dev/null 2>&1; xrc2=$?
+{ [ "$xrc2" -eq 0 ] && grep -q '^person: bob' "$WI/.claude/config/connections.local.yaml"; } \
+  && ok "--confirm-cross-person is the explicit override, and it repins tier 3" \
+  || bad "the confirmed cross-person bind failed" "rc=$xrc2"
+grep -q 'ghost@void' "$WI/people/bob.yaml" 2>/dev/null \
+  && bad "an identity already enumerated by alice was appended to bob — that CREATES ambiguity" \
+  || ok "an identity that maps to another person is never appended (the pin alone fixes the machine)"
+
+# (H) privacy: an email + a public origin remote warns ONCE per bind run — and the offer is real:
+# a DERIVED email is never written (pin only); an explicit --identity email is a deliberate choice.
+git -C "$WI" remote add origin "https://github.com/acme/demo.git" 2>/dev/null
+rm -f "$WI/.claude/config/connections.local.yaml" "$WI/people/dana.yaml"
+git -C "$WI" config user.email "dana@acme.example"
+whorun --bind dana >/dev/null 2>"$TMP/who-priv.err"
+{ [ "$(grep -c 'public code host' "$TMP/who-priv.err")" = "1" ] \
+  && [ ! -f "$WI/people/dana.yaml" ] && [ "$(whorun --field id)" = "dana" ]; } \
+  && ok "a DERIVED email on a public remote warns once and is never written — the pin alone fixes the machine" \
+  || bad "the privacy warning mis-fired or the email was committed anyway" "$(cat "$TMP/who-priv.err")"
+whorun --bind dana --identity "dana@acme.example" >/dev/null 2>"$TMP/who-priv1.err"
+{ [ "$(grep -c 'public code host' "$TMP/who-priv1.err")" = "1" ] \
+  && grep -q 'dana@acme.example' "$WI/people/dana.yaml"; } \
+  && ok "an EXPLICIT --identity email is honored (a deliberate choice), still warned once" \
+  || bad "an explicit email bind was blocked or unwarned" "$(cat "$TMP/who-priv1.err")"
+rm -f "$WI/.claude/config/connections.local.yaml" "$WI/people/dana.yaml"
+whorun --bind dana --identity dana-login >/dev/null 2>"$TMP/who-priv2.err"
+[ "$(grep -c 'public code host' "$TMP/who-priv2.err")" = "0" ] \
+  && ok "…and a handle-shaped identity binds with no warning (the offered alternative works)" \
+  || bad "a non-email identity still tripped the privacy warning" "$(cat "$TMP/who-priv2.err")"
+rm -f "$WI/.claude/config/connections.local.yaml"
+# The bound id names people/<id>.yaml and tickets/<id>/, so it must be a plain identifier — a
+# separator would let --bind write OUTSIDE people/ (path traversal).
+whorun --bind "../evil" >/dev/null 2>"$TMP/who-trav.err"; trc=$?
+{ [ "$trc" -eq 2 ] && [ ! -f "$WI/evil.yaml" ] && grep -q 'not a valid person id' "$TMP/who-trav.err"; } \
+  && ok "--bind refuses an id carrying a path separator (exit 2) — nothing written outside people/" \
+  || bad "a traversal-shaped id reached the filesystem" "rc=$trc $(cat "$TMP/who-trav.err")"
+whorun --bind "" >/dev/null 2>"$TMP/who-empty.err"; erc=$?
+{ [ "$erc" -eq 2 ] && grep -q 'not a valid person id' "$TMP/who-empty.err"; } \
+  && ok "--bind \"\" is rejected by the validator too (dispatch is not truthiness)" \
+  || bad "an empty --bind id fell through to plain resolution" "rc=$erc"
+
+# (I) the two tier-2 homes merge key by key — identities included (in-repo list REPLACES the
+# cross-repo one, so a repo can retire a stale identity), while a portable-only person resolves.
+WX="$TMP/who-xdg"; mkdir -p "$WX/ticketwright/people"
+printf 'identities:\n  - erin@acme.example\n  - stale-login\n' > "$WX/ticketwright/people/erin.yaml"
+printf 'identities:\n  - erin@acme.example\n' > "$WI/people/erin.yaml"
+printf 'identities:\n  - frank-login\n' > "$WX/ticketwright/people/frank.yaml"
+whoxdg() { env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR USER="$1" XDG_CONFIG_HOME="$WX" \
+  python3 "$WHO" --root "$WI" --field id; }
+[ -z "$(whoxdg stale-login 2>/dev/null)" ] \
+  && ok "an identity the in-repo file dropped no longer resolves (in-repo identities REPLACE xdg)" \
+  || bad "a retired cross-repo identity still resolves (union instead of key-by-key)"
+[ "$(whoxdg frank-login 2>/dev/null)" = "frank" ] \
+  && ok "a person whose file lives ONLY in the cross-repo home still resolves (portable for real)" \
+  || bad "the cross-repo tier-2 home was not scanned"
+rm -f "$WI/people/erin.yaml"
+
+# (J) the shim: resolve_user maps the whoami person to a voice, and the legacy fallback is now
+# PER PERSON — one teammate's tier-2 voice block no longer switches the legacy map off for others.
+VW="$TMP/who-shim"; mkdir -p "$VW/.claude/config" "$VW/people"; git -C "$VW" init -q 2>/dev/null
+git -C "$VW" config user.email "alice@acme.example"; git -C "$VW" config user.name "Who Shim"
+printf 'identities:\n  - alice@acme.example\n' > "$VW/people/alice.yaml"
+printf 'identities:\n  - bob@acme.example\nvoice:\n  profile_id: bob\n' > "$VW/people/bob.yaml"
+printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    map:\n      "alice@acme.example": alice-legacy\n' \
+  > "$VW/.claude/config/stack.yaml"
+sv="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" CLAUDE_PROJECT_DIR="$VW" \
+  python3 "$KIT/bin/resolve_user.py" 2>/dev/null)"
+[ "$sv" = "alice-legacy" ] \
+  && ok "a resolved person with no tier-2 voice block still falls back to the legacy map (per person)" \
+  || bad "the legacy voice fallback broke for a person with a people file" "got=$sv"
+printf 'identities:\n  - alice@acme.example\n' > "$VW/people/bob.yaml"
+sa="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" CLAUDE_PROJECT_DIR="$VW" \
+  python3 "$KIT/bin/resolve_user.py" 2>/dev/null)"
+[ -z "$sa" ] \
+  && ok "an identity two people enumerate resolves NO voice (the old silent last-wins pick is gone)" \
+  || bad "an ambiguous identity still picked a voice profile" "got=$sa"
+
+# (K) display + delegation: the SessionStart banner shows the result (display only), and
+# effective_config selects the tier-2 person via whoami — a voice block is no longer required.
+git -C "$WI" config user.email "alice@acme.example"
+banner="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" \
+  CLAUDE_PROJECT_DIR="$WI" CLAUDE_PLUGIN_ROOT="$KIT" python3 "$KIT/.claude/hooks/session_context.py" 2>/dev/null)"
+grep -q "Working as Alice Example (alice)" <<<"$banner" \
+  && ok "the SessionStart banner displays the resolution — a wrong owner is caught immediately" \
+  || bad "the session banner never shows who is working" "$banner"
+ecp="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxdg" \
+  python3 "$KIT/bin/effective_config.py" --root "$WI" --quiet --key person 2>/dev/null)"
+[ "$ecp" = "alice" ] \
+  && ok "effective_config resolves the tier-2 person through whoami (no voice block required)" \
+  || bad "effective_config could not select a person without a voice block" "got=$ecp"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

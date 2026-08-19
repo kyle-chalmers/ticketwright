@@ -1,33 +1,29 @@
 #!/usr/bin/env python3
-"""resolve_user.py — map the current machine identity to a voice-profile id.
+"""resolve_user.py — THIN SHIM: map the resolved person to a voice-profile id.
 
-Answers one question for the comms skills: *who is shipping this?* — so `/ship` can load the
-right person's `voices/<id>.md` and the chat adapter can resolve a `{self}` mention. The map from
-identity → profile id is **explicit** and enumerated per person; this script never guesses (a fuzzy git-name → folder normalization is exactly the wrong-profile
-footgun the design avoids).
+Identity resolution lives in ONE place: `bin/whoami.py` (tier-3 `person:` → `$TICKETWRIGHT_PERSON`
+→ the enumerated identity map; statuses resolved/miss/ambiguous/conflict, never a guess). This
+script asks it who the person is and answers the only question the comms skills have: *which voice
+profile is theirs?* — so `/ship` can load the right person's `voices/<id>.md` and the chat adapter
+can resolve a `{self}` mention. It keeps existing callers working while they migrate to calling
+`whoami.py` directly, and is scheduled for deletion in a later release once `/ship` has moved.
 
-THE MAP MOVED. It now lives in TIER 2 — `people/<id>.yaml`, one file per person, under
-`identities:` — because a person's work email and display name are person data, not team data, and
-`stack.yaml` is committed team config. The legacy `project.voice_profiles` block in `stack.yaml` is
-STILL READ as a fallback, with a one-time warning on stderr: a repo with a working committed map
-must not lose voice resolution the moment it upgrades. stdout stays clean either way, so a caller
-can still treat empty output as "no voice profile".
+THE VOICE MAP: a person's `people/<id>.yaml` carries an optional `voice:` block (`profile_id`,
+`path`). The path template is resolved PER PERSON — one person's custom `voice.path` must never
+leak to a teammate (a single template held across a scan once resolved Alice to Bob's profile
+file, silently). The legacy `project.voice_profiles` block in `stack.yaml` is STILL READ as a
+fallback whenever the person has no tier-2 voice block (or nothing resolves at all), with a
+one-time TTY-gated warning on stderr: a repo with a working committed map must not lose voice
+resolution the moment it upgrades. This fallback is now PER PERSON too — previously any tier-2
+voice mapping existing for anyone switched the legacy map off for everyone.
 
 `voices/<id>.md` is unchanged — a RENDERED MARKDOWN writing-style profile referenced from
 `people/<id>.yaml`. It does not become YAML.
 
-Resolution order of local identities (first that hits the map wins):
-  git config user.email  →  git config user.name  →  $USER
-
-Both the config and `git config` are read from the **project root** (`CLAUDE_PROJECT_DIR`, else the
-nearest ancestor holding `.claude/config/stack.yaml`), so a plugin install — where this script lives
-in the plugin dir but the repo is elsewhere — still reads the shipper's own repo, not wherever the
-process happened to start.
-
-Stdlib only. **Offline only** — reads local `git config` and `$USER`; no network, no tracker call
-(tracker enrichment happens once in `/setup --voice`, written into the profile frontmatter). Fails
-open: an unconfigured feature, a missing map, or an identity miss all print nothing and exit 0, so a
-caller can treat empty output as "no voice profile — behave as today."
+Stdlib only. **Offline only** — no network, no tracker call. Fails open: an unconfigured feature,
+a missing map, an identity miss, and an AMBIGUOUS identity (whoami refuses to pick, so does this)
+all print nothing and exit 0, so a caller can treat empty output as "no voice profile — behave as
+today."
 
 Usage:
   python3 bin/resolve_user.py            # prints the resolved profile id (empty on miss)
@@ -39,63 +35,28 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _yamlite import YamliteError, config_trace, parse_file  # noqa: E402
+import whoami  # noqa: E402 — the kit's single identity resolver; this shim only maps to a voice
+from _yamlite import config_trace  # noqa: E402
+
+# Re-exported for callers that imported these from here before the whoami split.
+project_root = whoami.project_root
+local_identities = whoami.local_identities
 
 DEFAULT_PATH_TEMPLATE = "voices/{profile_id}.md"
 
 
-def project_root() -> Path:
-    """The *consuming* repo (holds .claude/config/stack.yaml) — not the plugin dir."""
-    env = os.environ.get("CLAUDE_PROJECT_DIR")
-    if env:
-        return Path(env)
-    here = Path.cwd()
-    for cand in (here, *here.parents):
-        if (cand / ".claude/config/stack.yaml").is_file():
-            return cand
-    return here
-
-
-def _git_config(key: str, cwd: Path) -> str:
-    try:
-        out = subprocess.run(
-            ["git", "config", "--get", key],
-            capture_output=True, text=True, timeout=3, cwd=str(cwd),
-        )
-        return out.stdout.strip() if out.returncode == 0 else ""
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
-
-def local_identities(root: Path) -> list[str]:
-    """Ordered, de-duplicated identity candidates — most specific first, read from `root`."""
-    cands = [_git_config("user.email", root), _git_config("user.name", root), os.environ.get("USER", "")]
-    seen: set[str] = set()
-    out: list[str] = []
-    for c in cands:
-        c = c.strip()
-        key = c.lower()
-        if c and key not in seen:
-            seen.add(key)
-            out.append(c)
-    return out
-
-
 def voice_config(stack_text: str) -> tuple[str, dict[str, str]]:
-    """Extract (path_template, identity→id map) from the `project.voice_profiles` block.
+    """Extract (path_template, identity→id map) from the LEGACY `project.voice_profiles` block.
 
     Line/indent based (not one greedy regex) so a `path:` that appears *after* `map:` is treated as
-    a sibling key, never swallowed as a bogus map entry. Stdlib only — the kit avoids a YAML
-    dependency (matching session_context.py). Returns ("", {}) when the block is absent or commented
-    out, which the caller treats as feature-off.
+    a sibling key, never swallowed as a bogus map entry. Returns ("", {}) when the block is absent
+    or commented out, which the caller treats as feature-off.
     """
     lines = stack_text.splitlines()
     VP_INDENT = 2  # voice_profiles is a direct child of `project:`
@@ -134,94 +95,74 @@ def voice_config(stack_text: str) -> tuple[str, dict[str, str]]:
     return path_template, mapping
 
 
+def _person_voice(root: Path, pid: str) -> tuple[str, str] | None:
+    """(profile_id, path_template) from THIS person's tier-2 `voice:` block, or None.
 
-def _people_dirs(root: Path) -> list[Path]:
-    """Tier-2 homes, cross-repo FIRST so the in-repo copy wins.
-
-    The cross-repo copy is the whole point of "portable": someone whose profile lives only in
-    `$XDG_CONFIG_HOME/ticketwright/people/` must still resolve, or the tier is portable in name only.
+    Read through whoami's two-home merge, so the template is the person's own — never a value
+    left over from scanning someone else's file.
     """
-    xdg = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "ticketwright"
-    return [xdg / "people", root / "people"]
+    person = whoami.load_people(root).get(pid) or {}
+    voice = person.get("voice") if isinstance(person.get("voice"), dict) else {}
+    if not voice:
+        return None  # no voice block = this person has not opted in
+    profile_id = str(voice.get("profile_id") or pid).strip()
+    template = str(voice.get("path") or DEFAULT_PATH_TEMPLATE).strip()
+    return profile_id, template
 
 
-def people_config(root: Path) -> dict[str, tuple[str, str]]:
-    """identity → (profile_id, path_template), from TIER 2.
-
-    The template is PER PERSON, not global. Holding one template while iterating every file meant a
-    person with no custom `voice.path` inherited whichever custom path happened to be read last —
-    Alice resolving to Bob's profile file, silently, which is exactly the wrong-profile footgun this
-    resolver exists to avoid.
-
-    Every identity is ENUMERATED in the person's own file; nothing is inferred from a name. A file
-    that fails to parse is skipped rather than fatal — one malformed teammate file must not stop
-    everyone else resolving.
-    """
-    mapping: dict[str, tuple[str, str]] = {}
-    for people in _people_dirs(root):
-        if not people.is_dir():
-            continue
-        for path in sorted(people.glob("*.yaml")):
-            try:
-                data = parse_file(path)
-            except (YamliteError, OSError):
-                continue
-            if not isinstance(data, dict):
-                continue
-            voice = data.get("voice") if isinstance(data.get("voice"), dict) else {}
-            if not voice:
-                continue                      # no voice block = this person has not opted in
-            profile_id = str(voice.get("profile_id") or path.stem).strip()
-            template = str(voice.get("path") or DEFAULT_PATH_TEMPLATE).strip()
-            for ident in (data.get("identities") or []):
-                text = str(ident).strip()
-                if text:
-                    mapping[text.lower()] = (profile_id, template)   # later dir wins: in-repo
-    return mapping
+def _legacy_voice(root: Path) -> tuple[str, str, str] | None:
+    """(profile_id, path_template, identity) from the legacy stack.yaml map, or None."""
+    stack = root / ".claude/config/stack.yaml"
+    if not stack.is_file():
+        return None
+    try:
+        text = stack.read_text(errors="replace")
+    except OSError:
+        return None
+    path_template, mapping = voice_config(text)
+    if not mapping:
+        return None
+    for ident in whoami.local_identities(root):
+        pid = mapping.get(ident.lower())
+        if pid:
+            return pid, path_template, ident
+    return None
 
 
 def resolve(root: Path) -> dict | None:
-    """Tier 2 first, then the legacy tier-1 block. Fails open: None means "behave as today"."""
+    """whoami first, then the legacy tier-1 block. Fails open: None means "behave as today"."""
     config_trace(root, "resolve_user")
-    mapping = people_config(root)
-    legacy = False
+    who = whoami.resolve(root)
 
-    if not mapping:
-        stack = root / ".claude/config/stack.yaml"
-        if not stack.is_file():
-            return None
-        try:
-            text = stack.read_text(errors="replace")
-        except OSError:
-            return None
-        path_template, legacy_map = voice_config(text)
-        mapping = {k: (v, path_template) for k, v in legacy_map.items()}
-        legacy = bool(mapping)
-    if not mapping:
-        return None
-
-    for ident in local_identities(root):
-        hit = mapping.get(ident.lower())
+    if who["status"] in ("resolved", "conflict"):
+        hit = _person_voice(root, who["id"])
         if hit:
             pid, path_template = hit
-            if legacy and sys.stderr.isatty():
-                # Warn on stderr, never stdout: callers read stdout as the answer, and a warning
-                # there would look like a profile id.
-                #
-                # TTY-gated on purpose. This resolver is invoked by hooks, the statusline and /ship,
-                # several times per session — an unconditional warning printed into the stderr of
-                # every one of those, including unrelated commands that merely started a shell.
-                # The durable channel for this is `effective_config.py --lint`, which surfaces it
-                # once per verify run where config problems are supposed to appear.
-                print("resolve_user: using the legacy `project.voice_profiles` map in stack.yaml. "
-                      "That map holds personal identities in committed team config — move it to "
-                      "people/<id>.yaml (see templates/person.yaml.tmpl).", file=sys.stderr)
             return {
                 "id": pid,
                 "path": path_template.replace("{profile_id}", pid),
-                "identity": ident,
+                "identity": who.get("identity") or "",
             }
-    return None
+    if who["status"] == "ambiguous":
+        return None  # whoami refuses to pick between two people; a voice pass must not either
+
+    legacy = _legacy_voice(root)
+    if legacy is None:
+        return None
+    pid, path_template, ident = legacy
+    if sys.stderr.isatty():
+        # Warn on stderr, never stdout: callers read stdout as the answer, and a warning there
+        # would look like a profile id.
+        #
+        # TTY-gated on purpose. This resolver is invoked by hooks, the statusline and /ship,
+        # several times per session — an unconditional warning printed into the stderr of every
+        # one of those, including unrelated commands that merely started a shell. The durable
+        # channel for this is `effective_config.py --lint`, which surfaces it once per verify run
+        # where config problems are supposed to appear.
+        print("resolve_user: using the legacy `project.voice_profiles` map in stack.yaml. "
+              "That map holds personal identities in committed team config — move it to "
+              "people/<id>.yaml (see templates/person.yaml.tmpl).", file=sys.stderr)
+    return {"id": pid, "path": path_template.replace("{profile_id}", pid), "identity": ident}
 
 
 def main(argv: list[str] | None = None) -> int:

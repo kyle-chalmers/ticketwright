@@ -106,9 +106,12 @@ is the single authority merging them, and `bin/_yamlite.py` is the one YAML read
 supported subset, stdlib-only, failing loudly rather than misreading). Every config consumer goes
 through that stack. Three honest qualifications, each deliberate: several consumers keep their
 pre-resolver reader as a FALLBACK so a config outside the supported subset still yields a banner or a
-catalog rather than a hard failure; `bin/resolve_user.py` reads `people/*.yaml` with `_yamlite`
-directly rather than via the resolver, because the resolver asks IT who the person is and the
-dependency cannot run both ways; and the two hooks below never call the resolver at all. The scope rule is enforced in code: tier 3 may
+catalog rather than a hard failure; `bin/whoami.py` — the kit's SINGLE identity resolver (tier-3
+`person:` → `$TICKETWRIGHT_PERSON` → the enumerated identity map; statuses
+resolved/miss/ambiguous/conflict, never a guess; `bin/resolve_user.py` is a thin voice-mapping shim
+over it) — reads `people/*.yaml` with `_yamlite` directly rather than via the resolver, because the
+resolver asks IT who the person is and the dependency cannot run both ways; and the two hooks below
+never call the resolver at all. The scope rule is enforced in code: tier 3 may
 only set keys the adapter declares in its `user_keys:` frontmatter, never anything that selects data
 (`catalog`, `schema`, `warehouse_id`, …) and never `policies:` — those are REJECTED, not ignored.
 **Two deliberate exceptions:** `.claude/hooks/db_write_guard.py` and `.claude/hooks/_stack.py` read

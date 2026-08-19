@@ -11,7 +11,9 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
 > the map key over a work email. Ingest only **short, already-sent exemplars** the person is fine
 > sharing — never a full chat/PR/tracker thread, which can carry confidential content; capture
 > *style cues* (how they open, hedge, sign off), not the source text. Profiles are committed by
-> default; to keep one private, gitignore `voices/<id>.md`.
+> default; to keep one private, point the person's `voice.path` outside the repo, or add the path
+> to `.gitignore` **before** the profile is first committed — gitignoring a file git already
+> tracks does nothing.
 
 ## Steps
 

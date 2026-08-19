@@ -244,6 +244,30 @@ def viewer_tool(root: Path, stack_text: str) -> str | None:
     return tools[0] if tools else None
 
 
+def whoami_lines(root: Path) -> list[str]:
+    """The one-line identity display (plus the conflict warning), so a wrong resolution is caught
+    the moment a session starts — before work lands in a colleague's folder.
+
+    DISPLAY ONLY. This hook is never the resolver's write path and never asks a question — a
+    command hook can print text, it cannot run an interactive interview. On a `miss` it stays
+    silent: the ticket/ship workflows own the self-healing `whoami.py --bind` interview.
+    """
+    try:
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        sys.path.insert(0, str(bindir))
+        import whoami  # type: ignore
+        res = whoami.resolve(root)
+    except Exception:  # noqa: BLE001 — a hook must fail open
+        return []
+    if res.get("status") in ("resolved", "conflict") and res.get("display"):
+        out = [str(res["display"])]
+        if res.get("warning"):
+            out.append(str(res["warning"]))
+        return out
+    return []
+
+
 def main() -> int:
     root = project_root()
     stack = root / ".claude/config/stack.yaml"
@@ -274,6 +298,7 @@ def main() -> int:
         f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}{viewer_note}.",
         "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",
     ]
+    lines[2:2] = whoami_lines(root)
     if skills:
         lines.append("Skills: " + ", ".join(skills) + ".")
     if commands:

@@ -53,8 +53,10 @@ carrying the shared preamble), runs each, and strips every CSV. Canonical filena
 ## Phase 4 — Render docs & HARD HALT
 Render `templates/README.md.tmpl` → ticket README and `templates/tracker_comment.txt.tmpl` → draft.
 Apply the same comms rails as `/ship` before halting: comms-lint the draft (word limit, hyperlinks,
-include-list), then — if `project.voice_profiles` is set and a profile resolves for the shipper
-(`bin/resolve_user.py`) — a voice phrasing pass over the rendered fields, *within* those rails. Print
+include-list), then — if a voice profile RESOLVES for the shipper (`bin/resolve_user.py`; gate on
+the resolution, never on where the config lives — the map moved to `people/<id>.yaml`, so a
+condition naming `project.voice_profiles` is permanently false in a migrated repo) — a voice
+phrasing pass over the rendered fields, *within* those rails. Print
 the summary and **exit** — no tracker post, no docstore backup, no commit. To ship after review:
 `/{{skill_name}}-post-review --ticket <ticket>` (or `/ship <ticket>`).
 
