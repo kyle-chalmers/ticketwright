@@ -1055,12 +1055,16 @@ RE-VERIFICATION (2026-08-19, against current vendor docs — docs/runtimes.md's 
 this before relying on it). The load-bearing claims held, with corrections U5 must land, each with
 its source cited in the updated docs:
 
-- Devin — two corrections. The `{"decision": "approve" | "block"}` schema belongs to its separate
-  `PermissionRequest` hook, NOT `PreToolUse`: PreToolUse blocks only via exit code 2 (the fail-open
-  exit table is confirmed verbatim — 0 continues, 2 blocks, any other nonzero is logged and does
-  not block). And Devin SKILL.md frontmatter `name` + `description` are REQUIRED —
-  `adapters/runtime/devin.md` ("no required field") and docs/runtimes.md ("no field is strictly
-  required") are both stale.
+- Devin — one correction landed, one RETRACTED at U5 time. LANDED: the
+  `{"decision": "approve" | "block"}` schema belongs to its separate `PermissionRequest` hook, NOT
+  `PreToolUse`: PreToolUse blocks only via exit code 2 (the fail-open exit table is confirmed
+  verbatim — 0 continues, 2 blocks, any other nonzero is logged and does not block). RETRACTED
+  (2026-08-19, two independent live reads of the cited creating-skills page, gate-1 codex and the
+  U5 session both): the claim that SKILL.md frontmatter `name` + `description` are REQUIRED did not
+  survive the source — the frontmatter block is optional with per-field defaults, so the original
+  "no field is strictly required" was CORRECT and stays. docs/runtimes.md records the dated
+  negative finding so nobody re-applies the false correction. Also established at U5 time: Cline
+  DOES document a global skills root (`~/.cline/skills`), so that value is known, not unknown.
 - OpenCode — one correction. Subagent marking is `mode: "subagent"`, invoked via `@`-mention or the
   Task tool — not `subtask: true`. The upstream `permission.ask`-never-fires issue is still open;
   own-context isolation is still undocumented.
