@@ -60,8 +60,8 @@ Read the item's **file column** `assets{ url }`, then `curl -L <asset url> -o <d
 
 ## verb: rank_projects_by_activity
 The ranked container is a **board** — monday has no project concept. **In:** `scope` (the
-workspace), `window_days` (90), `limit` (5), `container_cap` (25). **Out:** `{id, name, activity,
-last_activity, signal}` per board, most active first.
+workspace), `window_days` (90), `limit` (5), `scan_cap` (200), `container_cap` (25). **Out:**
+`{id, name, activity, last_activity, signal}` per board, most active first.
 
 **Shortlist by board recency, then count items for the shortlist only.** Counting items across every
 board in a workspace is precisely the query shape monday's complexity limiter rejects (see gotchas),
@@ -71,20 +71,25 @@ but counting them for `limit` boards is cheap — so narrow first, then measure:
 mcp__{mcp}__list-boards(workspace_ids=[<scope>], limit=<container_cap>)
 # GraphQL: boards(workspace_ids:[<scope>], limit:<container_cap>){ id name updated_at }
 
-# 2 · real counts, for the top `limit` boards by updated_at only
+# 2 · real counts, for the shortlist (take ~3x `limit`, capped at `container_cap`)
 # GraphQL: boards(ids:[<shortlist>]){ items_page(limit:<scan_cap>,
 #   query_params:{rules:[{column_id:"__last_updated__", compare_value:["<ISO date>"],
 #                         operator:greater_than}]}){ items{ id updated_at } } }
 ```
-Step 2 yields `signal: items_updated` with a real `activity`. If it is rejected for complexity or
-the board lacks a last-updated rule, degrade that row to `activity: null` and
-`signal: container_updated_at` rather than dropping it — a partial answer labelled as partial beats
-a missing candidate.
+**Step 1 is a filter, not the ranking — re-sort on the measured counts.** Take a shortlist wider
+than `limit` (roughly `3 × limit`, capped at `container_cap`) so the recency filter is not silently
+deciding the order, then order the final `limit` rows by step 2's `activity`. Step 2 yields
+`signal: items_updated` with a real count. If it is rejected for complexity or the board has no
+last-updated rule, degrade that row to `activity: null` and `signal: container_updated_at` rather
+than dropping it — a partial answer labelled as partial beats a missing candidate.
 
-Say what the degraded signal is worth: a board's `updated_at` moves on *any* mutation, including a
-column or settings edit, so a recently reconfigured but idle board can outrank a busy one. It still
-separates a board untouched for a year from one touched this week, which is the dead-or-alive
-question. Treat the result as a default the human confirms, never an auto-selection.
+Then say what the shortlist costs, because it is a real limitation and not a rounding error: a
+board's `updated_at` moves on *any* mutation, including a column or settings edit, so a recently
+reconfigured but idle board can enter the shortlist — and, worse in the other direction, a board
+whose items moved without a board-level change can be filtered out before it is ever counted. Board
+recency still separates a board untouched for a year from one touched this week, which is the
+dead-or-alive question this verb is for. Treat the result as a default the human confirms, never an
+auto-selection, and widen `container_cap` when a workspace has many boards.
 
 Picking a board sets `seams.tracker.board_id`. It does **not** settle `status_column_id` or
 `done_label` — both are per-board, and gotchas below warns against assuming them.

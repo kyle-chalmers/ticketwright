@@ -87,6 +87,10 @@ acli jira workitem search --json --limit <scan_cap> \
 **first** row bearing a project's prefix is that project's most recent activity. Row count per
 prefix is `activity`.
 
+`last_activity` is that first row's `updated` when the JSON carries the field, and `null` when it
+does not — report the null rather than inventing a date. Ranking is unaffected either way: the rows
+arrive in recency order, so relative position is known even when the timestamp is not.
+
 **One search, not one per project** — fanning out N calls is the fast route into the `acli` MFA
 lockout in gotchas below. When the total row count equals `scan_cap` the scan saturated, so the
 counts are `>= scan_cap` and truncation may have cut a quiet project off entirely; rank the
