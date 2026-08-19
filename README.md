@@ -97,13 +97,13 @@ questions.
   to pre-select the tools you already have.
 - **Which MCP servers are connected** in the session (tracker / chat / warehouse).
 - **What's already in the repo** — an existing `.claude/config/stack.yaml` (it offers to edit and never
+  overwrites), or existing ticket folders and indexes, which switch it into adopt mode.
 
 Config is three tiers: `.claude/config/stack.yaml` is the **team's** committed answer,
 `people/<id>.yaml` holds each person's portable settings, and `.claude/config/connections.local.yaml`
 holds the per-machine ones and is gitignored. `bin/effective_config.py` merges them — read that, not
 the raw file. The machine tier can supply credentials and local paths; it can never change which data
 gets read, and never a policy.
-  overwrites), or existing ticket folders and indexes, which switch it into adopt mode.
 
 **What it then asks — at most five, detected answers pre-selected:** tracker (or *none*), warehouse (or
 *none*), git host, ticket key prefix (e.g. `ENG`), and your assignee folder name. Everything else ships
