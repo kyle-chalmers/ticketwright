@@ -62,9 +62,13 @@ already configured), `window_days` (90), `limit` (5), `scan_cap` (200), `contain
 `signal: items_updated`.
 ```bash
 gh search issues "org:<scope> updated:>=<YYYY-MM-DD>" --limit <scan_cap> \
-  --json repository,updatedAt
+  --sort updated --order desc --json repository,updatedAt
 ```
-One call: each hit already names its repo, so group client-side rather than looping repos. Fall back
+One call: each hit already names its repo, so group client-side rather than looping repos.
+**`--sort updated` is not optional.** `gh search issues` defaults to *best-match* relevance, so on an
+org with more than `scan_cap` matching issues the truncated sample is an arbitrary slice — it can
+omit the busiest repo entirely, which is the exact failure this verb exists to prevent. With the
+sort, a saturated scan is at least the most recent `scan_cap` issues. Fall back
 to enumerating first only when the search is unavailable:
 ```bash
 gh repo list <scope> --source --no-archived --limit <container_cap> --json nameWithOwner

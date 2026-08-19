@@ -60,13 +60,20 @@ The ranked container is an Asana **project** — the `default_project_gid` kind,
 section" this adapter uses as an epic stand-in. **In:** `scope` (the `workspace_gid`),
 `window_days` (90), `limit` (5), `scan_cap` (200), `container_cap` (25). **Out:** `{id, name,
 activity, last_activity, signal}` per project, most active first, `signal: items_updated`.
+Two steps — **candidates first**, then a count per candidate:
 ```
+mcp__{mcp}__list-projects(workspace=<scope>, limit=<container_cap>)   # or the server's projects op
 mcp__{mcp}__search-tasks(workspace=<scope>, projects.any=<project gid>,
                          modified_on.after=<ISO date>, limit=<scan_cap>)
 ```
-Query per candidate project rather than grouping one broad search: a task carries **multiple**
+Count per candidate project rather than grouping one broad search: a task carries **multiple**
 project memberships, so grouping search hits double-counts it into every project it belongs to.
-Bound the candidate list at `container_cap`.
+
+The projects-listing op is the one operation here this adapter does not use elsewhere, and its name
+varies by server (see the MCP caveat in `adapters/README.md`). Confirm it once against your
+connected server; if it exposes no way to enumerate a workspace's projects, there is no candidate
+set and the verb returns `unavailable` naming that — do not substitute `typeahead-search`, which
+ranks by name similarity and would reintroduce the exact bias this verb removes.
 
 Picking a project sets `seams.tracker.default_project_gid`; `workspace_gid` comes from `scope`.
 The key prefix is unaffected — per the note above, Asana has no native id prefix.

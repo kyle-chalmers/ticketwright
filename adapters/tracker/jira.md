@@ -80,10 +80,17 @@ acli jira project list --json                          # candidates; take the fi
 acli jira workitem search --json --limit <scan_cap> \
   --jql "project in (<K1>,<K2>,…) AND updated >= -<window_days>d ORDER BY updated DESC"
 ```
-Group the returned rows by project client-side: the row count per key is `activity`, its newest
-`updated` is `last_activity`. **One search, not one per project** — fanning out N calls is the fast
-route into the `acli` MFA lockout in gotchas below. When the row count equals `scan_cap` the scan
-saturated, so the true counts are `>= scan_cap`; rank those peers by `last_activity` instead.
+**Group by the issue key's prefix, and take `last_activity` from the ordering — not from fields.**
+`acli jira workitem search` does not accept a field selector on every build, so do not assume a
+`project` or `updated` column is present. Both are recoverable without one: every Jira key is
+`<PROJECT>-<number>` (`ENG-1234` ⇒ project `ENG`), and the JQL already sorts `updated DESC`, so the
+**first** row bearing a project's prefix is that project's most recent activity. Row count per
+prefix is `activity`.
+
+**One search, not one per project** — fanning out N calls is the fast route into the `acli` MFA
+lockout in gotchas below. When the total row count equals `scan_cap` the scan saturated, so the
+counts are `>= scan_cap` and truncation may have cut a quiet project off entirely; rank the
+saturated peers by `last_activity` and say the scan was capped.
 
 Picking a project sets `project.key_prefix` (this adapter's `container_key`) — a `project:` key, not
 a tracker seam key. It does **not** settle `default_epic` or `terminal_status`; resolve those from

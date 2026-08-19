@@ -61,18 +61,30 @@ Read the item's **file column** `assets{ url }`, then `curl -L <asset url> -o <d
 ## verb: rank_projects_by_activity
 The ranked container is a **board** — monday has no project concept. **In:** `scope` (the
 workspace), `window_days` (90), `limit` (5), `container_cap` (25). **Out:** `{id, name, activity,
-last_activity, signal}` per board, ordered by `last_activity`, with `activity: null` and
-`signal: container_updated_at`.
+last_activity, signal}` per board, most active first.
+
+**Shortlist by board recency, then count items for the shortlist only.** Counting items across every
+board in a workspace is precisely the query shape monday's complexity limiter rejects (see gotchas),
+but counting them for `limit` boards is cheap — so narrow first, then measure:
 ```
+# 1 · candidates, cheap: board metadata only
 mcp__{mcp}__list-boards(workspace_ids=[<scope>], limit=<container_cap>)
-# or GraphQL: boards(workspace_ids:[<scope>], limit:<container_cap>){ id name updated_at }
+# GraphQL: boards(workspace_ids:[<scope>], limit:<container_cap>){ id name updated_at }
+
+# 2 · real counts, for the top `limit` boards by updated_at only
+# GraphQL: boards(ids:[<shortlist>]){ items_page(limit:<scan_cap>,
+#   query_params:{rules:[{column_id:"__last_updated__", compare_value:["<ISO date>"],
+#                         operator:greater_than}]}){ items{ id updated_at } } }
 ```
-**This is a recency signal, not an item count, and the output says so.** Per-item counts are refused
-deliberately: monday rate-limits GraphQL by complexity (see gotchas), and counting items across
-every board in a workspace is exactly the query shape that trips it. Be honest about the weakness
-too — a board's `updated_at` moves on *any* mutation, including a column or settings edit, so a
-recently reconfigured but idle board can outrank a busy one. Treat the result as a default the human
-confirms, never an auto-selection.
+Step 2 yields `signal: items_updated` with a real `activity`. If it is rejected for complexity or
+the board lacks a last-updated rule, degrade that row to `activity: null` and
+`signal: container_updated_at` rather than dropping it — a partial answer labelled as partial beats
+a missing candidate.
+
+Say what the degraded signal is worth: a board's `updated_at` moves on *any* mutation, including a
+column or settings edit, so a recently reconfigured but idle board can outrank a busy one. It still
+separates a board untouched for a year from one touched this week, which is the dead-or-alive
+question. Treat the result as a default the human confirms, never an auto-selection.
 
 Picking a board sets `seams.tracker.board_id`. It does **not** settle `status_column_id` or
 `done_label` — both are per-board, and gotchas below warns against assuming them.
