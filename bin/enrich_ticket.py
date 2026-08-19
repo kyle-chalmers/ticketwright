@@ -24,9 +24,14 @@ pipes it to `ingest_index_records.py --from-json -`. This script is the accelera
 
 Usage:
   enrich_ticket.py ENG-123 [ENG-124 ...]         # enrich specific ticket(s)
+  enrich_ticket.py alice/ENG-123                 # owner-qualified locator, when an id is shared
   enrich_ticket.py --branch                      # enrich the ticket named in the current git branch
   enrich_ticket.py ENG-123 --model opus          # override the model
   enrich_ticket.py ENG-123 --model-cmd 'x {prompt}'   # override the whole model command
+
+Owner is part of ticket identity: a bare id that exists under more than one `tickets/<owner>/`
+folder is a HARD STOP (exit 3) naming every owner — pass the `owner/id` locator to pick one.
+Enriching every matching folder was the old behavior and is exactly the guess this forbids.
 
 Then commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the ticket.
 """
@@ -258,29 +263,62 @@ def main() -> int:
                 br = got
                 break
         cfg = load_config(root)
+        cands = [c for c in (br, br.rsplit("/", 1)[-1]) if c]
+        loc = None
         if cfg["id_mode"] == "slug":
             # A slug has no distinguishing shape, so match by identity against the ids actually on
             # disk instead of by pattern. Try the whole branch name and its last path segment, so
             # both `signup-funnel-lift` and `claude/signup-funnel-lift` resolve.
             known = {i for (_, i) in locs_by_owner_id}
-            for cand in (br, br.rsplit("/", 1)[-1]):
-                if cand in known:
-                    ids.append(cand)
-                    break
+            loc = next((c for c in cands if c in known), None)
         else:
+            # A branch that IS a key resolves as that key; otherwise fall through to the collision
+            # shape below before the loose in-string search, so `bob-ENG-12` names bob's ticket
+            # rather than an ambiguous bare ENG-12.
+            kre = key_regex(cfg["prefixes"])
+            loc = next((c for c in cands if kre.fullmatch(c)), None)
+        if loc is None:
+            # Branch names stay bare `<id>`; a branch created against a taken name is `<owner>-<id>`.
+            # That shape is not injective (owners and slugs both allow `-`), so it must resolve to
+            # exactly one on-disk pair — several matches is a hard stop, never a pick.
+            pair_hits = sorted((o, i) for (o, i) in locs_by_owner_id
+                               if any(c == f"{o}-{i}" for c in cands))
+            if len(pair_hits) == 1:
+                loc = f"{pair_hits[0][0]}/{pair_hits[0][1]}"
+            elif len(pair_hits) > 1:
+                sys.exit(f"enrich_ticket: branch '{br}' matches multiple tickets "
+                         f"({', '.join(f'{o}/{i}' for o, i in pair_hits)}); pass owner/id explicitly.")
+        if loc is None and cfg["id_mode"] != "slug":
             m = key_regex(cfg["prefixes"]).search(br)
             if m:
-                ids.append(m.group(0))
+                loc = m.group(0)
+        if loc is not None:
+            ids.append(loc)
     if not ids:
         sys.exit("No ticket ids given. Pass a ticket id (or folder name) or --branch.")
 
     targets = []
     for tid in ids:
+        if "/" in tid:  # the owner/id locator — exact
+            owner, bare = tid.split("/", 1)
+            loc = locs_by_owner_id.get((owner, bare))
+            if not loc:
+                print(f"  {tid}: no ticket folder found — skipped.", file=sys.stderr)
+                continue
+            targets.append(loc)
+            continue
         matches = [loc for (_, i), loc in locs_by_owner_id.items() if i == tid]
         if not matches:
             print(f"  {tid}: no ticket folder found — skipped.", file=sys.stderr)
             continue
-        targets.extend(matches)  # if an id exists under 2 owners, enrich both
+        if len(matches) > 1:
+            # Owner is part of ticket identity — enriching every owner's folder was a guess.
+            owners = ", ".join(sorted(loc["owner"] for loc in matches))
+            spellings = ", ".join(sorted(f"{loc['owner']}/{tid}" for loc in matches))
+            print(f"enrich_ticket: {tid} exists under multiple owners ({owners}); "
+                  f"say which one: {spellings}. Nothing was enriched.", file=sys.stderr)
+            return 3
+        targets.append(matches[0])
 
     # Sibling helpers live beside THIS script (the kit's bin/), not in the user's project. Resolving
     # them off repo_root() breaks on a plugin/pip install, where the kit and the project dir diverge.

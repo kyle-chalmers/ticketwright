@@ -8,6 +8,7 @@ score breakdown. The `/ticket --recall` command runs this, then reads the top hi
 
 Usage:
   recall.py --for ENG-12 [--top 5] [--min-score N] [--json]   # query = that ticket's fields
+  recall.py --for alice/ENG-12                     # owner-qualified locator == --for ENG-12 --owner alice
   recall.py --query "orders feed latency" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
   recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
@@ -24,7 +25,7 @@ import math
 import re
 import sys
 
-from build_ticket_index import repo_root, build_rows, ticket_number, id_key_regex, load_config
+from build_ticket_index import repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "by", "with", "from", "into",
@@ -78,7 +79,32 @@ def idf_factor(df_map: dict, n_docs: int, name: str) -> float:
     return max(OBJ_IDF_FLOOR, min(1.0, f))
 
 
-def score_candidate(q_tokens, q_tags, q_objects, seed_id, seed_refs, r, weights, allow_ref, df_map, n_docs):
+def owners_index(rows) -> dict:
+    """Lowercased id -> sorted lowercased owners having it — the corpus map ref resolution needs."""
+    idx: dict = {}
+    for r in rows:
+        idx.setdefault(r["id"].lower(), set()).add(r["owner"].lower())
+    return {k: sorted(v) for k, v in idx.items()}
+
+
+def ref_names_pair(ref: str, referrer_owner: str, owners_by_id: dict) -> str | None:
+    """The concrete lowercased `owner/id` a cross-ref string names, resolved from the REFERRING
+    ticket's perspective by the locator's order: a qualified ref names exactly that pair; a bare ref
+    names the referrer's own ticket first, else the single owner that has the id; a bare id two
+    other owners could claim names NOTHING — the same never-a-guess rule the graph renderer applies."""
+    owner, tid = split_ref(ref)
+    if owner is not None:
+        return f"{owner}/{tid}"
+    cands = owners_by_id.get(tid, [])
+    if referrer_owner in cands:
+        return f"{referrer_owner}/{tid}"
+    if len(cands) == 1:
+        return f"{cands[0]}/{tid}"
+    return None
+
+
+def score_candidate(q_tokens, q_tags, q_objects, seed_id, seed_refs, r, weights, allow_ref, df_map, n_docs,
+                    seed_owner=None, owners_by_id=None):
     """One candidate's score + breakdown. `allow_ref=False` disables the cross-ref signal (used by --eval,
     where cross_refs are the ground-truth labels and must not leak into scoring)."""
     r_tags, r_objects = ci(r.get("tags")), ci(r.get("objects"))
@@ -86,7 +112,14 @@ def score_candidate(q_tokens, q_tags, q_objects, seed_id, seed_refs, r, weights,
     obj_hits = object_hits(q_objects, r_objects)
     tag_hits = sorted(q_tags & r_tags)
     kw_hits = q_tokens & r_tokens
-    ref_link = bool(allow_ref and seed_id and (r["id"].lower() in seed_refs or seed_id.lower() in ci(r.get("cross_refs"))))
+    ref_link = False
+    if allow_ref and seed_id and seed_owner is not None:
+        omap = owners_by_id or {}
+        seed_key = f"{seed_owner.lower()}/{seed_id.lower()}"
+        r_key = f"{r['owner']}/{r['id']}".lower()
+        so, ro = seed_owner.lower(), r["owner"].lower()
+        ref_link = (any(ref_names_pair(x, so, omap) == r_key for x in seed_refs)
+                    or any(ref_names_pair(x, ro, omap) == seed_key for x in ci(r.get("cross_refs"))))
     obj_score = sum(weights["obj"] * idf_factor(df_map, n_docs, o) for o in obj_hits)
     score = (obj_score + weights["tag"] * len(tag_hits)
              + weights["ref"] * (1 if ref_link else 0) + weights["kw"] * min(len(kw_hits), KEYWORD_CAP))
@@ -124,6 +157,11 @@ def verdict_line(top) -> str:
 def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
     q_tokens, q_tags, q_objects = tokenize(args.query), ci(args.tags.split(",")), ci([args.object] if args.object else [])
     seed_id, seed_owner, seed_refs = None, None, set()
+    if args.seed and "/" in args.seed:  # --for owner/id, the qualified ticket locator
+        so, si = split_ref(args.seed)
+        if args.owner and args.owner.lower() != so.lower():
+            sys.exit(f"recall: --for {args.seed} names owner '{so}' but --owner says '{args.owner}'; drop one.")
+        args.seed, args.owner = si, so
     if args.seed:
         sid, sown = args.seed.lower(), (args.owner or "").lower()  # case-insensitive id/owner match
         seed_matches = [r for r in rows if r["id"].lower() == sid and (not sown or r["owner"].lower() == sown)]
@@ -140,6 +178,7 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
         q_objects |= ci(seed.get("objects"))
 
     reverse_only = bool(args.object) and not (args.seed or args.query or args.tags)
+    omap = owners_index(rows)
 
     scored = []
     for r in rows:
@@ -147,7 +186,7 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
             continue  # exclude only the chosen seed row (same id under another owner is a real candidate)
         score, obj_hits, tag_hits, kw_hits, ref_link = score_candidate(
             q_tokens, q_tags, q_objects, seed_id, seed_refs, r, DEFAULT_WEIGHTS, allow_ref=True,
-            df_map=df_map, n_docs=n_docs)
+            df_map=df_map, n_docs=n_docs, seed_owner=seed_owner, owners_by_id=omap)
         if reverse_only:
             if not obj_hits:
                 continue
@@ -174,8 +213,16 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
             for s, r, why in top], ensure_ascii=False, indent=2))
         return 0
 
+    # A shared id is displayed as its owner/id locator — a bare label naming two tickets is exactly
+    # the ambiguity the locator exists to remove.
+    id_owners: dict = {}
+    for r in rows:
+        id_owners[r["id"]] = id_owners.get(r["id"], 0) + 1
+    def label(owner, tid):
+        return f"{owner}/{tid}" if id_owners.get(tid, 0) > 1 else tid
+
     header = (f"Reverse lookup: tickets touching {args.object}" if reverse_only
-              else "Prior art" + (f" for {seed_id}" if seed_id else "")) + f" — top {len(top)} of {len(scored)}"
+              else "Prior art" + (f" for {label(seed_owner, seed_id)}" if seed_id else "")) + f" — top {len(top)} of {len(scored)}"
     print(header)
     if not top:
         print("  (no matches)")
@@ -183,7 +230,7 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
             print(verdict_line(top))
         return 0
     for s, r, why in top:
-        print(f"  {r['id']:<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or '—'}  {r['title'][:60]}")
+        print(f"  {label(r['owner'], r['id']):<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or '—'}  {r['title'][:60]}")
         print(f"             {r['link']}")
     if not reverse_only:
         print(verdict_line(top))
@@ -194,11 +241,19 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
 
 def run_eval(rows, df_map, n_docs, weights, top_k=5, key_re=None) -> dict:
     """Hold out each ticket's curated cross_refs and measure whether recall predicts them. The cross-ref
-    signal is DISABLED (allow_ref=False) so the labels can't leak into scoring."""
-    ids_present = {r["id"].lower() for r in rows}
+    signal is DISABLED (allow_ref=False) so the labels can't leak into scoring. Labels resolve by
+    the locator's order via ref_names_pair() — the same semantics scoring uses — so a bare ref means
+    the seed's own ticket first, then a unique other owner, and an ambiguous one labels nothing."""
+    pairs_present = {f"{r['owner']}/{r['id']}".lower() for r in rows}
+    omap = owners_index(rows)
     rr_sum = p1 = p3 = rec_sum = labeled = 0
     for seed in rows:
-        relevant = {x for x in ci(seed.get("cross_refs")) if x in ids_present and x != seed["id"].lower()}
+        seed_key = f"{seed['owner']}/{seed['id']}".lower()
+        relevant = set()
+        for x in ci(seed.get("cross_refs")):
+            k = ref_names_pair(x, seed["owner"].lower(), omap)
+            if k and k != seed_key and k in pairs_present:
+                relevant.add(k)
         if not relevant:
             continue
         labeled += 1
@@ -212,16 +267,16 @@ def run_eval(rows, df_map, n_docs, weights, top_k=5, key_re=None) -> dict:
                                         allow_ref=False, df_map=df_map, n_docs=n_docs)
             ranked.append((score, r, []))
         ranked.sort(key=lambda it: sort_key(it, key_re), reverse=True)
-        ordered = [r["id"].lower() for _s, r, _w in ranked]
-        first = next((i + 1 for i, x in enumerate(ordered) if x in relevant), None)
+        ordered = [f"{r['owner']}/{r['id']}".lower() for _s, r, _w in ranked]
+        first = next((i + 1 for i, k in enumerate(ordered) if k in relevant), None)
         if first:
             rr_sum += 1.0 / first
-        top_ids = ordered[:top_k]
-        if top_ids and top_ids[0] in relevant:
+        top_keys = ordered[:top_k]
+        if top_keys and top_keys[0] in relevant:
             p1 += 1
-        if any(x in relevant for x in top_ids[:3]):
+        if any(k in relevant for k in top_keys[:3]):
             p3 += 1
-        rec_sum += len({x for x in top_ids if x in relevant}) / len(relevant)
+        rec_sum += len(set(top_keys) & relevant) / len(relevant)
     if not labeled:
         return {"labeled": 0}
     return {"labeled": labeled, "mrr": rr_sum / labeled, "p_at_1": p1 / labeled,

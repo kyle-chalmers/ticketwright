@@ -428,9 +428,30 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
     return list(out.values())
 
 
+def split_ref(ref: str) -> tuple[str | None, str]:
+    """Normalize one cross-ref string against the ticket locator grammar: `owner/id` → (owner, id);
+    a bare `id` → (None, id). The single authority on the qualified form — recall.py imports it,
+    so the parser, the graph renderer and recall scoring can never disagree on what qualifies."""
+    if "/" in ref:
+        owner, tid = ref.split("/", 1)
+        if owner and tid:
+            return owner, tid
+    return None, ref
+
+
+def _ref_sort_key(ref: str, key_re: re.Pattern | None = None):
+    owner, tid = split_ref(ref)
+    return (ticket_number(tid, key_re), tid, owner or "")
+
+
+WIKI_LINK = re.compile(r"(?<!\\)\[\[[ \t]*([^\]|#\n]+?)[ \t]*(?:[|#][^\]\n]*)?\]\]")
+
+
 def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
-                       id_mode: str = "keyed", known_ids: set[str] | None = None) -> list[str]:
-    """The ticket ids a README references.
+                       id_mode: str = "keyed", known_ids: set[str] | None = None,
+                       self_owner: str | None = None,
+                       known_pairs: set[tuple[str, str]] | None = None) -> list[str]:
+    """The ticket ids a README references — bare (`ENG-12`) or owner-qualified (`alice/ENG-12`).
 
     Discovery and cross-reference resolution look like one job and are not — this is the one place
     where sharing a pattern between them is actively wrong.
@@ -447,6 +468,19 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
     the form the graph layer itself emits and what an Obsidian user types, so it costs almost nothing
     to require.
 
+    OWNER-QUALIFIED REFERENCES (both modes, when `known_pairs` is supplied): a wiki-link whose last
+    two path segments name an existing (owner, id) pair — `[[bob/ENG-1]]`, `[[tickets/bob/ENG-1]]` —
+    is recorded as the qualified `bob/ENG-1`, honoring the owner the author explicitly wrote instead
+    of re-deriving it later. The decision is PER LINK: a separate bare `[[chargeback-lift]]` next to a
+    qualified `[[bob/chargeback-lift]]` is its own deliberate reference and both survive. In keyed
+    mode a bare pattern hit is dropped when a qualified ref names the same id, because the qualified
+    link's own text contains the key and the pattern scan cannot tell the two apart. Keyed refs may
+    always name a ticket with no folder here, and qualified ones keep that: `[[bob/ENG-999]]` stays
+    `bob/ENG-999` when `bob` is a KNOWN OWNER and the id is a full tracker key, folder or not. Any
+    other `a/b` target falls through to the old leaf-reduction, so path-style links like
+    `[[graph/notes]]` keep resolving exactly as before; slug mode requires the pair to exist, since
+    a slug ref has no meaning without its folder.
+
     It is deliberately this narrow. Three successive attempts tried to also honour markdown link
     destinations — first by pattern (leaked images, external URLs, escaped brackets), then by
     resolving destinations on disk (leaked non-existent paths, symlinked trees, angle-bracket
@@ -455,28 +489,40 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
     stray edge in a graph view. One unambiguous marker beats an approximate Markdown parser: an edge
     now requires an author to have actually written a link, and cannot be manufactured by prose.
     """
-    if id_mode != "slug":
-        return sorted({r for r in key_re.findall(text) if r != self_id},
-                      key=lambda i: ref_key(i, key_re))
-
     known = {i for i in (known_ids or ()) if i != self_id}
-    if not known:
-        return []
-
-    scan = _strip_code(text)          # a wiki-link inside an example isn't a reference
+    pairs = known_pairs or set()
+    owners = {o for (o, _) in pairs}
+    qualified: set[str] = set()
     found: set[str] = set()
     # `(?<!\\)` so an escaped `\[[notes]]` stays literal text. Optional `|alias` / `#heading` are
     # Obsidian syntax; the target may be written as a path or with a `.md` suffix.
-    for m in re.finditer(r"(?<!\\)\[\[[ \t]*([^\]|#\n]+?)[ \t]*(?:[|#][^\]\n]*)?\]\]", scan):
-        t = m.group(1).strip().rsplit("/", 1)[-1]
+    scan = _strip_code(text)          # a wiki-link inside an example isn't a reference
+    for m in WIKI_LINK.finditer(scan):
+        t = m.group(1).strip()
         t = t[:-3] if t.endswith(".md") else t
-        if t in known:
-            found.add(t)
-    return sorted(found, key=lambda i: ref_key(i, key_re))
+        parts = t.split("/")
+        if len(parts) >= 2:
+            pair = (parts[-2], parts[-1])
+            is_qualified = pair in pairs or (
+                id_mode != "slug" and parts[-2] in owners and key_re.fullmatch(parts[-1]))
+            if is_qualified:
+                if pair != (self_owner, self_id):
+                    qualified.add(f"{pair[0]}/{pair[1]}")
+                continue  # consumed as qualified — its leaf is not ALSO a bare reference
+        if id_mode == "slug" and parts[-1] in known:
+            found.add(parts[-1])
+
+    if id_mode != "slug":
+        qualified_ids = {split_ref(q)[1] for q in qualified}
+        bare = {r for r in key_re.findall(text) if r != self_id and r not in qualified_ids}
+        return sorted(bare | qualified, key=lambda i: _ref_sort_key(i, key_re))
+    return sorted(found | qualified, key=lambda i: _ref_sort_key(i, key_re))
 
 
 def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Pattern,
-                 id_mode: str = "keyed", known_ids: set[str] | None = None) -> dict:
+                 id_mode: str = "keyed", known_ids: set[str] | None = None,
+                 self_owner: str | None = None,
+                 known_pairs: set[tuple[str, str]] | None = None) -> dict:
     """Deterministic fallback extraction for un-enriched tickets."""
     try:
         text = path.read_text(errors="replace")
@@ -527,7 +573,7 @@ def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Patt
         summary = (s[: SUMMARY_MAX - 1].rstrip() + "…") if len(s) > SUMMARY_MAX else s
         break
 
-    refs = resolve_cross_refs(text, self_id, key_re, id_mode, known_ids)
+    refs = resolve_cross_refs(text, self_id, key_re, id_mode, known_ids, self_owner, known_pairs)
     return {"title": title, "date": best_date, "summary": summary, "cross_refs": refs}
 
 
@@ -565,10 +611,12 @@ def build_rows(root: Path) -> list[dict]:
     tickets = discover(root, key_re, cfg["ticket_subdirs"], cfg["id_mode"])
     # Slug mode resolves cross-refs by identity, not by pattern, so it needs the full id set up front.
     known_ids = {t["id"] for t in tickets} if cfg["id_mode"] == "slug" else None
+    # Both modes recognize owner-qualified wiki-links, so both need the (owner, id) pairs.
+    known_pairs = {(t["owner"], t["id"]) for t in tickets}
     for t in tickets:
         owner, tid, d, readme = t["owner"], t["id"], t["dir"], t["readme"]
         entry = data.get((owner, tid))
-        parsed = parse_readme(readme, tid, key_re, title_re, cfg["id_mode"], known_ids) \
+        parsed = parse_readme(readme, tid, key_re, title_re, cfg["id_mode"], known_ids, owner, known_pairs) \
             if readme else {"title": None, "date": None, "summary": None, "cross_refs": []}
         cur_hash = sha256_file(readme) if readme else None
 
@@ -678,7 +726,9 @@ def render_objects(rows: list[dict], collapse_threshold: int = 150,
     Above collapse_threshold distinct objects, single-ticket objects move to a compact appendix so the
     shared-object table stays scannable — the full data still lives in index_data.json + the appendix."""
     obj: dict[str, dict] = {}  # case-insensitive key -> {"label": display form, "tickets": [rows]}
+    owners_by_id: dict[str, set] = {}  # id -> owners; a shared id is labeled by its owner/id locator
     for r in rows:
+        owners_by_id.setdefault(r["id"], set()).add(r["owner"])
         for o in r.get("objects", []):
             slot = obj.setdefault(o.lower(), {"label": o, "tickets": []})
             slot["tickets"].append(r)
@@ -703,7 +753,9 @@ def render_objects(rows: list[dict], collapse_threshold: int = 150,
 
     def cells_for(slot):
         ts = sorted(slot["tickets"], key=lambda r: (ref_key(r["id"], key_re), r["owner"]))
-        return ts, ", ".join(f"[{t['id']}]({t['link']})" for t in ts)
+        def label(t):  # bare id while unambiguous; the owner/id locator once two owners share it
+            return f"{t['owner']}/{t['id']}" if len(owners_by_id.get(t["id"], ())) > 1 else t["id"]
+        return ts, ", ".join(f"[{label(t)}]({t['link']})" for t in ts)
 
     collapse = len(obj) > collapse_threshold
     out.append("| Object | Tickets |")
@@ -728,61 +780,112 @@ def object_filename(obj: str) -> str:
     return re.sub(r"[:\\/]", ".", obj) + ".md"
 
 
-def graph_stub(tid: str, rows: list, valid_ids: set, canon: dict,
+def node_filename(owner: str, tid: str) -> str:
+    """Graph node file for one ticket: OWNER-QUALIFIED and flat, separators flattened exactly like
+    object_filename(). Owner is part of ticket identity, so two owners with the same slug get two
+    nodes (`alice.chargeback-lift.md`, `bob.chargeback-lift.md`) instead of one merged one. The
+    locator's `/` never reaches a filename or a git ref — display form only."""
+    return re.sub(r"[:\\/]", ".", f"{owner}.{tid}") + ".md"
+
+
+def graph_stub(row: dict, owners_by_id: dict, pairs: set, canon: dict,
                key_re: re.Pattern | None = None) -> str:
-    """One id-labeled Obsidian graph node per ticket. rows = all rows sharing this id (usually one)."""
-    r0 = rows[0]
-    owners = ", ".join(sorted({r["owner"] for r in rows}))
-    objects = sorted({canon.get(o.lower(), o) for r in rows for o in r["objects"]}, key=str.lower)
-    refs = sorted({x for r in rows for x in r["cross_refs"]}, key=lambda i: ref_key(i, key_re))
+    """One Obsidian graph node per (owner, id) — see node_filename().
+
+    "Builds on" links resolve each cross-ref by the ticket locator: a qualified `owner/id` ref links
+    that exact node; a bare ref links the CURRENT owner's ticket first, then the single other owner
+    that has it; a bare ref two owners could claim is left as plain text with a stderr warning naming
+    them — an ambiguous reference is an error to fix, never a guess. A ref that resolves to this node
+    itself (a curated record echoing its own id) is dropped.
+    """
+    owner, tid = row["owner"], row["id"]
+    objects = sorted({canon.get(o.lower(), o) for o in row["objects"]}, key=str.lower)
+    refs = sorted(set(row["cross_refs"]), key=lambda i: _ref_sort_key(i, key_re))
     obj_cells = ", ".join(f"[`{o}`](../objects/{object_filename(o)})" for o in objects) or "(none)"
-    out = [f"# {tid}: {md_escape(r0['title'])}", "",
-           f"`{owners}` · {r0['status']} · {r0['date'] or '—'}", "",
+    out = [f"# {tid}: {md_escape(row['title'])}", "",
+           f"`{owner}` · {row['status']} · {row['date'] or '—'}", "",
            f"- **Objects:** {obj_cells}"]
-    if refs:  # link refs that are real tickets; show any others as plain text (no dangling links)
-        out.append("- **Builds on:** " + ", ".join(f"[{x}]({x}.md)" if x in valid_ids else x for x in refs))
-    for r in rows:
-        if r["has_readme"]:
-            label = "README" if len(rows) == 1 else f"README ({r['owner']})"
-            out.append(f"- **Full ticket →** [{label}](../{r['link']})")
-    if r0.get("enriched") and r0.get("summary") and r0["summary"] != "—":
-        out += ["", md_escape(r0["summary"])]  # only echo curated summaries; un-enriched fallbacks are noisy
+    cells = []
+    for x in refs:
+        ro, ri = split_ref(x)
+        if ro is None:  # bare ref: this owner first, then the one other owner that has it
+            if (owner, ri) in pairs:
+                ro = owner
+            else:
+                elig = owners_by_id.get(ri, [])
+                if len(elig) == 1:
+                    ro = elig[0]
+                elif len(elig) > 1:
+                    print(f"build_ticket_index: {owner}/{tid}: cross-ref '{ri}' matches multiple "
+                          f"owners ({', '.join(elig)}); linking none — qualify it as one of "
+                          + ", ".join(f"{e}/{ri}" for e in elig), file=sys.stderr)
+        if (ro, ri) == (owner, tid):
+            continue  # a record's ref to its own ticket is not an edge
+        if ro is not None and (ro, ri) in pairs:
+            cells.append(f"[{x}]({node_filename(ro, ri)})")
+        else:
+            cells.append(x)  # dangling or ambiguous: plain text, never a broken/guessed link
+    if cells:
+        out.append("- **Builds on:** " + ", ".join(cells))
+    if row["has_readme"]:
+        out.append(f"- **Full ticket →** [README](../{row['link']})")
+    if row.get("enriched") and row.get("summary") and row["summary"] != "—":
+        out += ["", md_escape(row["summary"])]  # only echo curated summaries; un-enriched fallbacks are noisy
     out += ["", "<!-- generated graph node - regenerated by build_ticket_index.py; do not edit -->", ""]
     return "\n".join(out)
 
 
-def graph_object_note(obj: str, tickets: list, key_re: re.Pattern | None = None) -> str:
-    """One node per data object; links the ticket stubs (../graph/<id>.md). tickets = (id, title, date)."""
+def graph_object_note(obj: str, tickets: list, owners_by_id: dict | None = None,
+                      key_re: re.Pattern | None = None) -> str:
+    """One node per data object; links the ticket stubs (../graph/<owner>.<id>.md).
+    tickets = (owner, id, title, date). The link label is the bare id while it is unambiguous and
+    the `owner/id` locator as soon as two owners share the id."""
     schema = obj.split(".")[0] if "." in obj else "object"
     out = [f"# {obj}", "", f"> `{schema}` layer. Touched by **{len(tickets)}** ticket(s).", ""]
-    for tid, title, date in sorted(tickets, key=lambda t: ((t[2] or "0000-00-00"), ref_key(t[0], key_re))):
+    for towner, tid, title, date in sorted(
+            tickets, key=lambda t: ((t[3] or "0000-00-00"), ref_key(t[1], key_re), t[0])):
+        label = f"{towner}/{tid}" if len((owners_by_id or {}).get(tid, [])) > 1 else tid
         suffix = f" - {md_escape(title)}" if title and title != tid else ""
-        out.append(f"- [{tid}](../graph/{tid}.md){suffix} ({date or '—'})")
+        out.append(f"- [{label}](../graph/{node_filename(towner, tid)}){suffix} ({date or '—'})")
     out += ["", "<!-- generated graph node - regenerated by build_ticket_index.py; do not edit -->", ""]
     return "\n".join(out)
 
 
 def render_graph_layer(rows: list, root: Path, key_re: re.Pattern | None = None) -> dict:
-    """Return {Path: content} for tickets/graph/*.md + tickets/objects/*.md. Deterministic."""
+    """Return {Path: content} for tickets/graph/*.md + tickets/objects/*.md. Deterministic.
+
+    Nodes key on (owner, id) — the aggregation that used to key on the bare id collapsed two owners'
+    same-named tickets into one node with merged owners and objects. Old bare-id node files are
+    removed by the existing orphan cleanup on the next render.
+    """
     gdir, odir = root / "tickets" / "graph", root / "tickets" / "objects"
-    by_tid: dict = {}
+    pairs = {(r["owner"], r["id"]) for r in rows}
+    owners_by_id: dict = {}
     for r in rows:
-        by_tid.setdefault(r["id"], []).append(r)
-    valid_ids = set(by_tid)
+        owners_by_id.setdefault(r["id"], []).append(r["owner"])
+    for tid in owners_by_id:
+        owners_by_id[tid].sort()
     # Case-fold objects globally (like render_objects) so a mixed-case ref makes ONE note, not two,
     # and so stub↔object filenames agree on a case-insensitive filesystem (macOS).
-    objmap: dict = {}  # lower(obj) -> {"label": first-seen form, "tids": {tid: (tid, title, date)}}
+    objmap: dict = {}  # lower(obj) -> {"label": first-seen form, "tids": {(owner, id): tuple}}
     for r in rows:
         for o in r["objects"]:
             slot = objmap.setdefault(o.lower(), {"label": o, "tids": {}})
-            slot["tids"].setdefault(r["id"], (r["id"], r["title"], r["date"]))
+            slot["tids"].setdefault((r["owner"], r["id"]), (r["owner"], r["id"], r["title"], r["date"]))
     canon = {k: v["label"] for k, v in objmap.items()}  # lower(obj) -> canonical display label
     fresh: dict = {}
-    for tid, rs in by_tid.items():
-        fresh[gdir / f"{tid}.md"] = graph_stub(tid, rs, valid_ids, canon, key_re)
+    seen_files: dict = {}  # lower(filename) -> (owner, id); dot-flattening is not injective
+    for r in rows:
+        fn = node_filename(r["owner"], r["id"])
+        prior = seen_files.get(fn.lower())
+        if prior is not None:  # e.g. owners `a.b` and `a:b` both flatten to `a.b.` — say so, latter wins
+            print(f"build_ticket_index: graph node filename collision: {prior[0]}/{prior[1]} and "
+                  f"{r['owner']}/{r['id']} both map to {fn}; using the latter", file=sys.stderr)
+        seen_files[fn.lower()] = (r["owner"], r["id"])
+        fresh[gdir / fn] = graph_stub(r, owners_by_id, pairs, canon, key_re)
     for slot in objmap.values():
         fresh[odir / object_filename(slot["label"])] = graph_object_note(
-            slot["label"], list(slot["tids"].values()), key_re)
+            slot["label"], list(slot["tids"].values()), owners_by_id, key_re)
     return fresh
 
 

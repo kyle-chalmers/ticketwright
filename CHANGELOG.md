@@ -66,7 +66,27 @@ All notable changes to this project are documented here. Format loosely follows
 - **`bin/_yamlite.py`**, a stdlib YAML reader for an explicit supported subset that fails loudly
   with a `file:line` instead of misreading. The kit's zero-runtime-dependency promise is intact.
 
+- **Owner is part of ticket identity, named by one locator.** `owner/id` (e.g. `alice/ENG-12`) is
+  the CLI and display form everywhere — `enrich_ticket.py`, `recall.py --for`, and the `/ticket`,
+  `/ship`, `/review`, `/spec-and-build` skills — with a bare `id` allowed while exactly one owner
+  has it. A bare id two owners share is a **hard stop naming both**, never a guess: `recall.py`
+  already refused to pick, and `enrich_ticket.py` now exits 3 instead of enriching every matching
+  owner's folder. The locator never becomes a filename or a git ref: graph nodes flatten it
+  (`tickets/graph/<owner>.<id>.md`) and **branch names stay bare `<id>`** — a taken name is
+  disambiguated at creation as `<owner>-<id>`, and said aloud.
+- **The skills resolve WHO before rendering any ticket path.** Every ticket-opening and shipping
+  workflow now runs `bin/whoami.py` first, shows its one-line "Working as …" display, and files
+  new work under the resolved person. `project.assignee_dir` survives only as the documented last
+  resort when no people map exists; a `miss` with a people map runs the one-question `--bind`
+  interview instead.
+
 ### Changed
+- **Graph nodes and object backlinks key by (owner, id).** Two owners with the same slug used to
+  collapse into one merged graph node with pooled objects and backlinks; each now gets its own node,
+  and object notes / `OBJECTS.md` label a shared id as `owner/id`. Bare `[[wiki-links]]` keep
+  resolving — current owner first, then across owners; a two-owner match renders as text with a
+  stderr error naming both. Qualified `[[owner/id]]` wiki-links are honored exactly, in both id
+  modes. Old bare-id node files are removed by the normal orphan cleanup on the next render.
 - **`bin/resolve_user.py` is now a thin shim over `whoami.py`** that maps the resolved person to a
   voice-profile id (kept while `/ship` calls it; scheduled for removal in a later release). Two
   behavioral refinements ride along: the legacy `project.voice_profiles` fallback is now per

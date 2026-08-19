@@ -86,7 +86,10 @@ guesses: a miss is answered by asking the person and recording the answer with
 one person while git says another wins for the pin but warns naming both. `bin/resolve_user.py` is
 a thin shim over it that maps the resolved person to a voice profile, kept while `/ship` still
 calls it. The Claude SessionStart hook only *displays* the result ("Working as …") — it is never
-the resolver or the write path.
+the resolver or the write path. Every ticket-opening and shipping workflow (`/ticket`, `/ship`,
+`/review`, `/spec-and-build`) calls it first: the resolved person is the owner new work is filed
+under, and owner is part of ticket identity — the locator is `owner/id`, bare `id` while exactly
+one owner has it, a hard stop when two do (see `docs/ticket-index.md` § The ticket locator).
 
 **The scope rule is code, not documentation.** Tier 3 selects credentials and local paths; it can
 never change which catalog, schema, database or target is read, and it can never contribute a
