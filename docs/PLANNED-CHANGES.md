@@ -77,6 +77,7 @@ own the resolver; 4 and 6 both touch `.claude/skills/setup/`; 5 and 8 both edit
 | D | 8-step-1, 6-item-1 | high, medium | 8 edits `ship/SKILL.md` only after 5 has merged. 6-item-1 needs 4's wording. |
 | E | 9 | medium | LAST of the docs-touchers — 1, 6 and 8 must have settled the counts. |
 | F | 7 | high | Needs 1 plus everything 2-5 settled. Split further on arrival. |
+| G | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
 
 WAVE A OWNERSHIP SPLIT — the one overlap that needs a rule. Prompts 1 and 2 both reach
 `bin/enrich_ticket.py` and both edit preflight prose in `.claude/skills/*/SKILL.md`:
@@ -216,6 +217,11 @@ just moves values somewhere equally wrong.
   TIER 2 — PERSON, PORTABLE: `people/<id>.yaml` (committed, in-repo)   [NEW]
       display name, identities (PROMPT 3), tracker handle, file-type handling preferences.
       `voices/<id>.md` and the `voice_profiles.map` currently living in `stack.yaml` both move here.
+      MIGRATE, DO NOT ORPHAN: `bin/resolve_user.py` reads that map ONLY from `stack.yaml` today, so a
+      repo with a working committed map loses voice resolution silently on upgrade. Dual-read the
+      legacy `stack.yaml` block as a fallback and warn once, or ship a migration that writes the
+      `people/<id>.yaml` files. Note `voices/<id>.md` is a RENDERED MARKDOWN profile — it is
+      referenced from `people/<id>.yaml`, it does not become YAML.
       MUST NOT contain a default warehouse target — target selection is team-owned.
       PRECEDENCE: a cross-repo copy at `${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/people/<id>.yaml`
       supplies defaults; the in-repo `people/<id>.yaml` overrides it key by key. Define this
@@ -244,6 +250,32 @@ a new `user_keys:` frontmatter list, NOT hardcoded in a skill.
   - `gdrive.base_path` is not a credential: it selects the BACKUP DESTINATION, a team decision, while
     the local mount prefix is per-user. Split it — team-level drive/folder identity in tier 1, machine
     mount root in tier 3.
+
+### ⛔ SAFETY CLAUSES — read before touching the resolver (a review found two real holes)
+
+(a) `db_write_guard` MUST NOT LOSE ITS FAIL-SAFE. Today the policy is read IN-PROCESS by
+`.claude/hooks/_stack.py`, and a missing or unparseable value resolves to `MODE_ALL` — parse failure
+gates MORE. But `.claude/hooks/db_write_guard.py` wraps everything in
+`except Exception: return 0` ("a guard must never block a session"). Migrating the hook to shell out
+to the resolver therefore MOVES ITS FAILURE MODE from fail-safe to fail-open: a subprocess error, a
+timeout against the hook's 10s budget, or an unmapped exit code lands in that blanket handler and
+gates NOTHING. That is strictly weaker than today and invisible, because the hook never reports its
+own malfunction.
+Required: either leave `db_write_guard` reading the policy in-process, or — if it must consume the
+resolver — resolve the policy value BEFORE the try block and map every resolver failure explicitly to
+`MODE_ALL`, never to the blanket `return 0`. Add a test that a broken/absent resolver still yields
+`MODE_ALL`. This is the single highest-risk change in the document: it ships via `autoUpdate` to
+every repo at once, and the first symptom of getting it wrong is a destructive statement that has
+already run.
+
+(b) THE MERGE IS ALLOWLIST-BASED, AND `policies:` IS NOT MERGEABLE AT ALL. Tier 2 and tier 3 may
+never contribute a `policies:` block, and the resolver must reject one rather than ignore it. Tier 3
+is gitignored and unreviewed; if it can set `db_write_requires_approval: off`, or
+`hard_halt_before_external_posts: false`, then a per-machine file silently disables the kit's safety
+gates with nothing in code review to catch it. The earlier scope rule named only warehouse keys
+(catalog/schema/database/warehouse_id/target/transport), which left this open. Merge by allowlist —
+only keys an adapter declares in `user_keys`, plus the structural `person:` — so an unanticipated key
+is refused by default instead of inherited.
 
 ### The resolver
 Add `bin/effective_config.py`, the single authority merging all three tiers. NINE executables parse
@@ -398,6 +430,14 @@ the docs concede "viewer — the only seam that is NOT written to stack.yaml". S
 (b) A PERSON-SCOPED MODE WRITES TEAM CONFIG. `--voice` puts `project.voice_profiles.map` — a person's
 work email and name — into committed `stack.yaml`. Move it to `people/<id>.yaml` per PROMPT 2.
 
+(c0) BOOTSTRAP FIRST, OR EVERY EXISTING CONTRIBUTOR IS TREATED AS NEW. Immediately after prompts 2-4
+land, `people/<id>.yaml` does not exist for anyone, so `whoami` returns `miss` for the whole team
+INCLUDING the maintainer — and the rule below would auto-route all of them into teammate onboarding
+instead of what they asked for. Ship a bootstrap step: on first run in a repo that has a `stack.yaml`
+but no `people/` directory at all, seed from what is already known (`project.assignee_dir`, any
+`project.voice_profiles.map` entries, `git log` authors) and CONFIRM with the person rather than
+onboarding them from zero. Distinguish "this repo just upgraded" from "this person is new".
+
 (c) WRONG DEFAULT BRANCH FOR A NEW CLONER. Phase 1 currently says: if `stack.yaml` exists → "offer to
 edit, don't overwrite". New rule: if `stack.yaml` exists AND `bin/whoami.py` returns `miss`, this is
 a TEAMMATE — route to `teammate.md` automatically. Editing the team's shared config must never be a
@@ -451,6 +491,11 @@ only show up months later. Specify:
   - the locator grammar (e.g. `owner/id`, with bare `id` allowed when unambiguous);
   - what a bare `[[wiki-link]]` means when two owners have that slug;
   - a migration for repos whose existing links are all bare.
+
+NAME THE CALL SITE THAT ACTUALLY CHANGES: `.claude/skills/ticket/SKILL.md` Phase 2 renders
+`project.ticket_path` with `{assignee}` taken from the static `project.assignee_dir` — today that is
+the ONLY source of the owner anywhere in the kit. That is the line that must switch to the
+PROMPT 3 resolved person. Verify by grep that no other static `assignee_dir` read survives.
 
 Follow the precedent already here: `bin/recall.py` requires `--owner` to disambiguate duplicate seed
 ids. Ambiguity is a hard stop, never a guess. New work defaults to the PROMPT 3 resolved person.
@@ -606,6 +651,21 @@ SAFETY — this is the part that can leak client data:
     list AFTER routing, never inherited from another target. SCOPE THE REQUIREMENT: "non-empty" binds
     only when `targets:` is present. A single-target chat seam that omits `always_include` must keep
     validating, or every shipped example config breaks — that violates the standing constraint.
+  - UNRESOLVABLE AUDIENCE IS A HALT, NOT A DEFAULT. The existing warehouse rule in
+    `adapters/README.md` already says an unresolvable target name halts and "never quietly falls back
+    to default" — extend that to the INITIAL audience/classification resolution for chat and docstore,
+    not just to send-time. Otherwise a ticket with no declared audience falls through to the
+    first-listed target, which may be the external one. Also DEFINE WHERE the declaration LIVES: the
+    warehouse has a mandatory `-- warehouse-target:` header in the `.sql`; chat and docstore have no
+    analog yet, and inventing one implicitly is how this leaks.
+  - ENFORCE `always_include` IN CODE. It has ZERO mechanical enforcement today — `bin/verify_stack.sh`
+    never checks it; it is prose convention only. A new prose requirement replacing an unenforced
+    prose convention changes nothing. Add the check to `verify_stack.sh`.
+  - KNOW WHAT THIS DOES NOT COVER, and say so in the docs: `adapters/docstore/gdrive.md` verifies only
+    that the mount exists (`test -d`). Ticketwright never inspects a destination's real sharing ACL,
+    so correct target SELECTION is not a guarantee the folder's actual permissions match the declared
+    classification. That is unmanaged infrastructure, and a reader should not infer protection the kit
+    does not provide.
   - Say explicitly what happens to seam-level `default_channel` / `default_mode` when `targets:` is
     present: inherited by targets that do not define their own (consistent with the existing
     inheritance rule), and never used as a silent fallback when routing fails. Today it is scoped to a single
