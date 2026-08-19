@@ -70,20 +70,43 @@ def cmd_init(args) -> int:
             out.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, out)
             copied.append(rel)
+    # A vendored kit carries no version marker of its own (init deliberately copies only the four
+    # kit dirs, never ticketwright/__init__.py) — write one so `ticketwright install`'s provenance
+    # header can name the version that vendored these files. It follows the same preserve/--force
+    # rule as every copied file, and must: a re-run without --force keeps the OLD files, so
+    # refreshing the marker would make it name a version the tree does not have. The single source
+    # of truth stays ticketwright/__init__.py, which this value is read from.
+    marker = dest / "bin" / "KIT_VERSION"
+    if args.force or not marker.exists():
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(__version__ + "\n", encoding="utf-8")
+        copied.append("bin/KIT_VERSION")
+    else:
+        preserved.append("bin/KIT_VERSION")
     print(f"ticketwright {__version__}: scaffolded into {dest}")
     print(f"  copied {len(copied)} files · preserved {len(preserved)} existing")
     print("  next: run `/setup` (writes stack.yaml + AGENTS.md + the index), then `/ticket <id>`")
+    print("  on a non-Claude runtime: `ticketwright install --runtime <name>` translates the skills")
     return 0
 
 
-SCRIPTS = {"recall": "recall.py", "index": "build_ticket_index.py", "enrich": "enrich_ticket.py"}
+# `install` registers the PYTHON entrypoint (emit_runtime.py), not bin/install.sh — _run_script
+# invokes every registered script with sys.executable, so registering the .sh would run
+# `python install.sh` and fail. The .sh is the standalone shell convenience wrapping the same file.
+SCRIPTS = {"recall": "recall.py", "index": "build_ticket_index.py", "enrich": "enrich_ticket.py",
+           "install": "emit_runtime.py"}
 HELP = """ticketwright — tool-agnostic AI layer for ticket-driven work repos
 
 usage: ticketwright <command> [args...]
 
 commands:
   init [path] [--force]   scaffold the kit into a repo (versioned, upgrade-safe `cp -r`;
-                          preserves existing per-repo config like stack.yaml)
+                          preserves existing per-repo config like stack.yaml). On a non-Claude
+                          runtime, follow with `ticketwright install --runtime <name>`.
+  install --runtime <name> [--local|--global] [--root <path>]
+                          install the skills for a runtime: verify-only where it reads the
+                          canonical .claude/skills/ copy (claude-code), translate-on-emit where
+                          it cannot (codex-cli); further runtimes land in a later release
   recall ...              prior-art recall against the repo at $PWD (e.g. --for ID | --object NAME | --eval)
   index ...               render / --check / --stats / --recurring the ticket index
   enrich ...              refresh a ticket's curated index summary (needs a model CLI; see --model-cmd)

@@ -3924,5 +3924,192 @@ grep -qi 'configured but not' <<<"$skflat38" \
   && ok "the Phase-4 report states email is configured but not yet wired" \
   || bad "the report step never says email is configured-but-not-wired"
 
+hdr "39 · runtime installer skeleton (emit_runtime.py — verify-only vs translate-on-emit)"
+# The installer is the compatibility layer between the canonical .claude/skills/ source and each
+# runtime's own layout: EMIT only where the runtime cannot already see the canonical copy
+# (codex-cli), VERIFY-ONLY where it can (claude-code). Every run below happens in a mktemp fixture
+# project with the Claude env vars scrubbed (standing constraint: no Claude variable required), and
+# CLAUDE_CONFIG_DIR pinned to an empty dir so the contributor's own plugin manifest can never
+# satisfy — or fail — a verify.
+EMIT_NOCLAUDE="$TMP/emit-noclaude"; mkdir -p "$EMIT_NOCLAUDE"
+
+# --- codex-cli emit: byte-for-byte against the golden fixture tree --------------------------------
+EMIT_P="$TMP/emit-codex"; mkdir -p "$EMIT_P"
+emit_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT -u TICKETWRIGHT_PROJECT \
+  CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" python3 bin/emit_runtime.py --runtime codex-cli --root "$EMIT_P" 2>&1)"; emit_rc=$?
+[ "$emit_rc" -eq 0 ] && ok "codex-cli emit exits 0 in a fresh fixture project (no Claude env var)" \
+  || bad "codex-cli emit failed (rc=$emit_rc)" "$(head -3 <<<"$emit_out")"
+ediff="$(diff -r "$EMIT_P/.agents" tests/emit/codex-cli/.agents 2>&1)" \
+  && ok "emitted tree is byte-for-byte identical to tests/emit/codex-cli/" \
+  || bad "emitted tree diverges from the golden fixtures (regenerate deliberately, per tests/emit/README.md)" \
+        "$(head -3 <<<"$ediff")"
+# The carve-out, enumerated from SOURCE frontmatter rather than a hardcoded list: no skill whose
+# source declares disable-model-invocation: true may be emitted (Codex has no equivalent field yet;
+# emitting one would silently make a user-invocable-only skill model-invocable), and each deferral
+# must be PRINTED, never silent. The enumeration uses the SAME frontmatter parser as the emitter —
+# a literal grep would let a validly quoted `"true"` evade this assertion while the emitter gates it.
+gated="$(python3 -c "
+import sys, pathlib
+sys.path.insert(0, 'bin')
+import kit_paths
+for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
+    if kit_paths.read_frontmatter(f).get('disable-model-invocation') == 'true':
+        print(f.parent.name)
+")"
+[ -n "$gated" ] || bad "no source skill declares disable-model-invocation: true — the carve-out fixture premise broke"
+carve_bad=""
+for g in $gated; do
+  [ -e "$EMIT_P/.agents/skills/$g" ] && carve_bad="$carve_bad emitted:$g"
+  grep -q "deferred  $g" <<<"$emit_out" || carve_bad="$carve_bad unprinted:$g"
+done
+[ -z "$carve_bad" ] && ok "safety carve-out: every disable-model-invocation skill is unemitted AND its deferral printed ($(echo $gated | tr ' ' ','))" \
+  || bad "the disable-model-invocation carve-out leaked or went silent" "$carve_bad"
+# The reverse guard: the carve-out must not quietly become "emit nothing".
+emitted_n="$(find "$EMIT_P/.agents/skills" -name SKILL.md | wc -l | tr -d ' ')"
+total_n="$(ls .claude/skills/*/SKILL.md | wc -l | tr -d ' ')"
+gated_n="$(echo "$gated" | wc -w | tr -d ' ')"
+[ "$emitted_n" -eq $((total_n - gated_n)) ] && ok "every non-gated skill is emitted ($emitted_n of $total_n)" \
+  || bad "emit count wrong" "emitted $emitted_n, expected $((total_n - gated_n))"
+# The provenance header is the anti-hand-copy statement, carried in the artifact itself.
+prov_bad=""
+for f in "$EMIT_P"/.agents/skills/*/SKILL.md; do
+  grep -q 'emitted by ticketwright install v' "$f" || prov_bad="$prov_bad $(basename "$(dirname "$f")")"
+done
+[ -z "$prov_bad" ] && ok "the provenance header is present in every emitted file" \
+  || bad "an emitted file is missing its provenance header" "$prov_bad"
+grep -q 'metadata mapping lands with U2' <<<"$emit_out" \
+  && ok "dropped frontmatter keys are named on stdout as deferred-to-U2, not silently dropped" \
+  || bad "the dropped-keys statement is missing from the emit report"
+# A RE-RUN must not leave a stale gated skill active. Two pre-seeded cases: a copy WE emitted
+# earlier (provenance header present — removed, that is what "re-run to update" means) and a
+# hand-copied file (no header — never deleted, but the install fails loudly instead of silently
+# tolerating a model-invocable copy of a user-invocable-only skill).
+ST_P="$TMP/emit-stale"; mkdir -p "$ST_P/.agents/skills/ship" "$ST_P/.agents/skills/setup"
+printf -- '---\nname: ship\ndescription: stale\n---\n\n<!-- emitted by ticketwright install v0.0.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->\n\nstale body\n' \
+  > "$ST_P/.agents/skills/ship/SKILL.md"
+printf -- '---\nname: setup\ndescription: hand-copied\n---\nforeign body\n' \
+  > "$ST_P/.agents/skills/setup/SKILL.md"
+st_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime codex-cli --root "$ST_P" 2>&1)"; st_rc=$?
+{ [ ! -e "$ST_P/.agents/skills/ship/SKILL.md" ] && grep -q 'removed   stale emitted copy of ship' <<<"$st_out"; } \
+  && ok "re-run removes OUR stale emitted copy of a gated skill (provenance header identifies it)" \
+  || bad "a stale emitted copy of a gated skill survived a re-run still model-invocable" "rc=$st_rc"
+{ [ -f "$ST_P/.agents/skills/setup/SKILL.md" ] && [ "$st_rc" -ne 0 ] \
+  && grep -q 'not deleted' <<<"$st_out" && grep -q 'hand-copying is unsupported' <<<"$st_out"; } \
+  && ok "a foreign copy of a gated skill is never deleted but fails the install loudly" \
+  || bad "a hand-copied gated skill was deleted, or tolerated silently" "rc=$st_rc"
+[ -f "$ST_P/.agents/skills/ticket/SKILL.md" ] \
+  && ok "the stale-cleanup run still emits the non-gated skills" \
+  || bad "the stale-cleanup path stopped the normal emission"
+
+# --- claude-code: verify-only must leave the tree byte-identical -----------------------------------
+# A vendored install is recognized by the kit's own markers (the launcher's is_kit test) with the
+# canonical skills alongside — NOT by "some SKILL.md exists", which any project could satisfy.
+VF_P="$TMP/verify-claude"; mkdir -p "$VF_P/.claude/skills/demo" "$VF_P/adapters" "$VF_P/templates" "$VF_P/bin"
+cp bin/kit_paths.py "$VF_P/bin/"
+printf -- '---\nname: demo\ndescription: fixture\n---\nbody\n' > "$VF_P/.claude/skills/demo/SKILL.md"
+vf_before="$(cd "$VF_P" && find . -type f -exec cksum {} + | sort)"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime claude-code --root "$VF_P" >/dev/null 2>&1; vf_rc=$?
+vf_after="$(cd "$VF_P" && find . -type f -exec cksum {} + | sort)"
+{ [ "$vf_rc" -eq 0 ] && [ "$vf_before" = "$vf_after" ]; } \
+  && ok "claude-code verify-only: exit 0 on a vendored install, tree byte-identical" \
+  || bad "claude-code verify-only wrote to the tree or failed on a vendored install" "rc=$vf_rc"
+EMPTY_P="$TMP/verify-empty"; mkdir -p "$EMPTY_P"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime claude-code --root "$EMPTY_P" >/dev/null 2>&1; ve_rc=$?
+{ [ "$ve_rc" -ne 0 ] && [ -z "$(find "$EMPTY_P" -type f)" ]; } \
+  && ok "claude-code verify-only: exit non-zero on an uninstalled project, still writes nothing" \
+  || bad "verify-only on an empty project exited 0 or created files" "rc=$ve_rc"
+# The false positive that must stay dead: a project with its OWN .claude/skills/ (no kit markers)
+# is not a ticketwright install, and blessing it would hide a missing install behind foreign files.
+FS_P="$TMP/verify-foreign"; mkdir -p "$FS_P/.claude/skills/foo"
+printf -- '---\nname: foo\ndescription: not ours\n---\nbody\n' > "$FS_P/.claude/skills/foo/SKILL.md"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime claude-code --root "$FS_P" >/dev/null 2>&1 \
+  && bad "verify-only blessed a foreign .claude/skills/ project as a ticketwright install" \
+  || ok "verify-only rejects a foreign .claude/skills/ project (kit markers required)"
+# The plugin route: a manifest entry for this kit satisfies the verify with no vendored files at all.
+PLUG_HOME="$TMP/plughome"; mkdir -p "$PLUG_HOME/plugins"
+printf '{"plugins": {"ticketwright@ticketwright": [{"scope": "user", "installPath": "%s"}]}}' "$KIT" \
+  > "$PLUG_HOME/plugins/installed_plugins.json"
+PLUG_P="$TMP/verify-plugin"; mkdir -p "$PLUG_P"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
+  python3 bin/emit_runtime.py --runtime claude-code --root "$PLUG_P" >/dev/null 2>&1; pl_rc=$?
+{ [ "$pl_rc" -eq 0 ] && [ -z "$(find "$PLUG_P" -type f)" ]; } \
+  && ok "claude-code verify-only: a plugin-manifest install verifies with nothing vendored, nothing written" \
+  || bad "the plugin-manifest verify route failed or wrote files" "rc=$pl_rc"
+
+# --- aliases resolve through kit_paths; not-yet-wired names the CANONICAL runtime ------------------
+ws_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
+  python3 bin/emit_runtime.py --runtime windsurf --root "$EMPTY_P" 2>&1)"; ws_rc=$?
+{ [ "$ws_rc" -ne 0 ] && grep -q "runtime 'devin'" <<<"$ws_err" && ! grep -q 'windsurf' <<<"$ws_err" \
+  && grep -q 'U2' <<<"$ws_err"; } \
+  && ok "--runtime windsurf resolves to devin: the not-yet-wired error names devin (never windsurf) and U2" \
+  || bad "the windsurf alias did not resolve to a devin-named U2 error" "rc=$ws_rc: $(head -2 <<<"$ws_err")"
+gl_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
+  python3 bin/emit_runtime.py --runtime codex-cli --global --root "$EMPTY_P" 2>&1)"; gl_rc=$?
+{ [ "$gl_rc" -ne 0 ] && grep -q 'U2' <<<"$gl_err" && grep -q 'global_skills_root' <<<"$gl_err"; } \
+  && ok "--global is parsed but exits non-zero naming U2 and the missing global_skills_root capability" \
+  || bad "--global did not refuse with the U2 pointer" "rc=$gl_rc: $(head -2 <<<"$gl_err")"
+[ -z "$(find "$EMPTY_P" -type f)" ] || bad "an error path wrote files into the fixture project"
+un_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
+  python3 bin/emit_runtime.py --runtime not-a-runtime --root "$EMPTY_P" 2>&1)"; un_rc=$?
+{ [ "$un_rc" -ne 0 ] && grep -q 'antigravity' <<<"$un_err" && grep -q 'gemini-cli' <<<"$un_err" \
+  && grep -q 'windsurf' <<<"$un_err"; } \
+  && ok "an unknown runtime exits non-zero listing the seven runtimes and their aliases" \
+  || bad "the unknown-runtime error does not list runtimes + aliases" "rc=$un_rc"
+
+# --- one implementation, three routes: pip entrypoint, shell wrapper, and the packaged path --------
+# `ticketwright install` must register the PYTHON entrypoint (cli.py runs every registered script
+# with sys.executable — registering install.sh would exec `python install.sh`).
+python3 -c "import sys; sys.path.insert(0, '.'); from ticketwright.cli import SCRIPTS; \
+sys.exit(0 if SCRIPTS.get('install') == 'emit_runtime.py' else 1)" \
+  && ok "ticketwright install registers the python entrypoint (emit_runtime.py, never the .sh)" \
+  || bad "SCRIPTS['install'] is not emit_runtime.py"
+SH_P="$TMP/emit-sh"; mkdir -p "$SH_P"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  bash bin/install.sh --runtime codex-cli --root "$SH_P" >/dev/null 2>&1 \
+  && diff -r "$SH_P/.agents" tests/emit/codex-cli/.agents >/dev/null 2>&1 \
+  && ok "bin/install.sh (the shell convenience) reaches the same implementation, same bytes" \
+  || bad "bin/install.sh diverged from the python entrypoint"
+# The packaged path, end to end and offline: a wheel-shaped install (the package + _kit, which is
+# exactly what the force-includes produce) runs `init` into a fresh repo, `install` emits the
+# fixture-identical tree from the wheel kit, and the VENDORED bin/install.sh then emits the same
+# tree again — proving init's bin/KIT_VERSION marker feeds the provenance header, since a wrong or
+# missing version would break the byte-for-byte diff. cwd sits outside the repo so PYTHONPATH, not
+# the source tree, supplies the package (python -c puts cwd first on sys.path).
+SITE="$TMP/site"; WP="$TMP/wheelproj"
+mkdir -p "$SITE/ticketwright/_kit/.claude" "$WP"
+cp ticketwright/__init__.py ticketwright/cli.py "$SITE/ticketwright/"
+cp -R bin "$SITE/ticketwright/_kit/bin"
+cp -R adapters "$SITE/ticketwright/_kit/adapters"
+cp -R templates "$SITE/ticketwright/_kit/templates"
+cp -R .claude/skills "$SITE/ticketwright/_kit/.claude/skills"
+(cd "$TMP" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR PYTHONPATH="$SITE" \
+  python3 -c "import sys; from ticketwright.cli import main; sys.exit(main(['init', '$WP']))" >/dev/null 2>&1) \
+  && [ -s "$WP/bin/KIT_VERSION" ] && [ -f "$WP/bin/emit_runtime.py" ] \
+  && ok "a wheel-shaped install scaffolds via init, writing the bin/KIT_VERSION marker" \
+  || bad "the packaged init did not vendor the kit + version marker"
+grep -qx "$(python3 -c "import sys; sys.path.insert(0, '.'); import ticketwright; print(ticketwright.__version__)")" \
+  "$WP/bin/KIT_VERSION" 2>/dev/null \
+  && ok "the vendored KIT_VERSION matches ticketwright/__init__.py (single source of truth)" \
+  || bad "bin/KIT_VERSION diverges from __init__.py"
+WI="$TMP/wheelinstall"; mkdir -p "$WI"
+(cd "$TMP" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" PYTHONPATH="$SITE" \
+  python3 -c "import sys; from ticketwright.cli import main; sys.exit(main(['install', '--runtime', 'codex-cli', '--root', '$WI']))" >/dev/null 2>&1) \
+  && diff -r "$WI/.agents" tests/emit/codex-cli/.agents >/dev/null 2>&1 \
+  && ok "ticketwright install from the wheel-shaped kit emits the fixture-identical tree" \
+  || bad "the packaged install route diverged from the golden fixtures"
+VI="$TMP/vendoredinstall"; mkdir -p "$VI"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  bash "$WP/bin/install.sh" --runtime codex-cli --root "$VI" >/dev/null 2>&1 \
+  && diff -r "$VI/.agents" tests/emit/codex-cli/.agents >/dev/null 2>&1 \
+  && ok "the init-vendored bin/install.sh emits the same bytes (KIT_VERSION feeds the provenance header)" \
+  || bad "the vendored install route diverged (provenance version or emit path broke off-repo)"
+# tests/ is repo-only material: it must never ride into the wheel or sdist.
+grep -q '"tests' pyproject.toml && bad "tests/ leaked into pyproject packaging config" \
+  || ok "tests/ fixtures stay out of the wheel and sdist (pyproject untouched by them)"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

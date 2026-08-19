@@ -322,6 +322,7 @@ deterministic engines from a shell or CI.
 ```bash
 pip install ticketwright                 # zero runtime dependencies; stdlib only
 ticketwright init                        # vendor the kit into a repo (no plugin required)
+ticketwright install --runtime codex-cli # translate the skills for a non-Claude runtime
 ticketwright recall --for ENG-123        # prior-art ranking      — no Claude Code needed
 ticketwright index --stats               # catalog coverage       — no Claude Code needed
 ticketwright enrich ENG-123              # curated index summary  — needs a model CLI on PATH
@@ -333,12 +334,24 @@ ticketwright enrich ENG-123              # curated index summary  — needs a mo
   that documents no headless command says so and points at the agent-neutral ingest path instead.
 - **`init`** copies the kit's files — skills, agents, hooks, adapters, templates, `bin/` — and
   preserves your edits on re-runs (`--force` to overwrite).
+- **`install --runtime <name>`** is the compatibility layer between the canonical `.claude/skills/`
+  source and each runtime's own layout (`bin/install.sh` is the same command for a vendored
+  install). Where the runtime already reads the canonical copy it VERIFIES and touches nothing —
+  `--runtime claude-code` is exactly that, so the Claude Code path is unchanged. Where it cannot,
+  it EMITS a translated copy: `--runtime codex-cli` writes `.agents/skills/<name>/SKILL.md` per
+  skill, each stamped with a provenance header — hand-copying skill files between layouts is
+  unsupported, because a stale duplicate silently winning over the canonical copy is the failure
+  mode the installer exists to prevent; re-run it to update. Skills marked user-invocable-only
+  (`disable-model-invocation: true` — `/setup`, `/ship`, `/productize`) are deferred for now, and
+  the installer says so: Codex has no equivalent field yet, and emitting them would silently make
+  them model-invocable. The remaining runtimes, the metadata mapping that lifts that deferral, and
+  `--global` land with the emission matrix in a later release.
 
 **`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
 `AGENTS.md` — `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
-On another harness (Cursor, Codex, Copilot CLI) you get the skill files but still have to render the
-config yourself. A harness-agnostic setup path is on the [roadmap](ROADMAP.md), not shipped — don't
-read this section as "Ticketwright runs anywhere today."
+On another harness you get the skill files (translated by `install` where needed) but still have to
+render the config yourself. A harness-agnostic setup path is on the [roadmap](ROADMAP.md), not
+shipped — don't read this section as "Ticketwright runs anywhere today."
 
 ## Learn more
 
