@@ -12,6 +12,7 @@ tool_gate: yes
 subagents: yes
 structured_questions: unknown
 model_cmd: "agy -p {prompt}"
+model_sandbox: unverified   # docs describe a commandExecutionPolicy for subagents, not a verified CLI flag for `agy -p`
 auth: |
   An authenticated Antigravity CLI install (`agy`).
   Verify: `command -v agy`.

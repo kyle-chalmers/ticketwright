@@ -11,6 +11,7 @@ tool_gate: unknown
 subagents: no
 structured_questions: unknown
 model_cmd: ""
+model_sandbox: n/a   # no headless model command
 auth: |
   A Cline install (VS Code extension or SDK).
   Verify: `command -v cline`.

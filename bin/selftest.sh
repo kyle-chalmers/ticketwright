@@ -2359,5 +2359,54 @@ grep -q 'Pre-execution tool gate' docs/runtimes.md && grep -qi 'guidance' docs/r
   && ok "retired runtime names (gemini-cli, windsurf) survive as adapter aliases" \
   || bad "a renamed runtime dropped its old name — --runtime <old> would break"
 
+# --- aliases must RESOLVE, not merely be written down -------------------------------------------
+# The first version of this check grepped frontmatter, which passed while the resolver ignored
+# aliases entirely — a vacuous test for a real bug. Invoke the resolver instead.
+for pair in "gemini-cli:antigravity" "windsurf:devin"; do
+  alias_name="${pair%%:*}"; want="${pair##*:}"
+  got="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$alias_name" \
+         python3 bin/kit_paths.py --json 2>/dev/null \
+         | python3 -c "import json,sys; d=json.load(sys.stdin); a=d['runtime_adapter'] or ''; print(a.rsplit('/',1)[-1].replace('.md',''))" 2>/dev/null)"
+  [ "$got" = "$want" ] && ok "retired name '$alias_name' resolves to the $want adapter" \
+    || bad "alias '$alias_name' does not resolve (docs promise it does)" "got '$got' want '$want'"
+done
+# Capability resolution must be per-adapter, not just "prints something".
+for pair in "claude-code:yes" "cline:unknown" "opencode:no"; do
+  rt="${pair%%:*}"; want="${pair##*:}"
+  got="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$rt" \
+         python3 bin/kit_paths.py --json 2>/dev/null \
+         | python3 -c "import json,sys; c=json.load(sys.stdin)['capabilities']; print(c['tool_gate'] if '$rt'!='opencode' else c['session_start'])" 2>/dev/null)"
+  [ "$got" = "$want" ] && ok "$rt's declared capability resolves through the CLI ($want)" \
+    || bad "$rt capability mis-resolved" "got '$got' want '$want'"
+done
+
+# --- enrichment hands tracker-sourced text to a model, so the posture must be DECLARED ----------
+# /ship is the flow that posts externally. A ticket README is usually tracker-sourced, i.e. written by
+# someone outside the repo, so any shipped model command must be restricted or say plainly that its
+# restriction is unverified. Silence here is what would let an unsandboxed agent read attacker text.
+sb_bad=""
+for f in adapters/runtime/*.md; do
+  grep -q '^model_sandbox:' "$f" || sb_bad="$sb_bad $(basename "$f")"
+done
+[ -z "$sb_bad" ] && ok "every runtime adapter declares its model_sandbox posture"   || bad "a runtime adapter ships a model command with no declared sandbox posture" "$sb_bad"
+grep -q 'model_cmd:.*--sandbox read-only' adapters/runtime/codex-cli.md   && ok "codex enrichment runs sandboxed read-only (tracker text reaches a tool-capable agent)"   || bad "codex model_cmd dropped --sandbox read-only"
+grep -q 'model_cmd:.*disallowedTools' adapters/runtime/claude-code.md   && ok "claude enrichment withholds the mutating/network tools"   || bad "claude model_cmd no longer withholds tools"
+# /ship must not put a fresh headless agent in front of tracker text before its own approval gate.
+# Match the INVOCATION form (a tw call naming the script), not the bare word — /ship deliberately
+# explains in prose why enrichment is excluded, and that explanation must not trip its own guard.
+grep -qE 'bin/tw"?[^`]*enrich_ticket\.py' .claude/skills/ship/SKILL.md && bad "/ship invokes a headless model on the ticket README before its external-action halt" || ok "/ship curates the index in-session, with no pre-halt headless model call"
+# ...and the exclusion must be EXPLAINED, or a future edit reinstates the call as an obvious tidy-up.
+grep -qi 'tracker-sourced' .claude/skills/ship/SKILL.md && ok "/ship states WHY enrichment is excluded from the shipping flow" || bad "/ship's exclusion of enrichment is unexplained and will be undone"
+
+# --- scripts, not just skills, must locate kit assets without a Claude variable ----------------
+# verify_stack read $CLAUDE_PLUGIN_ROOT directly, which is empty under every other harness.
+vso="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
+{ grep -q 'All seams OK' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
+  && ok "verify_stack resolves adapters with no Claude env var (project-external stack)" \
+  || bad "verify_stack cannot find adapters without a Claude variable" "$vso"
+grep -q 'kit_paths\|/tw" --kit' bin/verify_stack.sh \
+  && ok "verify_stack resolves the kit through the location CLI, not a raw env var" \
+  || bad "verify_stack still composes the kit root from a Claude env var"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

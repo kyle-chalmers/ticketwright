@@ -11,6 +11,7 @@ tool_gate: yes
 subagents: yes
 structured_questions: no
 model_cmd: ""
+model_sandbox: n/a   # no headless model command
 auth: |
   A Cursor install. No headless one-shot model command is documented.
   Verify: `command -v cursor`.

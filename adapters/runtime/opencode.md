@@ -11,6 +11,7 @@ tool_gate: yes
 subagents: yes
 structured_questions: yes
 model_cmd: "opencode run {prompt}"
+model_sandbox: unverified   # no restriction flag verified for `opencode run`
 auth: |
   An OpenCode install with a configured model provider.
   Verify: `command -v opencode`.

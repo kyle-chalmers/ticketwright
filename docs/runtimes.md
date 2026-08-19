@@ -280,12 +280,19 @@ Cursor, Antigravity, OpenCode and Devin all expose a pre-execution deny. PROMPT 
 rendered `AGENTS.md` must state the *specific* limitation per runtime, because none of these is a
 like-for-like replacement:
 
-- **`high_risk` needs an `ask` tier, and only three runtimes have one.** The policy is a three-value
-  enum (`off` | `high_risk` | `all`), and its default middle setting exists so routine additive work
-  runs unprompted while irreversible work costs a confirmation. Claude Code, Cursor and Antigravity
-  can express that from a hook. Codex, OpenCode and Devin cannot — there `high_risk` collapses to
-  "refuse every high-risk statement" or "allow it and rely on the skill-level halt". Neither is what
-  the setting means on Claude Code, and an installer must state which collapse it chose.
+- **`high_risk` needs an `ask` tier, and only three runtimes have one.** This is the sharpest finding
+  on this page, because `high_risk` is the policy's **default**. The enum is
+  `off` | `high_risk` | `all`, and the middle setting exists precisely to ask for the irreversible
+  while letting additive work run. Claude Code, Cursor and Antigravity can express that from a hook.
+  Codex, OpenCode and Devin cannot, so on those three the default value has **no native expression**
+  and must collapse — and both collapses are bad in different ways:
+    - *Collapse toward deny* and additive statements start getting blocked. That trains people to
+      turn the guard off, which is worse than never having had one.
+    - *Collapse toward allow* and the protection is simply gone while `stack.yaml` still reads
+      `high_risk` — a user believing they have a gate they do not have.
+  So an installer must not choose silently. It has to state which collapse a given runtime got **and
+  surface that to the user**, because the failure mode of getting this wrong is invisible until a
+  destructive statement has already run.
 - **Antigravity can express it more precisely than the kit currently asks for.** Its `force_ask`
   always prompts, ignoring cached permissions — the right primitive for the `all` setting, where a
   remembered "yes" should not silently cover the next destructive statement.

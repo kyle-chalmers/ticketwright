@@ -23,10 +23,17 @@ works regardless of the underlying tools.
 3. Tidy: remove redundant/version-sprawl files (overwrite, don't duplicate); confirm filenames
    carry record counts; confirm the README tells the full business + methodology + QC story. Then
    **refresh this ticket's index entry** so its `tickets/INDEX.md` row gets a curated one-line
-   summary: `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" enrich_ticket.py <id>` — a shortcut that calls a
-   model headlessly, resolved per runtime. If it reports no headless command available, use
-   `/refresh index <id>`, which writes the record from this session and always works. The PostToolUse hook already keeps the row present; this upgrades it
-   from auto-derived (`▱`) to curated.
+   summary: use **`/refresh index <id>`**, which writes the record from this session. You have already
+   read this ticket — no second model call is needed, and this path works under every runtime.
+   The PostToolUse hook already keeps the row present; this upgrades it from auto-derived (`▱`) to
+   curated.
+
+   *Not in this flow:* `enrich_ticket.py` does the same job by handing the ticket README to a
+   **headless model**. That README is usually tracker-sourced — text someone outside the repo wrote —
+   and `/ship` is the flow that then posts externally, so a shipping run should not put attacker-
+   influenceable text in front of a fresh agent before its own approval gate. Run it deliberately via
+   `/refresh index` when you want it, on a runtime whose adapter declares a restricted
+   `model_sandbox`.
 4. **Draft the comms artifacts** (don't post yet): render the tracker comment and the chat message
    from the ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first;
    segmented with counts/%/$. Chat ≤ `word_limits.chat`; includes `seams.chat.always_include`;

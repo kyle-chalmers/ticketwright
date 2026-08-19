@@ -12,6 +12,7 @@ tool_gate: yes
 subagents: yes
 structured_questions: yes
 model_cmd: "devin -p {prompt}"
+model_sandbox: unverified   # docs mention a --sandbox mode, not verified for `devin -p`
 auth: |
   A Devin install (`devin` CLI, or the `devin-desktop` app).
   Verify: `command -v devin`.

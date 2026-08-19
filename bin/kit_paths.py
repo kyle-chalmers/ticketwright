@@ -189,15 +189,32 @@ def read_frontmatter(path: Path) -> dict:
 
 
 def runtime_adapters(kit: Path | None) -> dict:
+    """Every runtime adapter, keyed by `tool` AND by each name in `aliases`.
+
+    Aliases are load-bearing rather than cosmetic: two runtimes have already been renamed
+    (gemini-cli -> antigravity, windsurf -> devin), and a person types the name of the thing they
+    actually installed. Without alias indexing, `--runtime gemini-cli` would silently resolve to no
+    adapter and report every capability absent — which reads identically to "this runtime cannot gate
+    a tool call", the exact wrong answer for a safety policy.
+
+    A real `tool` always wins over an alias, so a future runtime legitimately named `windsurf` could
+    not be shadowed by devin's alias.
+    """
     if not kit:
         return {}
-    out = {}
+    out, aliased = {}, {}
     for f in sorted((kit / "adapters" / "runtime").glob("*.md")):
         if f.name == "README.md":
             continue
         fm = read_frontmatter(f)
-        if fm.get("seam") == "runtime" and fm.get("tool"):
-            out[fm["tool"]] = (f, fm)
+        if fm.get("seam") != "runtime" or not fm.get("tool"):
+            continue
+        out[fm["tool"]] = (f, fm)
+        for alias in (a.strip() for a in fm.get("aliases", "").split(",")):
+            if alias:
+                aliased.setdefault(alias, (f, fm))
+    for name, entry in aliased.items():
+        out.setdefault(name, entry)
     return out
 
 

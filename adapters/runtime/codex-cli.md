@@ -10,7 +10,8 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: no
-model_cmd: "codex exec --skip-git-repo-check {prompt}"
+model_cmd: "codex exec --sandbox read-only --skip-git-repo-check {prompt}"
+model_sandbox: read-only   # verified against `codex exec --help`: --sandbox read-only
 auth: |
   An authenticated Codex CLI install.
   Verify: `command -v codex`.
@@ -36,6 +37,11 @@ auth: |
 
 ## Gotchas
 
+- **The enrichment command is sandboxed read-only on purpose.** `model_cmd` pins
+  `--sandbox read-only` because the prompt it receives is a ticket README, which on most installs was
+  fetched from a tracker — text someone outside the repo wrote. Building it as argv stops shell
+  injection, but nothing stops that text from *instructing* an agent that can use tools. Do not drop
+  the flag, and never replace it with `--dangerously-bypass-approvals-and-sandbox`.
 - **No `ask` tier.** `permissionDecision: "ask"` is parsed but not supported, so a hook can refuse or
   permit but cannot raise a confirmation. `db_write_requires_approval: high_risk` has no native
   expression — it must collapse to deny-or-allow, and the installer must say which.
