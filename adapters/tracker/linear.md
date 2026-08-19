@@ -4,6 +4,7 @@ tool: linear
 transport: mcp         # MCP; server name = seams.tracker.mcp ({mcp})
 requires: [team_id, mcp]    # stack.yaml seams.tracker.{team_id, done_state_id, mcp}
 container_key: seams.tracker.team_id   # which config key a ranked container fills (see rank_projects_by_activity)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   The Linear MCP server (`{mcp}`) must be connected (OAuth).
   Verify: a read-only issue/team query returns without error.

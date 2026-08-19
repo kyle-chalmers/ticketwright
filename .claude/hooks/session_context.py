@@ -134,6 +134,52 @@ def seam_tools(text: str, seam: str) -> list[str]:
     return [t for _, t in pairs]
 
 
+def scan_stack_resolved(root: Path) -> dict | None:
+    """The banner's fields, read through the three-tier resolver.
+
+    Returns None if the resolver is unavailable or unhappy, so the caller falls back to the
+    regex scan below. A SessionStart hook must fail open: a config the resolver declines to parse
+    should still get a banner, not silence.
+    """
+    try:
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        sys.path.insert(0, str(bindir))
+        from effective_config import resolve  # type: ignore
+        res = resolve(root)
+    except Exception:  # noqa: BLE001
+        return None
+    if not res.seams and not res.project:
+        return None
+    out: dict = {}
+    prefix = res.project.get("key_prefix")
+    if not prefix:
+        plural = res.project.get("key_prefixes")
+        if isinstance(plural, list) and plural:
+            prefix = plural[0]
+        elif isinstance(plural, str):
+            prefix = plural
+    out["key_prefix"] = str(prefix) if prefix else None
+    for seam in ("tracker", "warehouse", "chat", "docstore", "vcs"):
+        node = res.seams.get(seam)
+        if not isinstance(node, dict):
+            out[seam] = "—"
+            continue
+        targets = node.get("targets")
+        if isinstance(targets, dict) and targets:
+            names = list(targets)
+            default = node.get("default")
+            if default in names:      # the DEFAULT target leads, so the banner never implies
+                names.remove(default)  # the wrong active warehouse
+                names.insert(0, default)
+            tools = [str(targets[n].get("tool")) for n in names
+                     if isinstance(targets[n], dict) and targets[n].get("tool")]
+            out[seam] = "+".join(tools) if tools else "—"
+        else:
+            out[seam] = str(node.get("tool")) if node.get("tool") else "—"
+    return out
+
+
 def scan_stack(stack: Path) -> dict:
     text = stack.read_text(errors="replace")
     out = {}
@@ -160,6 +206,23 @@ def viewer_tool(root: Path, stack_text: str) -> str | None:
     bin/handoff.sh uses. Returns None when nothing is configured or the user set enabled: false,
     so the banner never advertises a gate that will not open anything.
     """
+    # Preferred: the resolver's viewer plan, so the banner and bin/handoff.sh can never disagree
+    # about which config is live — including the composed tier-2/tier-3 form, which a local regex
+    # ladder cannot see at all.
+    try:
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        sys.path.insert(0, str(bindir))
+        from effective_config import resolve, viewer_plan  # type: ignore
+        plan = viewer_plan(resolve(root))
+        if plan.get("source"):
+            if not plan.get("enabled"):
+                return None          # explicitly configured off: never advertise a gate
+            return plan.get("tool") or "configured"
+        return None
+    except Exception:  # noqa: BLE001 — fall through to the standalone scan; a hook must fail open
+        pass
+
     candidates = [
         root / ".claude/config/viewer.local.yaml",
         Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "ticketwright/viewer.yaml",
@@ -188,7 +251,7 @@ def main() -> int:
         return 0  # not configured — say nothing
 
     try:
-        s = scan_stack(stack)
+        s = scan_stack_resolved(root) or scan_stack(stack)
     except OSError:
         return 0
 

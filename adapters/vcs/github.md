@@ -3,6 +3,7 @@ seam: vcs
 tool: github
 transport: cli         # git + gh
 requires: [default_branch]  # stack.yaml seams.vcs.{default_branch, semantic_pr, worktree_root}
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   git credentials in keychain; `gh auth login` for PRs.
   Verify: `gh auth status`.

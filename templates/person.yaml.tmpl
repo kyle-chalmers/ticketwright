@@ -1,0 +1,39 @@
+# people/{{person_id}}.yaml — TIER 2: person-scoped, PORTABLE, and committed.
+#
+# One file per person, named for their id. What belongs here is anything TRUE ABOUT THE PERSON
+# WHEREVER THEY WORK — how they are addressed, how they write, what kind of app should open a given
+# file type. What does NOT belong here is anything about one machine (a profile name, a mount point,
+# a local command): that is tier 3, `.claude/config/connections.local.yaml`.
+#
+# PRECEDENCE. A cross-repo copy at ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/people/<id>.yaml
+# supplies DEFAULTS; this in-repo file overrides it KEY BY KEY (not whole-file).
+#
+# Read the merged result with:  python3 bin/effective_config.py --root . --person {{person_id}} --json
+
+display_name: {{display_name}}
+tracker_handle: {{tracker_handle}}     # how the tracker addresses this person (not always the id)
+
+# Every local identity that should resolve to this person, ENUMERATED — never inferred. A fuzzy
+# name-to-folder guess is the footgun the kit avoids: a wrong guess silently misfiles work or drafts
+# comms in someone else's voice. Matching is exact, after trimming and case-folding.
+identities:
+  - {{primary_identity}}
+  - {{display_name}}
+  - {{person_id}}
+
+# Per-person comms voice (opt-in). The profile is RENDERED MARKDOWN at this path — a writing-style
+# document, not YAML. Remove this block to leave the feature off.
+voice:
+  path: voices/{profile_id}.md
+  profile_id: {{person_id}}
+
+# The PORTABLE half of the human-review handoff: a glob maps to a CATEGORY, never to an application.
+# `DataGrip` and `datagrip.desktop` are the same preference on two operating systems, so committing
+# an app name here would follow this person to another OS and silently fail. Which application fills
+# each category is tier 3.
+viewer:
+  categories:
+    - glob: "*.sql"
+      category: sql-editor
+    - glob: "*.csv"
+      category: spreadsheet

@@ -3,14 +3,23 @@
 
 Answers one question for the comms skills: *who is shipping this?* — so `/ship` can load the
 right person's `voices/<id>.md` and the chat adapter can resolve a `{self}` mention. The map from
-identity → profile id is **explicit** and lives in `stack.yaml` under `project.voice_profiles.map`;
-this script never guesses (a fuzzy git-name → folder normalization is exactly the wrong-profile
+identity → profile id is **explicit** and enumerated per person; this script never guesses (a fuzzy git-name → folder normalization is exactly the wrong-profile
 footgun the design avoids).
+
+THE MAP MOVED. It now lives in TIER 2 — `people/<id>.yaml`, one file per person, under
+`identities:` — because a person's work email and display name are person data, not team data, and
+`stack.yaml` is committed team config. The legacy `project.voice_profiles` block in `stack.yaml` is
+STILL READ as a fallback, with a one-time warning on stderr: a repo with a working committed map
+must not lose voice resolution the moment it upgrades. stdout stays clean either way, so a caller
+can still treat empty output as "no voice profile".
+
+`voices/<id>.md` is unchanged — a RENDERED MARKDOWN writing-style profile referenced from
+`people/<id>.yaml`. It does not become YAML.
 
 Resolution order of local identities (first that hits the map wins):
   git config user.email  →  git config user.name  →  $USER
 
-Both `stack.yaml` and `git config` are read from the **project root** (`CLAUDE_PROJECT_DIR`, else the
+Both the config and `git config` are read from the **project root** (`CLAUDE_PROJECT_DIR`, else the
 nearest ancestor holding `.claude/config/stack.yaml`), so a plugin install — where this script lives
 in the plugin dir but the repo is elsewhere — still reads the shipper's own repo, not wherever the
 process happened to start.
@@ -35,6 +44,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _yamlite import YamliteError, config_trace, parse_file  # noqa: E402
 
 DEFAULT_PATH_TEMPLATE = "voices/{profile_id}.md"
 
@@ -121,20 +134,88 @@ def voice_config(stack_text: str) -> tuple[str, dict[str, str]]:
     return path_template, mapping
 
 
+
+def _people_dirs(root: Path) -> list[Path]:
+    """Tier-2 homes, cross-repo FIRST so the in-repo copy wins.
+
+    The cross-repo copy is the whole point of "portable": someone whose profile lives only in
+    `$XDG_CONFIG_HOME/ticketwright/people/` must still resolve, or the tier is portable in name only.
+    """
+    xdg = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "ticketwright"
+    return [xdg / "people", root / "people"]
+
+
+def people_config(root: Path) -> dict[str, tuple[str, str]]:
+    """identity → (profile_id, path_template), from TIER 2.
+
+    The template is PER PERSON, not global. Holding one template while iterating every file meant a
+    person with no custom `voice.path` inherited whichever custom path happened to be read last —
+    Alice resolving to Bob's profile file, silently, which is exactly the wrong-profile footgun this
+    resolver exists to avoid.
+
+    Every identity is ENUMERATED in the person's own file; nothing is inferred from a name. A file
+    that fails to parse is skipped rather than fatal — one malformed teammate file must not stop
+    everyone else resolving.
+    """
+    mapping: dict[str, tuple[str, str]] = {}
+    for people in _people_dirs(root):
+        if not people.is_dir():
+            continue
+        for path in sorted(people.glob("*.yaml")):
+            try:
+                data = parse_file(path)
+            except (YamliteError, OSError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            voice = data.get("voice") if isinstance(data.get("voice"), dict) else {}
+            if not voice:
+                continue                      # no voice block = this person has not opted in
+            profile_id = str(voice.get("profile_id") or path.stem).strip()
+            template = str(voice.get("path") or DEFAULT_PATH_TEMPLATE).strip()
+            for ident in (data.get("identities") or []):
+                text = str(ident).strip()
+                if text:
+                    mapping[text.lower()] = (profile_id, template)   # later dir wins: in-repo
+    return mapping
+
+
 def resolve(root: Path) -> dict | None:
-    stack = root / ".claude/config/stack.yaml"
-    if not stack.is_file():
-        return None
-    try:
-        text = stack.read_text(errors="replace")
-    except OSError:
-        return None
-    path_template, mapping = voice_config(text)
+    """Tier 2 first, then the legacy tier-1 block. Fails open: None means "behave as today"."""
+    config_trace(root, "resolve_user")
+    mapping = people_config(root)
+    legacy = False
+
+    if not mapping:
+        stack = root / ".claude/config/stack.yaml"
+        if not stack.is_file():
+            return None
+        try:
+            text = stack.read_text(errors="replace")
+        except OSError:
+            return None
+        path_template, legacy_map = voice_config(text)
+        mapping = {k: (v, path_template) for k, v in legacy_map.items()}
+        legacy = bool(mapping)
     if not mapping:
         return None
+
     for ident in local_identities(root):
-        pid = mapping.get(ident.lower())
-        if pid:
+        hit = mapping.get(ident.lower())
+        if hit:
+            pid, path_template = hit
+            if legacy and sys.stderr.isatty():
+                # Warn on stderr, never stdout: callers read stdout as the answer, and a warning
+                # there would look like a profile id.
+                #
+                # TTY-gated on purpose. This resolver is invoked by hooks, the statusline and /ship,
+                # several times per session — an unconditional warning printed into the stderr of
+                # every one of those, including unrelated commands that merely started a shell.
+                # The durable channel for this is `effective_config.py --lint`, which surfaces it
+                # once per verify run where config problems are supposed to appear.
+                print("resolve_user: using the legacy `project.voice_profiles` map in stack.yaml. "
+                      "That map holds personal identities in committed team config — move it to "
+                      "people/<id>.yaml (see templates/person.yaml.tmpl).", file=sys.stderr)
             return {
                 "id": pid,
                 "path": path_template.replace("{profile_id}", pid),

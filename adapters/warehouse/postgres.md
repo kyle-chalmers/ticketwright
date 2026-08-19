@@ -3,6 +3,7 @@ seam: warehouse
 tool: postgres
 transport: cli         # `psql`
 requires: [conn]       # stack.yaml seams.warehouse.{conn, dev_target}  (conn = libpq URL or service name)
+user_keys: []             # tier-3 overridable: libpq env / ~/.pgpass hold credentials. `conn` is a DSN mixing credentials WITH database selection - split it, never override it
 dev_key: dev_schema     # legacy spelling of dev_target, still honored
 auth: |
   libpq env (`PGHOST`/`PGUSER`/`PGPASSWORD`/`PGDATABASE`) or a connection URL in `{conn}`; `~/.pgpass`

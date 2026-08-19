@@ -97,6 +97,12 @@ questions.
   to pre-select the tools you already have.
 - **Which MCP servers are connected** in the session (tracker / chat / warehouse).
 - **What's already in the repo** — an existing `.claude/config/stack.yaml` (it offers to edit and never
+
+Config is three tiers: `.claude/config/stack.yaml` is the **team's** committed answer,
+`people/<id>.yaml` holds each person's portable settings, and `.claude/config/connections.local.yaml`
+holds the per-machine ones and is gitignored. `bin/effective_config.py` merges them — read that, not
+the raw file. The machine tier can supply credentials and local paths; it can never change which data
+gets read, and never a policy.
   overwrites), or existing ticket folders and indexes, which switch it into adopt mode.
 
 **What it then asks — at most five, detected answers pre-selected:** tracker (or *none*), warehouse (or
@@ -219,7 +225,7 @@ Every ticket ends with `/ship` drafting the tracker comment, chat message, and P
 almost always edit that draft before it goes out. **Voice profiles** capture how *you* write so the
 draft arrives already sounding like you, and then learn from the edits you still make.
 
-- **Opt-in.** Off until you set `project.voice_profiles` in `stack.yaml`. Build a profile with
+- **Opt-in.** Off until a person has a `voice:` block in `people/<id>.yaml`. Build a profile with
   `/setup --voice`: a short interview (and, if you want, a few of your own already-sent lines).
 - **Per person.** `/ship` resolves who's shipping (`bin/resolve_user.py`, offline, via an explicit
   identity→id map — never a fuzzy guess) and loads that person's `voices/<id>.md`.

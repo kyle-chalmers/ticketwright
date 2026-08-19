@@ -6,7 +6,91 @@ IDs, epics, or paths — those live **here** and in the per-tool adapters. Swapp
 Snowflake→BigQuery means editing this file and pointing at a different adapter; **no skill changes.**
 
 The `setup` skill writes this file by interviewing you and detecting installed tooling.
-`bin/verify_stack.sh` reads it to smoke-test every seam. Every skill reads it at preflight.
+`bin/verify_stack.sh` reads it to smoke-test every seam.
+
+**This file is TIER 1 of three, and nothing should read it directly** — see "The three tiers" below.
+Skills, hooks and scripts read the MERGED result via `bin/effective_config.py`.
+
+---
+
+## The three tiers
+
+`stack.yaml` is committed and shared, so a value that is true only on one machine does not belong in
+it. A real `/setup` run put a warehouse CLI profile name, a named connection, and a verify command
+with that profile hardcoded into this file — every teammate then inherited one person's machine.
+Config is therefore three files, merged by one resolver.
+
+| Tier | File | Committed? | Holds |
+|---|---|---|---|
+| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each seam, which data the team reads, the 10 policies, ticket conventions |
+| 2 PERSON, portable | `people/<id>.yaml` | yes | display name, tracker handle, identities, comms voice, file-type preferences |
+| 3 PERSON, machine | `.claude/config/connections.local.yaml` | **no** (gitignored) | named profiles/connections, local mount roots, the `person:` key |
+
+Tier 2 has two homes with a stated winner: a cross-repo copy at
+`${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/people/<id>.yaml` supplies DEFAULTS, and the in-repo
+`people/<id>.yaml` overrides it **key by key** (not whole-file), so you can carry your voice and
+file-type preferences between repos while one repo differs in one field.
+
+### Read the merged result, never the raw file
+
+```bash
+python3 bin/effective_config.py --root . --json          # everything, with per-key provenance
+python3 bin/effective_config.py --root . --key seams.warehouse.cli
+python3 bin/effective_config.py --root . --verify-plan   # one row per seam/target
+python3 bin/effective_config.py --root . --lint          # machine-local values in committed config
+```
+
+No agent-specific environment variable is required, so this works under any harness. Exit codes:
+`0` ok · `2` usage · `3` missing · `4` malformed · `5` stale · `6` prohibited override.
+
+### THE SCOPE RULE — enforced in code, not documented
+
+Tier 3 selects **credentials and local paths**. It may never change **logical data selection**:
+`catalog`, `schema`, `database`, `dataset`, `warehouse_id`, target selection, `transport`, or the
+seam's `tool`/`adapter`/`cli`. Two teammates must never silently read different data.
+
+Which keys are personal is declared **per adapter**, in a `user_keys:` frontmatter list — never
+hardcoded in a skill, and deliberately NOT derived from `requires:` (that is a minimum-capability
+declaration; a warehouse can require a CLI yet still share team-level role and target settings).
+
+The merge is an **allowlist over paths**. A tier-2/tier-3 file may write:
+
+- `seams.<seam>.targets.<existing-target>.<key>` where `<key>` is in that target's adapter
+  `user_keys:` — `targets` is a legal path *segment* (this is where a multi-target seam's personal
+  credentials go) but never a settable value: creating, renaming or deleting a target is refused;
+- `seams.<seam>.<key>` on a single-mapping seam only — a multi-target seam has no adapter of its
+  own, so there would be nothing to declare which of its keys are personal;
+- the structural keys `person`, `schema_version`, `mode`, `stack_fingerprint`;
+- the tier-2 person block and the `viewer:` block.
+
+**Anything else is rejected, not ignored** — including `policies:`, which is un-mergeable at every
+tier. Tier 3 is gitignored and unreviewed; if it could set `db_write_requires_approval: off` or
+`hard_halt_before_external_posts: false`, a per-machine file would disable the kit's safety gates
+with nothing in code review to catch it. Ignoring such a block would be just as bad: it would let
+someone believe they had turned a gate off.
+
+`mode:` is meaningful. `overrides` applies the file's settings; `defaults` records that the person
+accepted the team defaults and **must carry no overrides** — a `defaults` file that also carries
+them is rejected, because file existence alone cannot otherwise distinguish empty from half-finished
+from deliberately-default. `stack_fingerprint` reports `stale` (exit 5) when the committed stack has
+moved since this machine was configured.
+
+### Keeping machine values out of `verify:`
+
+A `verify` command must not embed a machine-local literal. Use `{token}` interpolation and let tier 3
+supply the value; `bin/verify_stack.sh` warns on a literal in a key the adapter declares personal,
+and on a machine literal baked into the verify string itself. **An unresolved `{token}` is SKIPPED
+with a pointer, never executed** — running a command with a literal brace in it reads as broken auth
+rather than as missing config.
+
+Tokenless verifies are correct and stay silent: they name nothing machine-specific.
+
+### Docstore paths are split
+
+`base_path` mixed a team decision with a machine path. The destination is team-owned
+(`drive_folder`, tier 1); where it is mounted is per-user (`mount_root`, tier 3). The resolver
+composes `base_path` from the two, so adapter verb bodies keep interpolating `{base_path}`
+unchanged. A literal `base_path:` still works and warns.
 
 ---
 
@@ -38,9 +122,13 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `domain` | string | `data analysis` | Short phrase naming the team's kind of work; fills the `{{domain}}` token in the rendered `AGENTS.md` ("Ticket-driven *{{domain}}* work"). Optional; defaults to `data analysis`. |
 | `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 | `graph_config` | bool | `true` | Also write/merge `.obsidian/graph.json` (tickets↔objects filter + color groups) so the Graph view opens ready-to-read. Create/merge-only — never clobbers manual tweaks. On by default; set `false` to keep the nodes but not manage the Obsidian config. Ignored when `graph_notes` is `false`. |
-| `voice_profiles` | map \| null | *(see below)* | Per-person comms **voice profiles**. Omit/null (the default) = feature off; `/ship` drafts exactly as today. Set it (via `/setup --voice`) to have comms drafts match the shipper's writing. |
+| `voice_profiles` | map \| null | *(see below)* | **LEGACY — still read, no longer written.** Per-person comms **voice profiles** now live in tier 2, `people/<id>.yaml`. This block holds one person's work email and display name in committed TEAM config, which is the identity leak the three-tier split removes. An existing block keeps resolving (with a one-time warning) so upgrading loses nothing; `/setup --voice` writes `people/<id>.yaml` instead. |
 
-### `voice_profiles` (optional — off unless present)
+### `voice_profiles` (LEGACY tier-1 location — read, never written)
+
+> New setups put this in **tier 2**: `people/<id>.yaml`, with `identities:` and a `voice:` block.
+> See `templates/person.yaml.tmpl`. The shape below is documented because existing repos still have
+> it and it still resolves — not because anything should create one.
 
 When set, `/ship` resolves the shipper via `bin/resolve_user.py` and, if a profile exists, uses it
 as a **phrasing style guide** for the tracker comment / chat / PR body — always *within* the hard

@@ -3,6 +3,49 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
+
+## Unreleased
+
+### Added
+- **Three-tier config.** `.claude/config/stack.yaml` (team, committed) is now merged with
+  `people/<id>.yaml` (person, portable, committed) and `.claude/config/connections.local.yaml`
+  (person + machine, gitignored) by a new resolver, `bin/effective_config.py`. It is a public CLI —
+  `--json`, `--key`, `--verify-plan`, `--viewer-plan`, `--lint` — and needs no agent-specific
+  environment variable, so it works under any harness. Per-key `provenance` names the tier each
+  value came from.
+- **`user_keys:` adapter frontmatter** declares which of a tool's keys a person may override from
+  the machine tier. Adapters, not skills, own that decision.
+- **`bin/_yamlite.py`**, a stdlib YAML reader for an explicit supported subset that fails loudly
+  with a `file:line` instead of misreading. The kit's zero-runtime-dependency promise is intact.
+
+### Changed
+- **`bin/verify_stack.sh` and `bin/handoff.sh` no longer require `yq`.** `verify_stack.sh` used to
+  exit 1 without it.
+- **`/setup` writes tier-1 values only.** A detected machine-local value — a named profile or
+  connection, a home-directory mount path — no longer lands in committed team config.
+- **Docstore paths split**: team-owned `drive_folder` (tier 1) + per-machine `mount_root` (tier 3),
+  composed into `{base_path}` by the resolver. Adapter verb bodies are unchanged, and a literal
+  `base_path:` still works (with a warning).
+- **Viewer config splits** into a portable half (globs → categories, in `people/<id>.yaml`) and a
+  machine half (categories → applications, in `connections.local.yaml`). An existing
+  `viewer.local.yaml` still wins, so nothing changes for anyone who has one.
+- **The comms-voice identity map moves to `people/<id>.yaml`.** The legacy
+  `project.voice_profiles` block in `stack.yaml` is still read, with a one-time warning — upgrading
+  never silently loses voice resolution.
+
+### Fixed
+- `bin/verify_stack.sh` silently accepted a `targets:` block with a missing or invalid `default:`.
+  A shell field-splitting bug (TAB is IFS whitespace, so runs of empty fields collapsed) shifted the
+  error message out of the variable that reported it, and a hard failure read as a pass.
+- A tokenized `verify:` with no value configured used to run with the literal `{token}` still in the
+  command. It is now skipped with a pointer to the key to set.
+
+### Security
+- A person or machine config file can never contribute a `policies:` block. Tier 3 is gitignored and
+  unreviewed; being able to set `db_write_requires_approval: off` there would disable the kit's
+  safety gates with nothing in code review to catch it. Such a block is **rejected**, not ignored.
+- Tier 3 can never change which catalog, schema, database or target is read.
+
 ## [Unreleased]
 
 ### Fixed

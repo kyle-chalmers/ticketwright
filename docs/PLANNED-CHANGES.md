@@ -43,6 +43,11 @@ by adding the `viewer` seam. Specifically:
     `chat) echo 4`, `docstore) echo 2`, `vcs) echo 4`, `viewer) echo 2`), checked against
     `grep -c '^## verb:'` in every adapter file.
   - It requires `seam:` and `tool:` frontmatter in the first lines of every `adapters/*/*.md`.
+  - ⚠ SECTION NUMBERS ARE A COLLISION SURFACE BETWEEN CONCURRENT WAVES. Sections are numbered by hand
+    (`hdr "30 · ..."`), so two prompts running in the same wave both reach for the next free number and
+    collide at rebase. It has already happened once: 30 is now the `requires:` check and 31 is the
+    runtime foundation. Before adding a section, read the highest number ON CURRENT MAIN rather than in
+    your branch, and expect to renumber yours rather than the other prompt's.
   - It requires certain literal tokens to survive in prose, e.g. `id_mode` in `README.md`,
     `stack.schema.md`, `docs/ticket-index.md` and `docs/troubleshooting.md`.
   - ⚠ IT GREPS SKILLS FOR LEAKED TOOL NAMES, AND EXEMPTS EXACTLY ONE LINE BY LITERAL SUBSTRING.
@@ -353,6 +358,17 @@ Add `bin/effective_config.py`, the single authority merging all three tiers. NIN
 `.claude/statusline.sh`. Migrate ALL of them. An overlay only some understand leaves production paths
 on committed values while appearing to work.
 
+THE CONSUMER COUNT IS 14, NOT 9. The nine named above are the direct readers. Five more reach raw
+config TRANSITIVELY through `build_ticket_index.load_config()`: `bin/recall.py`,
+`bin/ingest_index_records.py`, `bin/enrich_ticket.py`, `.claude/hooks/regenerate_ticket_index.py`, and
+`.claude/hooks/ticket_index_context.py` — the last of which arrives via `discover()` with no arguments
+and does not look like a config reader at all. Migrating `load_config`'s body covers all five without
+opening `enrich_ticket.py`, which is how the Wave A ownership split stays intact.
+AND KNOW WHAT YOU CANNOT TEST THERE: every key `load_config` returns is a `project.*` key, which is
+reserved and therefore never tier-3 overridable. So that migration is a zero-behavior-change refactor
+BY CONSTRUCTION, and a test asserting "each consumer observes a tier-3 override" is unwritable. Prove
+the wiring with a trace breadcrumb instead of inventing an override that cannot exist.
+
 Contract — a public CLI, not a hook helper:
   - `bin/effective_config.py --root <repo> --json`, no Claude env var required.
   - Stable JSON schema: resolved values, per-key provenance (team | person | machine | inherited),
@@ -378,6 +394,17 @@ Contract — a public CLI, not a hook helper:
   - A `verify:` command must never embed a MACHINE-LOCAL LITERAL. Use `{token}` interpolation where
     it needs a personal value — verified working at the multi-target level:
     `verify: "databricks --profile {profile} current-user me"`.
+    ⛔ INTERPOLATED TIER-3 VALUES REACH A SHELL. THIS IS THE MOST SAFETY-CRITICAL LINE IN THE
+    DOCUMENT. `bin/verify_stack.sh` builds the command with `interp()` and then runs it through
+    `eval`. Today every token value comes from committed, code-reviewed `stack.yaml`. The moment a
+    token can be sourced from a GITIGNORED, UNREVIEWED tier-3 file, `profile: "x; touch /tmp/PWNED"`
+    executes arbitrary shell. This was confirmed to run before it was fixed. It is the configuration
+    trust boundary moving, and this document's own tokenization advice is what opens it.
+    QUOTING IS NOT THE FIX. The token usually already sits inside quotes in the template
+    (`test -d "{base_path}"`), so quoting again corrupts legitimate paths containing spaces. REFUSE a
+    value carrying shell metacharacters, and name the offending token in the refusal. Treat any
+    future path that lets tier-3 content reach a command string the same way.
+
     ⚠ AN UNRESOLVED TOKEN MUST NEVER RUN. `bin/verify_stack.sh`'s `interp()` substitutes only the
     tokens present in its token file and leaves anything unmatched AS A LITERAL — so
     `verify: "databricks --profile {profile} …"` executes `--profile {profile}` verbatim on a machine
@@ -391,6 +418,12 @@ Contract — a public CLI, not a hook helper:
     This is NOT "every verify needs a token". Tokenless verifies are correct and must stay:
     `snow connection test` (`adapters/warehouse/snowflake.md:9`), `bq query --dry_run "SELECT 1"`
     (`adapters/warehouse/bigquery.md:9`) name nothing machine-specific.
+  - SCOPE "WARN, NEVER FAIL" PRECISELY — it applies to the LEAK LINT ONLY, not to the resolver.
+    Getting this wrong produces the worst possible output: a first implementation printed a rejected
+    `catalog:` / `policies:` override to stderr and then reported "All seams OK", so the reader
+    believed both that their local file had applied AND that the stack was healthy. That defeats
+    reject-not-ignore entirely. The rule is: MALFORMED and PROHIBITED-OVERRIDE **fail**; STALE
+    fingerprint **warns**; the machine-local literal lint **warns**.
   - `bin/verify_stack.sh` warns when committed `stack.yaml` holds a literal in a key declared as a
     `user_keys` key for that adapter. Key the warning on the DECLARATION, not on whether the verify
     string happens to contain some unrelated token — a literal `profile: analytics-prod` alongside a
@@ -413,6 +446,13 @@ PROMPT 2. Put both verdicts in the PR body.
 VOICE-PROFILE id, returning nothing when `project.voice_profiles.map` is absent. The limitation is
 scope, not absence. Generalize it for owner routing without making an optional, privacy-sensitive
 feature a hard dependency.
+
+⚠ IF YOU KEEP `resolve_user.py` AS A SHIM, THE PER-PERSON PATH TEMPLATE IS LOAD-BEARING. Two
+wrong-person bugs were found in the NEW path, neither covered by "dual-read the legacy block": a
+profile living only in the CROSS-REPO tier-2 home never resolved at all, because the scan looked only
+at in-repo `people/*.yaml` — portable in name only. And holding ONE path template across the whole
+scan meant a person without a custom `voice.path` inherited whichever custom path was read last, so
+Alice resolved to Bob's profile file, silently. Resolve the template PER PERSON, and assert it.
 
 FATE OF `bin/resolve_user.py`: `whoami.py` supersedes it. Keep `resolve_user.py` as a thin shim
 that calls `whoami.py` and maps the result to a voice-profile id, so the voice feature keeps working
@@ -836,6 +876,13 @@ the graph, cross-references, branch names, and CLI UX across every skill.
 Already works: `bin/build_ticket_index.py` discovers owners generically by walking `tickets/<owner>/`
 one level down and keys rows by `(owner, id)`.
 
+⚠ DO NOT RESTORE THE HEADLESS MODEL CALL IN `/ship`. Wave A removed it deliberately: enrichment fed
+tracker-sourced README text to a tool-capable agent BEFORE `/ship`'s own external-action gate, and
+making the model command pluggable widened that from one binary to five. You own `ship/SKILL.md`, so
+you will see the gap where it used to be. It is not an oversight. `bin/selftest.sh` asserts both that
+`/ship` no longer invokes it and that the reason is still written down, so restoring it fails the
+suite — but read the reason before working around the assertion.
+
 What breaks:
 - Graph aggregation keys by BARE id (`bin/build_ticket_index.py:669-724`), so two owners with the
   same slug collapse into one node with merged owners and objects. `id_mode: slug` makes this likely
@@ -1061,6 +1108,22 @@ ROUTING RULES, per kind:
     exactly one is configured.
   - vcs (deferred): local operations follow the checked-out repo; PR target comes from the configured
     remote matching origin. A mirror is never an implicit second PR destination.
+
+⚠ A FRONTMATTER FIELD THAT BECOMES A COMMAND IS AN EXECUTION PATH. Learned the hard way in wave A and
+it generalizes directly to this prompt's delivery-plan work. `ticketwright init` copies `adapters/`
+INTO the consuming repo, so THE PROJECT ROOT IS ITSELF A VALID KIT — "resolve only from the kit"
+isolates nothing from repo-supplied content. A repo-vendored adapter carrying
+`model_cmd: "touch /tmp/PWNED"` was reproduced executing during `/ship`, and was contained with an
+allowlist on `argv[0]`. The reason this hides well is that a markdown file reads as inert in code
+review. So: any new frontmatter key this prompt introduces that ends up in a command string, a
+destination, or a path needs the same treatment, and the review checklist should treat adapter
+frontmatter as executable input rather than documentation.
+
+⚠ A PRESENCE GREP IS NOT A TEST. Also from wave A: a fix was validated by grepping for the presence of
+a flag, and the grep passed against a command that was actually broken (the flag was variadic and
+swallowed the following argument). This prompt asks for `always_include` to be ENFORCED IN CODE rather
+than remain a prose convention — so its test must prove a message actually carries the list and that a
+config omitting it is actually rejected. Asserting the token appears somewhere proves nothing.
 
 SAFETY — this is the part that can leak client data:
   - Each `chat` target declares its OWN audience, channel, and non-empty `always_include`. Apply that

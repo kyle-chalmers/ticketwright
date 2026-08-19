@@ -10,11 +10,12 @@ disable-model-invocation: true
 
 Ships a ticket that has **passed `/review`**. Split into a safe Phase A (local, no approval) and a
 gated Phase B (every external side effect), honoring `hard_halt_before_external_posts`. Reads
-`.claude/config/stack.yaml`; routes through the docstore / tracker / chat / vcs adapters, so it
+the **merged** config (`bin/effective_config.py`, never raw `stack.yaml` — a raw read misses every
+personal and machine override); routes through the docstore / tracker / chat / vcs adapters, so it
 works regardless of the underlying tools.
 
 ## Phase A — Finalize (no approval needed; internal to repo)
-1. Read `stack.yaml` + the ticket README + the `/review` verdict. If the verdict isn't APPROVE,
+1. Read the merged config (`bin/effective_config.py --json`) + the ticket README + the `/review` verdict. If the verdict isn't APPROVE,
    **stop** and send the user back to `/review`.
 2. If the stack has a warehouse seam, re-run the final deliverable queries once more; confirm
    **byte-identical** output to the committed files (`deterministic_outputs` — explicit `ORDER BY`).
@@ -43,9 +44,12 @@ works regardless of the underlying tools.
    - **Comms-lint the drafts first (the hard rails):** each is within its `word_limits.*` cap; ticket
      id(s), files, and PR are hyperlinked; the chat message carries `always_include` (+ `include_self`
      if configured). Fix any miss before continuing — these rails always win.
-   - **Voice pass (only if `project.voice_profiles` is set).** Resolve the shipper —
+   - **Voice pass (only if a voice profile RESOLVES).** Resolve the shipper —
      `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json` — and if it
-     returns a profile whose file exists, re-phrase the drafts to match that voice profile
+     returns a profile whose file exists, re-phrase the drafts to match that voice profile.
+     Gate on the RESOLUTION, never on where the config lives: the map moved to `people/<id>.yaml`
+     (tier 2), so a condition naming `project.voice_profiles` is permanently false in a migrated
+     repo and would silently switch this whole step off
      **within the rails above** (it shapes phrasing only; it never bends a word limit, a link, or the
      include-list). Empty output / no profile ⇒ leave the drafts as-is (fail open — behaves as today).
    - **Persist the initial drafts** to the ticket's `comms/` (e.g. `comms/draft-tracker.initial.md`,
@@ -88,8 +92,7 @@ authorization, execute in order:
     manual step is a signal to `/productize` it. Fixing the layer, not just the ticket, is what
     compounds. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 11, not
     this retro.)*
-11. **Voice refine** (only if `project.voice_profiles` is set **and** a profile resolved for the
-    shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
+11. **Voice refine** (only if a voice profile resolved for the shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
     differ beyond whitespace, the edits are voice signal: **propose** a small append/edit to the
     person's `voices/<id>.md` capturing the pattern (e.g. "drops the greeting", "prefers 'net:' over
     'in summary'") and **wait for confirmation before writing** — never silent. If `initial` ==

@@ -136,3 +136,27 @@ The old names routed automatically through v2.x as deprecated aliases; they were
 frontmatter, hooks, render gate, index/recall engines) and pinpoints what's broken. If the
 self-test is green but a skill misbehaves, the issue is usually `stack.yaml` (wrong key, stub
 adapter) — `bash bin/verify_stack.sh` narrows it to a seam.
+
+
+## Config resolves to something you did not expect
+
+Read the merged answer rather than guessing which file won:
+
+```bash
+python3 bin/effective_config.py --root . --json
+```
+
+`provenance` names the tier behind every key (`team`, `person`, `machine`, `inherited`) and its
+source file. `errors` explains anything refused. Exit codes: `3` no `stack.yaml`, `4` a config
+outside the supported YAML subset (the message names the line and the rule), `5` the machine file
+was completed against an older team stack, `6` a person/machine file tried to set something
+team-owned — a data-selection key such as `catalog`, or a `policies:` block, both of which are
+rejected rather than ignored.
+
+`python3 bin/effective_config.py --root . --lint` lists machine-local values sitting in committed
+config. `bash bin/verify_stack.sh` prints the same warnings alongside seam reachability.
+
+**A verify command printed `skipped: unresolved {token}`** — that is correct, not a bug: the command
+needs a personal value and no `.claude/config/connections.local.yaml` supplies it. Set the key there.
+The alternative, running the command with a literal `{token}` in it, reads as broken authentication
+and wastes far more time.

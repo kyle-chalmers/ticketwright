@@ -1,0 +1,46 @@
+# people/alice.yaml — TIER 2: person-scoped, PORTABLE, and committed.
+#
+# This is a WORKED EXAMPLE for the fictional "Acme" team in ../.claude/config/stack.yaml.
+# One file per person, named for their id. What belongs here is anything that is TRUE ABOUT THE
+# PERSON WHEREVER THEY WORK — how they are addressed, how they write, what kind of app should open
+# a given file type. What does NOT belong here is anything about one machine (a profile name, a
+# mount point, a local command) — that is tier 3, `.claude/config/connections.local.yaml`.
+#
+# These repos are private team analysis repos, so identities are committed by default: that is what
+# makes resolution deterministic for everyone instead of only on the machine that ran /setup.
+#
+# PRECEDENCE. A cross-repo copy at ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/people/<id>.yaml
+# supplies DEFAULTS; this in-repo file overrides it KEY BY KEY (not whole-file), so you can carry
+# your voice and file-type preferences between repos and still let one repo differ in one field.
+#
+# Read the merged result with:  python3 bin/effective_config.py --root . --person alice --json
+
+display_name: Alice Smith
+tracker_handle: alice                  # how the tracker addresses this person (not always the id)
+
+# Every local identity that should resolve to this person, ENUMERATED — never inferred. A fuzzy
+# name-to-folder guess is exactly the footgun the kit avoids: a wrong guess silently misfiles work
+# or drafts comms in someone else's voice. Matching is exact, after trimming and case-folding.
+identities:
+  - alice@acme.example
+  - Alice Smith
+  - alice
+
+# Per-person comms voice (opt-in). The profile itself is RENDERED MARKDOWN at this path — it is a
+# writing-style document, not YAML. Absent block = feature off, and /ship behaves as it always has.
+voice:
+  path: voices/{profile_id}.md
+  profile_id: alice
+
+# The PORTABLE half of the "open my deliverables in my own apps" gate. A glob maps to a CATEGORY,
+# never to an application: `DataGrip` and `datagrip.desktop` are the same preference expressed on
+# two operating systems, so committing an app name here would follow this person to a Linux box and
+# silently fail. Which application fills each category is tier 3.
+viewer:
+  categories:
+    - glob: "*.sql"
+      category: sql-editor
+    - glob: "*.csv"
+      category: spreadsheet
+    - glob: "*.tsv"
+      category: spreadsheet

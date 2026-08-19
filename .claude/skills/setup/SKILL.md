@@ -17,6 +17,18 @@ One skill, three jobs: **configure a repo** (run once), **add a tool later** (`/
 **onboard a person** (`/setup --teammate`). Detect first, ask last: the goal is a working setup
 after **at most 5 questions**.
 
+
+> **SCOPE INVARIANT — team verbs write team config, person verbs write person config, and no mode
+> writes both.** `.claude/config/stack.yaml` is COMMITTED and SHARED, so it may only ever receive
+> TIER-1 values: which tool fills each seam, which data the team reads, the policies, the ticket
+> conventions. A detected MACHINE-LOCAL value — a named profile or connection from a tool's own
+> local config file, a home-directory mount path — must NEVER be written here: it would hand every
+> teammate one person's machine. Those belong in `.claude/config/connections.local.yaml` (tier 3,
+> gitignored); a person's portable settings belong in `people/<id>.yaml` (tier 2). Where a verify
+> command needs a personal value, write the `{token}` and leave the value to tier 3 — each adapter
+> declares which of its keys are personal in its `user_keys:` frontmatter.
+> `bash bin/verify_stack.sh` warns when a machine-local value is found in committed config.
+
 ## Mode: `--teammate` — onboard a person to an already-configured repo
 Follow [teammate.md](teammate.md): install checklist → per-tool auth walk-through → verify →
 read-the-map → guided first-ticket dry run. Requires an existing `stack.yaml`. When

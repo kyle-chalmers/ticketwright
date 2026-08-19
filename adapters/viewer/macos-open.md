@@ -3,6 +3,7 @@ seam: viewer
 tool: macos-open
 transport: cli          # LaunchServices via /usr/bin/open
 requires: []            # routes are per-user config, not stack.yaml — see viewer.example.yaml
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   No auth. `open` ships with macOS.
   Verify: `command -v open`.

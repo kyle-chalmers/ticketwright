@@ -58,6 +58,7 @@ packages = ["ticketwright"]
 ".claude/config/stack.example.no-warehouse.yaml" = "ticketwright/_kit/.claude/config/stack.example.no-warehouse.yaml"
 ".claude/config/stack.example.multi-warehouse.yaml" = "ticketwright/_kit/.claude/config/stack.example.multi-warehouse.yaml"
 ".claude/config/viewer.example.yaml" = "ticketwright/_kit/.claude/config/viewer.example.yaml"
+".claude/config/connections.example.yaml" = "ticketwright/_kit/.claude/config/connections.example.yaml"
 ".claude/settings.json.tmpl" = "ticketwright/_kit/.claude/settings.json.tmpl"
 ".claude/statusline.sh" = "ticketwright/_kit/.claude/statusline.sh"
 "adapters" = "ticketwright/_kit/adapters"

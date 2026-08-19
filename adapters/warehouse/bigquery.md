@@ -3,6 +3,7 @@ seam: warehouse
 tool: bigquery
 transport: cli         # `bq` CLI (gcloud SDK)
 requires: [project, dataset]   # stack.yaml seams.warehouse.{project, dataset, dev_target}
+user_keys: []             # tier-3 overridable: credentials live in gcloud ADC, not in config; project/dataset select data
 dev_key: dev_dataset    # legacy spelling of dev_target, still honored
 auth: |
   gcloud auth (ADC) + `bq` in PATH.

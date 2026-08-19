@@ -15,6 +15,7 @@
 # Config (first hit wins; none = feature off, exit 0 silently):
 #   1. <project>/.claude/config/viewer.local.yaml                  you, this repo   (gitignored)
 #   2. ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml  you, every repo
+#   2b. people/<id>.yaml (globs->categories) + connections.local.yaml (categories->apps)
 #   3. `seams.viewer` in <project>/.claude/config/stack.yaml       whole team       (committed)
 # Shape + all keys: .claude/config/viewer.example.yaml
 #
@@ -55,42 +56,48 @@ fi
 # make every single file look like it lives outside the project and get refused.
 if canon="$(cd "$proj" 2>/dev/null && pwd -P)"; then proj="$canon"; fi
 
-# ---- locate config --------------------------------------------------------------------------
-# PFX is the yq path prefix: "" for a standalone viewer file, ".seams.viewer" inside a stack.yaml.
-CFG=""; PFX=""
-user_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml"
-if   [ -f "$proj/.claude/config/viewer.local.yaml" ]; then CFG="$proj/.claude/config/viewer.local.yaml"; PFX=""
-elif [ -f "$user_cfg" ];                              then CFG="$user_cfg";                              PFX=""
-elif [ -f "$proj/.claude/config/stack.yaml" ] \
-     && grep -qE '^[[:space:]]+viewer:[[:space:]]*(#.*)?$' "$proj/.claude/config/stack.yaml"; then
-  CFG="$proj/.claude/config/stack.yaml"; PFX=".seams.viewer"
-fi
-if [ -z "$CFG" ]; then
+# ---- resolve config -------------------------------------------------------------------------
+# One call to the three-tier resolver replaces the old grep + `yq` ladder. The RESOLUTION ORDER is
+# unchanged for anyone who already has a config — `.claude/config/viewer.local.yaml` still wins —
+# with the composed tier-2/tier-3 form slotted in beneath it. See `viewer_plan()` in
+# bin/effective_config.py for why the new form is second and must prove itself usable first.
+#
+# `yq` is no longer required at all. It used to be, and a missing dev tool turned this courtesy
+# step into a "cannot resolve viewer routes" dead end.
+kit_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+resolver="$kit_root/bin/effective_config.py"
+[ -f "$resolver" ] || resolver="$(cd "$(dirname "$0")" && pwd)/effective_config.py"
+
+PLAN="$(mktemp)"; ROUTES="$(mktemp)"; TMPD="$(mktemp -d)"
+trap 'rm -rf "$TMPD" "$ROUTES" "$PLAN"' EXIT
+# The exit code is deliberately IGNORED. A repo can legitimately have viewer config and no
+# stack.yaml at all (the resolver reports `missing`, exit 3), and viewer config is per-user —
+# so a non-zero status must not discard a perfectly good plan. `field` treats an empty or
+# unparseable plan as "not configured", which is the correct fail-open behaviour here.
+python3 "$resolver" --root "$proj" --viewer-plan --quiet > "$PLAN" 2>/dev/null || true
+
+field() {  # field <key> — one scalar from the plan, empty when absent
+  python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+v = d.get(sys.argv[2])
+sys.stdout.write("" if v is None else str(v))' "$PLAN" "$1" 2>/dev/null
+}
+
+source_cfg="$(field source)"
+if [ -z "$source_cfg" ]; then
   # Not configured = the feature is off. Silent on stdout so a gate never nags; under --dry-run
   # the whole point is to explain, so say where config would go.
   [ $dry -eq 1 ] && note "no viewer config found — see .claude/config/viewer.example.yaml"
   exit 0
 fi
+# `enabled: false` is "configured to stay quiet"; never prompts again.
+[ "$(field enabled)" = "True" ] || exit 0
 
-# ---- read config ----------------------------------------------------------------------------
-# yq is the kit's existing seam reader (verify_stack.sh). Degrade soft when it is absent: a
-# missing dev tool must not turn a courtesy step into a hard failure.
-if ! command -v yq >/dev/null 2>&1; then
-  note "'yq' not installed — cannot resolve viewer routes. Files ready for review:"
-  printf '  %s\n' "${paths[@]}" >&2
-  exit 0
-fi
-yqv() { yq -r "${PFX}${1} // \"\"" "$CFG" 2>/dev/null; }
-
-# NOT `.enabled // "true"`: the `//` alternative operator treats a literal `false` as absent (same
-# semantics as jq), so the default would silently override the one value that must be honored.
-# Read it raw; null/missing simply falls through to enabled.
-enabled="$(yq -r "${PFX}.enabled" "$CFG" 2>/dev/null)"
-case "$(printf '%s' "$enabled" | tr '[:upper:]' '[:lower:]')" in
-  false|no|off|0) exit 0 ;;   # explicitly configured to stay quiet; never prompts again
-esac
-
-open_cmd="$(yqv .open_cmd)"; default_cmd="$(yqv .default_cmd)"; reveal_cmd="$(yqv .reveal_cmd)"
+open_cmd="$(field open_cmd)"; default_cmd="$(field default_cmd)"; reveal_cmd="$(field reveal_cmd)"
 [ -n "$default_cmd" ] || default_cmd="$open_cmd"
 if [ $reveal -eq 1 ] && [ -z "$reveal_cmd" ]; then
   note "config has no reveal_cmd; nothing to do"; exit 0
@@ -99,9 +106,15 @@ if [ $reveal -eq 0 ] && [ -z "$open_cmd" ] && [ -z "$default_cmd" ]; then
   note "config has no open_cmd; nothing to do"; exit 0
 fi
 
-ROUTES="$(mktemp)"; TMPD="$(mktemp -d)"
-trap 'rm -rf "$TMPD" "$ROUTES"' EXIT
-yq -r "${PFX}.routes[]? | [(.glob // \"\"), (.app // \"\")] | @tsv" "$CFG" 2>/dev/null > "$ROUTES" || true
+python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for r in d.get("routes") or []:
+    if isinstance(r, dict):
+        sys.stdout.write("%s\t%s\n" % (r.get("glob") or "", r.get("app") or ""))' "$PLAN" > "$ROUTES" 2>/dev/null || true
 
 # The unrouted group is spelled with a sentinel, never as an empty string: it becomes the LAST
 # grouping key whenever the last file matches no route, and `$(...)` strips trailing newlines —

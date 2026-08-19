@@ -63,7 +63,10 @@ seams:
         catalog: main
         schema: analytics
         dev_target: main_dev            # was `dev_catalog:`
-        profile: DEFAULT
+        # profile: — deliberately ABSENT. A ~/.databrickscfg profile name is
+        #   machine-local, so it belongs in .claude/config/connections.local.yaml
+        #   (tier 3). The {profile} token below resolves from there; with no tier-3
+        #   file the verify is SKIPPED with a warning rather than run literally.
         verify: "databricks --profile {profile} current-user me"
 
   chat:
@@ -80,7 +83,7 @@ seams:
     tool: gdrive
     adapter: adapters/docstore/gdrive.md
     transport: cli
-    base_path: "/path/to/your/Shared drives/Tickets"
+    drive_folder: "Shared drives/Tickets"   # team decision; mount_root is per-machine (tier 3)
     verify: "test -d \"{base_path}\""
 
   vcs:

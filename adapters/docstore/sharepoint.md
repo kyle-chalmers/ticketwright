@@ -2,7 +2,8 @@
 seam: docstore
 tool: sharepoint
 transport: cli         # OneDrive/SharePoint sync folder (filesystem), or MS Graph API
-requires: [base_path]  # stack.yaml seams.docstore.{base_path, drive_id?}
+requires: [drive_folder]  # stack.yaml seams.docstore.{drive_folder, drive_id?} (+ tier-3 mount_root)
+user_keys: [mount_root]   # tier-3 overridable: the local sync-folder prefix. `drive_folder` (which destination) is a team decision
 auth: |
   OneDrive/SharePoint sync mounted at base_path, OR a Graph API token (Files.ReadWrite.All).
   Verify (synced): `test -d "{base_path}"`.

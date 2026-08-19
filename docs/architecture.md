@@ -62,6 +62,40 @@ their repos). `bin/handoff.sh` resolves the layers and owns the rails — it nev
 a headless session, never opens a path outside the project, and is a silent no-op when nothing is
 configured. Details: [.claude/config/viewer.example.yaml](../.claude/config/viewer.example.yaml).
 
+## Config is three tiers behind one resolver
+
+`stack.yaml` is committed and shared, so a value true only on one machine does not belong in it — a
+real `/setup` run put a warehouse profile name and a hardcoded verify command into it, handing every
+teammate one person's machine. Config is therefore three files:
+
+| Tier | File | Committed? | Holds |
+|---|---|---|---|
+| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each seam, which data the team reads, the 10 policies |
+| 2 person, portable | `people/<id>.yaml` | yes | display name, identities, comms voice, file-type preferences |
+| 3 person, machine | `.claude/config/connections.local.yaml` | no | named profiles/connections, local mount roots |
+
+[`bin/effective_config.py`](../bin/effective_config.py) is the single authority that merges them, and
+every consumer goes through it — nothing parses `stack.yaml` on its own any more. It is a public CLI
+needing no agent-specific environment variable, so it answers the same way under any harness.
+
+**The scope rule is code, not documentation.** Tier 3 selects credentials and local paths; it can
+never change which catalog, schema, database or target is read, and it can never contribute a
+`policies:` block. Which keys are personal is declared per adapter in `user_keys:` frontmatter.
+Anything outside that allowlist is **rejected**, not ignored — a gitignored file nobody reviews must
+not be able to switch a safety gate off, and quietly discarding the attempt would be just as bad as
+honoring it.
+
+YAML is read by [`bin/_yamlite.py`](../bin/_yamlite.py), an explicit supported subset in stdlib
+Python that fails loudly with a `file:line` rather than misreading. That is what lets the resolver
+keep the kit's zero-runtime-dependency promise, and it is why `bin/verify_stack.sh` no longer
+requires `yq`.
+
+**Two deliberate exceptions.** `db_write_guard` and its `_stack` helper still read the policy
+in-process. Routing them through a subprocess resolver would turn their failure mode from fail-safe
+(an unreadable policy gates MORE) into fail-open, because the hook wraps everything in a blanket
+"never block a session" handler. The reasoning is written at the top of `.claude/hooks/_stack.py`,
+and a selftest asserts the guard still gates with the resolver deleted.
+
 ## Policy enforcement (hooks)
 
 Policies are only as good as the agent's memory unless something enforces them. The plugin ships

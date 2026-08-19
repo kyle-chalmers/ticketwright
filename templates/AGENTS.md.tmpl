@@ -35,6 +35,33 @@ warehouse, no chat, …) drop out of this table; skills skip them cleanly. Skill
 verbs and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI,
 or ID in a skill**; put it in the config/adapter.
 
+## Reading config — always through the resolver
+Config lives in THREE tiers, and only the first is committed team config:
+
+| Tier | File | Holds |
+|---|---|---|
+| 1 team | `.claude/config/stack.yaml` | which tool fills each seam, which data the team reads, policies, ticket conventions |
+| 2 person, portable | `people/<id>.yaml` (committed) | display name, identities, comms voice, file-type preferences |
+| 3 person, machine | `.claude/config/connections.local.yaml` (gitignored) | named profiles/connections, local mount roots |
+
+**Never read `stack.yaml` directly.** Raw file, raw answer: you would see the team's values and miss
+every personal and machine override, which is exactly the case the tiers exist for. Read the merged
+result instead — and note the resolver may report a value the raw file does not contain at all, such
+as a docstore `base_path` composed from a team folder and your own mount root:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --root . --json
+```
+
+It needs no agent-specific environment variable, so this works under any harness. `provenance` names
+which tier supplied each key. Exit codes: 0 ok · 3 missing · 4 malformed · 5 stale · 6 prohibited
+override.
+
+Tier 3 selects CREDENTIALS AND LOCAL PATHS ONLY. It can never change which catalog, schema,
+database or target is read — two teammates must never silently read different data — and it can
+never contribute a `policies:` block, so a gitignored file no one reviews cannot switch a safety
+gate off. Both rules are enforced in code, not documented: a violation is rejected, not ignored.
+
 ## Permission hierarchy
 **No permission needed (internal):** read queries / data exploration; reading/searching/writing files
 in the repo; local analysis + output.
@@ -98,7 +125,7 @@ are byte-identical.
 Tracker comment <{{wl_tracker_comment}} words · chat <{{wl_chat}} · PR <{{wl_pr}} · new ticket
 <{{wl_ticket}}>. Tracker comments: business-first, segmented with counts/%/$, link the specific
 docstore file. Chat: include {{chat_always_include}}; hyperlink everything; default to draft.
-When a **voice profile** is configured for the shipper (`project.voice_profiles`), `/ship` phrases
+When a **voice profile** is configured for the shipper (a `voice:` block in `people/<id>.yaml`), `/ship` phrases
 comms drafts to match it — but only *within* the limits above; the profile never overrides a word
 cap, a hyperlink, or the include-list. No profile ⇒ drafting is unchanged. Build one with
 `/setup --voice`.

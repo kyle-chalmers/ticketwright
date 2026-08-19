@@ -3,6 +3,7 @@ seam: warehouse
 tool: redshift
 transport: cli         # `aws redshift-data` (Data API) or `psql` (Redshift speaks the pg wire protocol)
 requires: [database]   # stack.yaml seams.warehouse.{database, workgroup_name | cluster_identifier, dev_target}
+user_keys: []             # tier-3 overridable: AWS credentials come from the environment; workgroup/cluster/database select data
 dev_key: dev_schema     # legacy spelling of dev_target, still honored
 auth: |
   Data API: AWS creds (`aws sts get-caller-identity`) + Secrets Manager/IAM for the DB. **Serverless**

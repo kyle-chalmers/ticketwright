@@ -16,14 +16,19 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
 ## Steps
 
 1. **Identify the person.** Take the name from the argument, else resolve the current shipper:
-   `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/resolve_user.py" --json`. Settle on a
+   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json`. Settle on a
    short `profile_id` (their `assignee_dir` short-name is a fine default — but this keys on the
    *person*, not the ticket-owner folder).
 
-2. **Wire the config (ask before writing).** If `project.voice_profiles` is absent, add it to
-   `stack.yaml`: a `path` and a `map` from this person's local identities → `profile_id`. Add every
-   identity `resolve_user.py` would see — `git config user.email`, `git config user.name`, and their
-   `$USER` — so resolution is deterministic on their machine. This block is what turns the feature on.
+2. **Wire the config (ask before writing).** Write `people/<id>.yaml` — TIER 2, person-scoped and
+   committed — from `templates/person.yaml.tmpl`: `identities:` listing every identity
+   `resolve_user.py` would see (`git config user.email`, `git config user.name`, and their `$USER`)
+   plus a `voice:` block with `path` and `profile_id`. Enumerate every identity so resolution is
+   deterministic on their machine. That file is what turns the feature on.
+   **Do not write `project.voice_profiles` into `stack.yaml`.** That block puts one person's work
+   email and display name into committed TEAM config — it is person data in a team artifact, which
+   is the leak the three-tier split exists to remove. It is still READ, so an existing repo keeps
+   working, but nothing should create a new one.
    While here, offer to set `seams.chat.include_self: true` so their chat messages also @-mention
    them (in addition to `always_include`, never replacing it).
 

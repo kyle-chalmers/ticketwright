@@ -3,6 +3,7 @@ seam: chat
 tool: slack
 transport: mcp         # MCP ({mcp}) tools only
 requires: [mcp]        # stack.yaml seams.chat.{mcp, default_channel, default_mode, always_include}
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   The `slack` MCP server must be connected. Verify with a read-only search.
   Verify: a `mcp__{mcp}__slack_search_channels` call returns without error.

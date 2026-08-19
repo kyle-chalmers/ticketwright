@@ -3,6 +3,7 @@ seam: viewer
 tool: windows-start
 transport: cli          # cmd.exe START / Explorer shell verbs
 requires: []            # routes are per-user config, not stack.yaml — see viewer.example.yaml
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   Runs from Git Bash, MSYS2, or WSL with interop enabled. No auth.
   Verify: `command -v cmd.exe` (WSL/Git Bash) or `command -v explorer.exe`.

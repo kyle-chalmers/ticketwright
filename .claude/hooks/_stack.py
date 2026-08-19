@@ -13,6 +13,31 @@ Two properties matter more than convenience here:
 2. **Block-scoped lookups.** `_block_lines` walks indentation rather than pattern-matching
    across the whole document, so a key is read from the block that actually owns it.
 
+DO NOT "FINISH THE MIGRATION" BY ROUTING THIS THROUGH bin/effective_config.py. Every other config
+consumer in the kit now reads through that resolver; these two hooks deliberately do not, and the
+reasons are safety reasons, not inertia:
+
+1. **Fail-safe would become fail-open.** The policy is read IN-PROCESS here, and a missing or
+   unparseable value resolves to `MODE_ALL` — a parse failure gates MORE. But `db_write_guard.main`
+   wraps everything in `except Exception: return 0` ("a guard must never block a session"), against
+   a 10s hook budget. Shell out to a resolver and a subprocess error, a timeout, or an unmapped exit
+   code all land in that blanket handler and gate NOTHING — silently, because the hook never reports
+   its own malfunction, and shipped to every repo at once by `autoUpdate`.
+2. **It could only ever relax the guard.** `_block_lines` matches `^\s*policies:\s*$` only, so a
+   FLOW-style `policies: {db_write_requires_approval: off}` is unreadable here and therefore fails
+   CLOSED. A resolver reads flow mappings — the same file would resolve to `off` and disable the
+   guard outright. The asymmetry runs one way, and it is the wrong way.
+3. **There is nothing to gain.** `policies:` is un-mergeable at every tier and seam `cli:` is a
+   reserved key, so the resolver would return byte-identical values. All risk, no benefit.
+4. **A resolver would break a deliberate guardrail.** `db_write_guard.target_cli` is biased toward
+   silence on config shapes it cannot read confidently, because a FALSE wrong-warehouse prompt is
+   worse than a missed one. Some of those shapes (a flow-style `targets:` mapping) are valid YAML
+   the resolver parses fine — so "resolver first, this scanner as a fallback" would not fall back at
+   all, and would start emitting exactly the false prompts that design avoids.
+
+selftest asserts the guard still yields `MODE_ALL` with `bin/effective_config.py` deleted and with
+it stubbed to exit non-zero. If you change this, that test is what should stop you.
+
 Seam blocks are *not* handled here — `db_write_guard.seam_block` already does that, with
 harder-won handling for inferred indent, anchors, flow mappings, and block scalars. This
 module covers the top-level `policies:` mapping only; duplicating a second seam parser

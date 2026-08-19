@@ -2,7 +2,8 @@
 seam: docstore
 tool: gdrive
 transport: cli         # filesystem copy into the mounted Google Drive (CloudStorage)
-requires: [base_path]  # stack.yaml seams.docstore.base_path
+requires: [drive_folder]  # stack.yaml seams.docstore.drive_folder (+ tier-3 mount_root)
+user_keys: [mount_root]   # tier-3 overridable: the local CloudStorage mount prefix. `drive_folder` (which destination) is a team decision
 auth: |
   Google Drive for Desktop must be mounted at the CloudStorage path.
   Verify: `test -d "{base_path}"`.

@@ -4,6 +4,7 @@ tool: github-issues
 transport: cli         # `gh issue` (GitHub CLI); REST/GraphQL as fallback
 requires: [repo]       # stack.yaml seams.tracker.{repo, done_label?}  (repo = "owner/name")
 container_key: seams.tracker.repo   # which config key a ranked container fills (see rank_projects_by_activity)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   `gh auth login` (or `GH_TOKEN`). Verify: `gh auth status`.
 note: |
