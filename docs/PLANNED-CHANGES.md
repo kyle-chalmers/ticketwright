@@ -71,6 +71,16 @@ So "keep selftest green" is NOT a free constraint. Any prompt that adds an adapt
 restructures README/architecture MUST update those counts and preserve those tokens IN THE SAME
 CHANGE. Where a prompt below hits this, it says so explicitly.
 
+## THIS FILE IS PUBLIC. USE FIXTURE IDENTIFIERS ONLY.
+This document lives in a public repo. An earlier revision carried a real `~/.databrickscfg` profile
+name in three places and a real work username in a fourth, taken from an actual setup run, and it was
+published before anyone noticed. It has been scrubbed, but a force-push does NOT un-publish: orphaned
+commits stay fetchable by SHA, so the old content is still retrievable from history.
+So: when illustrating "a real run produced X", invent X. Never paste an account name, workspace host,
+warehouse id, role, profile, username, channel id, or absolute home-directory path from a real
+environment into this file or any prompt derived from it. The illustration works identically with a
+fixture value, and a fixture cannot be leaked.
+
 ## Standing constraints
 - `bin/selftest.sh` must pass. It is at 338 cases as of this writing and the count SHOULD grow —
   never treat a number as the target, and see the trap above.
@@ -876,6 +886,14 @@ PROMPT 5. Put both verdicts in the PR body.
    `adapters/README.md` does not list one in the frontmatter contract. Either add `status:` to the
    contract and populate it, or delete the promise. Do not leave a warning the kit cannot emit.
 
+2c. NEW CONTRACT SURFACE, already shipped — read it before generalizing over tracker config. Each
+   tracker adapter now declares `container_key:` frontmatter naming the dotted config path that a
+   chosen container fills, following the existing `dev_key:` precedent so adapters spell their own key
+   and skills never hardcode one. It is deliberately NOT universal: jira fills `project.key_prefix`
+   (a `project:` key), while azure-devops fills `seams.tracker.project` and leaves `key_prefix`
+   display-only. Anything that reasons about "the tracker's project" must read `container_key:` rather
+   than assume a single key exists.
+
 2. `/setup` asks for a tracker and a ticket key prefix but never checks whether the corresponding
    project is ALIVE. In a real run the Jira project whose name matched the repo best had exactly one
    issue ever, still in Backlog, while two others had 100+ updates in 90 days.
@@ -904,6 +922,20 @@ PROMPT 6. Put both verdicts in the PR body.
 Depends on PROMPT 1 (research + adapters + kit-location CLI) and on PROMPTS 2–5 having settled
 canonical behavior. Now make it actually installable and runnable elsewhere.
 
+0. USE THE CURRENT RUNTIME NAMES. Two of the seven renamed during this project: Gemini CLI was
+   RETIRED 2026-06-18 and replaced by Antigravity (invoked as `agy`), though orgs on a Gemini Code
+   Assist Standard/Enterprise licence keep the legacy CLI; and Windsurf became Devin on 2026-06-02,
+   with Cascade superseded by Devin Local. The adapters are `antigravity.md` (alias: `gemini-cli`) and
+   `devin.md` (aliases: `windsurf`, `devin-desktop`), with the aliases asserted so `--runtime
+   gemini-cli|windsurf` keeps working. Wherever this prompt or its docs name the runtimes, use the new
+   names and keep the aliases.
+
+0b. CURSOR ALREADY READS OTHER RUNTIMES' DIRECTORIES. It reads `.cursor/skills` AND `.claude/skills`
+   AND `.codex/skills`, so a kit installed for Claude Code is already partly visible to Cursor with no
+   second install. Decide deliberately whether `--runtime cursor` emits a third copy or simply
+   verifies the existing one is reachable — emitting duplicates into three directories the same client
+   reads is how a stale copy starts silently winning.
+
 1. INSTALLER: `bin/install.sh --runtime <name> [--global|--local]`, emitting runtime-native artifacts
    from the canonical source. Claude Code keeps its plugin manifest; Codex gets `SKILL.md` files at
    its skills root; others per their PROMPT 1 adapter. Document that hand-copying is unsupported —
@@ -919,6 +951,31 @@ canonical behavior. Now make it actually installable and runnable elsewhere.
    or document what is lost. Note `disable-model-invocation` has real safety meaning for `ship`,
    `setup` and `productize` — if a runtime cannot express "user-invocable only", say so rather than
    silently making those model-invocable.
+
+3b. ⚠ THE GATING PICTURE IS AN INVERSION, NOT A RANKING — and the ask tier is the part that matters.
+   Established by PROMPT 1's research (re-verify before relying on it; runtime docs move fast and two
+   product names changed mid-project):
+     - AN `ask` TIER EXISTS ON: Claude Code, Cursor, Antigravity (whose PreToolUse is strictly RICHER
+       than Claude Code's — allow, deny, ask, force_ask, deny_unless_prior_grant).
+     - IT DOES NOT EXIST ON: Codex CLI, OpenCode, Devin (approve/block only).
+   `db_write_requires_approval` DEFAULTS to `high_risk`, which is precisely a middle setting: ask for
+   the irreversible, run the additive. On three runtimes that middle has NO NATIVE EXPRESSION, so the
+   installer must COLLAPSE it — and which way it collapses is a safety decision, not a config detail:
+     - collapse toward DENY and additive statements start getting blocked, which trains users to
+       disable the guard;
+     - collapse toward ALLOW and the policy's whole purpose is gone while the config still says
+       `high_risk`.
+   PROMPT 7 must state which collapse each runtime got AND surface it to the user, so nobody reads
+   `high_risk` in their stack.yaml and believes they have a behaviour their runtime cannot provide.
+   Two more inversions worth encoding rather than averaging:
+     - Antigravity has the richest gating and NO session-start event at all (five events, all per-turn
+       or per-invocation). The session-start hooks people cite belong to a separate SDK product.
+     - Devin is the mirror: it HAS SessionStart with additionalContext, but its PreToolUse FAILS OPEN
+       by documented design (exit 0 continues, exit 2 blocks, any other nonzero is logged and does not
+       block). Cursor also fails open unless `failClosed: true` — treat that as REQUIRED CONFIGURATION
+       the installer sets, not a footnote.
+   So "richer hooks" and "has a session hook" are independent axes. Do not collapse them into a single
+   capability score.
 
 4. DEGRADE THE HOOKS HONESTLY. The four hooks do real work: `db_write_guard` (the ONLY mechanical
    enforcement of `db_write_requires_approval`), `session_context`, `ticket_index_context`,

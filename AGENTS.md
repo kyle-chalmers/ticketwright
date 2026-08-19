@@ -11,6 +11,35 @@ GitHub account (see PAT routing in `~/.claude/CLAUDE.md`), shipped two ways from
 - a **Claude Code plugin** (`.claude-plugin/`), and
 - a **PyPI package** (`ticketwright/`) whose wheel bundles the kit under `ticketwright/_kit/`.
 
+## Mission and vision: the tiebreakers
+
+**Mission.** Ticketwright empowers a team to do a high volume of analysis without letting quality slide, on whatever tools they already use.
+
+**Vision.** Any new or experienced member can pick up any analysis and be productive the same day, because the team's past work is written down and organized, and AI can trace it.
+
+These are not decoration. Cite them in review. When a change to this kit is ambiguous, they decide it:
+
+1. **The lifecycle is fixed; the tools are not.** Supporting a new tool means a new adapter or a new
+   named target inside an existing seam, never a tool name inside a skill. If a change makes a skill
+   know which vendor it is talking to, it is the wrong change.
+2. **Volume is only worth having if the quality holds.** The mission is a conjunction, and the second
+   half is the one under pressure. A change that raises throughput by making a check skippable is a
+   regression, however much faster it feels.
+3. **A phase that leaves no reusable record is not finished.** The enrich step, the QC verdict, the
+   written assumptions and the object index are the product, not overhead on the way to it.
+4. **The record has two readers.** Every artifact is consumed by a person *and* by an agent. A feature
+   only one of them can use is half-built, and which is which should be stated honestly rather than
+   implied.
+5. **"On whatever tools they already use" includes the agent.** Logic belongs in harness-neutral CLIs
+   under `bin/`; hooks and skills are presentation. Any behavior whose *correctness* depends on a
+   Claude-specific lifecycle callback is broken for most of the field.
+6. **Safety gates get more visible, never more convenient.** Anything making an external post or a
+   destructive write easier must make it more legible at the same time. Where a runtime cannot enforce
+   a policy mechanically, say so plainly instead of implying parity.
+7. **Reuse beats rebuild, here too.** Before adding a mechanism, check whether the kit already has one
+   doing the job. The per-user viewer config, the multi-target seam shape, `dev_key:`/`container_key:`
+   frontmatter, and recall's `--owner` disambiguation are existing answers to extend, not duplicate.
+
 ## Commands
 
 ```bash
