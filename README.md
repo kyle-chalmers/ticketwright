@@ -28,7 +28,7 @@ question, and an agent can trace an object or a decision back to every ticket th
 
 ---
 
-**Ticketwright turns a Claude Code session into a careful data analyst.** It's built for the broad
+Ticketwright is built for the broad
 group of people who touch and interact with data — analysts, BI, ops, research, reporting — and it
 works for any team storing ticket- or task-driven analysis work in a repo, database or not.
 Install it per repo, point it at your team's work, and it:
