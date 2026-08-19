@@ -3499,5 +3499,204 @@ stubp="$(grep -rn 'status: stub' .claude/skills/ 2>/dev/null || true)"
   && ok "no skill promises a status: stub warning (no adapter carries the key)" \
   || bad "a skill still promises the status: stub warning" "$stubp"
 
+hdr "37 · resolver target selection (--seam/--target) + the /ship approval-plan feed"
+# /ship's Phase B now prints a RESOLVED delivery plan — target, destination, recipients — so the
+# human authorizes the plan, not the word "ship". These assertions cover the CLI that feeds that
+# rendering (adapters/README.md § Selecting a target from config). The hard edge under test: an
+# unresolvable NAME is exit 8 and never a fallback to another target, because once chat holds
+# targets the fallback may be the external audience.
+EC37="$KIT/bin/effective_config.py"
+S37="$TMP/sel37"; mkdir -p "$S37/.claude/config"
+cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$S37/.claude/config/stack.yaml"
+sel() {  # sel <root> [args...] -> $SELOUT + $SELRC
+  local d="$1"; shift
+  SELOUT="$(python3 "$EC37" --root "$d" --person alice --quiet "$@" 2>/dev/null)"; SELRC=$?
+}
+jget() { printf '%s' "$SELOUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
+
+# --- selection: default vs explicit -------------------------------------------------------------
+sel "$S37" --seam warehouse
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['target']")" = "prod" ] \
+  && [ "$(jget "d['selected_by']")" = "default" ] && [ "$(jget "d['is_default']")" = "True" ]; } \
+  && ok "--seam alone selects the seam's default: target" \
+  || bad "default selection wrong" "rc=$SELRC target=$(jget "d.get('target')")"
+sel "$S37" --seam warehouse --target lake
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['selected_by']")" = "explicit" ] \
+  && [ "$(jget "d['tool']")" = "databricks" ] && [ "$(jget "d['values']['catalog']")" = "main" ]; } \
+  && ok "--target selects explicitly, the target's own keys winning" \
+  || bad "explicit selection broken" "rc=$SELRC"
+
+# --- inheritance is keyed on ABSENCE; an explicit verify: null is a skip, not a fall-through ------
+INH="$TMP/sel37-inh"; mkdir -p "$INH/.claude/config"
+cat > "$INH/.claude/config/stack.yaml" <<'YAML'
+project:
+  key_prefix: ENG
+seams:
+  warehouse:
+    default: prod
+    cli: fixture-cli
+    verify: "fixture-seam-cmd"
+    targets:
+      prod:
+        tool: snowflake
+        adapter: adapters/warehouse/snowflake.md
+      lake:
+        tool: databricks
+        adapter: adapters/warehouse/databricks.md
+        cli: lake-cli
+        verify: null
+YAML
+sel "$INH" --seam warehouse
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['values']['cli']")" = "fixture-cli" ] \
+  && [ "$(jget "d['verify']")" = "fixture-seam-cmd" ]; } \
+  && ok "a target inherits the seam-level keys it does not define" \
+  || bad "seam-scalar inheritance broken in selection" "rc=$SELRC cli=$(jget "d['values'].get('cli')")"
+sel "$INH" --seam warehouse --target lake
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['values']['cli']")" = "lake-cli" ] \
+  && [ "$(jget "d['verify']")" = "None" ] && [ "$(jget "d['values']['verify']")" = "None" ]; } \
+  && ok "…and an explicit verify: null stays null — a skip, never the seam's command" \
+  || bad "verify: null fell through to the seam command" "verify=$(jget "d.get('verify')")"
+
+# --- an unresolvable name is a hard error, never a fallback ---------------------------------------
+sel "$S37" --seam warehouse --target ghost
+{ [ "$SELRC" -eq 8 ] && [ "$(jget "d['error']['code']")" = "no_such_target" ] \
+  && [ "$(jget "'values' in d")" = "False" ] \
+  && [ "$(jget "'prod' in d['error']['configured'] and 'lake' in d['error']['configured']")" = "True" ]; } \
+  && ok "an unknown target is exit 8 naming the configured names — no values, no fallback" \
+  || bad "an unknown target did not hard-error (the wrong-warehouse failure)" "rc=$SELRC"
+NODEF="$TMP/sel37-nodef"; mkdir -p "$NODEF/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    targets:\n      prod:\n        tool: snowflake\n        adapter: adapters/warehouse/snowflake.md\n        verify: null\n' \
+  > "$NODEF/.claude/config/stack.yaml"
+sel "$NODEF" --seam warehouse
+{ [ "$SELRC" -eq 8 ] && [ "$(jget "'values' in d")" = "False" ]; } \
+  && ok "targets: with no default: is exit 8 — first-listed is a display convention, not a pick" \
+  || bad "a missing default silently selected a target" "rc=$SELRC"
+# A malformed default (a list is UNHASHABLE, so an unguarded targets.get() raises) must fail the
+# selection cleanly, not crash — and must not block an explicit --target that names a real one.
+BADDEF="$TMP/sel37-baddef"; mkdir -p "$BADDEF/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    default: [prod]\n    targets:\n      prod:\n        tool: snowflake\n        adapter: adapters/warehouse/snowflake.md\n        verify: null\n' \
+  > "$BADDEF/.claude/config/stack.yaml"
+sel "$BADDEF" --seam warehouse
+{ [ "$SELRC" -eq 8 ] && [ "$(jget "d['error']['code']")" = "no_such_target" ]; } \
+  && ok "a non-string default: is exit 8 with a clean error, never a traceback" \
+  || bad "a malformed default: crashed or resolved the selection" "rc=$SELRC"
+sel "$BADDEF" --seam warehouse --target prod
+[ "$SELRC" -eq 0 ] \
+  && ok "…and an explicit --target still resolves past the broken pointer" \
+  || bad "a malformed default: blocked an explicit valid selection" "rc=$SELRC"
+sel "$S37" --seam chat --target ghost
+[ "$SELRC" -eq 8 ] \
+  && ok "an explicit --target on a single-mapping seam is exit 8" \
+  || bad "a single-mapping seam accepted a target name" "rc=$SELRC"
+sel "$S37" --seam nosuch
+{ [ "$SELRC" -eq 7 ] && [ "$(jget "d['error']['code']")" = "no_such_seam" ] \
+  && [ "$(jget "'chat' in d['error']['configured']")" = "True" ]; } \
+  && ok "an unconfigured seam is exit 7, distinct from a bad target (callers may degrade on 7 only)" \
+  || bad "no_such_seam is not distinguishable from a bad target" "rc=$SELRC"
+python3 "$EC37" --root "$S37" --target lake --quiet >/dev/null 2>&1
+[ $? -eq 2 ] && ok "--target without --seam is a usage error (exit 2)" \
+             || bad "--target without --seam was accepted"
+# Presence must be is-not-None: an EMPTY name is a usage error, never a silent fall-through to the
+# full-config output (where a caller would read a healthy exit 0 as a successful selection).
+python3 "$EC37" --root "$S37" --seam warehouse --target "" --quiet >/dev/null 2>&1
+[ $? -eq 2 ] && ok "--target '' is a usage error, not a fall-through" \
+             || bad "an empty --target slipped past the usage check"
+python3 "$EC37" --root "$S37" --seam "" --json --quiet >/dev/null 2>&1
+[ $? -eq 2 ] && ok "--seam '' with another output mode is a usage error, not a fall-through" \
+             || bad "an empty --seam slipped past the output-mode exclusivity check"
+M37="$TMP/sel37-missing"; mkdir -p "$M37"
+sel "$M37" --seam warehouse
+[ "$SELRC" -eq 3 ] \
+  && ok "a missing stack keeps exit 3 — never misreported as a missing seam" \
+  || bad "selection masked a missing stack.yaml" "rc=$SELRC"
+BADYAML="$TMP/sel37-badyaml"; mkdir -p "$BADYAML/.claude/config"
+printf 'seams: &anchor\n  warehouse: {}\n' > "$BADYAML/.claude/config/stack.yaml"
+sel "$BADYAML" --seam warehouse
+[ "$SELRC" -eq 4 ] \
+  && ok "a malformed stack keeps exit 4 — the load failure outranks the selection codes" \
+  || bad "selection masked a malformed stack.yaml" "rc=$SELRC"
+# A `targets:` key that is NOT a mapping (null, a list) must never resolve as a single mapping —
+# that would bypass every named-target rule downstream, including /ship's halt.
+BADTGT="$TMP/sel37-badtargets"; mkdir -p "$BADTGT/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    targets: null\n' \
+  > "$BADTGT/.claude/config/stack.yaml"
+sel "$BADTGT" --seam chat
+{ [ "$SELRC" -eq 8 ] && [ "$(jget "'values' in d")" = "False" ]; } \
+  && ok "targets: null is exit 8, never a quiet single mapping" \
+  || bad "a malformed targets: key resolved as a single mapping (halt bypass)" "rc=$SELRC"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    targets: [a, b]\n' \
+  > "$BADTGT/.claude/config/stack.yaml"
+sel "$BADTGT" --seam chat
+[ "$SELRC" -eq 8 ] \
+  && ok "targets: as a list is exit 8, never a quiet single mapping" \
+  || bad "a list-valued targets: key resolved as a single mapping" "rc=$SELRC"
+
+# --- selection sees the MERGED config, and the scope rule still binds inside it -------------------
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: my-profile\n' \
+  > "$S37/.claude/config/connections.local.yaml"
+sel "$S37" --seam warehouse --target lake
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['values']['profile']")" = "my-profile" ] \
+  && [ "$(jget "'my-profile' in (d['verify'] or '')")" = "True" ]; } \
+  && ok "a declared user_key from tier 3 reaches the selected values and the verify command" \
+  || bad "selection reads raw rather than merged config" "rc=$SELRC"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' \
+  > "$S37/.claude/config/connections.local.yaml"
+sel "$S37" --seam warehouse --target lake
+{ [ "$SELRC" -eq 6 ] && [ "$(jget "d['values']['catalog']")" = "main" ] \
+  && [ "$(jget "d['errors'][0]['code']")" = "prohibited_override" ]; } \
+  && ok "a tier-3 override of a target's logical keys is still rejected — selection never masks exit 6" \
+  || bad "selection mode let a machine file change logical data selection" "rc=$SELRC catalog=$(jget "d['values'].get('catalog')")"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: "x; touch %s/PWNED37"\n' "$TMP" \
+  > "$S37/.claude/config/connections.local.yaml"
+rm -f "$TMP/PWNED37"
+sel "$S37" --seam warehouse --target lake
+{ [ "$(jget "d['verify']")" = "None" ] && [ "$(jget "'profile' in d['unsafe']")" = "True" ] \
+  && [ ! -f "$TMP/PWNED37" ]; } \
+  && ok "a tier-3 value with shell metacharacters nulls the emitted command (the #30 refusal, inherited)" \
+  || bad "an injected tier-3 value left the CLI inside a command string" "verify=$(jget "d.get('verify')")"
+rm -f "$S37/.claude/config/connections.local.yaml"
+
+# --- the values /ship's approval block renders, from a fixture config -----------------------------
+# The skill itself is prose a model executes, so the mechanically testable behavior is the exact
+# feed it renders from: the resolved channel, recipient list, tool and destination.
+sel "$S37" --seam chat
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['selected_by']")" = "single" ] \
+  && [ "$(jget "d['target']")" = "None" ] && [ "$(jget "d['tool']")" = "slack" ] \
+  && [ "$(jget "d['values']['default_channel']")" = "C0XXXXXXXXX" ] \
+  && [ "$(jget "d['values']['always_include']")" = "['Alice']" ] \
+  && [ "$(jget "d['values']['default_mode']")" = "draft" ]; } \
+  && ok "/ship's chat plan line resolves channel + recipient list + mode from config, not memory" \
+  || bad "the chat approval feed is wrong" "rc=$SELRC $(jget "d.get('values',{}).get('default_channel')")"
+sel "$S37" --seam docstore
+{ [ "$SELRC" -eq 0 ] && [ "$(jget "d['tool']")" = "gdrive" ] \
+  && [ "$(jget "d['values']['drive_folder']")" = "Shared drives/Tickets" ]; } \
+  && ok "/ship's docstore plan line resolves the destination from config" \
+  || bad "the docstore approval feed is wrong" "rc=$SELRC"
+# PROSE WIRING PINS, not behavior: the skill is prose a model executes, so what these prove is only
+# that the instructions still say what the resolver assertions above make true. The behavioral half
+# of "the approval block renders resolved values" is the --seam feed tested above.
+ship37="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
+{ grep -q 'effective_config.py --seam' .claude/skills/ship/SKILL.md \
+  && grep -qi 'resolved delivery plan' <<<"$ship37" && grep -qi 'recipient list' <<<"$ship37" \
+  && grep -qi 'sharing scope' <<<"$ship37" && grep -q 'HARD HALT' .claude/skills/ship/SKILL.md \
+  && grep -q 'stop and wait' .claude/skills/ship/SKILL.md \
+  && grep -q 'disable-model-invocation: true' .claude/skills/ship/SKILL.md; } \
+  && ok "/ship's prose wires the selection call and keeps the hard halt + disable-model-invocation (wiring pin)" \
+  || bad "/ship's approval rendering or its safety lines regressed"
+# The preview==execution rule: /ship must halt on a multi-target chat/docstore seam rather than
+# render a target its own steps would not deliver to (wiring pin for the authorization-mismatch fix).
+grep -qi 'authorization mismatch' .claude/skills/ship/SKILL.md \
+  && ok "/ship states the halt-on-named-targets rule (preview must equal execution)" \
+  || bad "/ship may render a target-aware route its execution steps do not take"
+h37="$(python3 "$EC37" --help 2>&1)"
+{ grep -q -- '--seam' <<<"$h37" && grep -q -- '--target' <<<"$h37" \
+  && grep -q -- '--seam' adapters/README.md && grep -q 'delivery-plan.yaml' adapters/README.md \
+  && grep -q 'sharing_scope' adapters/README.md; } \
+  && ok "the published contract names flags the binary actually has, and the delivery-plan schema" \
+  || bad "docs and binary disagree on the selection contract"
+grep -q 'no others' .claude/config/stack.schema.md \
+  && bad "stack.schema.md still claims the five seams are exclusive ('no others')" \
+  || ok "the schema's false exclusivity claim is gone (viewer + runtime acknowledged)"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

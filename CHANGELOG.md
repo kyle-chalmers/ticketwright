@@ -7,6 +7,31 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **Target selection is now a resolver mode, and `/ship` prints the resolved plan it feeds.**
+  `bin/effective_config.py --seam <name> [--target <name>]` selects one tool slot — the seam's
+  `default:` target, or an explicitly named one — and emits a single JSON object with inheritance
+  and the tier overlays applied (an explicit `verify: null` on a target stays a skip). An
+  unresolvable name is a hard error naming the configured targets — exit `7` for an unconfigured
+  slot (callers may degrade), exit `8` for an unknown target or a missing/invalid `default:`
+  (always a halt, never a fallback) — and the emitted `verify` is `null` whenever a token is
+  unresolved or carries shell metacharacters, so no half-interpolated or injected command string
+  ever leaves the CLI. `/ship`'s Phase B now renders the RESOLVED delivery plan from that mode —
+  target (rendered as `single` until named targets are routable), destination, channel, the full
+  recipient list, sharing scope, the exact ordered actions — so the human authorizes the plan, not
+  the word "ship"; a named-targets chat/docstore seam is a halt there, because rendering a target
+  the execution steps cannot route to yet would be an authorization mismatch. The full selection
+  contract and the
+  persisted `delivery-plan.yaml` schema (audience, classification, chosen targets, destination,
+  sharing scope) are published in `adapters/README.md` § Multi-target seams ahead of the
+  chat/docstore routing release that implements them. Selftest section 37 covers the selection
+  behavior end to end.
+
+### Fixed
+- **`stack.schema.md` no longer claims the five seam keys are exclusive.** The "no others" language
+  was already false — an optional `viewer:` entry is documented in the same file, and runtime
+  adapters exist without being `stack.yaml` entries at all. The schema now states the accurate
+  picture: five tool slots with verb contracts, a generic `targets:` shape on any slot, and
+  per-slot operational support stated explicitly (today only `warehouse` is routed by skills).
 - **`/setup`'s verbs now split by scope, and teammates are auto-routed.** Modes divide by WHO the
   config is about: team modes (the default repo configuration and the new canonical
   `/setup tool <chat|docstore|warehouse>`) write the team's committed stack; person modes
