@@ -876,6 +876,13 @@ the graph, cross-references, branch names, and CLI UX across every skill.
 Already works: `bin/build_ticket_index.py` discovers owners generically by walking `tickets/<owner>/`
 one level down and keys rows by `(owner, id)`.
 
+⚠ DO NOT RESTORE THE HEADLESS MODEL CALL IN `/ship`. Wave A removed it deliberately: enrichment fed
+tracker-sourced README text to a tool-capable agent BEFORE `/ship`'s own external-action gate, and
+making the model command pluggable widened that from one binary to five. You own `ship/SKILL.md`, so
+you will see the gap where it used to be. It is not an oversight. `bin/selftest.sh` asserts both that
+`/ship` no longer invokes it and that the reason is still written down, so restoring it fails the
+suite — but read the reason before working around the assertion.
+
 What breaks:
 - Graph aggregation keys by BARE id (`bin/build_ticket_index.py:669-724`), so two owners with the
   same slug collapse into one node with merged owners and objects. `id_mode: slug` makes this likely
