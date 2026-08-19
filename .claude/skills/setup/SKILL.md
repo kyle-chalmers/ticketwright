@@ -163,8 +163,7 @@ required key by name (a warning, not a failure), so a deferred key is reported r
 
 ### Phase 3 — Write & scaffold
 4. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
-   commented blocks; the 10 policies with a one-line "when to change this" comment each). Warn if a
-   chosen adapter is `status: stub`.
+   commented blocks; the 10 policies with a one-line "when to change this" comment each).
 5. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules),
    `.claude/settings.json` (hooks — omitted on a plugin install — + read-only CLI allows), folders,
@@ -181,7 +180,7 @@ required key by name (a warning, not a failure), so a deferred key is reported r
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
      adapter's auth notes as the fix.
 7. **Report:** name which check is which (selftest = kit integrity; verify_stack = *your* tool slots), then
-   the chosen stack, files written, any `# TODO` keys or stub adapters, and the next step —
+   the chosen stack, files written, any `# TODO` keys, and the next step —
    `/ticket <id>` to start work, or `/setup --teammate` for a new person.
 8. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`

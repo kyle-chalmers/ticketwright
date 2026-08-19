@@ -112,11 +112,15 @@ repo_name=demo
 domain=data
 ticket_path=tickets/{assignee}/{id}
 tracker_tool=jira
+tracker_adapter=`adapters/tracker/jira.md`
 warehouse_tool=snowflake
 warehouse_adapter=`adapters/warehouse/snowflake.md`
 chat_tool=slack
+chat_adapter=`adapters/chat/slack.md`
 docstore_tool=gdrive
+docstore_adapter=`adapters/docstore/gdrive.md`
 vcs_tool=github
+vcs_adapter=`adapters/vcs/github.md`
 key_prefix=ENG
 terminal_status=Done
 wl_tracker_comment=100
@@ -3406,6 +3410,94 @@ oi_other="$(grep -rl 'assignee_dir' .claude/skills/ 2>/dev/null | grep -v 'skill
 [ -z "$oi_other" ] \
   && ok "no skill outside /ticket's last resort (and setup's scaffolding) reads assignee_dir" \
   || bad "a static assignee_dir read survives outside the documented last resort" "$oi_other"
+
+hdr "36 · absent tool slots render the enabling command (whole-path adapter tokens)"
+# The template language is a flat substitution pass — no conditionals — so a tool slot the stack
+# omits cannot drop its table row. Instead every adapter cell takes a WHOLE-PATH token (the
+# {{warehouse_adapter}} precedent, extended to all five slots): a configured slot passes the
+# adapter path, an absent one passes a note naming the enabling command. Composing
+# adapters/<slot>/<tool>.md around the tool name is the bug this pins down — it rendered broken
+# markdown like `adapters/chat/— *(none; /setup chat)*.md` for an absent chat slot.
+S36="$TMP/s36"; mkdir -p "$S36"
+composed="$(grep -nE 'adapters/(tracker|warehouse|chat|docstore|vcs)/\{\{' templates/AGENTS.md.tmpl || true)"
+[ -z "$composed" ] \
+  && ok "no stack-table cell composes an adapter path around a tool token" \
+  || bad "AGENTS.md.tmpl still composes an adapter path from a tool token" "$composed"
+# scaffold.md is the instruction source: it must name every whole-path token AND the absent case.
+s36doc=""
+for t in tracker_adapter warehouse_adapter chat_adapter docstore_adapter vcs_adapter; do
+  grep -q "$t" .claude/skills/setup/scaffold.md || s36doc="$s36doc $t"
+done
+grep -q 'Absent slot' .claude/skills/setup/scaffold.md || s36doc="$s36doc absent-case"
+[ -z "$s36doc" ] \
+  && ok "scaffold.md documents all five adapter tokens and the absent-slot values" \
+  || bad "scaffold.md is missing token guidance" "$s36doc"
+# (a) every slot configured → each adapter path lands in the rendered output, zero leftover tokens.
+cfgout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>"$S36/cfg.err")"
+s36miss=""
+for p in adapters/tracker/jira.md adapters/warehouse/snowflake.md adapters/chat/slack.md \
+         adapters/docstore/gdrive.md adapters/vcs/github.md; do
+  grep -qF "$p" <<<"$cfgout" || s36miss="$s36miss $p"
+done
+[ -z "$s36miss" ] && [ ! -s "$S36/cfg.err" ] \
+  && ok "configured slots render their adapter paths (zero leftover tokens)" \
+  || bad "a configured slot lost its adapter path or left a token" "missing:$s36miss $(cat "$S36/cfg.err")"
+# (b) warehouse/chat/docstore absent (the slots /setup leaves out) → the row renders the enabling
+# command, never a broken path; tracker/vcs stay configured in the same render.
+cat > "$S36/absent.env" <<'EOF'
+repo_name=demo
+domain=data
+ticket_path=tickets/{assignee}/{id}
+tracker_tool=jira
+tracker_adapter=`adapters/tracker/jira.md`
+warehouse_tool=—
+warehouse_adapter=*(not configured — run `/setup tool warehouse` to add one)*
+chat_tool=—
+chat_adapter=*(not configured — run `/setup tool chat` to add one)*
+docstore_tool=—
+docstore_adapter=*(not configured — run `/setup tool docstore` to add one)*
+vcs_tool=github
+vcs_adapter=`adapters/vcs/github.md`
+key_prefix=ENG
+terminal_status=Done
+wl_tracker_comment=100
+wl_chat=100
+wl_pr=200
+wl_ticket=200
+chat_always_include=Alice
+default_branch=main
+role_focus=x
+EOF
+absout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent.env" 2>"$S36/abs.err")"
+{ grep -qF '/setup tool chat' <<<"$absout" && grep -qF '/setup tool warehouse' <<<"$absout" \
+  && grep -qF '/setup tool docstore' <<<"$absout"; } \
+  && ok "an absent slot renders its enabling command (/setup tool <slot>)" \
+  || bad "an absent slot's enabling command is missing from the rendered AGENTS.md"
+s36broken="$(grep -nE 'adapters/(warehouse|chat|docstore)/' <<<"$absout" || true)"
+[ -z "$s36broken" ] && [ ! -s "$S36/abs.err" ] \
+  && ok "no broken adapter path and no leftover token for an absent slot" \
+  || bad "an absent slot still renders an adapter path (or left a token)" "$s36broken $(cat "$S36/abs.err")"
+grep -qF 'adapters/tracker/jira.md' <<<"$absout" \
+  && ok "configured slots are untouched by absent-slot rendering" \
+  || bad "a configured slot's path was lost in the mixed render"
+# (c) tracker/vcs go absent only in a hand-edited config (the interview always fills them; tracker
+# "none" selects the local adapter) — same mechanism, plain /setup as the enabling command.
+sed -e 's|^tracker_tool=.*|tracker_tool=—|' \
+    -e 's|^tracker_adapter=.*|tracker_adapter=*(not configured — run `/setup`)*|' \
+    -e 's|^vcs_tool=.*|vcs_tool=—|' \
+    -e 's|^vcs_adapter=.*|vcs_adapter=*(not configured — run `/setup`)*|' \
+    "$S36/absent.env" > "$S36/absent-all.env"
+allout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent-all.env" 2>"$S36/all.err")"
+s36tb="$(grep -nE 'adapters/(tracker|warehouse|chat|docstore|vcs)/' <<<"$allout" || true)"
+{ [ -z "$s36tb" ] && [ ! -s "$S36/all.err" ] && grep -qF 'run `/setup`' <<<"$allout"; } \
+  && ok "hand-edited tracker/vcs absence renders the /setup note (no path, no leftover token)" \
+  || bad "tracker/vcs absence renders broken output" "$s36tb $(cat "$S36/all.err")"
+# (d) the dead stub-adapter promise stays dead: no adapter carries status: frontmatter, so no
+# skill may promise a warning the kit cannot emit. The first real stub adds the mechanism with itself.
+stubp="$(grep -rn 'status: stub' .claude/skills/ 2>/dev/null || true)"
+[ -z "$stubp" ] \
+  && ok "no skill promises a status: stub warning (no adapter carries the key)" \
+  || bad "a skill still promises the status: stub warning" "$stubp"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

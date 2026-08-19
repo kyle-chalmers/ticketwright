@@ -24,14 +24,15 @@ the index before starting, and never rebuild what's already been built.
 ## The stack (this repo)
 | Seam | Tool | Adapter |
 |---|---|---|
-| Tracker | {{tracker_tool}} | `adapters/tracker/{{tracker_tool}}.md` |
+| Tracker | {{tracker_tool}} | {{tracker_adapter}} |
 | Warehouse | {{warehouse_tool}} | {{warehouse_adapter}} |
-| Chat | {{chat_tool}} | `adapters/chat/{{chat_tool}}.md` |
-| Docstore | {{docstore_tool}} | `adapters/docstore/{{docstore_tool}}.md` |
-| VCS | {{vcs_tool}} | `adapters/vcs/{{vcs_tool}}.md` |
+| Chat | {{chat_tool}} | {{chat_adapter}} |
+| Docstore | {{docstore_tool}} | {{docstore_adapter}} |
+| VCS | {{vcs_tool}} | {{vcs_adapter}} |
 
-Ticket-id prefix `{{key_prefix}}`; done state `{{terminal_status}}`. Seams the stack omits (no
-warehouse, no chat, …) drop out of this table; skills skip them cleanly. Skills target abstract
+Ticket-id prefix `{{key_prefix}}`; done state `{{terminal_status}}`. Tool slots the stack omits (no
+warehouse, no chat, …) stay in this table with the `/setup` command that enables them; skills skip
+them cleanly. Skills target abstract
 verbs and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI,
 or ID in a skill**; put it in the config/adapter.
 
