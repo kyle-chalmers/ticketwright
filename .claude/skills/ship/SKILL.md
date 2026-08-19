@@ -16,8 +16,10 @@ works regardless of the underlying tools.
 ## Phase A — Finalize (no approval needed; internal to repo)
 1. Read `stack.yaml` + the ticket README + the `/review` verdict. If the verdict isn't APPROVE,
    **stop** and send the user back to `/review`.
-2. Re-run the final deliverable queries once more; confirm **byte-identical** output to the
-   committed files (`deterministic_outputs` — explicit `ORDER BY`).
+2. If the stack has a warehouse seam, re-run the final deliverable queries once more; confirm
+   **byte-identical** output to the committed files (`deterministic_outputs` — explicit `ORDER BY`).
+   In a repo with no warehouse seam, re-verify each deliverable by its own check instead (the
+   document renders, the script runs clean, the numbers cited in the README match the files).
 3. Tidy: remove redundant/version-sprawl files (overwrite, don't duplicate); confirm filenames
    carry record counts; confirm the README tells the full business + methodology + QC story. Then
    **refresh this ticket's index entry** so its `tickets/INDEX.md` row gets a curated one-line
@@ -46,14 +48,15 @@ works regardless of the underlying tools.
 Print a summary of exactly what will happen, then **stop and wait** for the user. Only on explicit
 authorization, execute in order:
 5. **docstore.backup** the ticket folder (full-title dest name); then `docstore.link_for` each
-   delivered file to get shareable URLs.
+   delivered file to get shareable URLs. Skip when the docstore seam isn't configured.
 6. **tracker.comment** — post via the adapter's rich path (smart-link cards for the docstore
    files). Never before this point (no tracker comments without human review). Always write the
    exact posted text to `comms/draft-tracker.approved.md` — edited or not — so Phase C can diff it
    (an unedited ship just yields `initial == approved` and proposes nothing).
 7. **chat.draft** to `seams.chat.default_channel` (policy `chat_default_draft` — the human clicks
    send unless they said "send it", in which case `chat.send`). Smart links for ticket id(s),
-   files, PR. Write the final drafted text to `comms/draft-chat.approved.md`.
+   files, PR. Write the final drafted text to `comms/draft-chat.approved.md`. Skip when the chat
+   seam isn't configured.
 8. **vcs.commit** — **first, isolate repo-setup / AI-layer files.** If any are dirty
    (`.claude/settings.json`, `.claude/config/stack.yaml`, `.claude/statusline.sh`, `AGENTS.md`/
    `CLAUDE.md`, `documentation/AI_LAYER_INDEX.md`, `.gitignore`) they belong to the repo's plugin

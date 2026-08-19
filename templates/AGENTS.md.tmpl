@@ -30,9 +30,10 @@ the index before starting, and never rebuild what's already been built.
 | Docstore | {{docstore_tool}} | `adapters/docstore/{{docstore_tool}}.md` |
 | VCS | {{vcs_tool}} | `adapters/vcs/{{vcs_tool}}.md` |
 
-Ticket-id prefix `{{key_prefix}}`; done state `{{terminal_status}}`. Skills target abstract verbs
-and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI, or ID
-in a skill**; put it in the config/adapter.
+Ticket-id prefix `{{key_prefix}}`; done state `{{terminal_status}}`. Seams the stack omits (no
+warehouse, no chat, …) drop out of this table; skills skip them cleanly. Skills target abstract
+verbs and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI,
+or ID in a skill**; put it in the config/adapter.
 
 ## Permission hierarchy
 **No permission needed (internal):** read queries / data exploration; reading/searching/writing files
@@ -41,6 +42,7 @@ in the repo; local analysis + output.
 tracker comments; chat messages; docstore backups.
 
 **DB-write protocol:** show the exact SQL → explain the change → wait for `yes` → run.
+(No warehouse seam in this repo? This whole section is inert — there are no DB writes to gate.)
 
 How much is gated is set by `policies.db_write_requires_approval` in `.claude/config/stack.yaml`:
 
@@ -85,6 +87,8 @@ the only mechanically enforced layer, so honoring this protocol is on you.
 ```
 
 ## Deliverable exports (CSV)
+*Applies to tabular exports; document/report deliverables follow the same spirit — deterministic,
+review-ready files.*
 **ASCII punctuation only in cell values** — no em/en dashes, smart quotes, or ellipsis characters;
 they render as mojibake in Excel and many CSV viewers (use a plain `-`, or "to" for ranges). Header
 row first (no preamble/blank rows), filename carries the record count, explicit `ORDER BY` so re-runs
@@ -102,7 +106,8 @@ cap, a hyperlink, or the include-list. No profile ⇒ drafting is unchanged. Bui
 ## Quality control (the validation pyramid)
 Every deliverable: ① dialect lint → ② counts & dedup (duplicate detection is the primary test) →
 ③ cross-source reconciliation → ④ independent re-run + anti-pattern sweep → ⑤ human sign-off.
-Run `/review` before `/ship`.
+No warehouse seam (or non-query deliverables): skip the layers with nothing to run; `/review` runs
+layer ⑤ plus a claims-vs-evidence walk instead. Run `/review` before `/ship`.
 
 ## Git
 Branch = ticket id off `{{default_branch}}`. Semantic commits/PRs (`feat|fix|docs|refactor|chore|

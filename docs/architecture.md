@@ -36,16 +36,18 @@ proves them:
    run, unreachable ones halt with the adapter's auth notes.
 
 Skills are written **once against verbs** and never name a tool. Swapping a tool = edit
-`stack.yaml` + point at a different adapter; **no skill changes.** Proof: five configs ship —
+`stack.yaml` + point at a different adapter; **no skill changes.** Proof: six configs ship —
 [`stack.yaml`](../.claude/config/stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub),
 [`stack.example.asana-bq.yaml`](../.claude/config/stack.example.asana-bq.yaml)
 (Asana/BigQuery/Teams/SharePoint/GitLab), and
 [`stack.example.azure.yaml`](../.claude/config/stack.example.azure.yaml)
 (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos),
 [`stack.example.multi-warehouse.yaml`](../.claude/config/stack.example.multi-warehouse.yaml)
-(Snowflake **+** Databricks — two targets in one seam), and
+(Snowflake **+** Databricks — two targets in one seam),
 [`stack.example.solo.yaml`](../.claude/config/stack.example.solo.yaml) (**no tracker**, no chat, no
-docstore — the ticket folder is the tracker) — the same skills run against all five.
+docstore — the ticket folder is the tracker), and
+[`stack.example.no-warehouse.yaml`](../.claude/config/stack.example.no-warehouse.yaml) (**no
+warehouse** — document/report deliverables, nothing to query) — the same skills run against all six.
 
 **Adding a tool:** write one adapter (copy the closest reference in the same seam; implement every
 verb section; keep the frontmatter), add a `verify` line to your `stack.yaml` seam, run

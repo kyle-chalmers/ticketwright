@@ -6,7 +6,7 @@
 - **Status:** {{status}}
 - **Epic/Parent:** {{epic}}
 - **Assignee:** {{assignee}}
-- **Warehouse target(s):** {{warehouse_targets}}
+- **Warehouse target(s):** {{warehouse_targets}} <!-- omit this line when the stack has no warehouse seam -->
 
 ## Business Context
 {{description}}
@@ -25,7 +25,8 @@ Scope/Time Window (as-of dates, ranges) · Methodology · Source Selection · Ou
 
 ## Deliverables
 *Numbered in review order; filenames carry record counts. Note each deliverable's warehouse target —
-a `.sql` carries its own `-- warehouse-target:` header, but a CSV cannot (its header must be row 1).*
+a `.sql` carries its own `-- warehouse-target:` header, but a CSV cannot (its header must be row 1).
+Skip the target notes in a repo with no warehouse seam.*
 
 ## Quality Control
 *The `/review` verdict + pyramid results (counts/dedup, reconciliation, anti-patterns).*

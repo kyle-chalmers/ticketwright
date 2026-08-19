@@ -35,7 +35,7 @@ login, `config.toml`, MCP server connect). For a personalized walk-through, run
 ## My folders aren't showing up in `INDEX.md`
 
 Check `project.id_mode`. Under the default `keyed`, a folder is only a ticket if its name contains a
-tracker key from `key_prefixes` / `key_prefix` — `refi-sms-lift` is skipped on purpose, the same way
+tracker key from `key_prefixes` / `key_prefix` — `signup-funnel-lift` is skipped on purpose, the same way
 `scratch-*` is. If the repo has no ticketing system, that is what `id_mode: slug` is for: the folder
 name becomes the id. See `stack.example.solo.yaml` for a full config.
 
@@ -45,7 +45,7 @@ nothing is skipped for lacking a key — move it out of `tickets/`.
 ## A slug ticket's related-work links are missing
 
 In `slug` mode, cross-references come only from `[[wiki-links]]`, never from prose. Writing
-"follows on from refi-sms-lift" creates no link; `[[refi-sms-lift]]` does. This is deliberate — a
+"follows on from signup-funnel-lift" creates no link; `[[signup-funnel-lift]]` does. This is deliberate — a
 folder name can be an ordinary phrase (`data-quality`), and matching prose would turn stray words into
 catalog rows and graph edges. Note a wiki-link inside a fenced or inline code block counts as an
 example, not a reference, and markdown link destinations are not consulted at all.

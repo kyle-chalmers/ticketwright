@@ -15,7 +15,7 @@ project:
   # No key_prefix: there are no tracker keys to prefix. The session banner and statusline fall back
   # to the repository's directory name.
   id_mode: slug                          # the folder name IS the ticket id
-  assignee_dir: kyle
+  assignee_dir: dana
   ticket_path: "tickets/{assignee}/{id}"
   ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
   default_epic: null                     # nothing to parent work to

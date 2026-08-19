@@ -11,6 +11,9 @@ against any warehouse — or several.
    Scope to
    the given schema/dataset or the whole configured warehouse. `--refresh` updates an existing
    pack in place (overwrite, don't sprawl).
+   **No warehouse seam?** Skip Phase 1 and the catalog/ERD steps entirely; the pack is then
+   `glossary.md` + domain notes distilled from `tickets/**` READMEs and repo docs — still worth
+   building, since `/ticket`'s domain priming reads it either way.
 
 ## Phase 1 — Introspect (read-only, via adapter)
 2. **Object inventory** — list tables/views/dynamic-tables in scope, using whatever

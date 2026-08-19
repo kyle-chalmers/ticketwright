@@ -22,7 +22,7 @@
       "title": "Order feed follow-up — add status buckets",
       "status": "Completed",
       "date": "2026-02-03",
-      "summary": "Added DPD buckets to the monthly snapshot; follow-on to ENG-1.",
+      "summary": "Added order-status buckets to the monthly snapshot; follow-on to ENG-1.",
       "tags": ["order-feed", "data-pull"],
       "cross_refs": ["ENG-1"],
       "objects": ["ANALYTICS.MONTHLY_SNAPSHOT"],

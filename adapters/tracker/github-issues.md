@@ -54,6 +54,6 @@ GitHub stores issue attachments as URLs embedded in the body/comments. Parse the
 (`gh issue view --json body,comments`), then `curl -L "<url>" -o <dest>/<name>` (silent if none).
 
 ## gotchas
-- Ids are bare numbers — `fetch_ticket` takes `123`, not `PROJ-123`.
+- Ids are bare numbers — `fetch_ticket` takes `123`, not `ENG-123`.
 - "Status" is open/closed unless you adopt a Projects Status field or label convention — set
   `done_label` (or map terminal_status → closed) so `transition` is unambiguous.

@@ -118,7 +118,7 @@ def main() -> int:
         if cfg["id_mode"] == "slug":
             # A slug has no distinguishing shape, so match by identity against the ids actually on
             # disk instead of by pattern. Try the whole branch name and its last path segment, so
-            # both `refi-sms-lift` and `claude/refi-sms-lift` resolve.
+            # both `signup-funnel-lift` and `claude/signup-funnel-lift` resolve.
             known = {i for (_, i) in locs_by_owner_id}
             for cand in (br, br.rsplit("/", 1)[-1]):
                 if cand in known:

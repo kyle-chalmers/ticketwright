@@ -1,0 +1,64 @@
+# stack.example.no-warehouse.yaml — an analysis team with no warehouse at all.
+#
+# The persona: a team whose ticket work produces documents, models, and reports rather than SQL —
+# research briefs, ops analyses, evaluations. There is no database to query; the deliverable is the
+# written analysis itself. The `warehouse` seam is simply absent: /ticket priming skips warehouse
+# context, /spec-and-build writes code/analysis-only specs, /review runs the deliverable-level
+# checks instead of the query layers, and the DB-write policy has nothing to guard.
+#
+# Tracker here is GitHub Issues (ids are bare numbers; `key_prefix` is a branch/display convention).
+# Chat and docstore are also omitted — /ship skips those artifacts and names the `/setup chat` /
+# `/setup docstore` command that would enable them, rather than blocking.
+#
+# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml
+
+project:
+  key_prefix: ENG                       # display/branch convention; GitHub issue ids are bare numbers
+  key_prefixes: [ENG]
+  assignee_dir: ana
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, working_notes]
+  # qc_queries stays even with no warehouse: /review writes its verdict + QC artifacts there
+  # (checklists, reconciliation notes — not only SQL).
+  default_epic: null                    # "epic" ≈ a milestone/tracking issue if you adopt one
+  terminal_status: Done
+  ticket_url_template: "https://github.com/acme/analysis-repo/issues/{number}"
+  word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+  graph_notes: true
+  graph_config: true
+
+seams:
+  tracker:
+    tool: github-issues
+    adapter: adapters/tracker/github-issues.md
+    transport: cli
+    repo: "acme/analysis-repo"
+    verify: "gh auth status"
+    # Folder/branch ids read ENG-<number> locally; adapter verbs take the bare issue number —
+    # see the adapter's note (key_prefix is a display/branch convention for GitHub Issues).
+
+  # warehouse is deliberately omitted — this team's analysis work doesn't run through a database.
+  # Skills that would use it skip cleanly; nothing else changes.
+
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".claude/worktrees"
+    verify: "gh auth status"
+
+  # chat and docstore are deliberately omitted — /ship skips those artifacts and points at
+  # `/setup chat` / `/setup docstore` as the enabler.
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: "off"     # no warehouse seam — there are no DB writes to guard
+  chat_default_draft: true
+  hyperlink_everything: true
+  skillify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

@@ -14,7 +14,8 @@ One maintenance skill for the two knowledge stores the other skills read:
   `/ticket`'s recall mines. Details: [index.md](index.md).
 - **`/refresh context`** — the domain knowledge pack in `documentation/`: data catalog, DDL, ERD,
   dependency graph, business glossary. This is what `/ticket`'s domain + warehouse priming reads.
-  Details: [context-pack.md](context-pack.md).
+  With no warehouse seam, the pack is the glossary + domain notes built from tickets and repo docs
+  (the introspection phases skip cleanly). Details: [context-pack.md](context-pack.md).
 - **`/refresh all`** — both.
 
 ## You rarely need this

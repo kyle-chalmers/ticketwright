@@ -156,5 +156,5 @@ no attachments", which is a different claim.
 - **Nothing is ever published.** `/ship`'s `hard_halt_before_external_posts` still applies to chat
   and docstore, but tracker writes here are local file edits — so review them like code, in the diff,
   rather than expecting an approval prompt before a post.
-- **Two folders can reduce to one id** (`refi-lift` and `☑️ refi-lift`). The index warns on stderr
+- **Two folders can reduce to one id** (`signup-lift` and `☑️ signup-lift`). The index warns on stderr
   and keeps the later one; don't keep both.

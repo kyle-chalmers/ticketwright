@@ -4,7 +4,9 @@
 Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens
 from `stack.yaml`: tool names, key_prefix, terminal_status, word limits, policies). Fill
 `{{role_focus}}` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/roles/<role>.md` using
-`project.role` (`generalist` unless the user changed it). This is the always-loaded tier —
+`project.role` (`generalist` unless the user changed it), and `{{domain}}` from `project.domain`
+(`data analysis` unless the user changed it — any short phrase works: "ops analysis",
+"research", "reporting"). This is the always-loaded tier —
 keep it the rendered template; repo-specific rules get added by humans over time.
 
 Also write `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/CLAUDE.md.tmpl` — a

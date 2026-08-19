@@ -23,6 +23,12 @@ Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 
 ## The validation pyramid (bottom = cheap/automated, top = human)
 
+Layers ①–④ apply to query/export deliverables. When the repo has no warehouse seam — or a ticket's
+deliverables are documents, models, or code rather than queries — skip the layers with nothing to
+run and review at layer ⑤ plus a **claims-vs-evidence walk**: every number, claim, and filename the
+README asserts must trace to a file in the ticket, and every stated method must match what the
+artifacts actually do. The verdict discipline below is unchanged.
+
 **① Dialect lint** (static, per the `dialect_notes` of *that file's* target — in a multi-target repo
 a `.sql` with no target header is a **Should-fix** finding, and is linted against whatever the
 canonical order resolves next — the ticket's declared target before the seam default)

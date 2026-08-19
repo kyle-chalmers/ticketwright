@@ -66,7 +66,8 @@ One AskUserQuestion round covering only:
 5. **Assignee folder name** (default: the user's short name).
 Everything else ships as a **commented default** the user can edit later: chat + docstore seams
 (add via `/setup chat` / `/setup docstore`), `default_epic`, `terminal_status` (default `Done`),
-word limits, role (`generalist`), and all 10 policies at their defaults. Each chosen tool's required
+word limits, role (`generalist`), domain phrase (`data analysis`), and all 10 policies at their
+defaults. Each chosen tool's required
 keys (per its adapter's `requires:` frontmatter): take the detected value where possible; otherwise
 include the key commented with a `# TODO` and keep going — `verify` will point at it.
 

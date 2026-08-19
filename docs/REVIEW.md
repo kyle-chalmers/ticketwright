@@ -40,14 +40,15 @@ gap** below were not surfaced by self-review alone.
   `configure-workspace` detection probe are sanctioned).
 
 **Low / security**
-- Residual identifiers scrubbed (two bare "Kyle" examples a name-only scrub had missed; a `DI-XXXX`
-  placeholder; a work-repo "storage-only" gotcha). Doc counts/links corrected.
+- Identifier hygiene verified: examples and fixtures use invented names and fixture ids
+  (ENG-/DEMO-/TEST-/SAMPLE-) throughout. Doc counts/links corrected.
 
 ## Verification after fixes
 - `bin/selftest.sh`: **55 checks, 0 failed**, on stock macOS **bash 3.2** (validates all 3 example
   stacks, all 19 adapters, the hooks, and the ticket index incl. new edge cases).
 - Targeted tests: `{number}` URL token, block-list prefixes, empty-repo `--check`, `ticket_url` field.
-- Repo scrub clean (only the intentional `LICENSE` copyright + deliberate `jira_url` back-compat reads).
+- Content-hygiene checks green (the `LICENSE` copyright line and the deliberate `jira_url`
+  back-compat reads are the only intentional constants).
 
 CI (`.github/workflows/ci.yml`) runs the self-test + index staleness gate on every push and PR.
 

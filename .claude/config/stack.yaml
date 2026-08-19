@@ -4,10 +4,11 @@
 # Google Drive / GitHub). Replace the values with your own, or run `/setup`
 # to generate this file by detecting your tooling and interviewing you.
 # Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.yaml
-# Four more examples live alongside this file: stack.example.asana-bq.yaml (Asana/BigQuery/Teams/
+# Five more examples live alongside this file: stack.example.asana-bq.yaml (Asana/BigQuery/Teams/
 # SharePoint/GitLab), stack.example.azure.yaml (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos),
-# stack.example.multi-warehouse.yaml (two warehouse targets in one seam), and
-# stack.example.solo.yaml (no tracker at all — tracker: local + id_mode: slug).
+# stack.example.multi-warehouse.yaml (two warehouse targets in one seam),
+# stack.example.solo.yaml (no tracker at all — tracker: local + id_mode: slug), and
+# stack.example.no-warehouse.yaml (no warehouse seam — document/report deliverables).
 
 project:
   key_prefix: ENG                       # ticket-ID prefix; branch names = {key_prefix}-NNNN
@@ -18,6 +19,8 @@ project:
   default_epic: ENG-100                 # parent epic for new tickets (or null if the tracker has no epics)
   terminal_status: Done                 # the workflow's "done" state (not always "Done")
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
+  # role: generalist                    # persona for the rendered AGENTS.md (generalist | analyst | engineer | scientist)
+  # domain: data analysis               # short phrase for the {{domain}} token in AGENTS.md — any kind of analysis work
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
   graph_notes: true                     # Obsidian graph layer (tickets/graph + tickets/objects); false to disable
   graph_config: true                    # also write .obsidian/graph.json (tickets↔objects filter + colors); create/merge-only, never clobbers manual tweaks

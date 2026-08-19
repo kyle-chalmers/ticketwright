@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # drift_check.sh — Phase-0 catch: confirm every object/view this workflow reads is still reachable.
-# Generalizes a view/object drift-check pattern. Resolves the warehouse adapter from stack.yaml.
+# Resolves the warehouse adapter from stack.yaml.
 # Exit non-zero on any unreachable object so the skill halts before doing work.
 set -uo pipefail
 

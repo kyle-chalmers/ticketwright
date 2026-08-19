@@ -8,8 +8,8 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 # /spec-and-build
 
 The **build** step of the lifecycle, split into two committed steps so planning and execution use
-separate context (context-reset discipline). Generalizes the PRP (product-requirement-prompt) pattern
-(`generate-data-object-prp` → `prp-data-object-execute`) to any warehouse via the adapter.
+separate context (context-reset discipline). Applies the PRP (product-requirement-prompt) pattern —
+spec first, execute in fresh context — to any warehouse via the adapter.
 
 Reads `.claude/config/stack.yaml`. Front-loads decisions into a spec **before** any code — the
 context-engineering core idea: AI fails from missing context, not weak models.
@@ -62,6 +62,7 @@ context-engineering core idea: AI fails from missing context, not weak models.
 10. **Hand off to the check step:** when the build passes its own gates, stop and recommend
     `/review <id>` for the independent pass. Do not ship from here.
 
-## Generalizes
-`generate-data-object-prp` + `prp-data-object-execute` + `PRPs/templates/data-object-initial.md`,
-warehouse-agnostic via `seams.warehouse`, and works the same when that seam holds several targets.
+## Pattern
+A PRP-style spec/execute split: the spec is committed before any code, then executed in fresh
+context. Warehouse-agnostic via `seams.warehouse`, and works the same when that seam holds several
+targets.

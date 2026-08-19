@@ -43,7 +43,7 @@ status emoji) matches `[a-z0-9][a-z0-9_-]*`, and the **name itself is the id**. 
 lacking a key, so a scratch folder is either a ticket or shouldn't live under `tickets/`.
 
 Rows key on **(owner, id)**, so the same id can appear under two owners. Two folders that reduce to
-one id for one owner — `refi-lift` and `☑️ refi-lift` — are reported on stderr and the later one wins;
+one id for one owner — `signup-lift` and `☑️ signup-lift` — are reported on stderr and the later one wins;
 don't keep both.
 
 ### Cross-references

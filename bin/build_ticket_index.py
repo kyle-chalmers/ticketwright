@@ -244,7 +244,7 @@ def ticket_number(tid: str, key_re: re.Pattern | None = None) -> int:
 
     Pass `key_re` (from `key_regex`) to make this strict: the id must *fully* match it to have a
     number. That matters because a bare `re.search` for `-\\d+` finds digits anywhere, so a slug id
-    like `refi-sms-lift-2024` reads as ticket 2024 and sorts among real keys.
+    like `signup-funnel-lift-2024` reads as ticket 2024 and sorts among real keys.
 
     `key_re` rather than a shape test or a mode flag, because it is already the authority on what a
     keyed id looks like. No hardcoded shape can do the job: a configured prefix may contain `_` or
@@ -322,7 +322,7 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
     """Every ticket folder, one level under tickets/<owner>/. Cheap (few file reads).
 
     In `keyed` mode a folder qualifies by containing a tracker key, and the *matched key* is the id
-    (so `☑️ ENG-12 refi lift` → `ENG-12`). In `slug` mode the whole folder name is the id, so a repo
+    (so `☑️ ENG-12 signup lift` → `ENG-12`). In `slug` mode the whole folder name is the id, so a repo
     with no tracker at all still gets a catalog.
     """
     if key_re is None or subdirs is None or id_mode is None:
@@ -376,7 +376,7 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
     A tracker key (`ENG-1234`) is self-evidently a reference wherever it appears, so `keyed` mode
     pattern-matches the prose and can legitimately name a ticket that has no folder here.
 
-    A slug has no such shape. Any pattern loose enough to match a folder called `refi-sms-lift` also
+    A slug has no such shape. Any pattern loose enough to match a folder called `signup-funnel-lift` also
     matches ordinary English, so pattern-matching prose in slug mode would turn stray words into
     `OBJECTS.md` rows and graph edges. A ticket is free to be named after an ordinary phrase
     (`data-quality`), so bare prose mentions deliberately never count.
