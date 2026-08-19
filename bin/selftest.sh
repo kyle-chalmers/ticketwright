@@ -2137,6 +2137,38 @@ grep -q 'required key(s) not set: site' \
   && ok "a project.* key does not satisfy a missing seam key of the same name" \
   || bad "project token masked a missing seam key"
 
+# (D2) A required key present but BLANK is unset. `base_path:` with nothing after it is a likelier
+# typo than a deliberate choice, and it is the same failure as never writing the key.
+for blank in 'null' '""'; do
+  printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    base_path: %s\n    verify: "true"\n' "$blank" > "$RQ/.claude/config/stack.yaml"
+  grep -q 'required key(s) not set: base_path' \
+    <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" --dry-run 2>&1)" \
+    && ok "a required key set to $blank counts as unset" \
+    || bad "a required key set to $blank was treated as configured"
+done
+
+# (D3) Multi-target inheritance: a target that inherits a required key from its seam must NOT warn,
+# and one that neither sets nor can inherit it must. Getting this wrong warns on every valid target.
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    transport: cli\n    catalog: main\n    schema: analytics\n    default: prod\n    targets:\n      prod:\n        warehouse_id: abc123\n        verify: "true"\n      dev:\n        verify: "true"\n' > "$RQ/.claude/config/stack.yaml"
+rqm="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" --dry-run 2>&1)"
+{ ! grep -q 'warehouse\[prod\].*required key' <<<"$rqm"; } \
+  && ok "a target inheriting required keys from its seam does not warn (catalog/schema)" \
+  || bad "inherited required keys reported as unset" "$rqm"
+grep -q 'required key(s) not set: warehouse_id' <<<"$rqm" \
+  && ok "a target missing a required key it cannot inherit does warn" \
+  || bad "a target's own missing required key went unreported" "$rqm"
+
+# (D4) The check can only enforce what an adapter declares: an adapter with NO `requires:` line is
+# indistinguishable from `requires: []`, so it silently opts out of validation. Rather than make
+# verify_stack second-guess adapter authoring, pin the contract here — every adapter declares one.
+rqnodecl=""
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  grep -q '^requires:' "$f" || rqnodecl="$rqnodecl $(basename "$f")"
+done
+[ -z "$rqnodecl" ] && ok "every adapter declares a requires: list (no silent opt-out of the check)" \
+  || bad "an adapter has no requires: line, so its required keys are never validated" "$rqnodecl"
+
 # (E) Every shipped config must stay clean, or the check is too aggressive to ship.
 rqdirty=""
 for c in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do

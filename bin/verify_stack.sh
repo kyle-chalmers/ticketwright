@@ -78,15 +78,18 @@ check_unit() {
     yq -r "$parent | to_entries | .[] | select(.key != \"default\") | select(.value|type==\"!!str\" or type==\"!!int\" or type==\"!!float\") | [.key,(.value|tostring)] | @tsv" "$stack" 2>/dev/null >> "$seamtok" || true
   fi
 
-  # `seamkeys` is a bare list of the key NAMES this unit defines (plus, for a target, the parent's).
-  # Deliberately NOT the token file: that one is filtered to scalars because only scalars can
-  # interpolate, whereas presence is a different question — `always_include` is a LIST by design and
-  # would look permanently missing if the requires: check reused the scalar filter. It is also
-  # seam-scoped, so a project.* key can never stand in for a missing seam key of the same name.
+  # `seamkeys` is a bare list of the key NAMES this unit SETS TO A USABLE VALUE (plus, for a target,
+  # the parent's). Three deliberate choices:
+  #  - NOT the token file: that one is filtered to scalars because only scalars can interpolate,
+  #    whereas presence is a different question — `always_include` is a LIST by design and would look
+  #    permanently missing if the requires: check reused the scalar filter.
+  #  - Seam-scoped, so a project.* key can never stand in for a missing seam key of the same name.
+  #  - `null` and `""` count as UNSET. A required key blanked out is the same failure as one never
+  #    written, and `site:` with nothing after it is a likelier typo than a deliberate choice.
   seamkeys="$(mktemp)"
-  yq -r "$path | to_entries | .[] | .key" "$stack" 2>/dev/null >> "$seamkeys" || true
+  yq -r "$path | to_entries | .[] | select(.value != null and .value != \"\") | .key" "$stack" 2>/dev/null >> "$seamkeys" || true
   if [[ -n "$parent" ]]; then
-    yq -r "$parent | to_entries | .[] | select(.key != \"default\") | .key" "$stack" 2>/dev/null >> "$seamkeys" || true
+    yq -r "$parent | to_entries | .[] | select(.key != \"default\") | select(.value != null and .value != \"\") | .key" "$stack" 2>/dev/null >> "$seamkeys" || true
   fi
 
   # Width stays %-10s so single-warehouse output is byte-identical to previous releases; a longer
