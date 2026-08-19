@@ -799,7 +799,11 @@ sections drive `verify_stack.sh`, and assert OUTCOMES:
     adapter added later escapes it silently. Rewrite it to loop over `adapters/chat/*.md`. An
     assertion that enumerates its own subjects stops covering anything new — the same class of bug as
     the literal-substring leak-grep exemption. PROMPT 10 adds two chat adapters and is relying on
-    this being fixed here.
+    this being fixed here; since 4b is wave E and 10 is wave I, the gate is generalized well before
+    the first new adapter arrives, which is why this is not landed early as a standalone fix.
+    THE ONE WINDOW THIS LEAVES OPEN: until 4b lands, the `include_self` gate covers `slack` and
+    `teams` only. A chat adapter added OUTSIDE this plan before wave E escapes it silently. If that
+    happens, generalize the assertion then rather than waiting for 4b.
 
 Success criterion: a team finishes `/setup` with chat, docstore, owner routing and the two
 behavioral policies actually configured — and a solo user with no tracker and no warehouse is not
