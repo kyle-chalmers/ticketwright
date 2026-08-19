@@ -6,6 +6,28 @@
 ![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
 ![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20git-success)
 
+## Mission
+
+**Ticketwright empowers a team to do a high volume of analysis without letting quality slide, on whatever tools they already use.**
+
+The path is fixed: open the work, do the work, quality-check it, deliver it, announce it. The tools
+are not. Every tracker, warehouse, chat, docstore and git host sits behind an adapter, so swapping
+one is a config edit rather than a rewrite.
+
+**Is this for you?** If your team's work product is an answer rather than a feature, and you ship
+more of them than anyone can carefully review by hand, yes. If you need a project tracker, an ETL
+scheduler, or a BI dashboard, no. Ticketwright sits beside those; it does not replace them.
+
+## Vision
+
+**Any new or experienced member can pick up any analysis and be productive the same day, because the team's past work is written down and organized, and AI can trace it.**
+
+That is what the record is for. Each shipped ticket carries its business context, its assumptions,
+its QC verdict and its deliverables, so a person can judge whether prior work applies to their
+question, and an agent can trace an object or a decision back to every ticket that touched it.
+
+---
+
 **Ticketwright turns a Claude Code session into a careful data analyst.** It's built for the broad
 group of people who touch and interact with data — analysts, BI, ops, research, reporting — and it
 works for any team storing ticket- or task-driven analysis work in a repo, database or not.
