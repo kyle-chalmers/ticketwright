@@ -240,11 +240,11 @@ PROMPT 1. Put both verdicts in the PR body.
 ## PROMPT 2 — Three-tier config, the resolver, and the leak it fixes
 
 `/setup` writes `.claude/config/stack.yaml` by detecting the machine of whoever runs it — but that
-file is committed and shared, so machine-local identifiers leak into a team artifact. A real run
-produced `profile: biprod` (a `~/.databrickscfg` profile name), `connection: <host>` (a
-`~/.snowflake/config.toml` connection name), and `verify: "databricks --profile biprod current-user
-me"` with the personal profile hardcoded. Fix the model and the leak together — fixing the leak alone
-just moves values somewhere equally wrong.
+file is committed and shared, so machine-local identifiers leak into a team artifact. The observed
+shape: `profile: analytics-prod` (a `~/.databrickscfg` profile name), `connection: <host>` (a
+`~/.snowflake/config.toml` connection name), and `verify: "databricks --profile analytics-prod
+current-user me"` with one person's profile hardcoded. Fix the model and the leak together — fixing
+the leak alone just moves values somewhere equally wrong.
 
 ### The three tiers
   TIER 1 — TEAM (committed): `.claude/config/stack.yaml`
@@ -380,7 +380,7 @@ Contract — a public CLI, not a hook helper:
     (`adapters/warehouse/bigquery.md:9`) name nothing machine-specific.
   - `bin/verify_stack.sh` warns when committed `stack.yaml` holds a literal in a key declared as a
     `user_keys` key for that adapter. Key the warning on the DECLARATION, not on whether the verify
-    string happens to contain some unrelated token — a literal `profile: biprod` alongside a
+    string happens to contain some unrelated token — a literal `profile: analytics-prod` alongside a
     `{warehouse_id}` token must still warn. Warn, never fail.
   - `/setup` writes tier-1 values only.
 
@@ -439,7 +439,7 @@ person's own answer is authority — that is asking, not guessing.
 STATUS HANDLING:
   - `ambiguous` (one identity matches two people): ASK. Never rank or pick. Same discipline
     `bin/recall.py` already applies to duplicate seed ids.
-  - `conflict` (tier 3 says `jyoung`, git email maps to `kchalmers`): tier 3 still WINS —
+  - `conflict` (tier 3 says `jyoung`, git email maps to `dpatel`): tier 3 still WINS —
     first-hit-wins is not weakened — but emit a one-line warning naming both. Usually a shared
     machine or a stale repo-local git config, and it must surface before work lands in a colleague's
     folder.
