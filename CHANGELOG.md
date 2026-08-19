@@ -113,6 +113,18 @@ All notable changes to this project are documented here. Format loosely follows
   never silently loses voice resolution.
 
 ### Fixed
+- An absent tool slot no longer renders broken markdown in the scaffolded `AGENTS.md`. The stack
+  table used to compose adapter paths around the tool name (`adapters/chat/<tool>.md`), so a repo
+  with no chat tool rendered a broken path; the template language is a flat substitution pass, so
+  no conditional could fix it there. Every adapter cell now takes a whole-path token
+  (`{{tracker_adapter}}`, `{{chat_adapter}}`, `{{docstore_adapter}}`, `{{vcs_adapter}}` — the
+  existing `{{warehouse_adapter}}` precedent): a configured slot passes the adapter path, an
+  absent one passes a note naming the enabling command (`/setup tool chat`). These absent-slot
+  values are render-time display values only, never written to `stack.yaml`.
+  `.claude/skills/setup/scaffold.md` now spells out both cases; selftest section 36 pins them.
+- `/setup` no longer promises to "warn if a chosen adapter is `status: stub`" — no adapter carries
+  a `status:` key and the frontmatter contract never listed one, so the warning could never fire.
+  The first real stub adapter should introduce the mechanism along with itself.
 - `/setup --voice` and the README suggested gitignoring `voices/<id>.md` to keep a profile
   private — which does nothing once git already tracks the file. Both now say to point
   `voice.path` outside the repo, or gitignore the path *before* its first commit.

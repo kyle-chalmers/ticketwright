@@ -9,6 +9,24 @@ from `stack.yaml`: tool names, key_prefix, terminal_status, word limits, policie
 "research", "reporting"). This is the always-loaded tier —
 keep it the rendered template; repo-specific rules get added by humans over time.
 
+**The stack table's adapter column takes WHOLE-PATH tokens** — `{{tracker_adapter}}`,
+`{{warehouse_adapter}}`, `{{chat_adapter}}`, `{{docstore_adapter}}`, `{{vcs_adapter}}` — never a
+path you compose around the tool name (`bin/render.sh` is a flat substitution pass with no
+conditionals, so an absent tool slot would render a broken path). Pass each pair like this:
+
+- **Configured slot:** the tool name and the backticked adapter path, e.g. `chat_tool=slack` +
+  ``chat_adapter=`adapters/chat/slack.md` ``.
+- **Absent slot** (warehouse chosen as *none*; chat/docstore not yet added): pass `<slot>_tool=—`
+  and an adapter value naming the enabling command, e.g.
+  ``chat_adapter=*(not configured — run `/setup tool chat` to add one)*`` (same shape for
+  `warehouse`/`docstore`). Tracker and VCS are always chosen in the interview (tracker *none*
+  selects the `local` adapter), so they go absent only in a hand-edited config — render the same
+  note with plain `/setup` as the command (there is no `/setup tool tracker|vcs` mode).
+
+These absent-slot values are **render-time display values only** — they go into the rendered
+`AGENTS.md`, never into `stack.yaml`, where an absent tool slot stays omitted (or a commented
+block) per `stack.schema.md`.
+
 Also write `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/CLAUDE.md.tmpl` — a
 one-line `@AGENTS.md` import so **Claude Code** auto-loads these rules (it reads `CLAUDE.md`; other
 agents read `AGENTS.md` directly). Keep it to that single import line.
