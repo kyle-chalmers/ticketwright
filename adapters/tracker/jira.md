@@ -77,7 +77,7 @@ The ranked container is a Jira **project**. **In:** `scope` (the Jira site), `wi
 `limit` (5), `scan_cap` (200), `container_cap` (25). **Out:** `{id, name, activity, last_activity,
 signal}` per project, most active first, `signal: items_updated`.
 ```bash
-acli jira project list --json                          # candidates; take the first {container_cap}
+acli jira project list --limit {container_cap} --json  # candidates; the CLI ERRORS without one of --recent/--limit/--paginate
 acli jira workitem search --json --limit <scan_cap> \
   --jql "project in (<K1>,<K2>,…) AND updated >= -<window_days>d ORDER BY updated DESC"
 ```

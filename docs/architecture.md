@@ -164,7 +164,7 @@ protection. The policy value is the shared contract; only the enforcement mechan
   rank → read-top-K shape scales past the point where the whole index fits in context.
 - **Deterministic before model.** Catalog rendering, recall ranking, render validation, and export
   plumbing are all plain code the model *calls*, not prose the model *approximates*.
-- **Degrade, don't die.** Missing seams skip their steps and name the fix (`/setup chat`);
+- **Degrade, don't die.** Missing seams skip their steps and name the fix (`/setup tool chat`);
   unreachable seams halt with auth notes only where proceeding blind would be wrong.
 - **Out of scope (deliberately):** a heavy external knowledge-base/orchestration service
   (Archon-style retrieval over MCP). Task management is the tracker's job; orchestration is

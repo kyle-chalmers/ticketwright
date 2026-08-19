@@ -7,6 +7,37 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **`/setup`'s verbs now split by scope, and teammates are auto-routed.** Modes divide by WHO the
+  config is about: team modes (the default repo configuration and the new canonical
+  `/setup tool <chat|docstore|warehouse>`) write the team's committed stack; person modes
+  (`--teammate`, `--voice`, `viewer`) write one person's own config. The old `/setup chat` /
+  `docstore` / `warehouse` spellings keep working for one release with a deprecation note;
+  `/setup viewer` stays as a person-scoped re-run entry point (the `/review`-gate interview
+  remains the primary path). The scope invariant is stated by purpose at the top of the skill:
+  *a team mode may declare that a person exists; only that person's own flow may declare who they
+  are or how their machine connects* — so team setup may write an identity-free
+  `people/<id>.yaml` placeholder (`display_name:` only), never someone else's identities, voice,
+  or machine config, and a placeholder honestly still resolves as `miss` until its person binds.
+  Routing now runs on `whoami`: a configured repo plus an unrecognized person auto-routes into
+  teammate onboarding instead of offering the team's shared config to edit; an identity conflict
+  must be resolved before any team-config edit is offered; and a repo with a stack but no
+  `people/` directory gets a bootstrap that seeds the roster from `project.assignee_dir`, any
+  legacy voice map, and `git log` authors — confirming existing contributors rather than
+  onboarding them from zero. A repo whose only Ticketwright trace is `.claude/settings.json`
+  plugin enablement is treated as fresh, never adopted.
+- **The `--teammate` flow is now the per-person flow — tiers 2 and 3 are written only by a
+  person's own flow** (with two named carve-outs: the `/review`-gate viewer interview, and the
+  identity-free placeholders team setup may seed), and it never edits committed `stack.yaml`. It opens
+  with `whoami` (binding on a miss), detects the person's machine at that moment — enumerating
+  ALL named profiles/connections by NAME only, since a tool's local config can hold plaintext
+  secrets — and writes `.claude/config/connections.local.yaml` as a versioned document
+  (`schema_version`, `mode: defaults|overrides`, `stack_fingerprint`, `person:`), so an empty,
+  half-finished, deliberately-default, or stale file are four distinguishable states. Final
+  verification is bound to the team's expected target via new per-adapter evidence notes ("the
+  CLI responded" is not proof), and an interactive sign-in mid-verify is narrated as a normal
+  first-run outcome, not an error. The tracker project-list probe now passes a pagination flag
+  (the CLI errors without one). Selftest section 34 covers the routing, the invariant's honesty
+  claim, and the versioned tier-3 shape end to end.
 - **`bin/whoami.py` — resolve WHO is working, on any harness.** One command answers the owner
   question with a status of `resolved`, `miss`, `ambiguous` or `conflict`, never a guess:
   tier-3 `person:` first (a one-time self-declaration for shared or oddly configured machines),

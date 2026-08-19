@@ -98,6 +98,9 @@ questions.
 - **Which MCP servers are connected** in the session (tracker / chat / warehouse).
 - **What's already in the repo** — an existing `.claude/config/stack.yaml` (it offers to edit and never
   overwrites), or existing ticket folders and indexes, which switch it into adopt mode.
+- **Who you are.** On a repo that's already configured, an unrecognized person is routed straight
+  into teammate onboarding — a new cloner is never offered the team's shared config as their first
+  action.
 
 Config is three tiers: `.claude/config/stack.yaml` is the **team's** committed answer,
 `people/<id>.yaml` holds each person's portable settings, and `.claude/config/connections.local.yaml`
@@ -185,7 +188,7 @@ Three supporting skills you'll reach for occasionally:
 
 | Skill | What it does |
 |---|---|
-| `/setup` | Configure the repo (once) · add a tool later (`/setup chat`) · pick which apps open your deliverables (`/setup viewer`) · onboard a person (`/setup --teammate`) |
+| `/setup` | Configure the repo (once) · add a tool later (`/setup tool chat`) · pick which apps open your deliverables (`/setup viewer`) · onboard a person (`/setup --teammate`, entered automatically for an unrecognized person) |
 | `/refresh` | Rebuild the ticket catalog (`index`) or the domain knowledge pack (`context`) — day-to-day, hooks keep these fresh automatically |
 | `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
