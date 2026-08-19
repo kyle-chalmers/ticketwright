@@ -21,6 +21,23 @@ Maps the `warehouse` verb contract to Databricks (Unity Catalog, Spark SQL). Sam
 only commands + `dialect_notes` differ, so `review` / `spec-and-build` / `refresh context` run
 unchanged.
 
+## Per-person setup notes (consumed by the onboarding flow; not verbs)
+- **Enumerate profiles by NAME only.** `grep -E '^\[' ~/.databrickscfg | tr -d '[]'` lists every
+  profile name without printing values — the file can hold a plaintext OAuth client secret, so
+  never cat it or paste its contents anywhere. Offer **every** name, not just `DEFAULT`: an
+  expired token on `DEFAULT` beside a healthy second profile is a real, observed failure mode
+  that reads as "Databricks unavailable".
+- **Expected-target evidence.** `databricks --profile {profile} current-user me` proves the
+  profile authenticates, not that it reaches the team's workspace. Bind the probe to the SAME
+  profile the person chose — use the Statement Execution API form of the query verb, which takes
+  `--profile` (`dbsqlcli` binds no profile, so it can silently validate a different config):
+  ```bash
+  databricks --profile {profile} api post /api/2.0/sql/statements \
+    --json '{"warehouse_id":"{warehouse_id}","statement":"SHOW SCHEMAS IN {catalog} LIKE '\''{schema}'\''","wait_timeout":"30s"}'
+  ```
+  Expect one row — a profile pointed at the wrong workspace fails this even though
+  `current-user me` passed.
+
 ## verb: query
 ```bash
 # Preferred: databricks-sql-cli (returns rows; --csv-friendly via -e + redirection)

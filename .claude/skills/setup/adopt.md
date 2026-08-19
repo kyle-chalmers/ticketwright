@@ -9,8 +9,8 @@ never demand a rewrite.**
 - **Ticket layout:** find the ticket folders and infer `project.ticket_path` from the observed
   structure (e.g. `tickets/{assignee}/{id}`), the key prefix(es) from folder names, and the
   assignee dirs. Confirm the inference with the user in ONE question.
-- **Tools in use:** infer seams from evidence — CI configs, helper scripts, MCP servers, CLIs on
-  PATH, existing docs. Pre-select these in the (still ≤5-question) interview.
+- **Tools in use:** infer the tool slots from evidence — CI configs, helper scripts, MCP servers,
+  CLIs on PATH, existing docs. Pre-select these in the (still ≤5-question) interview.
 - **Custom commands/skills:** list everything in `.claude/commands/` and `.claude/skills/` and
   classify each against the plugin's skills: **shadows** (does what a plugin skill does),
   **extends** (domain-specific variant — e.g. a warehouse-specific spec/build flow), or
@@ -40,6 +40,6 @@ real ticket through `/ticket → /review → /ship` before deleting anything cus
 
 ## 5 · Verify & report
 Same as Phase 4 of the default mode: `selftest.sh` (**kit integrity** — the plugin's own example
-stacks) then `verify_stack.sh .claude/config/stack.yaml` (**your repo's** seams). Label the two in
+stacks) then `verify_stack.sh .claude/config/stack.yaml` (**your repo's** tool slots). Label the two in
 the report so the kit's example stack is never mistaken for the repo's config. The report leads with
 the MIGRATION.md path and the trial-ticket suggestion — adoption is incremental by design.

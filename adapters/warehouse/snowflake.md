@@ -16,6 +16,25 @@ auth: |
 Maps the `warehouse` verb contract to Snowflake via the `snow` CLI (preferred for repeatable scripts
 and CSV export) and the Snowflake MCP (preferred for interactive exploration + the semantic layer).
 
+## Per-person setup notes (consumed by the onboarding flow; not verbs)
+- **Enumerate connections by NAME only.** Never run bare `snow connection list` during
+  onboarding — it masks passwords but still prints account, user, and role into the transcript.
+  Project the names and nothing else:
+  ```bash
+  snow connection list --format JSON \
+    | python3 -c "import json,sys;[print(c['connection_name']) for c in json.load(sys.stdin)]"
+  ```
+  Offer every named connection, not just the default, and never paste a full listing into a
+  report, summary, PR body, or committed file.
+- **Expected-target evidence.** `snow connection test` proves reachability, not that the person's
+  CHOSEN connection reaches the team's data. Bind both in one probe — name the connection
+  explicitly so the check cannot silently run through the CLI default:
+  ```bash
+  snow sql -q "USE WAREHOUSE {default_warehouse}" -c {connection}
+  ```
+  A connection pointed at a different account fails it, and an interactive MFA prompt here is a
+  normal first-run outcome.
+
 ## verb: query
 ```bash
 snow sql -q "<SQL>" --format csv          # ad-hoc

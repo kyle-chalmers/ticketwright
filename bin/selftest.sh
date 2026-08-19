@@ -3140,5 +3140,107 @@ ecp="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxd
   && ok "effective_config resolves the tier-2 person through whoami (no voice block required)" \
   || bad "effective_config could not select a person without a voice block" "got=$ecp"
 
+hdr "34 · setup verb split by scope (team vs person) + teammate auto-route"
+# PROMPT 4: /setup's modes divide by WHO the config is about, not committed-vs-local. The canonical
+# team verb is `/setup tool <chat|docstore|warehouse>`; person config lives in the per-person flow.
+# These pin the stated invariant, the Phase-1 routing, the tier-3 versioned-document convention the
+# per-person flow WRITES (the resolver understands it: structural keys, stale fingerprint, and the
+# mode:defaults-with-overrides rejection are section 32's), and the honesty claim behind placeholders.
+SK=".claude/skills/setup/SKILL.md"; TM=".claude/skills/setup/teammate.md"
+skflat="$(tr '\n' ' ' < "$SK")"; tmflat="$(tr '\n' ' ' < "$TM")"
+# (A) the canonical verb, the deprecation window, and the retired seam-mode heading.
+grep -q 'Mode: `tool <chat|docstore|warehouse>`' "$SK" \
+  && ok "canonical team verb: /setup tool <chat|docstore|warehouse>" || bad "canonical tool verb missing"
+{ grep -qi 'deprecated spelling' "$SK" && grep -q '/setup tool chat' "$SK" && grep -qi 'one release' "$SK"; } \
+  && ok "old /setup <name> spellings keep working one release, with a deprecation line" \
+  || bad "deprecation line for the old spelling missing"
+grep -q 'Mode: `<seam>`' "$SK" \
+  && bad "the old 'Mode: <seam>' heading survived the rename" || ok "the old 'Mode: <seam>' heading is gone"
+grep -q 'add one tool slot' "$SK" \
+  && ok "user-facing mode wording says tool slot, not seam" || bad "tool-slot wording missing from the tool mode"
+{ grep -q 'Mode: `viewer`' "$SK" && ! grep -q 'The only seam that' "$SK" && grep -q '/setup viewer' "$TM"; } \
+  && ok "viewer stays a working re-run entry point and is no longer described as a seam mode" \
+  || bad "viewer mode was deleted, still called a seam, or dropped from onboarding"
+# (B) the invariant, stated by purpose, with the honest-placeholder note.
+{ grep -q 'may declare that a person EXISTS' "$SK" && grep -qi 'own flow' "$SK"; } \
+  && ok "the scope invariant is stated by purpose (declare-exists vs who-they-are)" \
+  || bad "the invariant is missing or mechanical"
+{ grep -qi 'identity-free' "$SK" && grep -q 'still returns `miss`' "$SK"; } \
+  && ok "placeholders are identity-free AND honestly still miss" || bad "the honest placeholder note is missing"
+# (C) Phase-1 routing: miss auto-routes to teammate; conflict never goes straight to a team edit;
+# bootstrap seeds + confirms; the adopt-vs-fresh boundary is written where the routing happens.
+grep -q 'whoami.py' "$SK" && ok "Phase 1 resolves WHO via whoami before offering anything" \
+  || bad "Phase 1 never calls whoami"
+grep -qE '`miss`[^`]*teammate' <<<"$skflat" \
+  && ok "a whoami miss routes to teammate onboarding automatically" || bad "the miss->teammate route is missing"
+grep -qiE 'conflict.*before offering any team-config edit' <<<"$skflat" \
+  && ok "a conflict resolves the identity BEFORE any team-config edit is offered" \
+  || bad "conflict routing is unsafe or missing"
+{ grep -qi 'Bootstrap' "$SK" && grep -q 'assignee_dir' "$SK" && grep -q 'git log' "$SK" \
+  && grep -q 'voice_profiles.map' "$SK"; } \
+  && ok "bootstrap seeds the roster from assignee_dir + legacy voice map + git log, then confirms" \
+  || bad "the bootstrap seed sources are missing"
+{ grep -q 'only Ticketwright trace is' "$SK" && grep -qi 'enablement is how the kit arrives' "$SK"; } \
+  && ok "adopt-vs-fresh boundary: settings.json-only enablement is FRESH" \
+  || bad "the adopt-vs-fresh boundary is not written down at the routing"
+# (D) interviews are prose, stated for every mode of this skill.
+grep -qi 'Every interview in this skill is prose' "$SK" \
+  && ok "the prose-interview rule is stated for every mode" || bad "the prose-interview rule is missing"
+# (E) teammate.md is the per-person flow: sole writer, versioned tier 3, names-only, honest verify.
+{ grep -qi "written only by a person" <<<"$tmflat" && grep -qi 'carve-out' "$TM"; } \
+  && ok "per-person flow: tiers 2+3 written only by a person's own flow, carve-outs named honestly" \
+  || bad "the tier-2/3 writer statement is missing or dishonest about its carve-outs"
+grep -qi 'never edits committed' <<<"$tmflat" \
+  && ok "…and never edits committed stack.yaml" || bad "the no-stack-edit rule is missing"
+{ grep -q 'schema_version: 1' "$TM" && grep -q 'stack_fingerprint' "$TM" \
+  && grep -q '`defaults`' "$TM" && grep -q '`overrides`' "$TM"; } \
+  && ok "tier 3 is written as a versioned document (schema_version, mode, fingerprint)" \
+  || bad "the tier-3 versioned shape is missing from the flow"
+{ grep -qi 'Names only' "$TM" && grep -qi 'plaintext secret' "$TM" && grep -q 'enumerate \*\*all\*\*' "$TM"; } \
+  && ok "detection enumerates ALL profiles, names-only, with the plaintext-secret warning" \
+  || bad "the names-only / enumerate-all rules are missing"
+{ grep -qi 'Expect an auth challenge' "$TM" && grep -qi 'is not proof' "$TM" \
+  && grep -qi 'expected target' "$TM"; } \
+  && ok "verification is bound to the expected target and tolerates an auth challenge" \
+  || bad "expected-target binding or auth-challenge tolerance is missing"
+{ grep -q 'whoami.py' "$TM" && grep -q -- '--bind' "$TM"; } \
+  && ok "the flow opens with whoami and heals a miss via --bind" || bad "the identity-first step is missing"
+# (F) behavior: the honesty claim and the versioned document, end to end.
+SV="$TMP/setup34"; mkdir -p "$SV/.claude/config" "$SV/people" "$TMP/setup34-noxdg"
+git -C "$SV" init -q 2>/dev/null
+git -C "$SV" config user.email "pat@acme.example"; git -C "$SV" config user.name "Pat Fixture"
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' \
+  > "$SV/.claude/config/stack.yaml"
+printf 'display_name: Pat Fixture\n' > "$SV/people/pat.yaml"   # the placeholder a team mode MAY write
+s34run() { env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT \
+  USER=s34-nobody XDG_CONFIG_HOME="$TMP/setup34-noxdg" python3 "$KIT/bin/whoami.py" --root "$SV" "$@"; }
+s34run --field status > "$TMP/s34-stub.out" 2>/dev/null; src=$?
+{ [ "$src" -eq 3 ] && [ "$(cat "$TMP/s34-stub.out")" = "miss" ]; } \
+  && ok "an identity-free placeholder still returns miss (exit 3) — the invariant's honesty claim holds" \
+  || bad "a display_name-only stub resolved someone" "rc=$src got=$(cat "$TMP/s34-stub.out")"
+fp34="$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" \
+  "$SV/.claude/config/stack.yaml")"
+printf 'schema_version: 1\nmode: defaults\nperson: pat\nstack_fingerprint: %s\n' "$fp34" \
+  > "$SV/.claude/config/connections.local.yaml"
+eco34="$(env -u TICKETWRIGHT_PERSON USER=s34-nobody XDG_CONFIG_HOME="$TMP/setup34-noxdg" \
+  python3 "$KIT/bin/effective_config.py" --root "$SV" --json 2>&1)"; ecrc34=$?
+{ [ "$ecrc34" -eq 0 ] && ! grep -qi '"stale"' <<<"$eco34"; } \
+  && ok "the flow's versioned tier-3 document resolves cleanly (fresh fingerprint, mode: defaults)" \
+  || bad "the per-person flow's tier-3 shape was rejected or marked stale" "rc=$ecrc34"
+[ "$(s34run --field id 2>/dev/null)" = "pat" ] \
+  && ok "…and whoami resolves the pinned person — the bootstrap target state works end to end" \
+  || bad "the pinned person did not resolve after the tier-3 write"
+# (G) the riders that live in adapters: the tracker list probe must paginate; warehouse adapters
+# carry names-only per-person enumeration notes for the flow to consume.
+grep 'acli jira project list' adapters/tracker/jira.md | grep -qE -- '--recent|--limit|--paginate' \
+  && ok "the tracker project-list probe passes a pagination flag (the CLI errors without one)" \
+  || bad "the tracker project-list probe is missing --recent/--limit/--paginate"
+{ grep -qi 'by NAME only' adapters/warehouse/databricks.md \
+  && grep -qi 'by NAME only' adapters/warehouse/snowflake.md \
+  && grep -qi 'Expected-target evidence' adapters/warehouse/databricks.md \
+  && grep -qi 'Expected-target evidence' adapters/warehouse/snowflake.md; } \
+  && ok "warehouse adapters carry names-only enumeration + expected-target evidence notes" \
+  || bad "per-person setup notes missing from a warehouse adapter"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
