@@ -1,0 +1,44 @@
+---
+profile_id: {{profile_id}}
+display_name: {{display_name}}
+bootstrapped: {{bootstrapped}}
+sources: {{sources}}
+---
+
+# Voice profile — {{display_name}}
+
+> How {{display_name}} writes outward comms (tracker comments, chat, PR bodies). `/ship` reads this
+> as a **style guide** when it drafts, so the draft already sounds like you and needs less editing.
+> **Personal data** — it's your writing fingerprint. Edit it freely; `/ship` also *proposes* updates
+> from the edits you make at the ship review (you approve each one).
+>
+> This guide only shapes *phrasing*. It can never bend the hard comms rails (see "Do-not-override").
+
+## Tone & register
+- Formality: <e.g. plain and direct; contractions fine; not stiff>
+- Warmth: <e.g. friendly but brief; a quick thanks when someone unblocked you>
+- Directness: <e.g. lead with the answer, then the why>
+
+## Structural habits
+- Bullets vs prose: <e.g. bullets for multi-part results; a sentence or two otherwise>
+- Greeting / sign-off: <e.g. no greeting in-thread; sign off with just my first name on email>
+- Emoji: <e.g. none in tracker comments; a single ✅ ok in chat>
+- Sentence length: <e.g. short; one idea per sentence>
+
+## Diction
+- Favored phrasings: <e.g. "here's what I found", "net:", "to confirm">
+- Banned words / tics: <e.g. no "utilize" (use "use"), no em dashes, no "just wanted to">
+
+## Examples (short, approved)
+> <2-3 one-line examples in your own voice — how you'd actually open a results comment,
+>  flag a caveat, or hand something off. Keep them short; never paste a full confidential thread.>
+
+## Do-not-override (hard comms rails — voice bends phrasing, never these)
+These come from `stack.yaml` / the policies and always win over any style preference above:
+- **word_limits** — tracker comment / chat / PR / ticket caps are hard ceilings.
+- **hyperlink_everything** — every ticket id, file, and PR is a smart link.
+- **business-first, segmented** — lead with the business result; segment with counts / % / $.
+- **stakeholder include-list** — `always_include` (and `include_self` if set) are non-negotiable.
+
+<!-- NOT a voice concern: CSV cell-value ASCII-punctuation and deterministic_outputs (ORDER BY,
+     golden replay) govern deliverable EXPORTS, not comms tone — see AGENTS.md "Deliverable exports". -->

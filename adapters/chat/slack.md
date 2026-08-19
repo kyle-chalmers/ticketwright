@@ -16,6 +16,13 @@ Maps the `chat` verb contract to Slack via the `mcp__{mcp}__*` tools. **Two hard
 to *draft*, not send — the human clicks send unless they say "send it";
 (2) never solo-DM a stakeholder — every message includes `{always_include}` (e.g. Alice).
 
+`{always_include}` is a **fixed stakeholder list** (the people always CC'd) — keep it that way. It is
+*not* a self-tag. If a repo also wants the shipper mentioned, set `seams.chat.include_self: true`
+(a **separate** token): resolve the shipper via `bin/resolve_user.py`, prefer the handle in their
+voice-profile frontmatter (written once at `/setup --voice`) for `lookup_user`, else the resolver
+identity — and add that mention *in addition to* `{always_include}`. Never substitute the shipper
+*for* a stakeholder.
+
 ## verb: draft   (the default — policy chat_default_draft)
 ```
 mcp__{mcp}__slack_send_message_draft(channel_id=<id or {default_channel}>, message=<body>, thread_ts=<optional>)

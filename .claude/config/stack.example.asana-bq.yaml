@@ -11,6 +11,10 @@ project:
   default_epic: null                    # Asana has no Epics; create_ticket uses a project section
   terminal_status: Done
   word_limits: {tracker_comment: 120, chat: 120, pr: 200, ticket: 200}
+  # voice_profiles:                     # per-person comms voice (off unless set). Build with /setup --voice
+  #   path: "voices/{profile_id}.md"
+  #   map:
+  #     "ana@grow.example": ana
 
 seams:
   tracker:
@@ -38,7 +42,8 @@ seams:
     mcp: teams                          # your Teams MCP server name (adapter calls resolve as mcp__{mcp}__…)
     channel: "Data Team / General"
     default_mode: draft
-    always_include: [Ana]
+    always_include: [Ana]                # fixed stakeholder list (never a self-tag)
+    # include_self: false                # also mention the shipper, in addition to always_include
     verify: null
 
   docstore:

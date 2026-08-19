@@ -109,6 +109,25 @@ zoom, custom filter/groups are all preserved). It's plain markdown (no plugins, 
 renders on GitHub too. On by default; set `project.graph_notes: false` to turn off the whole layer, or
 `project.graph_config: false` to keep the nodes but stop managing `.obsidian/graph.json`.
 
+## Sound like you (voice profiles)
+
+Every ticket ends with `/ship` drafting the tracker comment, chat message, and PR body — and you
+almost always edit that draft before it goes out. **Voice profiles** capture how *you* write so the
+draft arrives already sounding like you, and then learn from the edits you still make.
+
+- **Opt-in.** Off until you set `project.voice_profiles` in `stack.yaml`. Build a profile with
+  `/setup --voice`: a short interview (and, if you want, a few of your own already-sent lines).
+- **Per person.** `/ship` resolves who's shipping (`bin/resolve_user.py`, offline, via an explicit
+  identity→id map — never a fuzzy guess) and loads that person's `voices/<id>.md`.
+- **Within the rails, always.** Voice shapes *phrasing only*. `/ship` runs a comms-lint step first
+  (word limits, hyperlinks, include-list) and only then applies voice, so the profile can never
+  breach a word limit, drop a hyperlink, or skip the stakeholder include-list.
+- **It combs itself.** `/ship` diffs what it drafted against what you approved and *proposes* profile
+  updates from the delta — you approve each one; nothing is learned silently.
+- **Personal data.** A profile is your writing fingerprint. Committed by default (so a team shares
+  them like the ticket index); gitignore `voices/<id>.md` to keep yours private. It stores short
+  approved exemplars — never full confidential threads.
+
 ## Safety rails (on by default)
 
 - **High-risk DB writes ask first** — a hook inspects every warehouse command and prompts before

@@ -11,7 +11,10 @@ auth: |
 # Microsoft Teams adapter (reference for the abstraction proof)
 
 Maps the `chat` verb contract to Teams. Same two rules as Slack: default to **draft**, and always
-include `{always_include}`. Teams uses Adaptive Cards / HTML rather than Slack mrkdwn.
+include `{always_include}` (a fixed stakeholder list — never a self-tag). Teams uses Adaptive Cards /
+HTML rather than Slack mrkdwn. If `seams.chat.include_self: true`, also mention the shipper *in
+addition to* `{always_include}`: resolve via `bin/resolve_user.py`, preferring the handle in their
+voice-profile frontmatter for `lookup_user`, else the resolver identity.
 
 ## verb: draft
 Compose the message and **hold it for the human** (Teams has no native "draft to a channel" — stage

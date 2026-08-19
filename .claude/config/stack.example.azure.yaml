@@ -13,6 +13,10 @@ project:
   terminal_status: Closed               # Agile process "done" state
   ticket_url_template: "https://dev.azure.com/acme-corp/Platform/_workitems/edit/{number}"  # ADO ids are integers → use {number}, not {id}
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+  # voice_profiles:                     # per-person comms voice (off unless set). Build with /setup --voice
+  #   path: "voices/{profile_id}.md"
+  #   map:
+  #     "dana@acme-corp.example": dana
 
 seams:
   tracker:
@@ -40,7 +44,8 @@ seams:
     mcp: teams                          # your Teams MCP server name (adapter calls resolve as mcp__{mcp}__…)
     channel: "Data Platform / General"
     default_mode: draft
-    always_include: [Dana]
+    always_include: [Dana]               # fixed stakeholder list (never a self-tag)
+    # include_self: false                # also mention the shipper, in addition to always_include
     verify: null
 
   docstore:

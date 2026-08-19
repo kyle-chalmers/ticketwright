@@ -5,6 +5,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Per-person comms voice profiles** — opt-in `project.voice_profiles` in `stack.yaml`. When set,
+  `/ship` resolves the shipper (`bin/resolve_user.py`, offline, explicit identity→id map) and phrases
+  the tracker comment / chat / PR draft to match their `voices/<id>.md` — *within* the hard comms
+  rails (word limits, hyperlinking, business-first segmentation, the include-list), which a
+  comms-lint step `/ship` runs *before* the voice pass so style can never breach them. Build/refine
+  a profile with `/setup --voice`. Fail-open: unset field / map miss / missing profile ⇒ drafting is
+  unchanged. Profiles are personal data, committed by default (gitignore to keep private).
+- **Gated voice refinement** — `/ship` persists the initial vs approved comms drafts under a
+  gitignored `comms/` and, in Phase C, *proposes* profile updates from the diff (you approve each;
+  never silent). Kept separate from the `system_evolution` retro.
+- **`seams.chat.include_self`** — optional self-mention token resolved via `bin/resolve_user.py`,
+  *in addition to* the fixed `always_include` stakeholder list (never overloads it).
+
 ## [3.5.0] — 2026-08-12
 
 Two features land together. **Human review handoff** — a gate that opens a ticket's deliverables in

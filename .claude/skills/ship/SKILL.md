@@ -29,6 +29,18 @@ works regardless of the underlying tools.
    segmented with counts/%/$. Chat ≤ `word_limits.chat`; includes `seams.chat.always_include`;
    **hyperlink everything** (`hyperlink_everything`). If chat/docstore aren't configured, skip
    those artifacts and note `/setup chat` / `/setup docstore` as the enabler — don't block.
+   Then, in order:
+   - **Comms-lint the drafts first (the hard rails):** each is within its `word_limits.*` cap; ticket
+     id(s), files, and PR are hyperlinked; the chat message carries `always_include` (+ `include_self`
+     if configured). Fix any miss before continuing — these rails always win.
+   - **Voice pass (only if `project.voice_profiles` is set).** Resolve the shipper —
+     `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/resolve_user.py" --json` — and if it
+     returns a profile whose file exists, re-phrase the drafts to match that voice profile
+     **within the rails above** (it shapes phrasing only; it never bends a word limit, a link, or the
+     include-list). Empty output / no profile ⇒ leave the drafts as-is (fail open — behaves as today).
+   - **Persist the initial drafts** to the ticket's `comms/` (e.g. `comms/draft-tracker.initial.md`,
+     `comms/draft-chat.initial.md`). These are **immutable** — the record of what the plugin proposed,
+     for the voice-refine diff in Phase C. `comms/` is gitignored (unsent wording never rides the PR).
 
 ## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
 Print a summary of exactly what will happen, then **stop and wait** for the user. Only on explicit
@@ -36,10 +48,12 @@ authorization, execute in order:
 5. **docstore.backup** the ticket folder (full-title dest name); then `docstore.link_for` each
    delivered file to get shareable URLs.
 6. **tracker.comment** — post via the adapter's rich path (smart-link cards for the docstore
-   files). Never before this point (no tracker comments without human review).
+   files). Never before this point (no tracker comments without human review). Always write the
+   exact posted text to `comms/draft-tracker.approved.md` — edited or not — so Phase C can diff it
+   (an unedited ship just yields `initial == approved` and proposes nothing).
 7. **chat.draft** to `seams.chat.default_channel` (policy `chat_default_draft` — the human clicks
    send unless they said "send it", in which case `chat.send`). Smart links for ticket id(s),
-   files, PR.
+   files, PR. Write the final drafted text to `comms/draft-chat.approved.md`.
 8. **vcs.commit** — **first, isolate repo-setup / AI-layer files.** If any are dirty
    (`.claude/settings.json`, `.claude/config/stack.yaml`, `.claude/statusline.sh`, `AGENTS.md`/
    `CLAUDE.md`, `documentation/AI_LAYER_INDEX.md`, `.gitignore`) they belong to the repo's plugin
@@ -56,8 +70,16 @@ authorization, execute in order:
    Business Impact / Deliverables / Technical Notes / QC).
 9. **transition** the ticket toward `project.terminal_status` if appropriate.
 
-## Phase C — System-evolution retro (always, even on success)
-10. Reflect briefly: did anything go wrong or get re-done this ticket? If so, **which layer was
-    insufficient** — a global rule, the context pack, a skill, or an adapter? Propose the concrete
-    fix to *that* artifact (policy `system_evolution`) and note it. A repeated manual step is a
-    signal to `/productize` it. Fixing the layer, not just the ticket, is what compounds.
+## Phase C — Post-ship (always, even on success)
+10. **System-evolution retro** (policy `system_evolution`). Reflect briefly: did anything go wrong or
+    get re-done this ticket? If so, **which layer was insufficient** — a global rule, the context
+    pack, a skill, or an adapter? Propose the concrete fix to *that* artifact and note it. A repeated
+    manual step is a signal to `/productize` it. Fixing the layer, not just the ticket, is what
+    compounds. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 11, not
+    this retro.)*
+11. **Voice refine** (only if `project.voice_profiles` is set **and** a profile resolved for the
+    shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
+    differ beyond whitespace, the edits are voice signal: **propose** a small append/edit to the
+    person's `voices/<id>.md` capturing the pattern (e.g. "drops the greeting", "prefers 'net:' over
+    'in summary'") and **wait for confirmation before writing** — never silent. If `initial` ==
+    `approved` (no edits), or the feature is off, do nothing.
