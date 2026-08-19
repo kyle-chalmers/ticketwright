@@ -164,7 +164,7 @@ runs alone.
 | D | 8-step-1, 6-item-1 | high, medium | 8 edits `ship/SKILL.md` only after 5 has merged. 6-item-1 needs 4's wording. |
 | E | 4b | high | ALONE, and it has to be. 4b collides with 8-step-1 on `stack.schema.md` + `adapters/README.md`, with 6-item-1 on `bin/selftest.sh`, and with 9 on `README.md` + `ROADMAP.md`. It also needs 4's verbs and invariant, 6-item-1's absent-seam token, and 6-item-2's tracker verb — all of which must have merged. |
 | F | 7 — split proposal only | high | Needs 1 plus everything 2-5 settled. Prompt 7's success criterion (a live non-Claude runtime run) is not verifiable inside this repo's read-only offline test contract, so the wave-F session PROPOSES the split into shippable units with evidence-of-done for each, gets it reviewed, and stops. |
-| F2 | 7's approved units | high | One session per unit once the split is reviewed. Offline-verifiable units (installer emit, metadata mapping, honest hook degradation) ship; anything needing a live external-runtime test is parked with a written punch list. |
+| F2 | 7's approved units — internal waves F2-1 (U1 ∥ U5), F2-2 (U2 ∥ U4), F2-3 (U3), F2-4 (U6) | high | One session per unit; the collision analysis and per-unit evidence-of-done live in "## PROMPT 7 — split into units (wave F2)". Offline-verifiable units ship; every live-runtime residue is parked in U6's punch list. |
 | G | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
 | H | 10 | high | Email adapters. After G on purpose: a repo can hold only one `chat` seam until 8's sequence item 2 lands, and email is where a wrong audience is least recoverable. It also moves the adapter counts, which is why 9 now runs after it. |
 | I | 9 | medium | The docs restructure, LAST. Every count-mover (1, 6, 8-step-1, 10) has settled the counts by now, and 4b's setup-section rewrite has landed — 9 restructures `README.md` around it and must preserve it. Running last also lets 9's voice audit and "tool slot" terminology sweep cover the final state of every doc. |
@@ -1039,88 +1039,399 @@ GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" abov
 on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
 PROMPT 6. Put both verdicts in the PR body.
 
-## PROMPT 7 — Runtime completion
+## PROMPT 7 — split into units (wave F2)
 
-Depends on PROMPT 1 (research + adapters + kit-location CLI) and on PROMPTS 2–5 having settled
-canonical behavior. Now make it actually installable and runnable elsewhere.
+Restructured 2026-08-19 by the wave-F session, as the wave table schedules: prompt 7's success
+criterion (a Codex CLI user installs, runs setup, opens an analysis, reviews it and ships it without
+hand-editing a file) is a live-runtime observation that this repo's read-only, offline,
+credential-free selftest can never witness. So prompt 7 ships as SIX UNITS, each with an
+EVIDENCE-OF-DONE the selftest contract can actually check, and everything only a live external
+runtime can prove is parked in a written punch list (U6) rather than implied. The original items 0–5
+survive inside the units. Item 2 was already settled in "Two decisions made in advance" (KEEP
+`.claude/skills/` as the source, TRANSLATE ON EMIT); U1 implements it and records the reasons in an
+adopter-facing doc — nobody re-opens it.
 
-0. USE THE CURRENT RUNTIME NAMES. Two of the seven renamed during this project: Gemini CLI was
-   RETIRED 2026-06-18 and replaced by Antigravity (invoked as `agy`), though orgs on a Gemini Code
-   Assist Standard/Enterprise licence keep the legacy CLI; and Windsurf became Devin on 2026-06-02,
-   with Cascade superseded by Devin Local. The adapters are `antigravity.md` (alias: `gemini-cli`) and
-   `devin.md` (aliases: `windsurf`, `devin-desktop`), with the aliases asserted so `--runtime
-   gemini-cli|windsurf` keeps working. Wherever this prompt or its docs name the runtimes, use the new
-   names and keep the aliases.
+RE-VERIFICATION (2026-08-19, against current vendor docs — docs/runtimes.md's own header demands
+this before relying on it). The load-bearing claims held, with corrections U5 must land, each with
+its source cited in the updated docs:
 
-0b. CURSOR ALREADY READS OTHER RUNTIMES' DIRECTORIES. It reads `.cursor/skills` AND `.claude/skills`
-   AND `.codex/skills`, so a kit installed for Claude Code is already partly visible to Cursor with no
-   second install. Decide deliberately whether `--runtime cursor` emits a third copy or simply
-   verifies the existing one is reachable — emitting duplicates into three directories the same client
-   reads is how a stale copy starts silently winning.
+- Devin — two corrections. The `{"decision": "approve" | "block"}` schema belongs to its separate
+  `PermissionRequest` hook, NOT `PreToolUse`: PreToolUse blocks only via exit code 2 (the fail-open
+  exit table is confirmed verbatim — 0 continues, 2 blocks, any other nonzero is logged and does
+  not block). And Devin SKILL.md frontmatter `name` + `description` are REQUIRED —
+  `adapters/runtime/devin.md` ("no required field") and docs/runtimes.md ("no field is strictly
+  required") are both stale.
+- OpenCode — one correction. Subagent marking is `mode: "subagent"`, invoked via `@`-mention or the
+  Task tool — not `subtask: true`. The upstream `permission.ask`-never-fires issue is still open;
+  own-context isolation is still undocumented.
+- One internal contradiction already in the tree: `adapters/runtime/claude-code.md` calls Claude
+  Code "the only researched runtime" with a pre-tool `ask`, while docs/runtimes.md correctly says
+  Cursor and Antigravity have it too. U5 fixes the adapter prose.
+- Confirmed unchanged (the 3b picture stands): Codex's `ask` is still "parsed but not supported
+  yet", its hooks are trusted by hash, and its docs still call hooks "a useful guardrail, not a
+  complete enforcement boundary". Cursor still fails open unless `failClosed: true`, still has the
+  `ask` tier, and still reads `.claude/skills/` and `.codex/skills/` natively. Antigravity (`agy`)
+  still exposes exactly five hook events with no session start, still offers `ask`/`force_ask`, and
+  its hook-failure behavior is still undocumented. The alias pairs (antigravity/gemini-cli,
+  devin/windsurf) are unchanged, and `bin/kit_paths.py` already resolves them.
+- One finding GENERALIZES item 0b: Cursor, OpenCode, Cline AND Devin all document scanning
+  `.claude/skills/` natively, and Codex + Antigravity share the same `.agents/skills/` root. So
+  emit-vs-verify is a per-runtime CAPABILITY, not a Cursor special case: EMIT ONLY WHERE THE
+  RUNTIME CANNOT ALREADY SEE THE CANONICAL COPY; where it can, VERIFY the canonical copy is
+  reachable and emit nothing — a stale duplicate silently winning is the failure mode either way
+  (item 0b's point, now applied four times over). One `.agents/skills/` emission serves Codex and
+  Antigravity both, so its frontmatter must satisfy both (each requires only `name` +
+  `description`).
 
-1. INSTALLER: `bin/install.sh --runtime <name> [--global|--local]`, emitting runtime-native artifacts
-   from the canonical source. Claude Code keeps its plugin manifest; Codex gets `SKILL.md` files at
-   its skills root; others per their PROMPT 1 adapter. Document that hand-copying is unsupported —
-   the installer IS the compatibility layer. Reconcile with the existing `ticketwright init` PyPI
-   path rather than adding a competing third install route.
+THE 3b GATING INVERSION — kept, and encoded as data (U5) and behavior (U3) rather than prose:
 
-2. CANONICAL SOURCE LAYOUT. The source is `.claude/skills/` with `skills/` a symlink, and
-   `pyproject.toml` force-includes that Claude-shaped path. Decide whether to move it to a neutral
-   root or keep it and translate on emit — and record why.
+- An `ask` tier exists on Claude Code, Cursor, and Antigravity (richest: allow, deny, ask,
+  force_ask, deny_unless_prior_grant). It does NOT exist on Codex CLI, OpenCode, or Devin.
+- `db_write_requires_approval` DEFAULTS to `high_risk` — precisely the middle setting those three
+  cannot express natively. The installer must collapse it, the collapse is a safety decision, and
+  it must be SURFACED to the user, never buried as a config detail. U3 states the decision.
+- "Richer gate" and "has a session hook" are independent axes: Antigravity has the richest gate and
+  NO session start; Devin has SessionStart and a gate that fails open BY DOCUMENTED DESIGN. U5
+  encodes them as separate keys, and nothing may average them into a single capability score.
 
-3. PORT SKILL METADATA. Frontmatter is Claude-specific: `allowed-tools`, `disable-model-invocation`,
-   and the `tools:` field in `.claude/agents/qc-reviewer.md`. Map each to its per-runtime equivalent,
-   or document what is lost. Note `disable-model-invocation` has real safety meaning for `ship`,
-   `setup` and `productize` — if a runtime cannot express "user-invocable only", say so rather than
-   silently making those model-invocable.
+### Concurrency — file-collision analysis
 
-3b. ⚠ THE GATING PICTURE IS AN INVERSION, NOT A RANKING — and the ask tier is the part that matters.
-   Established by PROMPT 1's research (re-verify before relying on it; runtime docs move fast and two
-   product names changed mid-project):
-     - AN `ask` TIER EXISTS ON: Claude Code, Cursor, Antigravity (whose PreToolUse is strictly RICHER
-       than Claude Code's — allow, deny, ask, force_ask, deny_unless_prior_grant).
-     - IT DOES NOT EXIST ON: Codex CLI, OpenCode, Devin (approve/block only).
-   `db_write_requires_approval` DEFAULTS to `high_risk`, which is precisely a middle setting: ask for
-   the irreversible, run the additive. On three runtimes that middle has NO NATIVE EXPRESSION, so the
-   installer must COLLAPSE it — and which way it collapses is a safety decision, not a config detail:
-     - collapse toward DENY and additive statements start getting blocked, which trains users to
-       disable the guard;
-     - collapse toward ALLOW and the policy's whole purpose is gone while the config still says
-       `high_risk`.
-   PROMPT 7 must state which collapse each runtime got AND surface it to the user, so nobody reads
-   `high_risk` in their stack.yaml and believes they have a behaviour their runtime cannot provide.
-   Two more inversions worth encoding rather than averaging:
-     - Antigravity has the richest gating and NO session-start event at all (five events, all per-turn
-       or per-invocation). The session-start hooks people cite belong to a separate SDK product.
-     - Devin is the mirror: it HAS SessionStart with additionalContext, but its PreToolUse FAILS OPEN
-       by documented design (exit 0 continues, exit 2 blocks, any other nonzero is logged and does not
-       block). Cursor also fails open unless `failClosed: true` — treat that as REQUIRED CONFIGURATION
-       the installer sets, not a footnote.
-   So "richer hooks" and "has a session hook" are independent axes. Do not collapse them into a single
-   capability score.
+| F2 wave | Units | The collision picture, honestly |
+|---|---|---|
+| F2-1 | U1 ∥ U5 | ONE shared file: `bin/selftest.sh` — both append an independent, pre-numbered section at the tail, so the merge is a mechanical union with one known trivial textual conflict; second-to-merge rebases. Everything else is disjoint: U1 owns `bin/install.sh` / `bin/emit_runtime.py` / `ticketwright/cli.py` / `README.md` / `docs/architecture.md` + `tests/emit/`; U5 owns `adapters/runtime/*.md` + `bin/kit_paths.py` + `docs/runtimes.md`. |
+| F2-2 | U2 ∥ U4 | Same shape: `bin/selftest.sh` is the one shared file (independent tail sections, pre-numbered); otherwise U2 owns the emit path, adapters' mapping sections and fixtures (needs U1 + U5 merged); U4 owns `.claude/skills/review/` + `.claude/agents/qc-reviewer.md` (needs U5). |
+| F2-3 | U3 alone | Formally depends on U2 (both own `bin/emit_runtime.py`, the fixture trees, and U3 emits artifacts whose metadata U2 defines) — merges after it. |
+| F2-4 | U6 | Punch-list doc + one selftest section, written last so it names exactly the `unknown`/`unverified` values that survived U1–U5. |
 
-4. DEGRADE THE HOOKS HONESTLY. The four hooks do real work: `db_write_guard` (the ONLY mechanical
-   enforcement of `db_write_requires_approval`), `session_context`, `ticket_index_context`,
-   `regenerate_ticket_index`. Per PROMPT 1's research, for each runtime:
-     - re-express each hook as a CLI the workflow calls at the equivalent point;
-     - where the runtime CAN gate a tool call, wire `db_write_guard` into it;
-     - where it cannot, state plainly in that runtime's rendered AGENTS.md that
-       `db_write_requires_approval` is GUIDANCE, not enforcement. The kit already draws this
-       distinction — extend it rather than implying parity.
-     - A missing hook must never SILENTLY weaken a safety policy.
+Selftest section numbers, pre-assigned to avoid the wave-A collision: U1=39, U5=40, U2=41, U4=42,
+U3=43, U6=44. Assumed free as of 2026-08-19 main (highest is 38); each session still re-checks the
+highest number ON CURRENT MAIN before claiming its own, per the trap section above.
 
-5. SUBAGENT DEGRADATION. `/review --deep` fans out `qc-reviewer` subagents. Where a runtime has no
-   subagent primitive, define the inline fallback and state that it is a weaker check — a
-   same-context review is not the independent second pass the validation pyramid assumes.
+### U1 — Installer skeleton: `bin/install.sh --runtime <name>` — OFFLINE-VERIFIABLE
 
-Success criterion: a Codex CLI user can install the kit, run setup, open an analysis, review it, and
-ship it without hand-editing a file — and the Claude Code path is unchanged.
+Scope (item 1, narrowed to the success-criterion path): `bin/install.sh` (thin launcher, same
+pattern as `bin/tw`) delegating to a new stdlib `bin/emit_runtime.py`:
+`--runtime <name> [--global|--local] [--root <path>]`, no Claude env var required (standing
+constraint). Translate-on-emit from `.claude/skills/` per the settled layout decision, with the
+WHY recorded in `docs/architecture.md` (adopter-facing, per gate-1 review). Deliberately narrow
+runtime coverage — U2 extends to all seven:
+- `--runtime claude-code`: VERIFY-ONLY. The plugin manifest and `ticketwright init` are already
+  native; the command checks the install and touches nothing. The Claude Code path stays unchanged.
+- `--runtime codex-cli`: emit `.agents/skills/<name>/SKILL.md` per skill — `name` + `description`
+  frontmatter, body carried over, plus a provenance header ("emitted by ticketwright install
+  vX.Y.Z — do not hand-edit; re-run to update"). Hand-copying is documented as unsupported: the
+  installer IS the compatibility layer.
+- SAFETY CARVE-OUT (gate-1 finding): U1 emits NO skill whose source frontmatter declares
+  `disable-model-invocation: true` (`ship`, `setup`, `productize` today — enumerated from
+  frontmatter, not hardcoded). Emitting them before U2's metadata mapping exists would silently
+  make them model-invocable on Codex. The installer prints what it deferred and why.
+- `--runtime windsurf|gemini-cli` resolve through `bin/kit_paths.py`'s existing alias handling; a
+  known-but-not-yet-wired runtime exits nonzero naming the unit that adds it; an unknown name exits
+  nonzero listing the seven runtimes + aliases.
+- `--global` is PARSED but exits nonzero pointing at U2: the per-runtime global root is a
+  capability (`global_skills_root`, added by U5) that does not exist yet, and hardcoding it here
+  would contradict the frontmatter-driven rule. `--local` (default) emits into the repo.
+- Route reconciliation (item 1): exposed as `ticketwright install` via the existing passthrough in
+  `ticketwright/cli.py` — and because `_run_script` invokes every registered script with
+  `sys.executable`, the REGISTERED entrypoint must be the Python one (`SCRIPTS["install"] =
+  "emit_runtime.py"`); `bin/install.sh` is the standalone shell convenience that wraps it, in the
+  `bin/tw` pattern (gate-2 finding: registering the `.sh` would make the passthrough run
+  `python install.sh` and fail). One implementation reachable three ways (repo `bin/`, wheel,
+  plugin), never a competing third install route. `init`'s help text points non-Claude runtimes
+  at it.
+
+Files: `bin/install.sh`, `bin/emit_runtime.py`, `ticketwright/cli.py`, `README.md` (install
+section), `docs/architecture.md` (layout rationale + inventory), `tests/emit/<runtime>/` golden
+fixture trees (new top-level `tests/`, deliberately NOT force-included into the wheel),
+`bin/selftest.sh` section 39. Dependencies: none (alias resolution already shipped in #29).
+
+Evidence-of-done (selftest 39): the installer runs into `mktemp` fixture projects under
+`env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR`; the emitted tree for codex-cli diffs
+byte-for-byte against `tests/emit/codex-cli/`; the emitted tree contains no skill whose source
+declares `disable-model-invocation: true` (asserted by enumerating source frontmatter);
+`--runtime claude-code` leaves the fixture project byte-identical (verify-only proven as behavior);
+`--runtime windsurf` resolves to the devin adapter and its not-yet-wired error names devin, not
+windsurf (alias behavior, not vocabulary); `--global` exits nonzero naming U2; unknown runtime
+exits nonzero; the provenance header is present in every emitted file; `ticketwright install`
+dispatches to the same script; the existing 611 stay green.
+
+Honesty requirements: the provenance header is the anti-hand-copy statement, carried in the
+artifact itself. Verify-only for claude-code and the deferred safety-gated skills are printed, not
+silent.
+
+### U2 — Emission matrix, metadata mapping, and agent definitions — OFFLINE-VERIFIABLE
+
+Scope (items 0b generalized + 3, plus the agent path gate-1 found unowned): extend
+`bin/emit_runtime.py` to all seven runtimes, data-driven off adapter frontmatter, never hardcoded
+paths:
+- Emit-vs-verify per runtime from U5's `reads_foreign_skills` key: cursor/opencode/cline/devin
+  VERIFY the canonical `.claude/skills/` copy is reachable (printing the documented caveat — e.g.
+  Devin's vendor-format reading is toggleable in its config) and emit NO duplicate skills;
+  codex-cli/antigravity share one `.agents/skills/` emission.
+- Metadata mapping (item 3): `allowed-tools`, `disable-model-invocation`, and the `tools:` field of
+  `.claude/agents/qc-reviewer.md`, mapped per runtime or explicitly recorded as LOST — never
+  silently dropped. This completes the skills U1 deferred: on runtimes that can express
+  user-invocable-only, map it; on runtimes that cannot, emit with an explicit topmost warning
+  block. The `disable-model-invocation` set is enumerated from source frontmatter at emit time, so
+  a future fourth skill is covered automatically.
+- AGENT DEFINITIONS (gate-1 finding — previously unowned): emit `qc-reviewer` as a runtime-native
+  agent definition wherever subagents are user-definable (Codex `.codex/agents/*.toml`, and the
+  markdown forms for cursor/devin/antigravity), with `tools:` mapped or recorded lost; cline gets
+  none (subagents not user-definable there) and the loss is stated.
+- `--global` wiring for all runtimes, driven by U5's `global_skills_root`; where that key is
+  `unknown` (antigravity — its two doc pages disagree), the installer REFUSES with the explanation
+  rather than guessing a path.
+- THE SHARED-FILE TRAP, named because it is easy to miss: where a runtime reads the canonical
+  `.claude/skills/` copy directly, per-runtime metadata mapping is IMPOSSIBLE — one file, many
+  readers, and a foreign reader ignores Claude-specific keys. So on every verify-not-emit runtime,
+  `disable-model-invocation` and `allowed-tools` are exactly as lost as on an emit runtime lacking
+  the primitive, and the loss statement applies to both cases.
+
+Files: `bin/emit_runtime.py`, `adapters/runtime/*.md` (a `## metadata mapping` section per
+adapter), `tests/emit/` fixtures, `bin/selftest.sh` section 41. Dependencies: U1 (the emit path),
+U5 (the capability keys).
+
+Evidence-of-done (selftest 41): fixture comparisons show the mapped frontmatter per emit runtime,
+including the emitted agent definition; for EVERY runtime that cannot express user-invocable-only
+(whether the primitive is missing or it reads the shared canonical copy), every skill whose SOURCE
+declares `disable-model-invocation: true` is covered by an explicit warning IN AN ARTIFACT THIS
+UNIT PRODUCES — the emitted file's topmost block on emit runtimes, and on verify runtimes the
+installer's printed verification report, captured and asserted in the fixture run (gate-2 finding:
+U2 must not lean on U3's enforcement table, which does not exist yet in U2's wave; U3 later
+RESTATES the same losses in the rendered AGENTS.md) — with the assertion enumerating source
+frontmatter rather than a hardcoded list; the mapping table covers all three fields × seven
+runtimes, `lost:` entries allowed but named; cursor/opencode/cline/devin runs emit no skills copy
+while `.claude/skills/` is present (asserted as absence in the emitted tree); `--global` emits
+under a temp `HOME` for runtimes with a declared global root and refuses with the explanation
+where it is `unknown`; existing tests stay green.
+
+Honesty requirements: a lost safety-relevant field is stated in an artifact a user actually sees —
+the emitted skill, or the installer's printed report on verify runtimes (restated in the rendered
+AGENTS.md once U3 lands) — not only in contributor docs. "Model-invocable when the author said
+user-only" must be impossible to hit without having been told. Whether a verify-only runtime
+ACTUALLY discovers the canonical copy is live-runtime work → U6.
+
+### U3 — Hook degradation, guard protocol shims, and the enforcement table — OFFLINE-VERIFIABLE
+for shim behavior and emitted config; EVERY runtime-honoring claim is NEEDS-LIVE-RUNTIME (U6 #1,
+#3–#7). The riskiest unit, per gate-1 review — staged inside one session as (a) scanner extraction
+with Claude-regression proof, (b) emitted wiring + schema tests, (c) live confirmation parked.
+
+Scope (items 3b + 4):
+- Scanner extraction first: the deterministic SQL scanner moves from `.claude/hooks/db_write_guard.py`
+  into `bin/` (e.g. `bin/sql_scan.py`) — logic belongs in harness-neutral CLIs under `bin/`, hooks
+  and shims are presentation (gate-2 finding; AGENTS.md tiebreaker 5). The Claude hook file keeps
+  its entrypoint and its exact Claude-shaped behavior (it stays an `ask` wrapper that always exits
+  0). NOT byte-identity — gate-1 review is right that a refactor cannot claim that — but
+  behavior-identity: the existing guard selftest section must pass unmodified, plus a golden
+  stdin→stdout fixture pinning the Claude protocol before and after.
+- `bin/hook_shim.py --runtime <r> --hook <name>` adapts each hook's stdin/stdout to the runtime
+  protocol: codex → `hookSpecificOutput.permissionDecision: "deny"` or exit 2; cursor →
+  `{"permission": "allow"|"deny"|"ask"}`, and the emitted hook config sets `failClosed: true` as
+  REQUIRED CONFIGURATION (3b), not a footnote; devin → exit-code contract only (0 pass, 2 block),
+  with internal errors caught and mapped to a DELIBERATE exit 2 carrying the escape-hatch message —
+  never a stray nonzero, which Devin logs and ignores; antigravity → `decision: ask` for
+  `high_risk`, `force_ask` for `all` (the primitive that ignores cached permissions); opencode → an
+  emitted JS plugin wrapper that shells to the guard and throws to deny.
+- MALFORMED-INPUT DECISIONS ARE PER-RUNTIME, recorded as a column of the 4×7 mapping (gate-2
+  finding: a shim that swallows unparseable input with exit 0 on Cursor reopens exactly the hole
+  `failClosed: true` closes — the two claims cannot coexist). The rule: a guard that cannot read
+  its input must never guess allow. Where the runtime has an ask tier (claude-code stays its
+  existing fail-open ask wrapper, unchanged; cursor and antigravity escalate to `ask`), malformed
+  input escalates; on the deny-only runtimes (codex-cli, opencode, devin) it DENIES with the
+  escape-hatch message, consistent with the high_risk collapse. This deliberately diverges from the
+  Claude-native hooks' fail-open philosophy, because on these runtimes the installer configured the
+  gate itself — and the divergence is stated in the enforcement table, per runtime, not implied.
+- THE COLLAPSE DECISION (3b), stated per runtime and surfaced. Ask-capable runtimes (claude-code,
+  cursor, antigravity) express `high_risk` as ask. Deny-only runtimes (codex-cli, opencode, devin)
+  collapse `high_risk` to DENY-WITH-ESCAPE: destructive statements are denied with a message naming
+  the one-shot re-approval (`TICKETWRIGHT_APPROVE=once`, or an approval token file consumed on
+  use); additive statements pass untouched, because the scanner already distinguishes them. This
+  dodges both bad collapses in 3b: additive work is never blocked (nobody is trained to disable the
+  guard), and the protection is never silently gone (the deny carries its own escalation path — a
+  manual ask tier). NEVER collapse toward allow. Surfacing, scope named per the "warn once" rule:
+  once per install run on the installer's stdout, and permanently in the enforcement table.
+- THE ENFORCEMENT TABLE: `templates/AGENTS.md.tmpl` currently says mechanical enforcement is Claude
+  Code and "for every other agent it is guidance" — FALSE once this unit lands. Replace that
+  sentence with a per-runtime × per-hook table saying ENFORCEMENT / GUIDANCE / UNKNOWN with the
+  specific caveat: codex (trusted-by-hash — installed is not armed; its own docs call hooks a
+  guardrail, not an enforcement boundary; high_risk collapsed to deny-with-escape), cursor
+  (`failClosed: true` set by the installer; deny-path reliability unverified upstream), devin
+  (fails open by documented design; the shim exits 2 deliberately; high_risk collapsed to
+  deny-with-escape), antigravity (failure mode undocumented — stated as UNKNOWN, never assumed),
+  opencode (throw-to-deny, no ask; high_risk collapsed to deny-with-escape), cline (GUIDANCE-ONLY —
+  hooks unverified upstream and approval classification is model-judged). Rendered for ALL runtimes
+  because AGENTS.md is one shared team file read by teammates on different runtimes; and because
+  Cline's documented rules surface is `.clinerules/`, not AGENTS.md (gate-1 finding), the cline
+  install also emits the table into a `.clinerules/` artifact so its users actually see it. A
+  missing hook must never SILENTLY weaken a safety policy — the table IS the non-silence.
+  User-facing wording follows the tool-slot terminology rule.
+- THE COMPLETE 4×7 MAPPING (gate-1 finding — "where available" is not a mapping): for each of the
+  four hooks on each of the seven runtimes, the unit produces exactly one of WIRED (an emitted
+  artifact exists in the fixture), FALLBACK (a named file carries the workflow instruction — e.g.
+  `session_context`/`ticket_index_context` banner content folded into the always-loaded rules
+  emission on antigravity/opencode, marked static-not-fresh; `regenerate_ticket_index` as the
+  documented `bin/tw build_ticket_index.py` call in the enrich/ship flow plus the existing
+  `--check` staleness gate), or UNKNOWN (cline, stated). No empty cells.
+
+Files: `bin/hook_shim.py`, `bin/sql_scan.py` (the extracted scanner),
+`.claude/hooks/db_write_guard.py` (import swap only), `bin/emit_runtime.py` (hook-config emission),
+`templates/AGENTS.md.tmpl`, `tests/emit/` fixtures, `bin/selftest.sh` section 43. Dependencies:
+U1, U5, and FORMALLY U2 (shared ownership of `emit_runtime.py`, fixtures, and the metadata the
+emitted artifacts carry).
+
+Evidence-of-done (selftest 43): the existing guard section passes unmodified and the golden Claude
+stdin→stdout fixture is unchanged; shim unit tests drive each runtime protocol with fixture stdin —
+destructive SQL yields deny/exit-2 in that runtime's exact schema, additive SQL passes, malformed
+stdin follows that runtime's DECLARED decision (escalates to `ask` on cursor/antigravity, denies
+with the escape message on codex-cli/opencode/devin — never a silent allow on a runtime the
+installer configured fail-closed), and the devin path is proven never to exit with any nonzero
+other than 2 (internal-error fixture); the approval escape round-trips offline (denied without the
+token, allowed exactly once with it, token consumed); the emitted cursor hook config contains
+`"failClosed": true`; the emitted/rendered AGENTS.md fixture contains the enforcement table with
+each runtime's row, and the cline `.clinerules/` artifact carries it too (degradation text asserted
+in RENDERED OUTPUT, not source prose); the 4×7 mapping has no empty cell — including the
+malformed-input column — asserted mechanically; existing tests stay green.
+
+Honesty requirements: every collapse and every UNKNOWN is user-visible in a file that runtime's
+users actually read; the policy value in `stack.yaml` never claims behavior the runtime cannot
+deliver without the adjacent table saying so. What offline evidence CANNOT show — that any runtime
+loads, trusts, or honors the wiring — is exactly U6 entries 1 and 3–7, and this unit's PR must say
+so rather than implying parity.
+
+### U4 — Subagent degradation for `/review --deep` — OFFLINE-VERIFIABLE (structural only)
+
+Scope (item 5): `/review` probes capabilities through the kit CLI (capability keys only, never
+runtime names — selftest section 3's leak grep must stay green):
+- `subagents: yes` + `subagent_isolation: documented` → fan out `qc-reviewer` as today; the verdict
+  records `review_mode: independent-subagent`.
+- isolation `unestablished` (codex-cli, opencode) → fan-out permitted, but the verdict records the
+  isolation posture verbatim from the adapter — honest without refusing the stronger check.
+- subagents absent or not user-definable (cline), or capability unknown (unknown runtime, per the
+  never-optimistic rule) → inline fallback; the verdict records `review_mode: inline-same-context`
+  plus the fixed sentence: a same-context review is not the independent second pass the validation
+  pyramid assumes.
+
+Files: `.claude/skills/review/SKILL.md`, `.claude/agents/qc-reviewer.md` (verdict-record fields),
+`bin/selftest.sh` section 42. Dependencies: U5 (isolation key). Runs concurrent with U2.
+
+Evidence-of-done (selftest 42), stated at its honest strength: a skill is prose a model executes,
+so the offline evidence is STRUCTURAL — the skill contains the capability probe and all three
+branches; the verdict-record template carries `review_mode` with both values and the weaker-check
+sentence on the inline branch; no runtime name appears in the skill; the unknown-runtime case maps
+to the degraded branch. That an agent actually follows the branch is not offline-checkable — a live
+inline-degradation run is parked as U6 #9.
+
+Honesty requirements: the verdict record must say WHICH review the ticket actually got. An
+inline-degraded APPROVE that reads identically to an independent-subagent APPROVE would be the
+silent quality slide the mission forbids.
+
+### U5 — Capability vocabulary + matrix corrections — OFFLINE-VERIFIABLE (declared-value
+consistency; vendor truth is carried by dated citations and re-checked live via U6)
+
+Scope (items 0 + 3b as data): ADDITIVE frontmatter keys on all seven `adapters/runtime/*.md`
+(existing keys untouched — selftest section 31 already asserts the current set):
+- `gate_ask_tier: yes|no|unknown` — the 3b axis. `tool_gate: yes` alone is the misleading collapse
+  the plan warns about: it is `yes` on codex today while the ask tier is absent.
+- `gate_fail_mode: open|closed|unknown` — the runtime's NATIVE DEFAULT behavior, not the installed
+  state: cursor and devin `open`, antigravity `unknown` (stated, not assumed). Cursor's `open` here
+  is precisely WHY U3's installer must set `failClosed: true` — the key records what the runtime
+  does on its own; the installer compensates where it can.
+- `subagent_isolation: documented|unestablished|none`.
+- `reads_foreign_skills: <list|none>` — drives U2's emit-vs-verify branch.
+- `global_skills_root: <path|unknown>` — gate-1 finding: `--global` cannot be frontmatter-driven
+  without it; antigravity is `unknown` (its two doc pages disagree) until U6 resolves it.
+Plus the 2026-08-19 corrections with sources: the Devin PreToolUse/PermissionRequest split, Devin's
+required frontmatter, OpenCode `mode: "subagent"`, and the stale "only researched runtime with
+ask" prose in `adapters/runtime/claude-code.md` — landed in the adapters and `docs/runtimes.md`,
+re-dated. `bin/kit_paths.py` surfaces the new keys in `--json` (extend its key list — it whitelists
+fields today), and gains PER-KEY FLOORS for the unknown-runtime case (gate-2 finding: the current
+generic `"no"` floor is not a legal value for the non-boolean keys): booleans floor to `no` as
+today; `gate_ask_tier`, `gate_fail_mode`, `subagent_isolation`, `global_skills_root` floor to
+`unknown`; `reads_foreign_skills` floors to `none`.
+
+Files: `adapters/runtime/*.md` (7), `bin/kit_paths.py`, `docs/runtimes.md`, `bin/selftest.sh`
+(amend section 31's required-key list + new section 40). Dependencies: none. Runs concurrent
+with U1.
+
+Evidence-of-done (selftest 31 + 40): every runtime adapter declares the new keys with
+closed-vocabulary values; the load-bearing rows are PINNED so a drive-by edit cannot flip a safety
+axis silently: `gate_ask_tier` no on codex-cli/opencode/devin and yes on
+claude-code/cursor/antigravity; `gate_fail_mode` open on cursor and devin, unknown on antigravity;
+`subagent_isolation` none on cline, unestablished on codex-cli and opencode; `kit_paths --json`
+surfaces the keys, and for an unknown runtime each key reports its DECLARED FLOOR (the existing
+assertion covers exactly the four boolean flags at `no` — extend it per key, don't overstate it);
+the aliases still resolve; the existing 611 stay green.
+
+Honesty requirements: `unknown` is a legal, permanent value — forcing a yes/no where the docs are
+silent manufactures a confident wrong answer (the runtimes.md principle). The 3b inversion axes
+stay separate keys; no derived single score, anywhere. What selftest pins is DECLARED-VALUE
+consistency against drive-by edits; the truth of the declarations rests on the dated, cited
+research and its U6 re-checks.
+
+### U6 — The live-verification punch list — NEEDS-LIVE-RUNTIME (the container; the unit itself is
+a doc plus one selftest section)
+
+Scope: `docs/live-verification.md` — the parked work, written down. Every entry names the runtime,
+preconditions, the exact steps a human with that runtime must run, the expected observation, and
+where the result gets recorded (flip the adapter frontmatter `unknown` to a value; re-date
+docs/runtimes.md; check the entry off). Entries:
+
+1. Codex CLI — THE SUCCESS CRITERION. Install via `ticketwright install --runtime codex-cli`, run
+   setup, open an analysis, review it, ship it — zero hand-edited files. Includes trusting the
+   emitted hooks by hash (installed is not armed until then) and verifying that editing a hook
+   re-arms the review. Until a human checks this off, prompt 7's criterion is OPEN.
+2. Codex CLI — custom-subagent addressability by name from `.codex/agents/*.toml` (upstream issue
+   open as of 2026-08-19); decides whether `qc-reviewer` fan-out is nameable or generic.
+3. Cursor — the deny path actually blocks (upstream reliability reports); `failClosed: true`
+   observed blocking on a deliberately-broken hook; precedence between the natively-read
+   `.claude/skills/` and any emitted artifacts (the stale-copy check item 0b exists for).
+4. Antigravity — hook-failure mode (currently `unknown`); which documented global skills path is
+   real (two pages disagree — resolves `global_skills_root: unknown`); `ask`/`force_ask` observed
+   in a real session; whether any structured-question surface exists (resolves
+   `structured_questions: unknown`).
+5. Devin — the fail-open exit table observed (nonzero-but-not-2 logged, not blocking); the
+   SessionStart banner actually renders; emitted skill frontmatter accepted.
+6. OpenCode — throw-to-deny observed; the no-banner degradation confirmed; upstream
+   `permission.ask` issue status re-checked.
+7. Cline — whether file-based hooks fire at all in the current extension; if not, the adapter's
+   guidance-only stance is confirmed rather than assumed; whether the `.clinerules/` honesty
+   artifact is actually loaded.
+8. EVERY verify-only runtime (cursor, opencode, cline, devin) — the canonical `.claude/skills/`
+   copy is actually DISCOVERED and invocable there (U2's verify step only proves the file exists at
+   a documented path), and no duplicate or foreign copy shadows it.
+9. Per emit runtime — the emitted agent definition and metadata mapping are ACCEPTED by the
+   runtime (a skill with a mapped frontmatter loads; the qc-reviewer definition is spawnable), and
+   `--global` artifacts are found at the declared `global_skills_root`.
+10. Antigravity, Devin, OpenCode — `model_sandbox: unverified` resolved: run each adapter's
+   `model_cmd` and confirm whether the sandbox/restriction posture it names actually holds.
+11. Any non-Claude runtime — one live `/review --deep` on a runtime without documented isolation,
+   confirming the verdict records the degraded/posture-annotated `review_mode` (U4's structural
+   evidence made real), and one post-write index regeneration via the FALLBACK path, confirming
+   the catalog stays fresh without the PostToolUse hook.
+
+Files: `docs/live-verification.md`, `bin/selftest.sh` section 44. Dependencies: all of U1–U5
+(it names what survived them). Runs last.
+
+Evidence-of-done (selftest 44) — for the unit itself, which is offline-checkable even though its
+contents are not: the doc exists, and the honesty link is MECHANICAL: every `unknown` OR
+`unverified` value in any `adapters/runtime/*.md` frontmatter must have a matching entry in
+`docs/live-verification.md` naming that runtime and axis (that covers today's
+`structured_questions: unknown` on antigravity, cline's unknowns, and the three
+`model_sandbox: unverified` rows) — a future `unknown` without a punch-list entry turns the suite
+red.
+No selftest assertion may claim a punch-list item "passed"; the list records that verification is
+OWED, and only a human with the runtime can pay it.
 
 ---
 
-GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" above): run codex
-on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
-PROMPT 7. Put both verdicts in the PR body.
+Success-criterion mapping, stated plainly: U1–U5 prove the Codex artifacts are emitted correctly,
+the safety collapses are stated, and the Claude Code path is unchanged — all offline. The criterion
+ITSELF is U6 entry 1 and stays open until a human with a Codex CLI checks it off. That is the
+honest boundary of what this repo's test contract can certify.
+
+GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" above): EACH F2 unit
+runs codex on its PLAN before writing code and on its DIFF before opening the PR, substituting its
+unit id (e.g. "PROMPT 7 / U3"). Both verdicts go in every unit's PR body.
 
 ## PROMPT 8 — Let a capability hold more than one tool
 
