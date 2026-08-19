@@ -71,6 +71,16 @@ So "keep selftest green" is NOT a free constraint. Any prompt that adds an adapt
 restructures README/architecture MUST update those counts and preserve those tokens IN THE SAME
 CHANGE. Where a prompt below hits this, it says so explicitly.
 
+## THIS FILE IS PUBLIC. USE FIXTURE IDENTIFIERS ONLY.
+This document lives in a public repo. An earlier revision carried a real `~/.databrickscfg` profile
+name in three places and a real work username in a fourth, taken from an actual setup run, and it was
+published before anyone noticed. It has been scrubbed, but a force-push does NOT un-publish: orphaned
+commits stay fetchable by SHA, so the old content is still retrievable from history.
+So: when illustrating "a real run produced X", invent X. Never paste an account name, workspace host,
+warehouse id, role, profile, username, channel id, or absolute home-directory path from a real
+environment into this file or any prompt derived from it. The illustration works identically with a
+fixture value, and a fixture cannot be leaked.
+
 ## Standing constraints
 - `bin/selftest.sh` must pass. It is at 338 cases as of this writing and the count SHOULD grow —
   never treat a number as the target, and see the trap above.
@@ -875,6 +885,14 @@ PROMPT 5. Put both verdicts in the PR body.
    adapter is `status: stub`", but NO adapter in the repo carries a `status:` key and
    `adapters/README.md` does not list one in the frontmatter contract. Either add `status:` to the
    contract and populate it, or delete the promise. Do not leave a warning the kit cannot emit.
+
+2c. NEW CONTRACT SURFACE, already shipped — read it before generalizing over tracker config. Each
+   tracker adapter now declares `container_key:` frontmatter naming the dotted config path that a
+   chosen container fills, following the existing `dev_key:` precedent so adapters spell their own key
+   and skills never hardcode one. It is deliberately NOT universal: jira fills `project.key_prefix`
+   (a `project:` key), while azure-devops fills `seams.tracker.project` and leaves `key_prefix`
+   display-only. Anything that reasons about "the tracker's project" must read `container_key:` rather
+   than assume a single key exists.
 
 2. `/setup` asks for a tracker and a ticket key prefix but never checks whether the corresponding
    project is ALIVE. In a real run the Jira project whose name matched the repo best had exactly one
