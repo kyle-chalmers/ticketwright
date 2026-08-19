@@ -904,6 +904,20 @@ PROMPT 6. Put both verdicts in the PR body.
 Depends on PROMPT 1 (research + adapters + kit-location CLI) and on PROMPTS 2–5 having settled
 canonical behavior. Now make it actually installable and runnable elsewhere.
 
+0. USE THE CURRENT RUNTIME NAMES. Two of the seven renamed during this project: Gemini CLI was
+   RETIRED 2026-06-18 and replaced by Antigravity (invoked as `agy`), though orgs on a Gemini Code
+   Assist Standard/Enterprise licence keep the legacy CLI; and Windsurf became Devin on 2026-06-02,
+   with Cascade superseded by Devin Local. The adapters are `antigravity.md` (alias: `gemini-cli`) and
+   `devin.md` (aliases: `windsurf`, `devin-desktop`), with the aliases asserted so `--runtime
+   gemini-cli|windsurf` keeps working. Wherever this prompt or its docs name the runtimes, use the new
+   names and keep the aliases.
+
+0b. CURSOR ALREADY READS OTHER RUNTIMES' DIRECTORIES. It reads `.cursor/skills` AND `.claude/skills`
+   AND `.codex/skills`, so a kit installed for Claude Code is already partly visible to Cursor with no
+   second install. Decide deliberately whether `--runtime cursor` emits a third copy or simply
+   verifies the existing one is reachable — emitting duplicates into three directories the same client
+   reads is how a stale copy starts silently winning.
+
 1. INSTALLER: `bin/install.sh --runtime <name> [--global|--local]`, emitting runtime-native artifacts
    from the canonical source. Claude Code keeps its plugin manifest; Codex gets `SKILL.md` files at
    its skills root; others per their PROMPT 1 adapter. Document that hand-copying is unsupported —
@@ -919,6 +933,31 @@ canonical behavior. Now make it actually installable and runnable elsewhere.
    or document what is lost. Note `disable-model-invocation` has real safety meaning for `ship`,
    `setup` and `productize` — if a runtime cannot express "user-invocable only", say so rather than
    silently making those model-invocable.
+
+3b. ⚠ THE GATING PICTURE IS AN INVERSION, NOT A RANKING — and the ask tier is the part that matters.
+   Established by PROMPT 1's research (re-verify before relying on it; runtime docs move fast and two
+   product names changed mid-project):
+     - AN `ask` TIER EXISTS ON: Claude Code, Cursor, Antigravity (whose PreToolUse is strictly RICHER
+       than Claude Code's — allow, deny, ask, force_ask, deny_unless_prior_grant).
+     - IT DOES NOT EXIST ON: Codex CLI, OpenCode, Devin (approve/block only).
+   `db_write_requires_approval` DEFAULTS to `high_risk`, which is precisely a middle setting: ask for
+   the irreversible, run the additive. On three runtimes that middle has NO NATIVE EXPRESSION, so the
+   installer must COLLAPSE it — and which way it collapses is a safety decision, not a config detail:
+     - collapse toward DENY and additive statements start getting blocked, which trains users to
+       disable the guard;
+     - collapse toward ALLOW and the policy's whole purpose is gone while the config still says
+       `high_risk`.
+   PROMPT 7 must state which collapse each runtime got AND surface it to the user, so nobody reads
+   `high_risk` in their stack.yaml and believes they have a behaviour their runtime cannot provide.
+   Two more inversions worth encoding rather than averaging:
+     - Antigravity has the richest gating and NO session-start event at all (five events, all per-turn
+       or per-invocation). The session-start hooks people cite belong to a separate SDK product.
+     - Devin is the mirror: it HAS SessionStart with additionalContext, but its PreToolUse FAILS OPEN
+       by documented design (exit 0 continues, exit 2 blocks, any other nonzero is logged and does not
+       block). Cursor also fails open unless `failClosed: true` — treat that as REQUIRED CONFIGURATION
+       the installer sets, not a footnote.
+   So "richer hooks" and "has a session hook" are independent axes. Do not collapse them into a single
+   capability score.
 
 4. DEGRADE THE HOOKS HONESTLY. The four hooks do real work: `db_write_guard` (the ONLY mechanical
    enforcement of `db_write_requires_approval`), `session_context`, `ticket_index_context`,
