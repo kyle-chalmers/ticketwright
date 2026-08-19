@@ -69,7 +69,8 @@ Everything else ships as a **commented default** the user can edit later: chat +
 word limits, role (`generalist`), domain phrase (`data analysis`), and all 10 policies at their
 defaults. Each chosen tool's required
 keys (per its adapter's `requires:` frontmatter): take the detected value where possible; otherwise
-include the key commented with a `# TODO` and keep going — `verify` will point at it.
+include the key commented with a `# TODO` and keep going — `verify_stack.sh` names any unset
+required key by name (a warning, not a failure), so a deferred key is reported rather than lost.
 
 ### Phase 3 — Write & scaffold
 4. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen seams live; optional seams as

@@ -5,6 +5,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **`verify_stack.sh` now actually checks adapter-required keys.** `/setup` has always told you an
+  unfilled key could be left as a `# TODO` because "`verify` will point at it" — but nothing read
+  the adapter's `requires:` frontmatter. Only the seam's `verify` command ran, so a key was caught
+  only if that command happened to name it. Three ways this went wrong: Jira `requires: [site, cli]`
+  but verifies with `{key_prefix}`, so an unset `site` reported **✓ reachable**; an MCP seam with
+  `verify: null` checked nothing at all; and an unset key that *was* referenced interpolated to a
+  literal `{base_path}`, failing with a message about a missing directory rather than a missing
+  setting. `verify_stack.sh` now reads `requires:` and names each unset key. It **warns rather than
+  fails** — an unfilled key is a setup-time TODO, not an unreachable tool, and failing would reject
+  configs written before this check existed. All six shipped example configs verify clean.
+
 ### Added
 - **Seventh `tracker` verb — `rank_projects_by_activity`.** Setup could adopt a tracker project
   because its *name* matched the repo, with no signal about whether anyone still works there. The

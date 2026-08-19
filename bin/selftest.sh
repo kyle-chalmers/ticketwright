@@ -2092,5 +2092,91 @@ printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    path: "voices/{profi
 vpo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VP/.claude/config/stack.yaml" --dry-run 2>&1)"
 grep -q 'All seams OK' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
 
+hdr "30 · verify_stack reports unset adapter-required keys (requires: was never read)"
+# /setup tells the user an unfilled key can be left as `# TODO` because "verify will point at it".
+# It could not: verify_stack read only the seam's `verify` string, which exercises just the keys that
+# string happens to name. Jira `requires: [site, cli]` but verifies with `{key_prefix}`, so an unset
+# `site` reported "reachable"; a `verify: null` seam checked nothing; and an unset key that IS named
+# interpolated to a literal `{base_path}`, failing with a message about a directory rather than a
+# setting. These assertions pin all three, plus the two ways the check itself can go wrong.
+RQ="$TMP/requires"; mkdir -p "$RQ/.claude/config"
+
+# (A) A key the verify never mentions: silently green before, named now.
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    cli: acli\n    verify: "true"\n' > "$RQ/.claude/config/stack.yaml"
+rqo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)"
+grep -q 'required key(s) not set: site' <<<"$rqo" \
+  && ok "verify_stack names an unset required key its verify never references (jira site)" \
+  || bad "an unset required key went unreported" "$rqo"
+# ...and it WARNS rather than failing: an unfilled key is a setup-time TODO, not an unreachable tool,
+# and failing would reject every config written before this check existed.
+grep -q 'All seams OK' <<<"$rqo" \
+  && ok "an unset required key warns, never fails (pre-existing configs keep working)" \
+  || bad "unset required key turned into a failure" "$rqo"
+
+# (B) A seam with verify: null checked nothing at all before.
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
+grep -q 'required key(s) not set: mcp' \
+  <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)" \
+  && ok "verify_stack checks required keys even when verify is null" \
+  || bad "a verify: null seam still checks nothing"
+
+# (C) REGRESSION GUARD: a LIST-valued required key must count as present. The interpolation token
+# file is filtered to scalars (only scalars can interpolate), so reusing that filter for a presence
+# check reports `always_include: [Ana]` as missing forever — which it did, on two shipped configs.
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: teams\n    adapter: adapters/chat/teams.md\n    transport: mcp\n    channel: "D"\n    default_mode: draft\n    always_include: [Ana]\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
+grep -q 'always_include' \
+  <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)" \
+  && bad "a list-valued required key is misreported as unset (scalar filter leaked into the check)" \
+  || ok "a list-valued required key counts as present (always_include)"
+
+# (D) REGRESSION GUARD: the check is seam-scoped. A project.* key of the same name must NOT satisfy
+# a missing seam key — the token file merges project tokens in, so reading it would mask this.
+printf 'project:\n  key_prefix: ENG\n  site: not-a-seam-key\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    cli: acli\n    verify: "true"\n' > "$RQ/.claude/config/stack.yaml"
+grep -q 'required key(s) not set: site' \
+  <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)" \
+  && ok "a project.* key does not satisfy a missing seam key of the same name" \
+  || bad "project token masked a missing seam key"
+
+# (D2) A required key present but BLANK is unset. `base_path:` with nothing after it is a likelier
+# typo than a deliberate choice, and it is the same failure as never writing the key.
+for blank in 'null' '""'; do
+  printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    base_path: %s\n    verify: "true"\n' "$blank" > "$RQ/.claude/config/stack.yaml"
+  grep -q 'required key(s) not set: base_path' \
+    <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" --dry-run 2>&1)" \
+    && ok "a required key set to $blank counts as unset" \
+    || bad "a required key set to $blank was treated as configured"
+done
+
+# (D3) Multi-target inheritance: a target that inherits a required key from its seam must NOT warn,
+# and one that neither sets nor can inherit it must. Getting this wrong warns on every valid target.
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    transport: cli\n    catalog: main\n    schema: analytics\n    default: prod\n    targets:\n      prod:\n        warehouse_id: abc123\n        verify: "true"\n      dev:\n        verify: "true"\n' > "$RQ/.claude/config/stack.yaml"
+rqm="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" --dry-run 2>&1)"
+{ ! grep -q 'warehouse\[prod\].*required key' <<<"$rqm"; } \
+  && ok "a target inheriting required keys from its seam does not warn (catalog/schema)" \
+  || bad "inherited required keys reported as unset" "$rqm"
+grep -q 'required key(s) not set: warehouse_id' <<<"$rqm" \
+  && ok "a target missing a required key it cannot inherit does warn" \
+  || bad "a target's own missing required key went unreported" "$rqm"
+
+# (D4) The check can only enforce what an adapter declares: an adapter with NO `requires:` line is
+# indistinguishable from `requires: []`, so it silently opts out of validation. Rather than make
+# verify_stack second-guess adapter authoring, pin the contract here — every adapter declares one.
+rqnodecl=""
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  grep -q '^requires:' "$f" || rqnodecl="$rqnodecl $(basename "$f")"
+done
+[ -z "$rqnodecl" ] && ok "every adapter declares a requires: list (no silent opt-out of the check)" \
+  || bad "an adapter has no requires: line, so its required keys are never validated" "$rqnodecl"
+
+# (E) Every shipped config must stay clean, or the check is too aggressive to ship.
+rqdirty=""
+for c in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
+  CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$c" --dry-run 2>&1 \
+    | grep -q 'required key(s) not set' && rqdirty="$rqdirty $(basename "$c")"
+done
+[ -z "$rqdirty" ] && ok "all shipped configs satisfy their adapters' required keys" \
+  || bad "a shipped config is missing an adapter-required key" "$rqdirty"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
