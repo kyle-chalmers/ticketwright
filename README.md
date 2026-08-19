@@ -336,16 +336,26 @@ ticketwright enrich ENG-123              # curated index summary  — needs a mo
   preserves your edits on re-runs (`--force` to overwrite).
 - **`install --runtime <name>`** is the compatibility layer between the canonical `.claude/skills/`
   source and each runtime's own layout (`bin/install.sh` is the same command for a vendored
-  install). Where the runtime already reads the canonical copy it VERIFIES and touches nothing —
-  `--runtime claude-code` is exactly that, so the Claude Code path is unchanged. Where it cannot,
-  it EMITS a translated copy: `--runtime codex-cli` writes `.agents/skills/<name>/SKILL.md` per
-  skill, each stamped with a provenance header — hand-copying skill files between layouts is
-  unsupported, because a stale duplicate silently winning over the canonical copy is the failure
-  mode the installer exists to prevent; re-run it to update. Skills marked user-invocable-only
-  (`disable-model-invocation: true` — `/setup`, `/ship`, `/productize`) are deferred for now, and
-  the installer says so: Codex has no equivalent field yet, and emitting them would silently make
-  them model-invocable. The remaining runtimes, the metadata mapping that lifts that deferral, and
-  `--global` land with the emission matrix in a later release.
+  install), covering all seven runtimes and driven by each runtime adapter's declared
+  capabilities, never a name baked into code. Where the runtime already reads the canonical copy
+  it VERIFIES and emits no skills — `--runtime claude-code` natively (the Claude Code path is
+  unchanged), and cursor/opencode/cline/devin because they read `.claude/skills/` directly; the
+  printed report states what that shared file cannot carry for a foreign reader (`allowed-tools`
+  and `disable-model-invocation` are Claude-specific keys those runtimes ignore, warned per
+  affected skill). Where the runtime cannot see the canonical copy it EMITS a translated copy:
+  codex-cli and antigravity share one `.agents/skills/<name>/SKILL.md` emission, each file stamped
+  with a provenance header — hand-copying skill files between layouts is unsupported, because a
+  stale duplicate silently winning over the canonical copy is the failure mode the installer
+  exists to prevent; re-run it to update (a file the installer did not emit is never overwritten —
+  the install fails loudly instead). Skills marked user-invocable-only
+  (`disable-model-invocation: true` — `/setup`, `/ship`, `/productize`) are emitted with a topmost
+  warning block stating that nothing mechanical prevents model invocation there; every other
+  metadata loss is recorded per runtime in `adapters/runtime/<name>.md` § Metadata mapping. The
+  `qc-reviewer` agent definition is emitted wherever subagents are user-definable
+  (`.codex/agents/*.toml`; markdown for cursor/devin/antigravity); where they are not (cline) or
+  the definition path is undocumented (opencode), the report says so. `--global` emits into the
+  runtime's declared per-user skills root and REFUSES where that root is unknown (antigravity —
+  its documented sources disagree) rather than guessing a path.
 
 **`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
 `AGENTS.md` — `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.

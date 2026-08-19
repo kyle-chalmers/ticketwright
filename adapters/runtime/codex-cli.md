@@ -15,6 +15,7 @@ gate_fail_mode: unknown     # docs state the deny paths, not what a crashing hoo
 subagent_isolation: unestablished   # separate agent threads documented, "own context window" is not
 reads_foreign_skills: none
 global_skills_root: ~/.agents/skills
+agents_root: .codex/agents/<name>.toml  # note: agents live under .codex/, unlike skills (.agents/)
 model_cmd: "codex exec --sandbox read-only --skip-git-repo-check {prompt}"
 model_sandbox: read-only   # verified against `codex exec --help`: --sandbox read-only
 auth: |
@@ -59,3 +60,15 @@ auth: |
 - **What a *crashing* hook does is undocumented** — the docs state the deny paths
   (`permissionDecision: "deny"`, exit 2), not the failure behavior, so `gate_fail_mode` is declared
   `unknown` rather than assumed either way.
+
+## Metadata mapping
+
+How the canonical source's control fields map here when `bin/emit_runtime.py` emits the kit into
+`.agents/skills/`. A `lost` entry is never silent: it is named in the install report, and for
+user-invocable-only skills it is restated inside the emitted artifact itself.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | lost | this skill format carries only `name` + `description` — no per-skill tool restriction exists; named in the install report |
+| `disable-model-invocation` (skill frontmatter) | lost | no equivalent field — the skill is emitted anyway, with a topmost warning block stating that model invocation is not mechanically prevented here |
+| `tools:` (agent definition, qc-reviewer) | lost | no documented field of the `.codex/agents/*.toml` format carries a tool restriction — restated as a comment and inside `instructions` in the emitted file; whether the runtime accepts the definition at all is live-verification work |

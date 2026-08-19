@@ -15,6 +15,8 @@ gate_fail_mode: unknown
 subagent_isolation: none    # subagents exist but are not user-definable — nothing to isolate for the kit
 reads_foreign_skills: .claude/skills
 global_skills_root: ~/.cline/skills   # documented for macOS/Linux (Windows: %USERPROFILE%\.cline\skills) — re-verified 2026-08-19
+agents_root: none           # subagents exist but are not user-definable — nothing for the kit to define
+foreign_skills_caveat: .claude/skills/ is one of three documented skill locations here, and Cline's docs are the least settled of the seven — re-verify discovery before relying on it.
 model_cmd: ""
 model_sandbox: n/a   # no headless model command
 auth: |
@@ -62,3 +64,17 @@ mechanism it replaced.
 - Because the gate API is in flux and the classification is model-judged, **this is the one runtime
   where `db_write_requires_approval` should be stated plainly as guidance rather than enforcement**
   until the documentation settles.
+
+## Metadata mapping
+
+How the canonical source's control fields map here. Cline reads the canonical `.claude/skills/`
+copy directly (one of its three documented skill locations), which is why the installer verifies
+instead of emitting — and that is also the shared-file trap: one file, many readers, and a foreign
+reader ignores Claude-specific keys, so per-runtime skill metadata mapping is IMPOSSIBLE here. The
+losses are stated in the install verify report, per affected skill.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | lost | shared-file trap — Cline reads the canonical file and ignores this Claude-specific key; stated in the verify report |
+| `disable-model-invocation` (skill frontmatter) | lost | shared-file trap — nothing here prevents model invocation of a user-invocable-only skill; the verify report warns per affected skill |
+| `tools:` (agent definition, qc-reviewer) | lost | subagents are not user-definable here, so `qc-reviewer` cannot exist as an agent at all — `/review --deep` degrades to an inline same-context pass and its verdict says so; the install report states the loss |

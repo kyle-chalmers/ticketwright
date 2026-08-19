@@ -15,6 +15,8 @@ gate_fail_mode: closed      # a thrown error prevents execution — deny IS the 
 subagent_isolation: unestablished   # "own context window" appears only on unofficial mirrors
 reads_foreign_skills: .claude/skills, .agents/skills
 global_skills_root: ~/.config/opencode/skills
+agents_root: unknown        # subagents are user-definable (mode: subagent) but no definition file path is documented — stated, never guessed
+foreign_skills_caveat: OpenCode also reads .agents/skills/, so a copy emitted there for codex-cli/antigravity users is visible here too — which copy wins is unverified (the live-verification punch list covers it).
 model_cmd: "opencode run {prompt}"
 model_sandbox: unverified   # no restriction flag verified for `opencode run`
 auth: |
@@ -57,3 +59,17 @@ The upstream repository moved from `sst/opencode` to `anomalyco/opencode`.
 - **Subagent context isolation is not established.** The official pages document the mechanism but
   never state "own context window"; that phrasing appears only on unofficial mirrors. Until it is
   documented, do not promise that `qc-reviewer` is a genuinely independent context here.
+
+## Metadata mapping
+
+How the canonical source's control fields map here. OpenCode reads the canonical `.claude/skills/`
+copy directly, which is why the installer verifies instead of emitting — and that is also the
+shared-file trap: one file, many readers, and a foreign reader ignores Claude-specific keys, so
+per-runtime skill metadata mapping is IMPOSSIBLE here. The losses are stated in the install
+verify report, per affected skill.
+
+| canonical field | here | how |
+|---|---|---|
+| `allowed-tools` (skill frontmatter) | lost | shared-file trap — OpenCode reads the canonical file and ignores this Claude-specific key; stated in the verify report |
+| `disable-model-invocation` (skill frontmatter) | lost | shared-file trap — nothing here prevents model invocation of a user-invocable-only skill; the verify report warns per affected skill |
+| `tools:` (agent definition, qc-reviewer) | lost | subagents are user-definable (`mode: "subagent"`) but no definition file path or format is documented, so no agent is emitted — refusing to guess beats emitting a file nothing reads; the install report says so |

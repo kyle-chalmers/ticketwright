@@ -104,9 +104,11 @@ commands:
                           preserves existing per-repo config like stack.yaml). On a non-Claude
                           runtime, follow with `ticketwright install --runtime <name>`.
   install --runtime <name> [--local|--global] [--root <path>]
-                          install the skills for a runtime: verify-only where it reads the
-                          canonical .claude/skills/ copy (claude-code), translate-on-emit where
-                          it cannot (codex-cli); further runtimes land in a later release
+                          install the skills + agent definitions for any of the seven runtimes:
+                          verify-only where the runtime reads the canonical .claude/skills/ copy
+                          (claude-code natively; cursor/opencode/cline/devin read it directly),
+                          translate-on-emit where it cannot (codex-cli/antigravity). Metadata a
+                          runtime cannot express is stated, never silently dropped.
   recall ...              prior-art recall against the repo at $PWD (e.g. --for ID | --object NAME | --eval)
   index ...               render / --check / --stats / --recurring the ticket index
   enrich ...              refresh a ticket's curated index summary (needs a model CLI; see --model-cmd)
