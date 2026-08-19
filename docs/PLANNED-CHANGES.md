@@ -43,6 +43,11 @@ by adding the `viewer` seam. Specifically:
     `chat) echo 4`, `docstore) echo 2`, `vcs) echo 4`, `viewer) echo 2`), checked against
     `grep -c '^## verb:'` in every adapter file.
   - It requires `seam:` and `tool:` frontmatter in the first lines of every `adapters/*/*.md`.
+  - ⚠ SECTION NUMBERS ARE A COLLISION SURFACE BETWEEN CONCURRENT WAVES. Sections are numbered by hand
+    (`hdr "30 · ..."`), so two prompts running in the same wave both reach for the next free number and
+    collide at rebase. It has already happened once: 30 is now the `requires:` check and 31 is the
+    runtime foundation. Before adding a section, read the highest number ON CURRENT MAIN rather than in
+    your branch, and expect to renumber yours rather than the other prompt's.
   - It requires certain literal tokens to survive in prose, e.g. `id_mode` in `README.md`,
     `stack.schema.md`, `docs/ticket-index.md` and `docs/troubleshooting.md`.
   - ⚠ IT GREPS SKILLS FOR LEAKED TOOL NAMES, AND EXEMPTS EXACTLY ONE LINE BY LITERAL SUBSTRING.
@@ -1096,6 +1101,22 @@ ROUTING RULES, per kind:
     exactly one is configured.
   - vcs (deferred): local operations follow the checked-out repo; PR target comes from the configured
     remote matching origin. A mirror is never an implicit second PR destination.
+
+⚠ A FRONTMATTER FIELD THAT BECOMES A COMMAND IS AN EXECUTION PATH. Learned the hard way in wave A and
+it generalizes directly to this prompt's delivery-plan work. `ticketwright init` copies `adapters/`
+INTO the consuming repo, so THE PROJECT ROOT IS ITSELF A VALID KIT — "resolve only from the kit"
+isolates nothing from repo-supplied content. A repo-vendored adapter carrying
+`model_cmd: "touch /tmp/PWNED"` was reproduced executing during `/ship`, and was contained with an
+allowlist on `argv[0]`. The reason this hides well is that a markdown file reads as inert in code
+review. So: any new frontmatter key this prompt introduces that ends up in a command string, a
+destination, or a path needs the same treatment, and the review checklist should treat adapter
+frontmatter as executable input rather than documentation.
+
+⚠ A PRESENCE GREP IS NOT A TEST. Also from wave A: a fix was validated by grepping for the presence of
+a flag, and the grep passed against a command that was actually broken (the flag was variadic and
+swallowed the following argument). This prompt asks for `always_include` to be ENFORCED IN CODE rather
+than remain a prose convention — so its test must prove a message actually carries the list and that a
+config omitting it is actually rejected. Asserting the token appears somewhere proves nothing.
 
 SAFETY — this is the part that can leak client data:
   - Each `chat` target declares its OWN audience, channel, and non-empty `always_include`. Apply that
