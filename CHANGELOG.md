@@ -69,6 +69,22 @@ All notable changes to this project are documented here. Format loosely follows
   checks are extended, and `docs/runtimes.md` § "The matrix, machine-readable" documents the
   values with footnoted caveats — including the rule that "richer gate" and "has a session hook"
   are independent axes nothing may average into one score.
+- **`/review` now records which second pass a ticket actually got, and degrades honestly where
+  the runtime cannot provide one** (PROMPT 7 / U4). Before spawning anything, the skill probes
+  the current runtime's declared capabilities
+  through the kit CLI (`bin/tw kit_paths.py --json` — capability keys only, never a runtime name)
+  and branches: `subagents: yes` + `subagent_isolation: documented` fans out `qc-reviewer` exactly
+  as before and the verdict records `review_mode: independent-subagent`; isolation `unestablished`
+  still fans out — the stronger check is not refused — but records the posture verbatim; subagents
+  absent, isolation `none`/`unknown`, an unrecognized runtime (the never-optimistic floor), or a
+  failed probe all fall back to walking the qc-reviewer checklist inline, and the verdict records
+  `review_mode: inline-same-context` plus, verbatim: "A same-context review is not the independent
+  second pass the validation pyramid assumes." `qc-reviewer`'s fresh-context claim is now
+  conditioned on how it was run, so an inline-degraded APPROVE can no longer read identically to
+  an independent-subagent one. Selftest section 42 pins the probe, the three branches, the
+  verdict-record fields and the sentence (with the forbidden runtime-name list derived from
+  adapter frontmatter) — structural evidence only; the live degraded run stays on the U6
+  live-verification punch list.
 
 ### Fixed
 - **Runtime capability matrix corrections, re-verified against vendor docs 2026-08-19** (in

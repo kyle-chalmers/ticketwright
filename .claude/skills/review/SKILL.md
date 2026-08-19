@@ -13,6 +13,8 @@ APPROVE / REQUEST-CHANGES verdict. Reads `.claude/config/stack.yaml`; warehouse 
 the resolved target's adapter `dialect_notes`, so the same review runs against any warehouse — or
 several, when a ticket spans more than one.
 Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
+Independence is probed, never assumed: the **capability probe** below decides whether the second
+pass gets its own context, and the verdict records which review the ticket actually got.
 
 ## Phase 0 — Setup
 0. Resolve the **ticket locator**: run
@@ -97,9 +99,46 @@ canonical order resolves next — the ticket's declared target before the seam d
 - **Warn** findings (perf, style) → list but don't block.
 - **Info** (distributions) → record.
 
+## The second pass — capability probe
+
+The pyramid's independence claim is only true when the runtime can actually give the reviewer a
+second context. Probe what the current runtime declares before spawning anything:
+
+```
+bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" kit_paths.py --json
+```
+
+Read two capability keys from `capabilities` — `subagents` and `subagent_isolation` — and branch on
+the **values only**. The runtime's name also appears in that JSON; never branch on it. The adapter
+data decides, so a new runtime changes this skill's behavior without changing this skill.
+
+1. **`subagents: yes` and `subagent_isolation: documented`** → run the second pass as an
+   independent subagent, as described in this file (a single `qc-reviewer` pass by default; the
+   `--deep` panel fans out per layer). The verdict records `review_mode: independent-subagent`
+   and `subagent_isolation: documented`.
+2. **`subagents: yes` and `subagent_isolation: unestablished`** → still fan out —
+   the stronger check is not refused — but the verdict must record the isolation posture
+   **verbatim** from the probe (`subagent_isolation: unestablished`): a second context exists;
+   its independence is not established. `review_mode` stays `independent-subagent`.
+3. **Anything else** → **inline fallback**, the weaker check, recorded as such. This branch is the
+   floor for `subagents` not `yes` (a runtime with no user-definable subagents reports `no`, and
+   so does an unrecognized runtime), for `subagent_isolation: none`, for `unknown` (an unknown
+   capability is treated as absent, never assumed), and for a probe that fails outright. Walk the
+   qc-reviewer checklist (`.claude/agents/qc-reviewer.md`) in this same context — under `--deep`,
+   take the panel's layers sequentially, then still run the adversarial-verify pass. The verdict
+   records `review_mode: inline-same-context`, `subagent_isolation:` as probed (`unknown` when the
+   probe failed, noting the failure), and this sentence, verbatim:
+   **A same-context review is not the independent second pass the validation pyramid assumes.**
+   Never present an inline pass as independent.
+
+When a branch spawns, pass `review_mode` and the probed `subagent_isolation` value in every
+subagent's prompt — the record copies both from there, verbatim. A subagent never guesses its own
+posture: it cannot see the adapter data that decides it.
+
 ## Deep mode (`--deep`) — adversarial panel
 For high-blast-radius work (compliance/regulatory pulls, irreversible writes), replace the single
-pass with a panel, using the host agent's own subagents (the `Agent` tool):
+pass with a panel, spawned per the capability probe above (on a degraded runtime the panel runs
+inline, layer by layer, and the verdict says so):
 1. **Fan out** one independent `qc-reviewer` subagent per pyramid layer (① dialect-lint ·
    ② counts&dedup · ③ cross-source reconcile · ④ re-run + anti-pattern sweep) — each scoped to its
    layer, re-running its own queries, returning findings only. Run them in parallel.
@@ -117,7 +156,12 @@ high-risk tickets (external/compliance deliverables, irreversible writes) — re
 the cost of a missed defect is high.
 
 ## Phase N — Verdict
-Emit the structured report (Summary · pyramid results per layer · findings by severity ·
-verification queries run · **APPROVE** or **REQUEST-CHANGES**). Save it into the ticket's
-`qc_queries/` for the audit trail. APPROVE ⇒ recommend `/ship <owner>/<id>` — the qualified
-locator, so `/ship` cannot re-resolve a bare id to a different owner's ticket.
+Emit the structured report (Summary · review mode · pyramid results per layer · findings by
+severity · verification queries run · **APPROVE** or **REQUEST-CHANGES**). The report says WHICH
+review this ticket actually got: `review_mode: independent-subagent` or
+`review_mode: inline-same-context`, each with the `subagent_isolation:` posture the capability
+probe returned — and an inline record carries the probe section's weaker-check sentence verbatim.
+An inline-degraded APPROVE must never read identically to an independent-subagent APPROVE. Save
+the report into the ticket's `qc_queries/` for the audit trail. APPROVE ⇒ recommend
+`/ship <owner>/<id>` — the qualified locator, so `/ship` cannot re-resolve a bare id to a
+different owner's ticket.

@@ -142,7 +142,10 @@ protection. The policy value is the shared contract; only the enforcement mechan
   refresh — each SKILL.md is short, with depth in per-skill reference files
   (`ticket/priming.md`, `setup/adopt.md`, `productize/authoring.md`, …).
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`
-  delegates to (one per pyramid layer in `--deep` mode).
+  delegates to (one per pyramid layer in `--deep` mode). Where the runtime's adapter declares no
+  user-definable subagents or an isolation posture of `none`/`unknown`, `/review` walks the same
+  checklist inline and the verdict records `review_mode: inline-same-context` as the weaker check
+  (`unestablished` isolation still fans out, recorded verbatim).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
 - **30 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
   tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS). Six of

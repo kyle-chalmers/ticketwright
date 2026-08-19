@@ -4494,5 +4494,114 @@ diff -q "$E41/home.before" "$E41/home.after" >/dev/null 2>&1 || gv_bad="$gv_bad 
 [ -z "$gv_bad" ] && ok "--global on every verify runtime is a deliberate, explained no-op, \$HOME untouched (a global copy would shadow the canonical per-project one)" \
   || bad "--global on a verify runtime emitted something or went silent" "$gv_bad"
 
+hdr "42 · /review degrades honestly without isolated subagents (PROMPT 7 / U4)"
+# A skill is prose a model executes, so this evidence is STRUCTURAL: the capability probe, the three
+# branches, the verdict-record fields and the weaker-check sentence are pinned here. That an agent
+# actually FOLLOWS the branch is not offline-checkable — the live degraded run is parked on the U6
+# punch list (one live /review --deep on a runtime without documented isolation).
+RSK42=".claude/skills/review/SKILL.md"
+QCA42=".claude/agents/qc-reviewer.md"
+
+# --- the probe: capability KEYS through the kit CLI, launcher fallback intact --------------------
+grep -qE 'CLAUDE_PLUGIN_ROOT.*bin/tw" kit_paths\.py --json' "$RSK42" \
+  && ok "/review probes runtime capabilities via bin/tw kit_paths.py --json (fallback intact)" \
+  || bad "/review lost the capability probe (kit_paths.py --json through the launcher)"
+{ grep -q '`subagents`' "$RSK42" && grep -q '`subagent_isolation`' "$RSK42"; } \
+  && ok "/review reads both capability keys (subagents + subagent_isolation)" \
+  || bad "/review no longer names both capability keys it branches on"
+
+# --- all three branches present, keyed off capability VALUE COMBINATIONS (not stray tokens) -----
+# Each branch is asserted as its pairing — which values lead to which behavior — so a regression
+# that keeps the words but breaks the wiring (documented no longer mapping to the independent
+# mode, `none` dropping out of the inline branch) cannot stay green.
+b42miss=""
+grep -F -A3 'subagents: yes` and `subagent_isolation: documented' "$RSK42" \
+  | grep -q 'review_mode: independent-subagent' \
+  || b42miss="$b42miss documented+yes->independent-subagent"
+grep -F -A3 'subagents: yes` and `subagent_isolation: unestablished' "$RSK42" \
+  | grep -q 'fan out' \
+  || b42miss="$b42miss unestablished+yes->still-fans-out"
+inl42="$(grep -B8 -A4 'review_mode: inline-same-context' "$RSK42")"
+{ grep -qF 'subagent_isolation: none' <<<"$inl42" && grep -q 'unknown' <<<"$inl42" \
+  && grep -q 'fails outright' <<<"$inl42"; } \
+  || b42miss="$b42miss none/unknown/failed-probe->inline"
+[ -z "$b42miss" ] && ok "all three branches pair their capability values with the right behavior" \
+  || bad "a degradation branch lost its capability-value pairing:" "$b42miss"
+# The middle branch is honest WITHOUT refusing the stronger check, and records the posture verbatim.
+{ grep -q 'the stronger check is not refused' "$RSK42" \
+  && grep -B2 -A3 'subagent_isolation: unestablished' "$RSK42" | grep -qi 'verbatim'; } \
+  && ok "unestablished isolation still fans out, posture recorded verbatim" \
+  || bad "/review's unestablished branch lost its fan-out-but-say-so shape"
+# The unknown case maps to the DEGRADED branch (never-optimistic), including a failed probe.
+{ grep -B8 -A4 'review_mode: inline-same-context' "$RSK42" | grep -q 'unknown' \
+  && grep -q 'treated as absent, never assumed' "$RSK42"; } \
+  && ok "unknown capability (and a failed probe) maps to the inline branch, never-optimistically" \
+  || bad "/review no longer maps unknown to the degraded branch"
+
+# --- the weaker-check sentence, verbatim, one line, in BOTH the skill and the record template ----
+wc42='A same-context review is not the independent second pass the validation pyramid assumes'
+{ grep -qF "$wc42" "$RSK42" && grep -qF "$wc42" "$QCA42"; } \
+  && ok "the weaker-check sentence is pinned verbatim in /review and qc-reviewer" \
+  || bad "the weaker-check sentence drifted — an inline APPROVE would read as independent again"
+
+# --- the verdict-record template carries the fields, and the inline claim is conditioned ---------
+{ grep -qF 'review_mode: independent-subagent | inline-same-context' "$QCA42" \
+  && grep -q '^subagent_isolation:' "$QCA42"; } \
+  && ok "qc-reviewer's record template carries review_mode (both values) + subagent_isolation" \
+  || bad "qc-reviewer's output template lost the review-mode verdict fields"
+{ grep -q 'fresh-context claim above does NOT hold' "$QCA42" \
+  && grep -q 'independence is NOT established' "$QCA42"; } \
+  && ok "qc-reviewer conditions its fresh-context claim on the posture (inline AND unestablished)" \
+  || bad "qc-reviewer asserts fresh context unconditionally — false inline, overclaimed on unestablished isolation"
+grep -q 'Summary · review mode' "$RSK42" \
+  && ok "/review's Phase N report inventory includes the review mode" \
+  || bad "/review's verdict report no longer lists the review mode"
+
+# --- no runtime name in the skill or the agent: the branch is DATA, the names live in adapters ---
+# The forbidden list is DERIVED from adapters/runtime frontmatter (tool + aliases + spelling
+# variants), so a future runtime is covered without editing this check. "claude" alone is excluded:
+# .claude/ paths and CLAUDE_* env vars are kit structure, not a runtime name.
+rt42="$(python3 - <<'PY'
+import re, sys, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+names = set()
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    if f.name == "README.md":
+        continue
+    fm = read_frontmatter(f)
+    if fm.get("seam") != "runtime" or not fm.get("tool"):
+        continue
+    for n in [fm["tool"]] + [a.strip() for a in fm.get("aliases", "").split(",") if a.strip()]:
+        names.add(n.lower())
+        names.add(n.lower().replace("-", " "))
+        head = n.lower().split("-")[0]
+        if head and head != "claude":
+            names.add(head)
+leaks = []
+targets = sorted(pathlib.Path(".claude/skills/review").rglob("*.md"))
+targets.append(pathlib.Path(".claude/agents/qc-reviewer.md"))
+for path in targets:
+    for no, line in enumerate(path.read_text(encoding="utf-8").lower().splitlines(), 1):
+        for n in sorted(names):
+            if re.search(r"(?<![a-z0-9_])" + re.escape(n) + r"(?![a-z0-9_])", line):
+                leaks.append(f"{path}:{no}: {n}")
+print("\n".join(sorted(set(leaks))))
+PY
+)"
+[ -z "$rt42" ] && ok "no runtime name appears in /review or qc-reviewer (list derived from adapter data)" \
+  || bad "a runtime name leaked into the review path — the branch must key off capability values" "$rt42"
+
+# --- the data path the skill relies on: an unrecognized runtime floors into the degraded branch --
+cli42="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=fixture-unrecognized \
+        python3 bin/kit_paths.py --json 2>/dev/null)"
+python3 - "$cli42" <<'PY'
+import json, sys
+c = json.loads(sys.argv[1] or "{}").get("capabilities", {})
+sys.exit(0 if c.get("subagents") == "no" and c.get("subagent_isolation") == "unknown" else 1)
+PY
+[ $? -eq 0 ] && ok "an unrecognized runtime probes to the degraded pair (subagents=no, isolation=unknown)" \
+  || bad "the unknown-runtime floor no longer lands the probe in the degraded branch" "$cli42"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
