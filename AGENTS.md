@@ -62,7 +62,10 @@ There is no separate lint/format step; correctness is enforced by selftest asser
 
 Full contributor map: `docs/architecture.md`. The load-bearing ideas:
 
-**Seams + adapters + a verb contract.** A *seam* is a tool slot: `tracker`, `warehouse`, `chat`,
+**Seams + adapters + a verb contract.** A *seam* is a tool slot — and **"tool slot" is the
+user-facing name**: all user-facing prose (README, setup questions, rendered docs) says "tool slot",
+while `seam` stays the internal word (the `seams:` config key, adapter frontmatter, selftest, and
+contributor docs like this one). A seam is one of: `tracker`, `warehouse`, `chat`,
 `docstore`, `vcs`. Three layers wire it:
 1. `.claude/config/stack.yaml` — names which tool fills each seam, plus project facts and the 10
    `policies`. Schema in `.claude/config/stack.schema.md`; six worked examples ship

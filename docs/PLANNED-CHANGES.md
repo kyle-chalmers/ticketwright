@@ -1,7 +1,14 @@
 # Ticketwright change prompts
 
 ELEVEN prompts, in build order. Run each in a fresh session from the ticketwright repo. Each is
-self-contained. Do not reorder — later prompts assume earlier ones landed.
+self-contained. Do not reorder — later prompts assume earlier ones landed. ONE reorder is itself a
+settled decision (2026-08-19, after wave A): PROMPT 9 RUNS LAST, after prompt 10 — 10 moves the
+adapter counts 9 must preserve, so the last count-mover now precedes the docs restructure, and 9's
+voice audit covers the final state of every doc. The wave table below reflects this.
+
+STATUS: wave A is MERGED — prompt 1 (#29), prompt 6-item-2 (#23), prompt 2 (#30), plus the
+`requires:` fix (#27). Selftest was 461 at wave-A close. Prompts 3, 4, 4b, 5, 6-item-1, 7, 8, 9, 10
+remain.
 
 ## Settled decisions — implement, do not re-open
 - Per-person folders: `tickets/<name>/`.
@@ -15,14 +22,29 @@ self-contained. Do not reorder — later prompts assume earlier ones landed.
   private analysis repos. Safeguard: when the flow writing identity detects a PUBLIC remote, warn
   once and offer handles instead of emails.
 - A runtime is not a `seams:` entry in `stack.yaml`. See "Seams: the accurate picture" below.
+- TERMINOLOGY (decided 2026-08-19): the USER-FACING name for a seam is **"tool slot"**. All
+  user-facing prose — README, setup questions, option labels, error messages, rendered docs —
+  says "tool slot". The word `seam` stays as the internal term: the `seams:` config key, adapter
+  `seam:` frontmatter, `bin/selftest.sh`, and contributor-contract prose (AGENTS.md,
+  adapters/README.md) all keep it, and no config key is renamed. Prompt 8 applies this to the
+  schema narrative it rewrites; prompt 9 sweeps the remaining user-facing docs (inventory in its
+  section). This extends prompt 4's existing rule that "seam" never appears in a user-facing
+  question.
+- DISPATCH RULES for every remaining session (from wave-A incidents): branch from CURRENT main,
+  never a stale base — a whole-file rewrite on an old base silently reverted two merged changes as
+  a clean overwrite, and a branch cut before a scrub commit reintroduced a scrubbed identifier in
+  its commit MESSAGES. Surgical edits only in files another prompt has touched; if you must
+  rewrite a shared file wholesale, sequence that rewrite last in its wave. Squash-merge, and check
+  commit messages against the PUBLIC-file rule before pushing.
 
 ## Seams: the accurate picture (earlier drafts of this document got this wrong)
 Two different things have been conflated, and prompts 1 and 8 must agree:
   - `stack.yaml`'s `seams:` block documents FIVE kinds — tracker, warehouse, chat, docstore, vcs.
-  - `adapters/` ships SIX seam directories. `viewer` is the sixth: it has a real two-verb contract
+  - `adapters/` ships SEVEN seam directories. `viewer` is the sixth: it has a real two-verb contract
     (`adapters/README.md` § viewer), `bin/selftest.sh` asserts `viewer) echo 2`, and
     `docs/architecture.md` names it — but it is per-user and gitignored, so it is deliberately not a
-    `stack.yaml` seam.
+    `stack.yaml` seam. `runtime` is the seventh, added by prompt 1 (#29): per-runtime capability
+    adapters with zero verbs, also not a `stack.yaml` seam.
 So "five keys, no others" in `.claude/config/stack.schema.md` is already false as written. Prompt 8
 fixes that language. Prompt 1 must NOT try to preserve it.
 A runtime still does not belong in `stack.yaml`: seams there are things the PROJECT depends on and
@@ -39,9 +61,10 @@ by adding the `viewer` seam. Specifically:
     asserts against and it is currently CORRECT (6 worked stacks); `adapters/README.md` says "Five
     worked" and is the wrong one. Editing ROADMAP to match the prose elsewhere turns the suite red.
     Where two docs disagree on a count, check which one the assertion reads before changing either.
-  - It asserts per-seam verb counts by EXACT EQUALITY (`tracker) echo 6`, `warehouse) echo 3`,
-    `chat) echo 4`, `docstore) echo 2`, `vcs) echo 4`, `viewer) echo 2`), checked against
-    `grep -c '^## verb:'` in every adapter file.
+  - It asserts per-seam verb counts by EXACT EQUALITY (`tracker) echo 7` since prompt 6-item-2
+    landed, `warehouse) echo 3`, `chat) echo 4`, `docstore) echo 2`, `vcs) echo 4`,
+    `viewer) echo 2`), checked against `grep -c '^## verb:'` in every adapter file. Read the
+    numbers off CURRENT main before relying on them — they move as prompts land.
   - It requires `seam:` and `tool:` frontmatter in the first lines of every `adapters/*/*.md`.
   - ⚠ SECTION NUMBERS ARE A COLLISION SURFACE BETWEEN CONCURRENT WAVES. Sections are numbered by hand
     (`hdr "30 · ..."`), so two prompts running in the same wave both reach for the next free number and
@@ -106,8 +129,10 @@ silent. So whenever you specify or implement a warning: name the scope (once per
 config file, per person), and pick a channel whose lifetime matches that scope.
 
 ## Standing constraints
-- `bin/selftest.sh` must pass. It is at 338 cases as of this writing and the count SHOULD grow —
-  never treat a number as the target, and see the trap above.
+- `bin/selftest.sh` must pass. It was at 338 cases when this document was written and 461 at
+  wave-A close — the count SHOULD grow; never treat a number as the target, and see the trap
+  above. Hand-numbered sections: the highest on main at wave-A close is 32, so the next free
+  number is 33 — always re-read the highest ON CURRENT MAIN before adding one.
 - Existing `stack.yaml` files in the wild must keep working. A new required key that breaks shipped
   example configs is a regression, not a stricter rule.
 - Any new CLI takes `--root <path>` and must not require `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`,
@@ -133,15 +158,16 @@ runs alone.
 
 | Wave | Runs concurrently | Effort | Why it is safe together |
 |---|---|---|---|
-| A | 1, 2, 6-item-2 | high, high, medium | Three independent foundations. See the ownership split below. |
+| A ✅ MERGED | 1, 2, 6-item-2 | high, high, medium | Three independent foundations. See the ownership split below (kept for the record). |
 | B | 3 | high | Needs tier 3 from prompt 2. |
 | C | 4, 5 | high, high | 4 owns `skills/setup/`; 5 owns `skills/ticket|ship|review|spec-and-build`. Disjoint. |
 | D | 8-step-1, 6-item-1 | high, medium | 8 edits `ship/SKILL.md` only after 5 has merged. 6-item-1 needs 4's wording. |
 | E | 4b | high | ALONE, and it has to be. 4b collides with 8-step-1 on `stack.schema.md` + `adapters/README.md`, with 6-item-1 on `bin/selftest.sh`, and with 9 on `README.md` + `ROADMAP.md`. It also needs 4's verbs and invariant, 6-item-1's absent-seam token, and 6-item-2's tracker verb — all of which must have merged. |
-| F | 9 | medium | The docs restructure. 1, 6 and 8-step-1 must have settled the counts (8 steps 2-5 land later, in H, and move no counts), and 4b must have landed its setup-section rewrite — 9 restructures `README.md` around it and must preserve it. NOT the last docs-toucher any more: prompt 10 moves the adapter count again in wave I, which is why 10 is scheduled after this rather than beside it. |
-| G | 7 | high | Needs 1 plus everything 2-5 settled. Split further on arrival. |
-| H | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
-| I | 10 | high | Email adapters. LAST on purpose: a repo can hold only one `chat` seam until H lands, and email is where a wrong audience is least recoverable. It also moves the adapter counts, so it must not run beside 9. |
+| F | 7 — split proposal only | high | Needs 1 plus everything 2-5 settled. Prompt 7's success criterion (a live non-Claude runtime run) is not verifiable inside this repo's read-only offline test contract, so the wave-F session PROPOSES the split into shippable units with evidence-of-done for each, gets it reviewed, and stops. |
+| F2 | 7's approved units | high | One session per unit once the split is reviewed. Offline-verifiable units (installer emit, metadata mapping, honest hook degradation) ship; anything needing a live external-runtime test is parked with a written punch list. |
+| G | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
+| H | 10 | high | Email adapters. After G on purpose: a repo can hold only one `chat` seam until 8's sequence item 2 lands, and email is where a wrong audience is least recoverable. It also moves the adapter counts, which is why 9 now runs after it. |
+| I | 9 | medium | The docs restructure, LAST. Every count-mover (1, 6, 8-step-1, 10) has settled the counts by now, and 4b's setup-section rewrite has landed — 9 restructures `README.md` around it and must preserve it. Running last also lets 9's voice audit and "tool slot" terminology sweep cover the final state of every doc. |
 
 WAVE A OWNERSHIP SPLIT — the one overlap that needs a rule. Prompts 1 and 2 both reach
 `bin/enrich_ticket.py` and both edit preflight prose in `.claude/skills/*/SKILL.md`:
@@ -213,7 +239,7 @@ wires four hooks by that path, and `skills/` is already a symlink providing a ne
 the root is destructive across all three for no functional gain, since the installer translates to
 each runtime's layout anyway.
 
-## PROMPT 1 — Runtime foundation
+## PROMPT 1 — Runtime foundation ✅ MERGED (#29)
 
 Everything downstream assumes a way to find kit assets and resolve config that currently only works
 under Claude Code. Establish that first. This prompt decides architecture and writes the research
@@ -243,7 +269,7 @@ Deliverables:
    THIS TRIPS THE SELFTEST TRAP — handle it head-on, do not discover it:
      - Each file needs `seam: runtime` + `tool: <name>` frontmatter, or the frontmatter check fails.
        Writing `seam: runtime` is CORRECT here and does not contradict anything: it makes runtime a
-       sixth ADAPTER directory (as `viewer` already is), not a `stack.yaml` `seams:` entry.
+       seventh ADAPTER directory (as `viewer` is already a sixth), not a `stack.yaml` `seams:` entry.
      - Adding N runtime adapters changes the derived counts, so `docs/architecture.md`'s
        `**<N> adapters**` and `ROADMAP.md`'s `- <N> adapters across <M> seams` MUST be updated in the
        same commit, and every new adapter listed in `adapters/README.md` § "Adapters shipped".
@@ -271,7 +297,7 @@ GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" abov
 on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
 PROMPT 1. Put both verdicts in the PR body.
 
-## PROMPT 2 — Three-tier config, the resolver, and the leak it fixes
+## PROMPT 2 — Three-tier config, the resolver, and the leak it fixes ✅ MERGED (#30)
 
 `/setup` writes `.claude/config/stack.yaml` by detecting the machine of whoever runs it — but that
 file is committed and shared, so machine-local identifiers leak into a team artifact. The observed
@@ -591,6 +617,26 @@ It must:
     the right warehouse.
   - (The prose-interview rule that used to sit here now applies to EVERY interview — see below.)
 
+REAL-RUN RIDERS for the per-person flow (2026-08-19, from the live install; fixture-ized):
+  - ⛔ CONFIG FILES THE FLOW ENUMERATES CAN CONTAIN PLAINTEXT SECRETS. Treat `~/.databrickscfg` as
+    if it holds a plaintext OAuth client secret, because it can. Read PROFILE NAMES ONLY — never
+    echo, copy, log, or paste the file's contents into a report, a summary, a PR body, or a
+    committed file. `snow connection list` masks passwords but still prints account, user and
+    role: same rule. A detection routine that pretty-prints what it found is one paste away from
+    publishing a secret.
+  - VERIFICATION MUST EXPECT AN AUTH CHALLENGE. A cached session makes every verify green on the
+    machine that set the repo up and proves nothing about a fresh clone: a teammate with no cached
+    session can get an interactive MFA prompt mid-verify. Treat an auth challenge as a normal
+    outcome the flow narrates, not an error.
+  - CLI QUIRK, externally observed (validate against the installed CLI before editing the
+    adapter): `acli jira project list` errors unless one of `[recent|limit|paginate]` is passed.
+    Detection probes must pass one.
+  - MAKE THE ADOPT-VS-FRESH BOUNDARY EXPLICIT. A repo whose only Ticketwright trace is
+    `.claude/settings.json` (plugin enablement) is FRESH — the adopt triggers are ticket folders,
+    an index, or custom commands. The real run landed on the right side of this by luck; prompt 4
+    adds a third route (teammate) to the same branch, so write the rule down where the routing
+    happens.
+
 EVERY INTERVIEW IN THIS SKILL IS PROSE — team modes included. Author questions as PROSE
 INSTRUCTIONS the skill states, never as an `AskUserQuestion` tool-call payload, so Claude renders
 option chips, other runtimes render a numbered list, and the interview means the same thing
@@ -682,6 +728,12 @@ SHIP NO NUMBER. Do not replace "≤5 questions" with "≤N questions" or with a 
 Nothing counts rounds at runtime, and the premise of this change is that a stated number did damage
 BECAUSE PEOPLE BELIEVED IT. State the discipline.
 
+REAL-RUN EVIDENCE for the round design (2026-08-19): the live install took THREE interview rounds
+under the "one round" promise, because two answers were unanswerable until a probe ran first — the
+tracker choice needed the activity ranking, and the warehouse choice needed profile enumeration.
+The cap was never the binding problem; ORDERING was. Detection must produce the facts a question
+depends on before that question is asked, which is exactly the Phase-1-then-rounds structure above.
+
 ### (i) Retire the cap — nine promise sites to rewrite, four to leave alone
 Rewrite: `SKILL.md` frontmatter `description`, the body intro, the Phase 2 header, and the `<seam>`
 mode's "ask one question"; `adopt.md`'s "(still ≤5-question) interview" AND its "Confirm the
@@ -730,6 +782,10 @@ what makes identity self-healing.
   from. Both write the same shape.
   Round 1 is FIRST because it costs almost nothing, it grounds every later answer, and the
   public-remote privacy warning has to land BEFORE the user types colleagues' work emails, not after.
+  PLACEHOLDERS ARE FILES, NEVER FOLDERS: the roster writes one `people/<id>.yaml` stub per person —
+  it must NOT create empty `tickets/<name>/` directories. Git cannot track an empty directory, so
+  they silently vanish on clone, and `build_ticket_index.py` never prunes them. (Confirmed twice in
+  the real run, once in each direction.)
 
 ROUND 2 — WHERE WORK COMES FROM. Tracker (or none → `local` + `id_mode: slug` +
 `ticket_url_template: null`). THIS ROUND IS `rank_projects_by_activity`'S CALLER — ranked options
@@ -868,7 +924,7 @@ sections drive `verify_stack.sh`, and assert OUTCOMES:
     adapter added later escapes it silently. Rewrite it to loop over `adapters/chat/*.md`. An
     assertion that enumerates its own subjects stops covering anything new — the same class of bug as
     the literal-substring leak-grep exemption. PROMPT 10 adds two chat adapters and is relying on
-    this being fixed here; since 4b is wave E and 10 is wave I, the gate is generalized well before
+    this being fixed here; since 4b is wave E and 10 is wave H, the gate is generalized well before
     the first new adapter arrives, which is why this is not landed early as a standalone fix.
     THE ONE WINDOW THIS LEAVES OPEN: until 4b lands, the `include_self` gate covers `slack` and
     `teams` only. A chat adapter added OUTSIDE this plan before wave E escapes it silently. If that
@@ -930,7 +986,7 @@ GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" abov
 on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
 PROMPT 5. Put both verdicts in the PR body.
 
-## PROMPT 6 — Two fixes (NOT both small, and NOT independent — read the notes)
+## PROMPT 6 — Two fixes (item 2 ✅ MERGED #23; item 1 remains)
 
 1. `templates/AGENTS.md.tmpl` composes adapter paths from the tool name, so a deliberately
    unconfigured seam renders broken markdown like `adapters/chat/— *(none; /setup chat)*.md`.
@@ -1082,7 +1138,9 @@ does not, that is `chat` with two targets. What changes is the number of TOOLS p
 Fix the docs first: `.claude/config/stack.schema.md:59` says five keys "no others", which is already
 contradicted by the optional `viewer` seam documented at `docs/architecture.md:54`. Replace the
 exclusivity language with an accurate statement — these are the five kinds with verb contracts, the
-`targets:` shape is generic, and operational support per kind is stated explicitly.
+`targets:` shape is generic, and operational support per kind is stated explicitly. While rewriting
+that narrative, apply the settled TERMINOLOGY rule: the schema's user-facing prose says "tool slot";
+the literal `seams:` key, paths, and examples are untouched.
 
 The verifier is already generic: `bin/verify_stack.sh:111` iterates every configured seam and
 handles inheritance, target overrides, default validation and per-target verification. The SKILLS
@@ -1133,7 +1191,10 @@ isolates nothing from repo-supplied content. A repo-vendored adapter carrying
 allowlist on `argv[0]`. The reason this hides well is that a markdown file reads as inert in code
 review. So: any new frontmatter key this prompt introduces that ends up in a command string, a
 destination, or a path needs the same treatment, and the review checklist should treat adapter
-frontmatter as executable input rather than documentation.
+frontmatter as executable input rather than documentation. Likewise the eval-injection ⛔ in
+prompt 2 is FIXED for `verify_stack.sh` (shell metacharacters in tier-3 values are refused, #30)
+but remains the RULE here: any new interpolation path this prompt adds — delivery plans, targets,
+destinations — must inherit the same refusal, not re-derive it.
 
 ⚠ A PRESENCE GREP IS NOT A TEST. Also from wave A: a fix was validated by grepping for the presence of
 a flag, and the grep passed against a command that was actually broken (the flag was variadic and
@@ -1272,13 +1333,40 @@ two hops out, through which shared objects" — which `OBJECTS.md` cannot answer
 single hop from object to tickets. Exposing that to agents would make the graph load-bearing for both
 readers.
 
+### Riders added at wave-A close (2026-08-19) — prompt 9 now runs LAST, and carries three sweeps
+
+1. VOICE AUDIT of README.md and docs/ (user-facing prose only; this document and code comments are
+   exempt). The maintainer's register: direct and concrete, plain sentences, no marketing filler.
+   Specifically: delete or replace the filler words robust, comprehensive, seamless, leverage (as a
+   verb for "use"), unlock, harness, empower (except inside the verbatim mission sentence),
+   streamline, moreover, furthermore, "it's worth noting"; no negation framing ("it's not X, it's
+   Y") as a structural device; prefer " - " or a restructured sentence over an em dash in running
+   prose; concrete counts over "several". Read the result asking "does this sound like a person
+   explaining their tool, or a landing page?" — the first.
+2. TERMINOLOGY SWEEP, per the settled "tool slot" decision. Inventory of user-facing sites that
+   still say "seam" (verify each against the tree at run time; more may exist):
+   `.claude/config/stack.schema.md` narrative prose; `templates/AGENTS.md.tmpl` (the
+   `| Seam | Tool | Adapter |` table header, "Seams the stack omits", "which tool fills each seam",
+   "No warehouse seam" ×2); `templates/plan.md.tmpl` ("**Seams:**"); `docs/architecture.md` and
+   `docs/troubleshooting.md` user-facing passages; any `/setup` skill prose that survives 4/4b.
+   KEEP `seam`: the `seams:` config key and every literal key/path/example; adapter frontmatter;
+   `bin/selftest.sh`; `adapters/README.md` contributor contract; `ROADMAP.md`'s asserted
+   `- <N> adapters across <M> seams` string (the selftest greps it). Template edits must keep every
+   `{{token}}` intact — the zero-leftover-token check runs against rendered fixtures.
+3. PRESERVE, verbatim: the mission and vision SENTENCES are FIXED TEXT this prompt arranges but
+   never rewrites — the wording was chosen against explicit tests and the maintainer's stated
+   preferences, and the AGENTS.md tiebreakers must still resolve to the same seven rules after any
+   restructure. Also preserve the README's "This is for you if:" checklist, the tool-slot table
+   with its open-ended "etc." rows and the "lists are examples, not a whitelist" bullet, and the
+   `id_mode` token.
+
 GATES (non-optional, see "MANDATORY: codex reviews the plan AND the result" above): run codex
 on your PLAN before writing code, and on the resulting DIFF before opening the PR. Substitute
 PROMPT 9. Put both verdicts in the PR body.
 
 ## PROMPT 10 — Email as a chat target (gmail + outlook adapters)
 
-Depends on PROMPT 8 SEQUENCE ITEM 2 (wave H), not merely on PROMPT 8 step 1. Read the dependency
+Depends on PROMPT 8 SEQUENCE ITEM 2 (wave G), not merely on PROMPT 8 step 1. Read the dependency
 note below before scheduling this anywhere earlier.
 
 PROMPT 4b's interview asks whether email carries work in, out, or both, and on "out" records the
@@ -1286,7 +1374,7 @@ provider, sending identity and declared audience in a commented chat target. Thi
 into a live one.
 PROVENANCE, since outbound email is a material expansion over "ask better setup questions": DELIVERY
 was explicitly requested — email is to serve as both intake and delivery. It is scoped into its own
-prompt, behind wave H, precisely so that expansion is visible and sequenced rather than smuggled into
+prompt, behind wave G, precisely so that expansion is visible and sequenced rather than smuggled into
 an interview change.
 
 EMAIL IS `chat` WITH A TARGET, NOT A SIXTH SEAM. It meets none of PROMPT 8's bar for a new seam
@@ -1323,13 +1411,13 @@ does NOT justify a sixth kind. Do not add an `adapters/email/` directory.
    because `.claude/config/stack.schema.md` scopes multi-target to `warehouse` in v1 — "no skill
    resolves targets for the other four". Cite THAT, not the schema's "these five keys, no others"
    line: that line is about seam KINDS rather than tools-per-kind, so it never supported this claim,
-   and PROMPT 8 step 1 replaces its exclusivity language outright, so by wave I it is gone. A team on Slack internally AND email for stakeholder delivery — precisely the team that
+   and PROMPT 8 step 1 replaces its exclusivity language outright, so by wave H it is gone. A team on Slack internally AND email for stakeholder delivery — precisely the team that
    answers "yes" to 4b's email question — CANNOT EXPRESS BOTH until PROMPT 8 sequence item 2 lands.
-   That item is in WAVE H. Do not schedule this prompt against `8-step-1` in wave D; step 1 delivers
+   That item is in WAVE G. Do not schedule this prompt against `8-step-1` in wave D; step 1 delivers
    the docs fix and the resolver, not chat targets.
 
 4. INHERIT PROMPT 8'S SAFETY MACHINERY IN FULL — INHERIT, not extend. This prompt must not invent a
-   new approval model or change `/ship`'s routing design; wave H already built both, and a second
+   new approval model or change `/ship`'s routing design; wave G already built both, and a second
    design here would fork the safety story. What follows is the existing model applied to a new
    target. This is still the riskiest thing in the whole set.
    Email is an external delivery path where a wrong audience is LEAST recoverable: you cannot unsend
