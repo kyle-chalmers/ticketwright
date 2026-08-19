@@ -78,7 +78,7 @@ Ticketwright for yourself across every repo** rather than for this repo's team.
 Now, in that repo:
 
 ```
-/ticketwright:setup          # detects your tools, asks ≤5 questions, writes the config — once per repo
+/ticketwright:setup          # detects your tools, interviews you in rounds, writes the config — once per repo
 /ticketwright:ticket ENG-123 # start working
 ```
 
@@ -88,8 +88,10 @@ existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (s
 
 ### What `setup` actually does
 
-It runs once per repo, and **detects before it asks** — the goal is a working config after at most five
-questions.
+It runs once per repo, and **detects before it asks** — detection produces the facts each question
+depends on, and a question exists only where a wrong or missing value would fail *silently* (a dead
+catalog link, a generic persona, a message with no stakeholders). Anything that fails loudly at
+verification or first use ships as a commented default instead.
 
 **What it looks at first, before asking you anything:**
 
@@ -108,9 +110,16 @@ holds the per-machine ones and is gitignored. `bin/effective_config.py` merges t
 the raw file. The machine tier can supply credentials and local paths; it can never change which data
 gets read, and never a policy.
 
-**What it then asks — at most five, detected answers pre-selected:** tracker (or *none*), warehouse (or
-*none*), git host, ticket key prefix (e.g. `ENG`), and your assignee folder name. Everything else ships
-as a commented default you can edit later, including all 10 policies.
+**What it then asks — in rounds, detected answers pre-selected.** Four rounds always run: **who**
+(you, confirmed from identity resolution, and who else is on the team), **where work comes from**
+(tracker or *none*, key prefix, the tracker's "done" state, how catalog rows link back), **where
+the data lives** (warehouse or *none*, its required keys, a dev target), and **where work goes**
+(git host confirmed from `origin`, docstore, chat and its stakeholder include-list, and one email
+question covering intake and delivery). Two more are individually skippable, each skip labeled
+with its cost — **how you work** (role, domain, analysis tools) and **house rules** (the two
+policies whose defaults most often differ by team). A skipped round becomes a `# TODO` in the
+config plus a punch-list entry naming the command that finishes it later (`/setup role`,
+`/setup policies`). The other eight policies ship as commented defaults you can edit any time.
 
 **What it writes:**
 
@@ -224,6 +233,10 @@ Ticketwright writes a small, auto-maintained graph layer under `tickets/` — `g
 On by default. Set `project.graph_notes: false` to turn off the whole layer, or
 `project.graph_config: false` to keep the nodes but stop managing `.obsidian/graph.json`.
 
+Don't have Obsidian? The layer still renders (plain markdown, browsable on GitHub), and `/setup`
+prints one pointer instead of asking anything — install steps, opening the repo as a vault, and
+what the node types mean are in [docs/obsidian.md](docs/obsidian.md).
+
 ## Sound like you (voice profiles)
 
 Every ticket ends with `/ship` drafting the tracker comment, chat message, and PR body — and you
@@ -334,6 +347,8 @@ read this section as "Ticketwright runs anywhere today."
 - [docs/troubleshooting.md](docs/troubleshooting.md) — a skill failed mid-way, a tool is
   unreachable, the index looks stale, upgrade paths.
 - [docs/ticket-index.md](docs/ticket-index.md) — the ticket catalog + recall engine in depth.
+- [docs/obsidian.md](docs/obsidian.md) — browse your tickets as a graph: install Obsidian, open
+  the repo as a vault, the two node types, and the opt-outs.
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 
 CI runs the full self-test on every push; PyPI publishing is OIDC Trusted Publishing (no stored

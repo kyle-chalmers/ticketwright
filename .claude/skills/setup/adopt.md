@@ -8,9 +8,12 @@ never demand a rewrite.**
 ## 1 · Inventory what's there (read-only)
 - **Ticket layout:** find the ticket folders and infer `project.ticket_path` from the observed
   structure (e.g. `tickets/{assignee}/{id}`), the key prefix(es) from folder names, and the
-  assignee dirs. Confirm the inference with the user in ONE question.
+  assignee dirs. Confirm the inference with the user before writing anything — show the
+  conclusion and let them correct it, rather than asking them to reconstruct it.
 - **Tools in use:** infer the tool slots from evidence — CI configs, helper scripts, MCP servers,
-  CLIs on PATH, existing docs. Pre-select these in the (still ≤5-question) interview.
+  CLIs on PATH, existing docs. Pre-select these in the interview
+  ([interview.md](interview.md) — the same rounds, seeded from evidence, so most rounds collapse
+  into confirmations).
 - **Custom commands/skills:** list everything in `.claude/commands/` and `.claude/skills/` and
   classify each against the plugin's skills: **shadows** (does what a plugin skill does),
   **extends** (domain-specific variant — e.g. a warehouse-specific spec/build flow), or

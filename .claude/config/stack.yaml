@@ -19,8 +19,10 @@ project:
   default_epic: ENG-100                 # parent epic for new tickets (or null if the tracker has no epics)
   terminal_status: Done                 # the workflow's "done" state (not always "Done")
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
+  # intake: [tracker]                   # where work arrives (tracker | email | chat); email/chat intake = forwarded threads in source_materials/
   # role: generalist                    # persona for the rendered AGENTS.md (generalist | analyst | engineer | scientist)
   # domain: data analysis               # short phrase for the {{domain}} token in AGENTS.md — any kind of analysis work
+  # analysis_tools: []                  # what the team analyzes WITH (e.g. [notebooks, spreadsheets]) — descriptive context rendered into AGENTS.md; not a tool slot, nothing verifies or executes it
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
   graph_notes: true                     # Obsidian graph layer (tickets/graph + tickets/objects); false to disable
   graph_config: true                    # also write .obsidian/graph.json (tickets↔objects filter + colors); create/merge-only, never clobbers manual tweaks

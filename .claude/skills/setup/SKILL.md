@@ -1,8 +1,8 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo — detect your tools, ask at most 5 questions, write the config, scaffold folders. Team modes configure the repo ((none) and tool <chat|docstore|warehouse>); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
-argument-hint: "(none) | tool <chat|docstore|warehouse> | viewer | --teammate [name] | --voice [name]"
-allowed-tools: [Read, Write, Edit, Bash, Glob, AskUserQuestion]
+description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
+argument-hint: "(none) | tool <chat|docstore|warehouse> | role | team | policies | viewer | --teammate [name] | --voice [name]"
+allowed-tools: [Read, Write, Edit, Bash, Glob]
 disable-model-invocation: true
 ---
 
@@ -14,11 +14,15 @@ disable-model-invocation: true
 > is about to install. Leave these paths as they are.
 
 One skill, three jobs: **configure a repo** (run once), **add a tool later** (`/setup tool chat`),
-and **onboard a person** (`/setup --teammate`). Detect first, ask last: the goal is a working setup
-after **at most 5 questions**.
+and **onboard a person** (`/setup --teammate`). Detect first, ask last — detection produces the
+facts a question depends on before that question is asked. What earns a question is decided by one
+rule, not a count: **ask when a wrong or absent value would still yield a confident-looking
+output; leave a commented default when it fails loudly at `verify_stack.sh` or on first use**
+(see [interview.md](interview.md)). Never promise a question count.
 
 Every mode sits on one scope axis. **TEAM-scoped** modes write the team's committed config: the
-default repo-configuration mode and `tool <chat|docstore|warehouse>`. **PERSON-scoped** modes write
+default repo-configuration mode, `tool <chat|docstore|warehouse>`, and the round re-runs `role` /
+`team` / `policies`. **PERSON-scoped** modes write
 one person's own config: `--teammate` (the per-person flow), `--voice`, and `viewer`. The axis is
 *who the config is about*, not committed-vs-local — `--voice` is person-scoped yet writes a
 committed file.
@@ -69,13 +73,28 @@ an existing `stack.yaml`. (This is a first-class mode, **not** a seam — `voice
 `seams.*` entry.)
 
 ## Mode: `tool <chat|docstore|warehouse>` — add one tool slot to the team config (team-wide)
-E.g. `/setup tool chat`. Detect candidates for just that tool slot, ask one question, add the
-block to committed `stack.yaml`, verify it, and re-render `AGENTS.md`. Nothing else changes.
+E.g. `/setup tool chat`. Detect candidates for just that tool slot, then run only that slot's
+interview round from [interview.md](interview.md) (round 3 for warehouse, round 4 for
+chat/docstore — including the slot's adapter-required keys), add the block to committed
+`stack.yaml`, verify it, and re-render `AGENTS.md`. Nothing else changes.
 **Deprecated spellings:** the old `/setup chat` / `/setup docstore` / `/setup warehouse` (without
 `tool`) keep working for one release — accept them, print "Note: `/setup chat` is now
 `/setup tool chat`; the old spelling goes away in the next release." (substituting the slot
 named), and continue as normal. The old spelling collided with person-scoped `viewer` in one
 syntax while meaning the opposite scope, which is why the split exists.
+
+## Modes: `role` · `team` · `policies` — re-run one interview round (team-wide)
+The re-entry commands for what the repo interview covers outside the tool slots — each re-runs
+exactly one round of [interview.md](interview.md) against the existing config, edit-never-overwrite:
+- **`/setup role`** re-runs round 5: `project.role` + `project.domain` (one question) and
+  `project.analysis_tools`, then re-renders `AGENTS.md`.
+- **`/setup team`** re-runs round 1's roster question: who else is on the team, writing one
+  identity-free `people/<id>.yaml` placeholder per new person named (files, never folders), under
+  the scope invariant above.
+- **`/setup policies`** re-runs round 6: `db_write_requires_approval` and `human_review_handoff`.
+Each also clears its round's `# TODO(setup)` line from `stack.yaml` once the answers are written.
+These exist so a skipped round is a deferral, not a dead end — every skip's punch-list entry names
+the command that finishes it. Requires an existing `stack.yaml`.
 
 ## Mode: `viewer` — which apps open *your* deliverables (person-scoped)
 A re-run entry point, kept on purpose: the primary path is the just-in-time interview at the
@@ -100,7 +119,25 @@ which prints the resolved commands without launching anything. Never commit this
 ### Phase 1 — Detect (no questions yet)
 1. **CLIs:** `!for c in snow acli gh glab bq databricks yq jq git; do command -v $c >/dev/null && echo "✓ $c" || echo "– $c"; done`
 2. **MCP servers** connected this session (tracker / chat / warehouse servers).
-3. **Existing state — four routes, checked in order.** First write the boundary down: the ADOPT
+3. **Repo facts — probes, not questions.**
+   - **Origin:** read the `origin` remote URL — one probe, two facts: whether the remote sits on
+     a **public code host** (the same offline heuristic `whoami --bind` uses — true visibility
+     cannot be checked without a network call, so round 1's roster warning is phrased "if this
+     repo is public", never "it is") and the VCS host round 4
+     confirms instead of asking. The default branch comes from
+     `git symbolic-ref refs/remotes/origin/HEAD` — **not** `git symbolic-ref HEAD`, which reports
+     whatever branch happens to be checked out and would misconfigure any setup run from a
+     feature branch.
+   - **Obsidian:** installed or not (e.g. `command -v obsidian`, or the OS application folder).
+     Never a question — `graph_notes`/`graph_config` already default correctly; this only decides
+     which one-liner the Phase-4 report prints (step 8).
+   - **Docstore mount roots:** REPORT-ONLY. A cloud-storage mount root is a machine-local
+     (tier-3) value: display what was found and route it to the person flow
+     (`.claude/config/connections.local.yaml`, [teammate.md](teammate.md) steps 3–4). Writing it
+     into committed `stack.yaml` is exactly the leak the tier split exists to prevent.
+   - **Names only, here too:** report profile/connection/mount *names* and paths — never echo a
+     tool config file's contents anywhere; those files can hold plaintext secrets.
+4. **Existing state — four routes, checked in order.** First write the boundary down: the ADOPT
    triggers are evidence of prior ticket work — ticket-looking folders, an existing index, or
    custom `.claude/commands` / `.claude/skills`. A repo whose only Ticketwright trace is
    `.claude/settings.json` (plugin enablement) is **fresh** — enablement is how the kit arrives,
@@ -143,35 +180,32 @@ confirm rather than onboard:
 This is what distinguishes "this repo just upgraded" (seed, confirm, carry on with what they
 asked for) from "this person is new" (the teammate route above).
 
-### Phase 2 — Ask (≤ 5 questions, detected options pre-selected, defaults visible)
-One AskUserQuestion round covering only:
-1. **Tracker** (detected options first) — or *none*, which selects the `local` tracker: the ticket
-   folder itself, for a repo with no ticketing system. Choosing it sets `id_mode: slug` and
-   `ticket_url_template: null`, and skips the key-prefix question below;
-2. **Warehouse** (or *none* — non-data repos are fine);
-3. **VCS**;
-4. **Ticket key prefix** (e.g. `ENG`) — accept the tracker's project key as the default; skip
-   entirely for the `local` tracker, where the folder name is the id;
-5. **Assignee folder name** (default: the user's short name).
-Everything else ships as a **commented default** the user can edit later: chat + docstore tool slots
-(add via `/setup tool chat` / `/setup tool docstore`), `default_epic`, `terminal_status` (default `Done`),
-word limits, role (`generalist`), domain phrase (`data analysis`), and all 10 policies at their
-defaults. Each chosen tool's required
-keys (per its adapter's `requires:` frontmatter): take the detected value where possible; otherwise
-include the key commented with a `# TODO` and keep going — `verify_stack.sh` names any unset
-required key by name (a warning, not a failure), so a deferred key is reported rather than lost.
+### Phase 2 — Interview, in rounds (detected answers pre-selected, defaults visible)
+Run the interview in [interview.md](interview.md). Six rounds, cut by whether skipping is
+survivable: **rounds 1–4 always run** (who · where work comes from · where the data lives · where
+work goes), **rounds 5–6 are individually skippable** (how you work · house rules), the skip
+offered at that round's header and labeled with its cost — never as a global "take defaults for
+the rest". What earns a question is the rule at the top of this file, not a count. Every chosen
+adapter's required keys are asked; "I'll fill it in later" writes the key as a `# TODO` and keeps
+going — `verify_stack.sh` names any unset required key on every run (a warning, not a failure),
+so a deferred key is reported rather than lost. A skipped round is written down twice — a
+`# TODO(setup)` line in `stack.yaml` and a punch-list entry in the Phase-4 report — each naming
+its re-entry command (`/setup role` for round 5, `/setup policies` for round 6; later,
+`/setup team` adds teammates and `/setup tool <chat|docstore|warehouse>` adds a declined slot).
+Everything the interview does not ask ships as a **commented default** the user can edit later:
+`default_epic`, word limits, the other eight policies — each with its "when to change this" note.
 
 ### Phase 3 — Write & scaffold
-4. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
+5. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
    commented blocks; the 10 policies with a one-line "when to change this" comment each).
-5. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
+6. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules),
    `.claude/settings.json` (hooks — omitted on a plugin install — + read-only CLI allows), folders,
    `.gitignore` (deliverable CSVs committed by default; PII opts out via `*.private.csv` / a
    `private/` subfolder), the AI-layer index, and the seeded ticket index.
 
 ### Phase 4 — Verify & hand off
-6. **Two distinct checks — keep them labeled as such in the report:**
+7. **Two distinct checks — keep them labeled as such in the report:**
    - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` — **kit integrity**. It
      validates the plugin's *own bundled example* stacks, **not** your repo's config. A failure here
      is fatal.
@@ -179,10 +213,22 @@ required key by name (a warning, not a failure), so a deferred key is reported r
      — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
      adapter's auth notes as the fix.
-7. **Report:** name which check is which (selftest = kit integrity; verify_stack = *your* tool slots), then
-   the chosen stack, files written, any `# TODO` keys, and the next step —
-   `/ticket <id>` to start work, or `/setup --teammate` for a new person.
-8. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
+8. **Report:** name which check is which (selftest = kit integrity; verify_stack = *your* tool slots), then
+   the chosen stack, files written, and any `# TODO` keys. Include, when they apply:
+   - **The punch list** — one entry per skipped round, each naming its re-entry command
+     (`/setup role` for round 5, `/setup policies` for round 6). Deferring must be trackable;
+     "took defaults" must never be indistinguishable from "chose".
+   - **Email, when round 4 recorded delivery:** say plainly that email is **configured but not
+     yet wired** — the commented target block holds the answers, no email adapter ships yet, and
+     nothing will send until one does.
+   - **Obsidian — one line, never a question.** Detected: "this repo already opens as an Obsidian
+     vault — the graph layer is in `tickets/graph/` + `tickets/objects/`." Not detected: the graph
+     layer still renders; print the guide as its full GitHub URL —
+     <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md> — never as a bare
+     `docs/obsidian.md` path, because `docs/` does not ship in the PyPI package, so on a pip
+     install that relative path points at nothing.
+   Then the next step — `/ticket <id>` to start work, or `/setup --teammate` for a new person.
+9. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
    index — plus, on a vendored install, the kit itself) is untracked; if it isn't committed, a later
    ticket PR references rules/adapters absent from the repo's history. Offer a commit (e.g.

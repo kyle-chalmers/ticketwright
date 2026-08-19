@@ -2,7 +2,7 @@
 name: productize
 description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
 argument-hint: "<workflow name> (e.g. monthly vendor reconciliation)"
-allowed-tools: [Read, Write, Edit, Bash, Glob, AskUserQuestion]
+allowed-tools: [Read, Write, Edit, Bash, Glob]
 disable-model-invocation: true
 ---
 
@@ -15,7 +15,7 @@ regression test, and a hard halt before any external post. `/refresh index` + th
 flag of `bin/build_ticket_index.py` surface candidates ("this object shows up in 7 tickets").
 
 ## Phase 1 — Interview the workflow (reduce_assumptions)
-Ask (AskUserQuestion) for:
+Ask, in prose (runtimes that render structured options show chips; others a numbered list), for:
 - **Name & cadence** (→ kebab skill name) and the **parameters** that change each run (e.g.
   `--period`, `--as-of-date`, `--ticket`, an input file) — with formats + validation rules.
 - **Steps**: the ordered phases. For each, what it reads, what it writes, and whether it has
