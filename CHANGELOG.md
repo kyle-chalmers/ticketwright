@@ -36,6 +36,33 @@ All notable changes to this project are documented here. Format loosely follows
   domain (example slugs, owner names, engine docstrings); selftest 13b's vocabulary guard covers more
   industries and vendor product names, and §20 E6 now checks ticket-key prefixes structurally.
 
+### Fixed
+- **The Quickstart now actually installs at project scope.** `claude plugin marketplace add` and
+  `claude plugin install` both default to `--scope user`, so the documented commands — which passed no
+  `--scope` — installed Ticketwright into the reader's own `~/.claude/settings.json`, one section above a
+  heading promising "project-scoped by default". Nothing landed in the repo and teammates got nothing.
+  Both Quickstart commands now pass `--scope project`, which writes the repo's `.claude/settings.json`
+  directly; `/setup` no longer has to be the only route to project scope.
+- **Marketplace source discriminator now matches what the CLI writes.** The committed block was
+  documented as `{"source": "url", "url": "https://…ticketwright.git"}` in `README.md`,
+  `setup/scaffold.md` and `.claude/settings.json.tmpl`. `git` and `url` are *different* marketplace
+  source types, and `git` is what `claude plugin marketplace add` emits for an `https://…git` URL —
+  confirmed by running it at both user and project scope. The HTTPS-over-SSH intent recorded under 3.4.1
+  is unchanged; only the discriminator moves, so the documented `source` object is now copied from the
+  CLI's output instead of hand-authored.
+- **`/setup` merges the enablement instead of overwriting it.** Now that the documented install already
+  writes `extraKnownMarketplaces` + `enabledPlugins`, `setup/scaffold.md` spells out the merge rules:
+  never replace either map wholesale, keep an existing `ticketwright` source verbatim (a fork edits that
+  URL), add `autoUpdate: true` only when absent, leave a deliberate `false` alone, and create/repair the
+  keys when they're missing or malformed. Neither install command writes `autoUpdate` (no flag sets it),
+  so adding that key is what `/setup` still contributes.
+- **`bin/selftest.sh` §21b no longer certifies the bug it was meant to catch.** It asserted the wrong
+  `"source": "url"` value, so the docs were locked to it, and its only README check was a grep for the
+  word `project-scoped` — which a contradicting Quickstart passed. It now asserts both Quickstart command
+  lines carry `--scope project`, parses README's enablement block (located by fence label — the first
+  fence in the Quickstart is `bash`) and compares it to `scaffold.md`'s, and pins the canonical source
+  value literally rather than only requiring the two files to agree.
+
 ## [3.5.0] — 2026-08-12
 
 Two features land together. **Human review handoff** — a gate that opens a ticket's deliverables in
