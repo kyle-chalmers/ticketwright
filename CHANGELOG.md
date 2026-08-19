@@ -7,6 +7,27 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **The runtime installer skeleton: `ticketwright install --runtime <name>`** (also
+  `bin/install.sh`, or `bin/emit_runtime.py` directly — one implementation, three ways in, never a
+  competing install route). The canonical skill source stays `.claude/skills/`; the installer
+  translates FROM it at emit time, and only where the runtime cannot already see the canonical
+  copy: `--runtime claude-code` is VERIFY-ONLY (reports the plugin or vendored install, touches
+  nothing — the Claude Code path is unchanged), `--runtime codex-cli` EMITS
+  `.agents/skills/<name>/SKILL.md` per skill (`name` + `description` frontmatter, body carried
+  over, provenance header naming the emitting version and the re-run command — hand-copying
+  between layouts is unsupported). Skills whose source declares `disable-model-invocation: true`
+  (`setup`, `ship`, `productize` — enumerated from frontmatter, never hardcoded) are deferred
+  with a printed reason: Codex has no equivalent field yet, and emitting them would silently make
+  user-invocable-only skills model-invocable. A re-run also cleans up after that rule: a stale
+  emitted copy of a now-gated skill is removed (identified by its provenance header), and a
+  hand-copied one is never deleted but fails the install loudly. Renamed-runtime aliases resolve
+  through the existing adapter machinery (`--runtime windsurf` answers about `devin`);
+  known-but-unwired runtimes and `--global` exit non-zero naming the unit that adds them.
+  `ticketwright init` now writes a `bin/KIT_VERSION` marker so a vendored kit can stamp true
+  provenance (same preserve/`--force` rule as every vendored file). Stdlib-only, takes
+  `--root`, no Claude environment variable required. Selftest section 39 pins the emitted tree
+  byte-for-byte against `tests/emit/codex-cli/` across all three routes, including an offline
+  wheel-shaped `init` → `install` end-to-end.
 - **`/setup`'s question cap is retired, and the interview is re-cut into rounds.** The "at most 5
   questions" promise had become the binding constraint on correctness — chat and docstore never
   configured, `role`/`domain` never asked, dead `ticket_url_template` links, one person folder

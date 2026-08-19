@@ -154,11 +154,44 @@ protection. The policy value is the shared contract; only the enforcement mechan
 - **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
-  (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), and the index/recall
-  engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`) —
-  all stdlib-only.
+  (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), the runtime installer
+  (`emit_runtime.py` + its shell convenience `install.sh` — see the next section), and the
+  index/recall engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`,
+  `recall.py`) — all stdlib-only.
 - **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via
   `pyproject.toml` force-includes, so the repo layout is the single source.
+- **`tests/`**: golden fixture trees for the installer (`tests/emit/<runtime>/`), pinned
+  byte-for-byte by selftest. Repo-only — deliberately excluded from the wheel and sdist.
+
+## Why the canonical source stays put (translate on emit)
+
+`.claude/skills/` is the ONE canonical home of every skill, and the installer translates FROM it at
+emit time — the source never moves, and no second copy is ever authoritative. This was decided, not
+defaulted (see the settled decisions in [PLANNED-CHANGES](PLANNED-CHANGES.md)); the reasons matter
+to anyone adopting or extending the kit:
+
+- **Three things anchor the layout.** `pyproject.toml` force-includes the `.claude/*` paths into the
+  wheel, `.claude-plugin/plugin.json` wires the hooks by their `.claude/hooks/` path, and the
+  repo-root `skills/` symlink already gives other tools a neutral alias to the same files. Moving
+  the source would churn all three for zero functional gain, because the installer translates to
+  each runtime's layout anyway.
+- **Emit only where the runtime cannot already see the canonical copy.** Several runtimes read
+  `.claude/skills/` natively — for those, the installer VERIFIES the canonical copy is reachable
+  and emits nothing (`--runtime claude-code` today; more verify-only runtimes land with the
+  emission matrix). A duplicate that exists only to be found is a duplicate that can go stale and
+  silently win over the real file — that is the failure mode, and not emitting is the fix.
+- **Where the runtime cannot see it, the emitted copy carries its provenance.** `--runtime
+  codex-cli` writes `.agents/skills/<name>/SKILL.md` per skill with the frontmatter that runtime
+  requires (`name` + `description`) and a header naming the emitting version and the re-run
+  command. Hand-copying between layouts is unsupported; the installer IS the compatibility layer.
+- **Safety metadata does not translate yet, so gated skills wait.** A skill whose source declares
+  `disable-model-invocation: true` is user-invocable-only by design; runtimes without that
+  primitive would silently make it model-invocable, so the installer defers those skills and prints
+  why. The per-runtime metadata mapping that lifts this lands with the emission matrix.
+
+One implementation, three ways in: `ticketwright install` (the pip entrypoint registers
+`bin/emit_runtime.py`), `bin/install.sh` (the shell convenience in the `bin/tw` launcher pattern),
+or the script directly. There is deliberately no fourth install route.
 
 ## Design stances
 
