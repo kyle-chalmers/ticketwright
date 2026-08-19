@@ -1883,5 +1883,113 @@ appleak="$(grep -REn -i 'DataGrip|Microsoft Excel|open -a |xdg-open|explorer\.ex
 [ -z "$appleak" ] && ok "no application name or OS open-command leaked into a skill" \
   || bad "a skill names a concrete application (belongs in an adapter / per-user config)" "$appleak"
 
+hdr "29 · voice profiles (resolver + template + ship/setup wiring + privacy)"
+# (A) resolve_user.py is stdlib-only and makes no network calls (offline resolver, per kit philosophy).
+imp_bad="$(grep -nE '^\s*(import|from)\s+(requests|urllib|http|socket|ssl|yaml)\b' bin/resolve_user.py || true)"
+[ -z "$imp_bad" ] && ok "resolve_user.py imports are stdlib-only, no network modules" \
+  || bad "resolve_user.py pulls a non-stdlib/network module" "$imp_bad"
+python3 -c "import ast; ast.parse(open('bin/resolve_user.py').read())" 2>/dev/null \
+  && ok "resolve_user.py parses" || bad "resolve_user.py is not valid Python"
+# (B) map hit / miss / feature-off / \$USER fallback — the deterministic identity contract.
+V="$TMP/voice"; mkdir -p "$V/.claude/config"
+git -C "$V" init -q 2>/dev/null; git -C "$V" config user.email "alice@acme.example" 2>/dev/null; git -C "$V" config user.name "Alice Smith" 2>/dev/null
+printf 'project:\n  key_prefix: ENG\n' > "$V/.claude/config/stack.yaml"
+off="$( (cd "$V" && CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py") )"
+[ -z "$off" ] && ok "feature off (no voice_profiles) → resolver prints nothing (fail open)" || bad "resolver spoke when feature off" "$off"
+cat > "$V/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+  voice_profiles:
+    path: "voices/{profile_id}.md"
+    map:
+      "alice@acme.example": alice
+      teammate_login: bob
+EOF
+hit="$( (cd "$V" && CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py") )"
+[ "$hit" = "alice" ] && ok "map hit by git email → profile id (alice)" || bad "email map hit wrong" "got=$hit"
+hp="$( (cd "$V" && CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py" --path) )"
+[ "$hp" = "voices/alice.md" ] && ok "--path applies the path template (voices/alice.md)" || bad "--path wrong" "got=$hp"
+usr="$( (cd "$V" && git config user.email "nobody@nowhere" && USER=teammate_login CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py") )"
+[ "$usr" = "bob" ] && ok "\$USER fallback resolves when git identity misses (bob)" || bad "\$USER fallback wrong" "got=$usr"
+miss="$( (cd "$V" && git config user.email "ghost@void" && USER=ghost CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py") )"
+[ -z "$miss" ] && ok "identity miss → prints nothing (fail open, never a wrong profile)" || bad "resolver guessed on a miss" "$miss"
+# (B2) reads git identity from the PROJECT root, not the process cwd (plugin-install correctness).
+# Set the mapped identity in the fixture repo, then run from a DIFFERENT cwd ($KIT, whose own git
+# identity is not in the map). Reading $KIT's config is fine; we never write it.
+git -C "$V" config user.email "alice@acme.example" 2>/dev/null
+xcwd="$( cd "$KIT" && CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py" )"
+[ "$xcwd" = "alice" ] && ok "resolves git identity from CLAUDE_PROJECT_DIR, not the process cwd" || bad "git identity read from cwd, not project root" "got=$xcwd"
+jsn="$( cd "$KIT" && CLAUDE_PROJECT_DIR="$V" python3 "$KIT/bin/resolve_user.py" --json )"
+python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d.get('id')=='alice' and d.get('path')=='voices/alice.md' else 1)" "$jsn" 2>/dev/null \
+  && ok "--json emits id + path + identity" || bad "--json wrong" "$jsn"
+# (B3) name-map hit + path-after-map (regression: a path: line AFTER map: must not pollute the map).
+PAM="$TMP/pam"; mkdir -p "$PAM/.claude/config"; git -C "$PAM" init -q 2>/dev/null
+git -C "$PAM" config user.email "nomatch@x" 2>/dev/null; git -C "$PAM" config user.name "Carol Jones" 2>/dev/null
+cat > "$PAM/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+  voice_profiles:
+    map:
+      "Carol Jones": carol
+    path: "profiles/{profile_id}.md"
+seams:
+  tracker:
+    tool: jira
+EOF
+pam_id="$( cd "$KIT" && CLAUDE_PROJECT_DIR="$PAM" python3 "$KIT/bin/resolve_user.py" )"
+pam_p="$( cd "$KIT" && CLAUDE_PROJECT_DIR="$PAM" python3 "$KIT/bin/resolve_user.py" --path )"
+{ [ "$pam_id" = "carol" ] && [ "$pam_p" = "profiles/carol.md" ]; } \
+  && ok "name-map hit + path-after-map parsed correctly (map not polluted by a trailing path:)" \
+  || bad "path-after-map / name-map parsing wrong" "id=$pam_id path=$pam_p"
+# (C) seed template renders with zero leftover tokens.
+verr="$(bash bin/render.sh templates/voice-profile.md.tmpl profile_id=alice display_name="Alice Smith" bootstrapped=2026-07-28 sources="interview" 2>&1 >/dev/null)"
+[ -z "$verr" ] && ok "voice-profile.md.tmpl renders with zero leftover tokens" || bad "leftover tokens in voice-profile.md.tmpl" "$verr"
+# (D) do-not-override list in the template is COMMS-scoped; CSV/determinism explicitly NOT a voice rail.
+{ grep -q 'Do-not-override' templates/voice-profile.md.tmpl \
+  && grep -q 'word_limits' templates/voice-profile.md.tmpl \
+  && grep -q 'NOT a voice concern' templates/voice-profile.md.tmpl; } \
+  && ok "voice template scopes rails to comms + excludes CSV/deterministic_outputs from the voice rails" \
+  || bad "voice template's do-not-override list is wrong (must be comms-only; CSV/determinism excluded)"
+# (E) /ship wires the consume step, lint-before-voice ordering, gated refinement, and fails open.
+shipflat="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
+grep -q 'resolve_user.py' .claude/skills/ship/SKILL.md \
+  && ok "/ship resolves the shipper via resolve_user.py" || bad "/ship never calls resolve_user.py"
+{ grep -qi 'Comms-lint the drafts first' <<<"$shipflat" && grep -qi 'Voice pass' <<<"$shipflat"; } \
+  && ok "/ship lints the hard rails BEFORE the voice phrasing pass" || bad "/ship missing lint-before-voice ordering"
+grep -qi 'fail open' <<<"$shipflat" \
+  && ok "/ship voice consume fails open (no profile ⇒ unchanged)" || bad "/ship voice step missing fail-open"
+{ grep -qi 'Voice refine' <<<"$shipflat" && grep -qi 'wait for confirmation before writing' <<<"$shipflat"; } \
+  && ok "/ship voice-refine proposes + waits for confirmation (never silent)" || bad "/ship voice-refine not gated on confirmation"
+grep -qi 'layer failure' <<<"$shipflat" \
+  && ok "/ship keeps voice-refine separate from system_evolution retro" || bad "voice-refine grafted onto system_evolution (should be separate)"
+# (F) the policy list is unchanged — voice is a config block, never a policy.
+np="$(yq '.policies | keys | length' .claude/config/stack.yaml 2>/dev/null)"
+{ [ "$np" = "10" ] && ! yq -e '.policies | keys | .[]' .claude/config/stack.yaml 2>/dev/null | grep -qi voice; } \
+  && ok "policy list unchanged ($np); no voice policy added" || bad "policy count changed / a voice policy leaked in" "count=$np"
+# (G) setup --voice is a first-class mode (not a seam) + the playbook ships.
+{ grep -q '\-\-voice' .claude/skills/setup/SKILL.md && [ -f .claude/skills/setup/voice.md ] \
+  && grep -q 'voice.md' .claude/skills/setup/SKILL.md; } \
+  && ok "/setup --voice is a first-class mode wired to voice.md" || bad "/setup --voice mode not wired"
+grep -qiE 'voice.*is never a .*seam|not.*a seam' .claude/skills/setup/SKILL.md \
+  && ok "setup states voice is NOT a seam" || bad "setup doesn't clarify voice is not a seam"
+# (H) include_self is documented separately from always_include (not overloaded).
+{ grep -q 'include_self' .claude/config/stack.schema.md \
+  && grep -q 'include_self' adapters/chat/slack.md && grep -q 'include_self' adapters/chat/teams.md; } \
+  && ok "include_self documented in schema + both chat adapters (separate from always_include)" \
+  || bad "include_self not documented across schema + chat adapters"
+# (I) comms/ drafts are gitignored (unsent wording never rides a PR).
+GV="$TMP/gvoice"; mkdir -p "$GV/tickets/d/ENG-1/comms"; git -C "$GV" init -q 2>/dev/null
+cp templates/gitignore.tmpl "$GV/.gitignore"
+: > "$GV/tickets/d/ENG-1/comms/draft-tracker.initial.md"
+git -C "$GV" check-ignore -q tickets/d/ENG-1/comms/draft-tracker.initial.md \
+  && ok "gitignore.tmpl ignores ticket comms/ drafts" || bad "comms/ drafts are NOT gitignored (would ride the PR)"
+# (J) schema documents voice_profiles; verify_stack tolerates it present + absent (fail-open on an unknown project key).
+grep -q 'voice_profiles' .claude/config/stack.schema.md \
+  && ok "voice_profiles documented in stack.schema.md" || bad "voice_profiles undocumented in schema"
+VP="$TMP/vp"; mkdir -p "$VP/.claude/config"
+printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    path: "voices/{profile_id}.md"\n    map:\n      "a@b": a\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VP/.claude/config/stack.yaml"
+vpo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VP/.claude/config/stack.yaml" --dry-run 2>&1)"
+grep -q 'All seams OK' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

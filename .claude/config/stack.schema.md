@@ -36,6 +36,23 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `word_limits` | map | `{tracker_comment: 100, chat: 100, pr: 200, ticket: 200}` | Hard caps the comms skills enforce. |
 | `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 | `graph_config` | bool | `true` | Also write/merge `.obsidian/graph.json` (tickets↔objects filter + color groups) so the Graph view opens ready-to-read. Create/merge-only — never clobbers manual tweaks. On by default; set `false` to keep the nodes but not manage the Obsidian config. Ignored when `graph_notes` is `false`. |
+| `voice_profiles` | map \| null | *(see below)* | Per-person comms **voice profiles**. Omit/null (the default) = feature off; `/ship` drafts exactly as today. Set it (via `/setup --voice`) to have comms drafts match the shipper's writing. |
+
+### `voice_profiles` (optional — off unless present)
+
+When set, `/ship` resolves the shipper via `bin/resolve_user.py` and, if a profile exists, uses it
+as a **phrasing style guide** for the tracker comment / chat / PR body — always *within* the hard
+comms rails (`word_limits`, `hyperlink_everything`, business-first segmentation, the include-list),
+never overriding them. Fail-open: an unset field, a missing map entry, or a missing profile file all
+degrade to today's behavior.
+
+| Sub-field | Type | Example | Meaning |
+|---|---|---|---|
+| `path` | template | `voices/{profile_id}.md` | Where each person's profile lives (`{profile_id}` token). |
+| `map` | map | `{ "alice@acme.example": alice }` | **Explicit** local-identity → `profile_id`. Keys are `git config user.email`, `git config user.name`, or `$USER` — never fuzzy-normalized. A miss fails open. |
+
+Profiles are **personal data** (a writing fingerprint) and are committed by default; a person who
+prefers privacy can gitignore their `voices/<id>.md`. Build/refine them with `/setup --voice`.
 
 ## `seams`
 
@@ -223,8 +240,12 @@ The file shape, all keys, and per-platform variants: `.claude/config/viewer.exam
 `adapters/viewer/{macos-open,xdg-open,windows-start}.md`. Check routing without launching anything
 with `bash bin/handoff.sh --dry-run <file>`.
 
-`always_include` (under `seams.chat`) — names always added to a chat message (e.g. `[Alice]`); the
-"never solo-DM a stakeholder" rule.
+`always_include` (under `seams.chat`) — a **fixed stakeholder list** always added to a chat message
+(e.g. `[Alice]`); the "never solo-DM a stakeholder" rule. It is *not* a self-tag.
+
+`include_self` (under `seams.chat`, optional, default off) — when `true`, the chat adapter also
+mentions the **shipper** (resolved via `bin/resolve_user.py`) *in addition to* `always_include`.
+Keeps the fixed stakeholder list intact instead of overloading it with a per-teammate name.
 
 ---
 

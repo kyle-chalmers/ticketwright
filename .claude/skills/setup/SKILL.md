@@ -1,7 +1,7 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo — detect your tools, ask at most 5 questions, write the config, scaffold folders. Also onboards a teammate (--teammate) and adopts existing repos.
-argument-hint: "(none) | --teammate [name] | <seam-to-add: chat|docstore|warehouse|viewer>"
+description: Set up Ticketwright in a repo — detect your tools, ask at most 5 questions, write the config, scaffold folders. Also onboards a teammate (--teammate), builds a per-person comms voice profile (--voice), and adopts existing repos.
+argument-hint: "(none) | --teammate [name] | --voice [name] | <seam-to-add: chat|docstore|warehouse|viewer>"
 allowed-tools: [Read, Write, Edit, Bash, Glob, AskUserQuestion]
 disable-model-invocation: true
 ---
@@ -14,7 +14,16 @@ after **at most 5 questions**.
 
 ## Mode: `--teammate` — onboard a person to an already-configured repo
 Follow [teammate.md](teammate.md): install checklist → per-tool auth walk-through → verify →
-read-the-map → guided first-ticket dry run. Requires an existing `stack.yaml`.
+read-the-map → guided first-ticket dry run. Requires an existing `stack.yaml`. When
+`project.voice_profiles` is configured, offer the `--voice` step at the end so the new person's
+comms sound like them from their first ship.
+
+## Mode: `--voice` — build or refine a person's comms voice profile
+Follow [voice.md](voice.md): identify the person → wire `project.voice_profiles` → render the seed
+from `templates/voice-profile.md.tmpl` → interview (≤5 questions) → optionally learn from short
+approved exemplars → save. `/ship` then drafts in that voice, within the hard comms rails. Requires
+an existing `stack.yaml`. (This is a first-class mode, **not** a seam — `voice` is never a
+`seams.*` entry.)
 
 ## Mode: `<seam>` — add one tool to an existing config
 E.g. `/setup chat`. Detect candidates for just that seam, ask one question, add the seam block to

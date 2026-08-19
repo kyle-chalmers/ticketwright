@@ -21,6 +21,11 @@ project:
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
   graph_notes: true                     # Obsidian graph layer (tickets/graph + tickets/objects); false to disable
   graph_config: true                    # also write .obsidian/graph.json (tickets↔objects filter + colors); create/merge-only, never clobbers manual tweaks
+  # voice_profiles:                     # per-person comms voice (off unless set). Build with /setup --voice; docs in stack.schema.md
+  #   path: "voices/{profile_id}.md"    # where each person's profile lives ({profile_id} token)
+  #   map:                              # explicit local identity → profile_id (git email / git name / $USER); a miss fails open
+  #     "alice@acme.example": alice
+  #     "Alice Smith": alice
 
 seams:
   tracker:
@@ -49,7 +54,8 @@ seams:
     mcp: slack
     default_channel: C0XXXXXXXXX         # your channel's ID
     default_mode: draft
-    always_include: [Alice]              # names always added to a chat message (never solo-DM a stakeholder)
+    always_include: [Alice]              # FIXED stakeholder list always added to a chat message (never solo-DM a stakeholder)
+    # include_self: false                # also @-mention the shipper (resolve_user.py), IN ADDITION to always_include
     verify: null                         # MCP-only: skills check reachability via an MCP call, not the shell
 
   docstore:

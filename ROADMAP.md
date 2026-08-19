@@ -89,10 +89,12 @@ Surfaced by two real installs (2026-07-06); the highest-value, lowest-risk fixes
 `--prune`, verify labeling, `--all`/`--force`). These remain — each issue-ready and named by the
 artifact it touches:
 
-- **Per-user chat identity** — `seams.chat.always_include` is substituted literally, so a committed
-  name is wrong for every teammate but the author. Add a first-class `self` / `{current_user}` token
-  resolved at compose time (`git config user.name` → `$USER` → tracker profile). *(adapters/chat/
-  {slack,teams}.md + stack.schema.md)*
+- **Per-user chat identity** — *(resolver + token landed with voice profiles)* `bin/resolve_user.py`
+  resolves the shipper offline (`git config user.email` → `user.name` → `$USER`, via an explicit
+  `stack.yaml` map), and `seams.chat.include_self` adds the shipper's mention *alongside* the fixed
+  `always_include` stakeholder list rather than overloading it. Remaining polish: per-tool mention
+  resolution and a `/setup` prompt to seed `include_self`. *(adapters/chat/{slack,teams}.md +
+  stack.schema.md)*
 - **`/ship` handles an existing/draft PR** — the `open_pr` verb assumes `gh pr create`; it should
   `gh pr list --head` first and edit + `gh pr ready` when a PR (especially a draft) already exists.
   *(adapters/vcs/{github,gitlab,azure-repos}.md)*

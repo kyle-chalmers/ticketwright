@@ -52,12 +52,16 @@ carrying the shared preamble), runs each, and strips every CSV. Canonical filena
 
 ## Phase 4 — Render docs & HARD HALT
 Render `templates/README.md.tmpl` → ticket README and `templates/tracker_comment.txt.tmpl` → draft.
-Print the summary and **exit** — no tracker post, no docstore backup, no commit. To ship after review:
+Apply the same comms rails as `/ship` before halting: comms-lint the draft (word limit, hyperlinks,
+include-list), then — if `project.voice_profiles` is set and a profile resolves for the shipper
+(`bin/resolve_user.py`) — a voice phrasing pass over the rendered fields, *within* those rails. Print
+the summary and **exit** — no tracker post, no docstore backup, no commit. To ship after review:
 `/{{skill_name}}-post-review --ticket <ticket>` (or `/ship <ticket>`).
 
 ## Phase 5 — Post-review (separate invocation)
 Honors `hard_halt_before_external_posts`: docstore backup → tracker comment (smart links) → chat
-draft (include always_include; hyperlink everything) → commit + PR. Then the system-evolution retro.
+draft (include always_include; hyperlink everything; voice profile applied when configured, within
+the limits) → commit + PR. Then the system-evolution retro.
 
 ## Golden test
 `/{{skill_name}} {{golden_invocation}}` → expected per `golden/{{golden_fixture}}.json`

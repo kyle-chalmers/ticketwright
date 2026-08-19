@@ -94,6 +94,10 @@ are byte-identical.
 Tracker comment <{{wl_tracker_comment}} words · chat <{{wl_chat}} · PR <{{wl_pr}} · new ticket
 <{{wl_ticket}}>. Tracker comments: business-first, segmented with counts/%/$, link the specific
 docstore file. Chat: include {{chat_always_include}}; hyperlink everything; default to draft.
+When a **voice profile** is configured for the shipper (`project.voice_profiles`), `/ship` phrases
+comms drafts to match it — but only *within* the limits above; the profile never overrides a word
+cap, a hyperlink, or the include-list. No profile ⇒ drafting is unchanged. Build one with
+`/setup --voice`.
 
 ## Quality control (the validation pyramid)
 Every deliverable: ① dialect lint → ② counts & dedup (duplicate detection is the primary test) →
