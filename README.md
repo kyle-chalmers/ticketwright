@@ -10,27 +10,24 @@
 
 **Ticketwright empowers a team to do a high volume of analysis without letting quality slide, on whatever tools they already use.**
 
-The path is fixed: open the work, do the work, quality-check it, deliver it, announce it. The tools
-are not. Every tracker, warehouse, chat, docstore and git host sits behind an adapter, so swapping
-one is a config edit rather than a rewrite.
-
-**Is this for you?** If your team's work product is an answer rather than a feature, and you ship
-more of them than anyone can carefully review by hand, yes. If you need a project tracker, an ETL
-scheduler, or a BI dashboard, no. Ticketwright sits beside those; it does not replace them.
-
 ## Vision
 
 **Any new or experienced member can pick up any analysis and be productive the same day, because the team's past work is written down and organized, and AI can trace it.**
-
-That is what the record is for. Each shipped ticket carries its business context, its assumptions,
-its QC verdict and its deliverables, so a person can judge whether prior work applies to their
-question, and an agent can trace an object or a decision back to every ticket that touched it.
 
 ---
 
 Ticketwright is built for the broad
 group of people who touch and interact with data — analysts, BI, ops, research, reporting — and it
 works for any team storing ticket- or task-driven analysis work in a repo, database or not.
+
+**This is for you if:**
+
+- ✅ your team's work product is an **answer**, not a feature
+- ✅ you ship more analyses than anyone can carefully review by hand
+- ✅ you want past work written down, findable, and reusable — by people and by AI
+- ❌ you need a project tracker, an ETL scheduler, or a BI dashboard — Ticketwright sits beside
+  those; it does not replace them
+
 Install it per repo, point it at your team's work, and it:
 
 - **opens tickets** and loads exactly the context each one needs
@@ -40,19 +37,22 @@ Install it per repo, point it at your team's work, and it:
 
 It works with **your** tools, through one config file:
 
-| Seam | Works with |
+| Tool slot | Works with |
 |---|---|
-| Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues — or **none at all** |
-| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse — or **none at all** |
-| Chat | Slack · Teams |
-| Docs | Google Drive · SharePoint |
-| Git | GitHub · GitLab · Azure Repos |
+| Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues · etc. — or **none at all** |
+| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse · Supabase · DuckDB · etc. — or **none at all** |
+| Chat | Slack · Teams · etc. |
+| Docs | Google Drive · SharePoint · Dropbox · etc. |
+| Git | GitHub · GitLab · Azure Repos · Bitbucket · etc. |
 
+- **The lists are examples, not a whitelist** — any tool that fills a slot works. The first six
+  trackers, six warehouses, and the Slack/Teams/Drive/SharePoint/GitHub/GitLab/Azure-Repos set ship
+  as adapters today; wiring up another (Supabase, DuckDB, Bitbucket, Dropbox, …) is
+  [a single adapter file](adapters/README.md) — the skills never change.
 - **More than one warehouse is fine** — name the targets.
 - **No warehouse is fine too** — a team whose deliverables are documents, models, or reports just
-  omits the seam ([worked example](.claude/config/stack.example.no-warehouse.yaml)).
+  omits the tool slot ([worked example](.claude/config/stack.example.no-warehouse.yaml)).
 - **No ticketing system is fine too** — set `id_mode: slug` and a folder you name becomes the ticket.
-- **Don't see yours?** Adding it is [a single adapter file](adapters/README.md).
 
 ## Quickstart (5 minutes)
 
@@ -111,7 +111,8 @@ as a commented default you can edit later, including all 10 policies.
 
 **What it writes:**
 
-- **`.claude/config/stack.yaml`** — your chosen seams live, optional ones as commented blocks, each
+- **`.claude/config/stack.yaml`** — your chosen tool slots live (the config key is `seams:` — "tool
+  slot" is the same thing, internally called a seam), optional ones as commented blocks, each
   policy with a one-line "when to change this" note.
 - **`autoUpdate: true` on the marketplace entry** — the one key no CLI flag can set, so running `setup`
   is how auto-update gets turned on at all. It *merges*: an existing entry keeps the `source` you have
@@ -124,7 +125,7 @@ as a commented default you can edit later, including all 10 policies.
 - **The AI-layer index and a seeded ticket index.**
 
 **Then it verifies and hands off:** two clearly-labelled checks — `selftest.sh` for kit integrity and
-`verify_stack.sh` for whether *your* seams are actually reachable (an unreachable seam isn't fatal at
+`verify_stack.sh` for whether *your* tools are actually reachable (an unreachable tool isn't fatal at
 setup time; it prints the auth fix) — then offers to commit the scaffold, since an uncommitted setup
 means later ticket PRs reference rules that aren't in the repo's history.
 
@@ -320,7 +321,7 @@ read this section as "Ticketwright runs anywhere today."
 
 ## Learn more
 
-- [docs/architecture.md](docs/architecture.md) — how it's built: the AI-layer model, seams,
+- [docs/architecture.md](docs/architecture.md) — how it's built: the AI-layer model, tool slots,
   adapters and the verb contract, and how to add a new tool.
 - [docs/troubleshooting.md](docs/troubleshooting.md) — a skill failed mid-way, a tool is
   unreachable, the index looks stale, upgrade paths.
