@@ -12,6 +12,13 @@ KIT="$(pwd)"
 PASS=0; FAIL=0; TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# The config resolver consults ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright for the cross-repo
+# tier-2 copy and the user-level viewer config. Without this line every fixture below would read the
+# CONTRIBUTOR'S OWN ~/.config, so the suite would pass or fail depending on whose machine it ran on.
+# Sections that exercise resolution order still override it per invocation.
+export XDG_CONFIG_HOME="$TMP/xdg-home"
+mkdir -p "$XDG_CONFIG_HOME"
+
 ok()   { PASS=$((PASS+1)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
 # `return 0` matters: bad() used to end on the `[ -n "$2" ]` test, so a one-arg call returned
 # non-zero and any inverted check (`cond && bad ... || ok ...`) fired the `|| ok` too — printing a
@@ -1151,9 +1158,29 @@ mtout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MT" --dry-run 2>&1
   && ok "both warehouse targets get their own row" || bad "expected exactly 2 target rows" "$mtout"
 grep -q '▸ warehouse\[prod\]\*' <<<"$mtout" \
   && ok "the default target is marked with *" || bad "default marker missing (default: pointer not read)" "$mtout"
-# Each target's verify interpolates ITS OWN tokens, not a sibling's.
-grep -q 'databricks --profile DEFAULT current-user me' <<<"$mtout" \
-  && ok "target verify interpolates that target's own tokens" || bad "target token scoping wrong" "$mtout"
+# Each target's verify interpolates ITS OWN tokens, not a sibling's — and the token now comes from
+# the MACHINE tier, which is the whole point of the three-tier split. The committed example
+# deliberately no longer carries `profile:`: a ~/.databrickscfg profile name is machine-local, and
+# committing one is the leak this feature exists to remove.
+MTT="$TMP/mt-tier3"; mkdir -p "$MTT/.claude/config"
+cp "$MT" "$MTT/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: DEFAULT\n' \
+  > "$MTT/.claude/config/connections.local.yaml"
+t3out="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MTT/.claude/config/stack.yaml" --dry-run 2>&1)"
+grep -q 'databricks --profile DEFAULT current-user me' <<<"$t3out" \
+  && ok "a target's verify token resolves from the machine tier (tier 3)" \
+  || bad "tier-3 token did not reach that target's verify" "$t3out"
+grep -q 'snow connection test' <<<"$t3out" \
+  && ok "the sibling target's tokenless verify is untouched by the overlay" \
+  || bad "overlay disturbed a sibling target" "$t3out"
+# …and with NO tier-3 file the verify must be SKIPPED, never run with a literal brace. The shell
+# interpolation this replaced left `{profile}` in place and ran it verbatim, which reads as broken
+# auth rather than as missing config.
+grep -q 'unresolved {profile}' <<<"$mtout" \
+  && ok "an unresolved {token} is skipped with a pointer, not executed" \
+  || bad "unresolved token was not skipped (would run a literal brace)" "$mtout"
+! grep -q 'would run: databricks --profile {profile}' <<<"$mtout" \
+  && ok "no verify is ever offered with an unresolved token" || bad "a literal {token} reached the command line" "$mtout"
 # Single-mapping stacks must still produce exactly one un-bracketed warehouse row.
 # Derived, not hardcoded: any config without a `targets:` map is a single-mapping stack and must
 # keep producing one plain row. A hardcoded list silently skipped the solo example when it was added.
@@ -1941,15 +1968,21 @@ o="$(CLAUDE_PROJECT_DIR="$VORD" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/xdg
 grep -q 'AllReposApp' <<<"$o" && ok "user-level viewer.yaml beats stack.yaml, loses to the repo file" \
   || bad "XDG user-level viewer config not resolved" "$o"
 
-# A missing dev tool must not turn a courtesy step into a hard failure.
+# `yq` is no longer required AT ALL — by handoff.sh or by verify_stack.sh. This assertion used to
+# check that a missing yq "degrades soft" by printing a message mentioning yq; now the correct
+# behaviour is that nothing degrades, because the resolver is stdlib Python.
 #
 # Hiding yq by narrowing PATH to /usr/bin:/bin does NOT work on images that ship yq there —
 # GitHub's ubuntu runners do — so that spelling passed locally (Homebrew keeps yq outside those
 # dirs) and failed in CI, i.e. it was green for the wrong reason. Build a scratch bin holding
-# only what handoff.sh needs, minus yq, and assert the precondition so this can never silently
+# only what these scripts need, minus yq, and assert the precondition so this can never silently
 # stop exercising the branch it claims to cover.
 NOYQ="$TMP/noyq-bin"; mkdir -p "$NOYQ"
-for c in bash sh env printf awk sed grep tr cut basename dirname realpath python3; do
+# `git` belongs in this list: the resolver asks bin/resolve_user.py who you are, which shells out to
+# `git config`. Omitting it left that call failing for a reason unrelated to yq, which made this
+# assertion intermittent rather than wrong.
+for c in bash sh env printf awk sed grep tr cut basename dirname realpath python3 mktemp rm cat \
+         head tail sort uniq wc xargs cp mv mkdir touch chmod ln date id git; do
   src="$(command -v "$c" 2>/dev/null)" && ln -sf "$src" "$NOYQ/$c"
 done
 if ( PATH="$NOYQ"; command -v yq >/dev/null 2>&1 ); then
@@ -1957,8 +1990,14 @@ if ( PATH="$NOYQ"; command -v yq >/dev/null 2>&1 ); then
 else
   o="$(CLAUDE_PROJECT_DIR="$VP" TICKETWRIGHT_NO_OPEN=1 PATH="$NOYQ" bash bin/handoff.sh \
         --dry-run "$VP/tickets/q.sql" 2>&1)"; rc=$?
-  { [ "$rc" -eq 0 ] && grep -qi 'yq' <<<"$o"; } \
-    && ok "missing yq degrades soft (lists the files, exit 0)" || bad "missing yq was not handled" "$o rc=$rc"
+  { [ "$rc" -eq 0 ] && grep -q 'would run' <<<"$o" && ! grep -qi 'yq' <<<"$o"; } \
+    && ok "handoff.sh resolves routes with yq absent from PATH entirely" \
+    || bad "handoff.sh still depends on yq" "$o rc=$rc"
+  o="$(PATH="$NOYQ" CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh \
+        "$KIT/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
+  { [ "$rc" -eq 0 ] && grep -q 'All seams OK' <<<"$o"; } \
+    && ok "verify_stack.sh resolves every seam with yq absent from PATH entirely" \
+    || bad "verify_stack.sh still depends on yq (it used to exit 1 without it)" "$o rc=$rc"
 fi
 
 # The per-user file must never be committable — it is personal config, and in a work repo its app
@@ -2142,8 +2181,8 @@ grep -q 'required key(s) not set: site' \
 # (D2) A required key present but BLANK is unset. `base_path:` with nothing after it is a likelier
 # typo than a deliberate choice, and it is the same failure as never writing the key.
 for blank in 'null' '""'; do
-  printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    base_path: %s\n    verify: "true"\n' "$blank" > "$RQ/.claude/config/stack.yaml"
-  grep -q 'required key(s) not set: base_path' \
+  printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    drive_folder: %s\n    verify: "true"\n' "$blank" > "$RQ/.claude/config/stack.yaml"
+  grep -q 'required key(s) not set: drive_folder' \
     <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" --dry-run 2>&1)" \
     && ok "a required key set to $blank counts as unset" \
     || bad "a required key set to $blank was treated as configured"
@@ -2501,6 +2540,377 @@ PYCHK
 grep -q 'for pyflag in "-P" ""' bin/tw \
   && ok "bin/tw's pip probe falls back for pythons without -P (3.9/3.10)" \
   || bad "bin/tw's pip probe only uses -P, which does not exist before 3.11"
+hdr "32 · three-tier config resolution (bin/effective_config.py)"
+# stack.yaml is COMMITTED and SHARED, so a value true only on one machine must not live there. These
+# assertions are about what the resolver REFUSES as much as what it merges: the scope rule is the
+# feature, and it is enforced in code rather than documented.
+EC="$KIT/bin/effective_config.py"
+ecroot() { local d="$TMP/ec-$1"; mkdir -p "$d/.claude/config" "$d/people"; printf '%s' "$d"; }
+ecrun() {  # ecrun <dir> [args...] -> stdout is JSON; echoes the exit code to $ECRC
+  local d="$1"; shift
+  ECOUT="$(python3 "$EC" --root "$d" --person alice --quiet "$@" 2>/dev/null)"; ECRC=$?
+}
+ecerr() { printf '%s' "$ECOUT" | python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print(""); raise SystemExit
+e=d.get("errors") or [{}]
+print((e[0].get("code","")+"|"+e[0].get("message","")))' 2>/dev/null; }
+
+# --- the scope rule: what tier 3 may never do ---------------------------------------------------
+D="$(ecroot scope)"; cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$D/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"
+{ [ "$ECRC" -eq 6 ] && grep -q 'prohibited_override' <<<"$(ecerr)"; } \
+  && ok "a machine file overriding \`catalog\` is rejected (exit 6)" \
+  || bad "tier 3 changed logical data selection" "rc=$ECRC $(ecerr)"
+grep -q '"catalog": "main"' <<<"$ECOUT" \
+  && ok "…and the team's catalog is still what resolves" || bad "a rejected override still leaked into the result" "$ECOUT"
+
+# `policies:` is un-mergeable at EVERY tier. Tier 3 is gitignored and unreviewed, so being able to
+# set db_write_requires_approval: off there would disable the kit's safety gates with nothing in
+# code review to catch it. Rejecting is not the same as ignoring — ignoring would let someone
+# believe they had turned a gate off.
+printf 'person: alice\npolicies:\n  db_write_requires_approval: off\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"
+{ [ "$ECRC" -eq 6 ] && grep -q 'not mergeable at any tier' <<<"$(ecerr)"; } \
+  && ok "a machine file carrying \`policies:\` is REJECTED, not ignored" \
+  || bad "a gitignored file was allowed to touch policy" "rc=$ECRC $(ecerr)"
+grep -q '"db_write_requires_approval": true' <<<"$ECOUT" \
+  && ok "…and the team's db_write policy is untouched" || bad "policy overlay leaked through" "$ECOUT"
+
+printf 'person: alice\nproject:\n  key_prefix: HACK\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; [ "$ECRC" -eq 6 ] \
+  && ok "a machine file carrying \`project:\` is rejected" || bad "tier 3 rewrote team project facts" "rc=$ECRC"
+
+# --- …and what it legitimately MAY do -----------------------------------------------------------
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: mine\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"
+{ [ "$ECRC" -eq 0 ] && grep -q '"profile": "mine"' <<<"$ECOUT"; } \
+  && ok "a declared user_key IS overridable inside an existing target" || bad "a legitimate credential override was refused" "rc=$ECRC $(ecerr)"
+printf '%s' "$ECOUT" | python3 -c 'import json,sys;d=json.load(sys.stdin);sys.exit(0 if d["provenance"]["seams.warehouse.targets.lake.profile"]["tier"]=="machine" else 1)' \
+  && ok "provenance names the tier that supplied it" || bad "provenance did not record the machine tier"
+
+# `targets` must stay a legal path SEGMENT (that is where a multi-target seam's credentials live)
+# while never being a settable value.
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      ghost:\n        profile: x\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; [ "$ECRC" -eq 6 ] \
+  && ok "an overlay cannot invent a target" || bad "a local file created a warehouse target" "rc=$ECRC"
+printf 'person: alice\nseams:\n  warehouse:\n    profile: x\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; { [ "$ECRC" -eq 6 ] && grep -q 'scope the override to a target' <<<"$(ecerr)"; } \
+  && ok "a seam-level override on a multi-target seam is refused with the right fix" || bad "seam-level override accepted where no adapter is defined" "rc=$ECRC $(ecerr)"
+
+# No adapter may declare a data-selection key as personal — the allowlist and the reserved set are
+# two independent gates, and this is the second one.
+adbad="$TMP/ec-adapters/adapters/warehouse"; mkdir -p "$adbad"
+printf -- '---\nseam: warehouse\ntool: rogue\nuser_keys: [catalog]\n---\n' > "$adbad/rogue.md"
+D2="$(ecroot rogue)"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: rogue\n    adapter: adapters/warehouse/rogue.md\n' > "$D2/.claude/config/stack.yaml"
+mkdir -p "$D2/adapters/warehouse"; cp "$adbad/rogue.md" "$D2/adapters/warehouse/rogue.md"
+printf 'person: alice\nseams:\n  warehouse:\n    catalog: x\n' > "$D2/.claude/config/connections.local.yaml"
+ecrun "$D2"; { [ "$ECRC" -eq 6 ] && grep -qi 'reserved key' <<<"$(ecerr)"; } \
+  && ok "an adapter declaring a reserved key in user_keys is refused" || bad "an adapter was allowed to make catalog personal" "rc=$ECRC $(ecerr)"
+
+# --- the structural tier-3 keys -----------------------------------------------------------------
+printf 'person: alice\nschema_version: 1\nmode: overrides\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; { [ "$ECRC" -eq 0 ] && grep -q '"person": "alice"' <<<"$ECOUT"; } \
+  && ok "\`person:\` is accepted with no adapter declaring it" || bad "the resolver rejected its own structural key" "rc=$ECRC $(ecerr)"
+printf 'person: alice\nmode: defaults\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: x\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; [ "$ECRC" -eq 6 ] \
+  && ok "\`mode: defaults\` carrying overrides is rejected (the two contradict)" || bad "a defaults-mode file silently applied overrides" "rc=$ECRC"
+printf 'person: alice\nstack_fingerprint: deadbeef\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; [ "$ECRC" -eq 5 ] \
+  && ok "a stale stack_fingerprint reports \`stale\` (exit 5)" || bad "stale machine config was not reported" "rc=$ECRC"
+printf 'person: alice\nseams: &anchor\n  warehouse: {}\n' > "$D/.claude/config/connections.local.yaml"
+ecrun "$D"; [ "$ECRC" -eq 4 ] \
+  && ok "a malformed local file reports \`malformed\` (exit 4)" || bad "malformed local config was not reported" "rc=$ECRC"
+rm -f "$D/.claude/config/connections.local.yaml"
+MISS="$TMP/ec-missing"; mkdir -p "$MISS"; ecrun "$MISS"; [ "$ECRC" -eq 3 ] \
+  && ok "no stack.yaml reports \`missing\` (exit 3)" || bad "a missing team stack was not reported" "rc=$ECRC"
+
+# --- tier 2: two homes, one stated winner -------------------------------------------------------
+# The in-repo file overrides the cross-repo copy KEY BY KEY, not whole-file — otherwise carrying a
+# voice between repos would mean re-stating every unrelated preference in each one.
+XD="$TMP/ec-xdg"; mkdir -p "$XD/ticketwright/people"
+printf 'display_name: From XDG\ntracker_handle: xdg-handle\n' > "$XD/ticketwright/people/alice.yaml"
+printf 'display_name: From Repo\n' > "$D/people/alice.yaml"
+ECOUT="$(XDG_CONFIG_HOME="$XD" python3 "$EC" --root "$D" --person alice --quiet 2>/dev/null)"
+{ grep -q '"display_name": "From Repo"' <<<"$ECOUT" && grep -q '"tracker_handle": "xdg-handle"' <<<"$ECOUT"; } \
+  && ok "in-repo people/<id>.yaml overrides the cross-repo copy KEY BY KEY" \
+  || bad "tier-2 precedence is whole-file, not per-key" "$ECOUT"
+
+# --- every migrated consumer actually goes through the resolver ---------------------------------
+# This cannot be shown by comparing VALUES: everything build_ticket_index.load_config() returns is
+# project.*, which is reserved to tier 1, so a correct migration changes no output at all. The trace
+# is the only way to prove no consumer still parses config on its own.
+TR="$TMP/ec-trace"; mkdir -p "$TR/.claude/config" "$TR/tickets/alice/ENG-1"
+cp "$KIT/.claude/config/stack.yaml" "$TR/.claude/config/stack.yaml"
+printf '# ENG-1\n' > "$TR/tickets/alice/ENG-1/README.md"
+# A populated store matters: ticket_index_context only reaches its config read (via discover())
+# when the catalog actually has rows, so an empty fixture would let it pass for the wrong reason.
+printf '{"tickets":[{"id":"ENG-1","owner":"alice","summary":"fixture","status":"Completed"}]}\n' \
+  > "$TR/tickets/index_data.json"
+traced() {  # traced <label> <command...>
+  local label="$1"; shift
+  local log="$TMP/trace-$label.log"; : > "$log"
+  # </dev/null matters: statusline.sh consumes a session payload on stdin and would block forever
+  # waiting for one, hanging the whole suite rather than failing.
+  TICKETWRIGHT_CONFIG_TRACE="$log" CLAUDE_PROJECT_DIR="$TR" CLAUDE_PLUGIN_ROOT="$KIT" "$@" >/dev/null 2>&1 </dev/null
+  [ -s "$log" ] && ok "$label reads config through the shared config stack" \
+                || bad "$label still parses config on its own (no trace recorded)"
+}
+traced "build_ticket_index"   python3 "$KIT/bin/build_ticket_index.py"
+traced "recall"               python3 "$KIT/bin/recall.py" --for ENG-1
+traced "ingest_index_records" python3 "$KIT/bin/ingest_index_records.py" --from-json "$TR/tickets/index_data.json"
+traced "resolve_user"         python3 "$KIT/bin/resolve_user.py"
+traced "verify_stack"         bash "$KIT/bin/verify_stack.sh" "$TR/.claude/config/stack.yaml" --dry-run
+traced "handoff"              bash "$KIT/bin/handoff.sh" --dry-run "$TR/tickets/alice/ENG-1/README.md"
+traced "statusline"           bash "$KIT/.claude/statusline.sh"
+traced "session_context"      python3 "$KIT/.claude/hooks/session_context.py"
+traced "ticket_index_context" python3 "$KIT/.claude/hooks/ticket_index_context.py"
+# The regenerate hook takes a PostToolUse payload on stdin, so it needs its own runner rather than
+# the shared </dev/null one.
+rlog="$TMP/trace-regen.log"; : > "$rlog"
+printf '{"tool_name":"Write","tool_input":{"file_path":"%s"},"cwd":"%s"}' \
+  "$TR/tickets/alice/ENG-1/README.md" "$TR" \
+  | TICKETWRIGHT_CONFIG_TRACE="$rlog" CLAUDE_PROJECT_DIR="$TR" CLAUDE_PLUGIN_ROOT="$KIT" \
+    python3 "$KIT/.claude/hooks/regenerate_ticket_index.py" >/dev/null 2>&1
+[ -s "$rlog" ] && ok "regenerate_ticket_index reads config through the shared config stack" \
+               || bad "regenerate_ticket_index still parses config on its own (no resolver trace)"
+# bin/enrich_ticket.py is covered transitively: its only config read is the same
+# build_ticket_index.load_config(), and PROMPT 1 owns that file, so this change never opens it.
+
+# --- the parser, cross-checked against yq --------------------------------------------------------
+# yq is the ORACLE, not the implementation: if the stdlib subset parser and yq ever disagree on a
+# shipped config, one of them is misreading real user data. Supported inputs only — the anchor and
+# alias fixtures in section 6b are deliberately OUTSIDE the subset and are covered by the rejection
+# assertions below instead.
+oracle_bad="$(python3 - <<'PY2'
+import glob, json, subprocess, sys
+sys.path.insert(0, "bin")
+import _yamlite
+bad = []
+for f in sorted(glob.glob(".claude/config/*.yaml")) + ["people/alice.yaml"]:
+    r = subprocess.run(["yq", "-o=json", f], capture_output=True, text=True)
+    if r.returncode != 0:
+        continue
+    try:
+        got = _yamlite.parse_file(f)
+    except Exception as exc:
+        bad.append(f"{f}: {exc}"); continue
+    if got != json.loads(r.stdout):
+        bad.append(f"{f}: differs from yq")
+print("\n".join(bad))
+PY2
+)"
+[ -z "$oracle_bad" ] && ok "_yamlite matches yq on every shipped config + people file" \
+  || bad "the stdlib parser and yq disagree on real config" "$oracle_bad"
+fm_bad="$(python3 - <<'PY2'
+import glob, sys
+sys.path.insert(0, "bin")
+import _yamlite
+bad = []
+for f in sorted(glob.glob("adapters/*/*.md")):
+    if f.endswith("README.md"):
+        continue
+    try:
+        fm, _ = _yamlite.parse_frontmatter(open(f, encoding="utf-8").read(), f)
+    except Exception as exc:
+        bad.append(f"{f}: {exc}"); continue
+    if not fm.get("seam") or not fm.get("tool"):
+        bad.append(f"{f}: missing seam/tool"); continue
+    # `runtime` is an adapter directory, not a stack.yaml seam: it declares what an agent can do,
+    # holds no config keys and no verbs, so there is nothing for `user_keys:` to say about it.
+    if fm.get("seam") != "runtime" and "user_keys" not in fm:
+        bad.append(f"{f}: no user_keys declaration")
+print("\n".join(bad))
+PY2
+)"
+[ -z "$fm_bad" ] && ok "every adapter's frontmatter parses and declares user_keys" \
+  || bad "adapter frontmatter unreadable or undeclared" "$fm_bad"
+
+# Rejections must name the line and the rule — a parser that fails vaguely is barely better than one
+# that misreads.
+rej_bad=""
+for case in "anchor:a: &x 1" "alias:a: *x" "tag:a: !!str 5" "merge:a:\n  <<: *x"; do
+  name="${case%%:*}"; body="${case#*:}"
+  out="$(printf "$body\n" | python3 -c 'import sys;sys.path.insert(0,"bin");import _yamlite
+try:
+    _yamlite.parse(sys.stdin.read(), "f.yaml"); print("NOT REJECTED")
+except _yamlite.YamliteError as e: print(e)' 2>&1)"
+  grep -q 'f.yaml:[0-9]' <<<"$out" || rej_bad="$rej_bad $name"
+done
+[ -z "$rej_bad" ] && ok "unsupported YAML is rejected with a file:line and the rule broken" \
+  || bad "a rejection did not name its location:$rej_bad"
+
+# --- the leak lint --------------------------------------------------------------------------------
+LK="$(ecroot leak)"
+cat > "$LK/.claude/config/stack.yaml" <<'YAML'
+project:
+  key_prefix: ENG
+seams:
+  warehouse:
+    tool: databricks
+    adapter: adapters/warehouse/databricks.md
+    warehouse_id: 0a1b2c3d
+    verify: "databricks --profile analytics-prod current-user me"
+YAML
+lk="$(python3 "$EC" --root "$LK" --lint --quiet 2>/dev/null)"
+grep -q 'verify hardcodes a machine-local' <<<"$lk" \
+  && ok "a machine literal baked into a verify STRING is caught (no matching key present)" \
+  || bad "the hardcoded-verify leak produced no warning" "$lk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    profile: analytics-prod\n    verify: "databricks --profile {warehouse_id} current-user me"\n' > "$LK/.claude/config/stack.yaml"
+lk="$(python3 "$EC" --root "$LK" --lint --quiet 2>/dev/null)"
+grep -q 'declares it personal' <<<"$lk" \
+  && ok "a literal in a declared user_key warns even alongside an unrelated {token}" \
+  || bad "the warning keyed on the verify string instead of the declaration" "$lk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    default_warehouse: WH\n    verify: "snow connection test"\n' > "$LK/.claude/config/stack.yaml"
+[ -z "$(python3 "$EC" --root "$LK" --lint --quiet 2>/dev/null)" ] \
+  && ok "a tokenless verify naming nothing machine-specific stays silent" \
+  || bad "the lint warned about a correct tokenless verify"
+for f in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
+  [ -z "$(python3 "$EC" --stack "$f" --lint --quiet 2>/dev/null)" ] \
+    || bad "a SHIPPED config carries a machine-local value: $f" "$(python3 "$EC" --stack "$f" --lint --quiet)"
+done
+ok "no shipped config carries a machine-local value"
+
+# --- the DB-write guard must not depend on the resolver ------------------------------------------
+# db_write_guard and _stack.py deliberately read the policy IN-PROCESS. Shelling out to the resolver
+# would move their failure mode from fail-safe (an unreadable policy gates MORE) to fail-open, since
+# the hook wraps everything in a blanket "never block a session" handler. These two assertions are
+# what should stop anyone "finishing the migration".
+SAB="$TMP/ec-sabotage"; mkdir -p "$SAB/kit" "$SAB/proj/.claude/config"
+cp -R "$KIT/bin" "$KIT/.claude" "$SAB/kit/" 2>/dev/null
+printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' \
+  > "$SAB/proj/.claude/config/stack.yaml"
+sabotage_says() {  # -> the guard's decision with the resolver broken
+  printf '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \\"DROP TABLE x\\""},"cwd":"%s"}' "$SAB/proj" \
+    | CLAUDE_PROJECT_DIR="$SAB/proj" python3 "$SAB/kit/.claude/hooks/db_write_guard.py" 2>/dev/null
+}
+rm -f "$SAB/kit/bin/effective_config.py"
+grep -q '"permissionDecision": "ask"' <<<"$(sabotage_says)" \
+  && ok "the DB-write guard still gates with bin/effective_config.py DELETED" \
+  || bad "deleting the resolver silently disabled the destructive-write gate"
+printf '#!/usr/bin/env python3\nimport sys\nsys.exit(9)\n' > "$SAB/kit/bin/effective_config.py"
+grep -q '"permissionDecision": "ask"' <<<"$(sabotage_says)" \
+  && ok "…and with the resolver stubbed to fail (fail-safe, never fail-open)" \
+  || bad "a broken resolver turned the guard fail-open"
+
+# --- a rejected override must not report a healthy stack -----------------------------------------
+# Reporting "All seams OK" after REFUSING a prohibited override would defeat reject-not-ignore
+# entirely: the person would believe both that their local file applied and that the stack was fine.
+RJ="$(ecroot reject)"; cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$RJ/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' > "$RJ/.claude/config/connections.local.yaml"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
+{ [ "$rc" -ne 0 ] && ! grep -q 'All seams OK' <<<"$o"; } \
+  && ok "verify_stack fails when the resolver rejected an override" \
+  || bad "a prohibited override still reported a healthy stack" "rc=$rc $o"
+printf 'person: alice\nstack_fingerprint: deadbeef\n' > "$RJ/.claude/config/connections.local.yaml"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
+{ [ "$rc" -eq 0 ] && grep -q 'stale' <<<"$o"; } \
+  && ok "…but a merely STALE machine file warns instead of failing" || bad "stale config was treated as fatal" "rc=$rc $o"
+
+# --- a token value may never inject shell syntax into a verify -----------------------------------
+# verify commands run through `eval`, and a {token} value now comes from a gitignored local file.
+# Quoting is not available: the token is usually already inside quotes in the template, so quoting
+# again would corrupt legitimate paths. So a value carrying shell syntax is REFUSED.
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: "x; touch %s/PWNED"\n' "$TMP" \
+  > "$RJ/.claude/config/connections.local.yaml"
+rm -f "$TMP/PWNED"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" 2>&1)"
+{ grep -q 'refusing to run' <<<"$o" && [ ! -f "$TMP/PWNED" ]; } \
+  && ok "a token value with shell metacharacters is refused, not executed" \
+  || bad "a tier-3 value reached the shell (command injection)" "$o"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: "my profile.2"\n' \
+  > "$RJ/.claude/config/connections.local.yaml"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" --dry-run 2>&1)"
+grep -q 'my profile.2' <<<"$o" \
+  && ok "…while an ordinary value with spaces and dots still interpolates" \
+  || bad "the metacharacter check rejected a legitimate value" "$o"
+
+# --- tier-2 provenance names the FILE, not just the tier ----------------------------------------
+PV="$(ecroot prov)"; PX="$TMP/ec-prov-xdg"; mkdir -p "$PX/ticketwright/people"
+printf 'project:\n  key_prefix: ENG\n' > "$PV/.claude/config/stack.yaml"
+printf 'display_name: From XDG\ntracker_handle: xdg-handle\n' > "$PX/ticketwright/people/alice.yaml"
+printf 'display_name: From Repo\n' > "$PV/people/alice.yaml"
+XDG_CONFIG_HOME="$PX" python3 "$EC" --root "$PV" --person alice --quiet 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+pr = d["provenance"]
+ok = (d["person_config"]["display_name"] == "From Repo"
+      and pr["person_config.display_name"]["source"].endswith("/people/alice.yaml")
+      and "ticketwright" not in pr["person_config.display_name"]["source"]
+      and "ticketwright" in pr["person_config.tracker_handle"]["source"])
+sys.exit(0 if ok else 1)' \
+  && ok "tier-2 provenance attributes each key to the file that actually supplied it" \
+  || bad "provenance credited one tier-2 file for keys the other supplied"
+
+# --- viewer: the composed source must prove itself usable ----------------------------------------
+VC="$(ecroot viewer)"; mkdir -p "$VC/tickets"; : > "$VC/.git"
+printf 'project:\n  key_prefix: ENG\n' > "$VC/.claude/config/stack.yaml"
+printf 'SELECT 1;\n' > "$VC/tickets/q.sql"
+vplan() { XDG_CONFIG_HOME="$TMP/ec-noxdg" python3 "$EC" --root "$VC" --person alice --viewer-plan --quiet 2>/dev/null; }
+printf 'display_name: A\nviewer:\n  categories:\n    - glob: "*.sql"\n      category: sql-editor\n' > "$VC/people/alice.yaml"
+grep -q '"usable": false' <<<"$(vplan)" \
+  && ok "tier-2 categories with no tier-3 applications is NOT usable (falls through)" \
+  || bad "a half-configured viewer won and would open nothing" "$(vplan)"
+printf "person: alice\nviewer:\n  tool: macos-open\n  open_cmd: 'open -a {app} {path}'\n  apps:\n    sql-editor: DataGrip\n" > "$VC/.claude/config/connections.local.yaml"
+o="$(vplan)"
+{ grep -q '"usable": true' <<<"$o" && grep -q 'DataGrip' <<<"$o"; } \
+  && ok "portable categories + machine applications compose into routes" || bad "the viewer split did not compose" "$o"
+printf "enabled: true\ntool: macos-open\nopen_cmd: 'open -a {app} {path}'\nroutes:\n  - glob: \"*.sql\"\n    app: LegacyApp\n" > "$VC/.claude/config/viewer.local.yaml"
+grep -q 'LegacyApp' <<<"$(vplan)" \
+  && ok "an existing viewer.local.yaml still wins (zero change for anyone who has one)" \
+  || bad "the new form displaced a working legacy viewer config" "$(vplan)"
+
+# --- voice resolves from tier 2, and the legacy home still works ---------------------------------
+VV="$(ecroot voice)"; git -C "$VV" init -q 2>/dev/null
+git -C "$VV" config user.email "alice@acme.example" 2>/dev/null
+printf 'project:\n  key_prefix: ENG\n' > "$VV/.claude/config/stack.yaml"
+printf 'display_name: Alice\nidentities:\n  - alice@acme.example\nvoice:\n  path: voices/{profile_id}.md\n  profile_id: alice\n' > "$VV/people/alice.yaml"
+[ "$(CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" 2>/dev/null)" = "alice" ] \
+  && ok "a voice profile resolves from tier-2 people/<id>.yaml" || bad "the moved voice map does not resolve"
+# A person whose profile lives ONLY in the cross-repo home must still resolve, or "portable" is a
+# label rather than a behaviour.
+mkdir -p "$TMP/ec-voice-xdg/ticketwright/people"
+printf 'identities:\n  - carol@acme.example\nvoice:\n  profile_id: carol\n' \
+  > "$TMP/ec-voice-xdg/ticketwright/people/carol.yaml"
+git -C "$VV" config user.email "carol@acme.example" 2>/dev/null
+[ "$(XDG_CONFIG_HOME="$TMP/ec-voice-xdg" CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" 2>/dev/null)" = "carol" ] \
+  && ok "a portable-only (cross-repo) voice profile resolves" || bad "the cross-repo tier-2 home was never scanned"
+# One person's custom `voice.path` must not become everyone's. A single template held across the
+# whole scan meant Alice resolved to whichever custom path was read last — a wrong-profile bug of
+# exactly the kind this resolver refuses to risk.
+printf 'identities:\n  - alice@acme.example\nvoice:\n  profile_id: alice\n' > "$VV/people/alice.yaml"
+printf 'identities:\n  - bob@acme.example\nvoice:\n  path: custom/{profile_id}.md\n  profile_id: bob\n' > "$VV/people/bob.yaml"
+git -C "$VV" config user.email "alice@acme.example" 2>/dev/null
+ap="$(CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" --path 2>/dev/null)"
+git -C "$VV" config user.email "bob@acme.example" 2>/dev/null
+bp="$(CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" --path 2>/dev/null)"
+{ [ "$ap" = "voices/alice.md" ] && [ "$bp" = "custom/bob.md" ]; } \
+  && ok "each person's voice path is their own (a custom path does not leak to a teammate)" \
+  || bad "a teammate's voice.path leaked across people" "alice=$ap bob=$bp"
+git -C "$VV" config user.email "alice@acme.example" 2>/dev/null
+
+rm -rf "$VV/people"
+printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    map:\n      "alice@acme.example": alice\n' > "$VV/.claude/config/stack.yaml"
+lo="$(CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" 2>/dev/null)"
+[ "$lo" = "alice" ] \
+  && ok "the legacy stack.yaml voice map still resolves (upgrading loses nothing)" \
+  || bad "upgrading silently lost voice resolution" "stdout=$lo"
+[ -z "$(CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" 2>/dev/null | grep -i legacy)" ] \
+  && ok "…and no warning ever contaminates stdout (callers read it as the answer)" \
+  || bad "a warning was printed to stdout and would be read as a profile id"
+# The legacy map is reported by the LINT, once per run — not by resolve_user, which hooks, the
+# statusline and /ship each invoke several times a session. An unconditional stderr warning there
+# printed into the stderr of every one of those, including unrelated commands that merely started a
+# shell. So resolve_user's courtesy warning is TTY-gated and this is the durable channel.
+grep -q 'voice_profiles.map. holds personal identities' \
+  <<<"$(python3 "$EC" --root "$VV" --lint --quiet 2>/dev/null)" \
+  && ok "the lint reports the legacy voice map (the durable, once-per-run channel)" \
+  || bad "the legacy identity map is reported nowhere a human will see it"
+[ -z "$(CLAUDE_PROJECT_DIR="$VV" python3 "$KIT/bin/resolve_user.py" 2>&1 >/dev/null)" ] \
+  && ok "…and resolve_user stays silent when stderr is not a TTY (hooks, statusline, CI)" \
+  || bad "resolve_user warns on every invocation, spamming unrelated commands"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

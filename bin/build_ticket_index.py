@@ -105,7 +105,65 @@ def _yaml_list(text: str, key: str) -> list[str]:
 
 
 def load_config(root: Path) -> dict:
-    """Read the few fields the index needs from stack.yaml (stdlib regex; no YAML dep)."""
+    """The few fields the index needs, read through the three-tier resolver.
+
+    Every key here lives under `project.*`, which the resolver reserves to tier 1 — so today this
+    returns exactly what the regex reader returned. That is the point: ONE code path for config,
+    with no behavior change to prove. It also migrates recall.py, ingest_index_records.py,
+    enrich_ticket.py, regenerate_ticket_index.py and ticket_index_context.py, none of which read
+    stack.yaml any other way and none of which need editing.
+
+    Contract this must never break: all six keys are always present (callers index with `[]`, not
+    `.get()`), and this NEVER raises or exits — the resolver's exit codes are its CLI surface only.
+    """
+    cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True,
+           "ticket_subdirs": [], "id_mode": "keyed"}
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from effective_config import resolve  # type: ignore
+        project = resolve(root).project
+    except Exception:  # noqa: BLE001 — see the fallback's docstring; a hook must never hard-fail
+        return _load_config_regex(root)
+    if not isinstance(project, dict):
+        return _load_config_regex(root)
+
+    prefixes = project.get("key_prefixes")
+    if isinstance(prefixes, list):
+        cfg["prefixes"] = [str(p).strip() for p in prefixes if str(p).strip()]
+    elif isinstance(prefixes, str) and prefixes.strip():
+        cfg["prefixes"] = [prefixes.strip()]
+    if not cfg["prefixes"]:
+        one = project.get("key_prefix")
+        if one is not None and str(one).strip():
+            cfg["prefixes"] = [str(one).strip()]
+
+    url = project.get("ticket_url_template")
+    if url is not None and str(url).strip() and str(url).strip().lower() != "null":
+        cfg["url_template"] = str(url).strip()
+
+    for key in ("graph_notes", "graph_config"):
+        val = project.get(key)
+        if val is not None and str(val).strip().lower() in ("false", "no", "off", "0"):
+            cfg[key] = False
+
+    subdirs = project.get("ticket_subdirs")
+    if isinstance(subdirs, list):
+        cfg["ticket_subdirs"] = [str(d).strip() for d in subdirs if str(d).strip()]
+
+    if str(project.get("id_mode", "")).strip().lower() == "slug":
+        cfg["id_mode"] = "slug"
+    return cfg
+
+
+def _load_config_regex(root: Path) -> dict:
+    """The pre-resolver reader: narrow regexes over stack.yaml, kept as the FALLBACK.
+
+    Retained deliberately. `load_config` is reached by two SessionStart/PostToolUse hooks
+    (regenerate_ticket_index, ticket_index_context) and hooks must fail open, so a repo whose
+    stack.yaml uses a construct outside the resolver's supported subset — an anchor, say, which
+    yq and these regexes both read fine — must keep rendering its catalog rather than becoming
+    a hard "malformed config" error.
+    """
     cfg = {"prefixes": [], "url_template": None, "graph_notes": True, "graph_config": True,
            "ticket_subdirs": [], "id_mode": "keyed"}
     f = root / ".claude" / "config" / "stack.yaml"

@@ -4,6 +4,7 @@ tool: monday
 transport: mcp         # MCP ({mcp}); GraphQL under the hood
 requires: [board_id, mcp]   # stack.yaml seams.tracker.{board_id, status_column_id, done_label, mcp}
 container_key: seams.tracker.board_id   # which config key a ranked container fills (see rank_projects_by_activity)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   The monday MCP server (`{mcp}`) must be connected (OAuth).
   Verify: a read-only board/items query returns without error.

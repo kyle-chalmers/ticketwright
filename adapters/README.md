@@ -14,14 +14,14 @@ skill  ──calls──▶  verb (e.g. tracker.fetch_ticket)
 ```
 
 A skill resolves a verb like this:
-1. Read `stack.yaml` → `seams.<seam>.adapter`.
+1. Read the MERGED config (`bin/effective_config.py`, not raw `stack.yaml`) → `seams.<seam>.adapter`.
 2. Open that adapter, find the verb's section.
 3. Run the command shown there, substituting `{tokens}` from `stack.yaml` + skill args.
 4. If `seams.<seam>.verify` fails first (hybrid preflight), **halt** with the adapter's auth notes.
 
 Every adapter file has the same shape: a **frontmatter** block (seam, tool, transport, required
-config keys, auth/setup notes) followed by one `## verb: <name>` section per verb in that seam's
-contract. A verb section gives the command(s), inputs, the expected output shape, and any gotchas.
+config keys, which keys are personal, auth/setup notes) followed by one `## verb: <name>` section per
+verb in that seam's contract. A verb section gives the command(s), inputs, the expected output shape, and any gotchas.
 
 ---
 
@@ -259,7 +259,7 @@ tool-neutrality rule for skills — is unchanged.
 *(For a **tool** seam. A `runtime` adapter skips steps 3 and 4 — see the section above.)*
 
 1. Copy the closest reference adapter in the same seam.
-2. Keep the frontmatter keys (`seam`, `tool`, `transport`, `requires`, `auth`). `requires:` is
+2. Keep the frontmatter keys (`seam`, `tool`, `transport`, `requires`, `user_keys`, `auth`). `requires:` is
    ENFORCED, not decorative: `bin/verify_stack.sh` reads it and warns for every listed key the seam
    does not set. List exactly the keys the adapter cannot work without — a key named here that the
    adapter merely *prefers* produces a warning on a perfectly good config. Keys the adapter reads
@@ -269,6 +269,34 @@ tool-neutrality rule for skills — is unchanged.
 4. Add a `verify` command to your `stack.yaml` seam entry (read-only, exits non-zero when unreachable).
 5. Run `bash bin/verify_stack.sh` — it confirms each seam's adapter file exists and runs the seam's
    read-only `verify` to check reachability. (`bash bin/selftest.sh` checks verb coverage vs. this contract.)
+
+### `user_keys:` — which of this tool's keys are PERSONAL
+
+`stack.yaml` is committed and shared, so a value that is true only on one machine must not live
+there. `user_keys:` is how an adapter declares which of its config keys a person may override from
+`.claude/config/connections.local.yaml` (tier 3, gitignored):
+
+```yaml
+user_keys: [profile]      # a named profile from the tool's own local config file
+```
+
+Rules for choosing them:
+
+- **Credentials and local paths only.** A key that selects WHICH DATA is read — `catalog`, `schema`,
+  `database`, `dataset`, `warehouse_id`, a workspace host — is team-owned, full stop. Two teammates
+  must never silently read different data, so those keys are RESERVED and the resolver refuses to
+  let any adapter declare them.
+- **Not the same list as `requires:`.** `requires:` is a minimum-capability declaration; a tool can
+  require a CLI and still take all its data-selection settings from the team.
+- **Empty is a real answer.** Most tools keep credentials outside config entirely — an environment
+  variable, a credentials file, an `auth login` session. Declare `user_keys: []` and say why in a
+  comment rather than inventing a personal key.
+- **Split a mixed key instead of declaring it.** A value that is half team decision and half machine
+  path (a docstore's `base_path`) should become two keys — the team half in `stack.yaml`, the machine
+  half in tier 3 — rather than becoming personal wholesale.
+
+`bin/verify_stack.sh` warns when a committed `stack.yaml` sets one of these keys to a literal, and
+when a machine-local value is hardcoded into a `verify:` string instead of a `{token}`.
 
 **Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** `bin/selftest.sh`
 (section 3) enforces this: it greps `.claude/skills/**` + `.claude/commands/**` for tool names, with

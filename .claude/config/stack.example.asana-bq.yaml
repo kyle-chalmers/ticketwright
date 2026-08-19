@@ -50,7 +50,7 @@ seams:
     tool: sharepoint
     adapter: adapters/docstore/sharepoint.md
     transport: cli
-    base_path: "/Users/ana/Library/CloudStorage/OneDrive-Growth/Data Tickets"
+    drive_folder: "Data Tickets"            # team decision; the OneDrive mount root is per-machine (tier 3)
     verify: "test -d \"{base_path}\""
 
   vcs:

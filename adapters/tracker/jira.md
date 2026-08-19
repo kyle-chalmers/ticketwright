@@ -4,6 +4,7 @@ tool: jira
 transport: both        # acli (CLI) for reads/creates/transitions; Atlassian MCP for rich comments
 requires: [site, cli]  # stack.yaml seams.tracker.{site, cli, mcp, default_epic, terminal_status}
 container_key: project.key_prefix   # which config key a ranked container fills (see rank_projects_by_activity)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   CLI:  acli jira auth   (token in ~/.config/acli/token.txt; site/email in jira_config.yaml)
   MCP:  the tracker's MCP server (`{mcp}`, e.g. an Atlassian connector) must be connected (OAuth). Used for comment rendering.

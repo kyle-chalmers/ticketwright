@@ -3,6 +3,7 @@ seam: warehouse
 tool: databricks
 transport: both        # `dbsqlcli` / Statement Execution API for SQL; a Databricks SQL MCP for interactive
 requires: [warehouse_id, catalog, schema]   # stack.yaml seams.warehouse.{warehouse_id, catalog, schema, dev_target, profile}
+user_keys: [profile]      # tier-3 overridable: the ~/.databrickscfg profile NAME only. `host` is NOT personal: a workspace host IS which data you read
 dev_key: dev_catalog    # legacy spelling of dev_target, still honored
 auth: |
   A Databricks SQL warehouse + a token. Either: `dbsqlcli` (pip install databricks-sql-cli) configured

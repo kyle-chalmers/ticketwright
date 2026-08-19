@@ -3,6 +3,7 @@ seam: vcs
 tool: gitlab
 transport: cli         # git + `glab` CLI
 requires: [default_branch]   # stack.yaml seams.vcs.{default_branch, semantic_pr, worktree_root}
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   git credentials in keychain/credential-helper; `glab auth login` for merge requests.
   Verify: `glab auth status`.

@@ -1,0 +1,58 @@
+# connections.example.yaml — TIER 3: person-scoped, MACHINE-scoped, and gitignored.
+#
+# Copy to `.claude/config/connections.local.yaml`. That path is already ignored by the shipped
+# gitignore template (`.claude/config/*.local.yaml`), so nothing here can reach a PR.
+#
+# WHAT BELONGS HERE: credentials and local paths — a named connection or profile, a local mount
+# root, the commands your own machine uses to open a file.
+#
+# WHAT CAN NEVER GO HERE, enforced in code and not merely documented: anything that selects WHICH
+# DATA gets read — catalog, schema, database, warehouse_id, dataset, target, transport — and the
+# whole `policies:` block. Two teammates must never silently read different data, and a gitignored
+# file that nobody reviews must never be able to switch a safety gate off. The resolver REJECTS
+# such a key (exit 6) rather than ignoring it, so a mistake here is loud instead of invisible.
+#
+# Which keys ARE personal is declared by each adapter's `user_keys:` frontmatter — see
+# `adapters/README.md`. Check what this file actually changes:
+#   python3 bin/effective_config.py --root . --json      # `provenance` names the tier per key
+
+person: alice                 # WHO this machine belongs to; picks up people/<id>.yaml (tier 2)
+
+schema_version: 1
+mode: overrides               # `overrides` = the settings below apply.
+                              # `defaults`  = "I accepted the team defaults" — a record that the
+                              #               per-person setup was COMPLETED, carrying no overrides.
+                              #               A `defaults` file that also carries overrides is
+                              #               rejected: file existence alone cannot otherwise tell
+                              #               empty from half-finished from deliberately-default.
+
+# The committed stack this file was completed against. When it no longer matches, the resolver
+# reports `stale` (exit 5) instead of silently applying settings chosen for a different stack.
+# stack_fingerprint: <sha256 of .claude/config/stack.yaml>
+
+seams:
+  warehouse:
+    targets:
+      # Scope an override to a TARGET, not to the seam: a multi-target seam has no adapter of its
+      # own, so there is nothing to declare which of its keys are personal.
+      lake:
+        profile: my-databricks-profile   # the ~/.databrickscfg profile NAME on THIS machine.
+                                         # `host` is deliberately NOT overridable — a workspace
+                                         # host is which data you read, not a credential.
+
+  docstore:
+    # The team owns WHICH folder (`drive_folder` in stack.yaml); you own where it is mounted here.
+    # The resolver composes `base_path` = {mount_root}/{drive_folder}, so adapters are unchanged.
+    mount_root: "/Users/you/Library/CloudStorage/GoogleDrive-you@example.com"
+
+# The MACHINE half of the human-review handoff. The portable half — which glob is a "spreadsheet" —
+# lives in people/<id>.yaml. This half says what a spreadsheet actually opens in, here.
+viewer:
+  tool: macos-open
+  adapter: adapters/viewer/macos-open.md
+  open_cmd: 'open -a {app} {path}'
+  default_cmd: 'open {path}'
+  reveal_cmd: 'open -R {path}'
+  apps:
+    sql-editor: DataGrip
+    spreadsheet: Microsoft Excel

@@ -95,6 +95,23 @@ absolute form on purpose: it is the bootstrapper that installs the launcher, so 
 its own output. Runtime capabilities live in `adapters/runtime/*.md` frontmatter, with the sourced
 evidence in `docs/runtimes.md`.
 
+**Config is three tiers behind one resolver.** `.claude/config/stack.yaml` is TEAM config
+(committed); `people/<id>.yaml` is PERSON config (committed, portable — a cross-repo copy under
+`$XDG_CONFIG_HOME/ticketwright/people/` supplies defaults and the in-repo file overrides it key by
+key); `.claude/config/connections.local.yaml` is PERSON+MACHINE config (gitignored). `bin/effective_config.py`
+is the single authority merging them, and `bin/_yamlite.py` is the one YAML reader (an explicit
+supported subset, stdlib-only, failing loudly rather than misreading). Every config consumer goes
+through that stack. Three honest qualifications, each deliberate: several consumers keep their
+pre-resolver reader as a FALLBACK so a config outside the supported subset still yields a banner or a
+catalog rather than a hard failure; `bin/resolve_user.py` reads `people/*.yaml` with `_yamlite`
+directly rather than via the resolver, because the resolver asks IT who the person is and the
+dependency cannot run both ways; and the two hooks below never call the resolver at all. The scope rule is enforced in code: tier 3 may
+only set keys the adapter declares in its `user_keys:` frontmatter, never anything that selects data
+(`catalog`, `schema`, `warehouse_id`, …) and never `policies:` — those are REJECTED, not ignored.
+**Two deliberate exceptions:** `.claude/hooks/db_write_guard.py` and `.claude/hooks/_stack.py` read
+the policy IN-PROCESS and must stay that way — see the comment in `_stack.py` before "finishing" the
+migration.
+
 **Deterministic engines, no vector store.** Catalog rendering and prior-art recall are plain stdlib
 Python the model *calls*, not prose it approximates. Recall is lexical + structural (object match ×4,
 tag ×3, cross-ref +5, keyword ×1, IDF down-weighting, recency tiebreak). Engines:

@@ -4,6 +4,7 @@ tool: asana
 transport: mcp         # MCP; server name = seams.tracker.mcp ({mcp})
 requires: [workspace_gid, mcp]   # stack.yaml seams.tracker.{workspace_gid, default_project_gid, mcp}
 container_key: seams.tracker.default_project_gid   # which config key a ranked container fills (see rank_projects_by_activity)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   The Asana MCP server (`{mcp}`) must be connected (OAuth).
   Verify: an Asana MCP "list workspaces" / "typeahead search" call returns without error.

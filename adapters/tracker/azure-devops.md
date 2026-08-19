@@ -4,6 +4,7 @@ tool: azure-devops
 transport: cli         # `az boards` (Azure CLI + azure-devops extension); REST API as fallback
 requires: [org, project]   # stack.yaml seams.tracker.{org, project, done_state}
 container_key: seams.tracker.project   # which config key a ranked container fills (see rank_projects_by_activity)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   `az login` + the devops extension: `az extension add --name azure-devops`.
   Set defaults: `az devops configure --defaults organization=https://dev.azure.com/{org} project={project}`.

@@ -65,7 +65,10 @@ seams:
     tool: gdrive
     adapter: adapters/docstore/gdrive.md
     transport: cli
-    base_path: "/path/to/your/Shared drives/Tickets"
+    drive_folder: "Shared drives/Tickets"   # WHICH destination — a team decision (tier 1).
+                                            # WHERE it is mounted is per-machine: set `mount_root`
+                                            # in .claude/config/connections.local.yaml. The resolver
+                                            # composes {base_path} from the two.
     verify: "test -d \"{base_path}\""
 
   vcs:

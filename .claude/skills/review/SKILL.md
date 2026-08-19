@@ -15,7 +15,8 @@ several, when a ticket spans more than one.
 Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 
 ## Phase 0 — Setup
-1. Read `stack.yaml`. Resolve every warehouse **target** this ticket touches and verify each one
+1. Read the merged config (`bin/effective_config.py --json`), not raw `stack.yaml`. Resolve every
+   warehouse **target** this ticket touches and verify each one
    (halt with that target's adapter auth notes if unreachable) — resolution order in
    `adapters/README.md` § Multi-target seams. Load each target's `dialect_notes`: the lint layer is
    parameterized **per file**, by the target its header names.
@@ -67,10 +68,17 @@ canonical order resolves next — the ticket's declared target before the seam d
   1. `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" handoff.sh <final_deliverables + qc_queries paths>`
      — routes each file to the app that user chose. It exits 0 and stays silent when they have no
      viewer config; in that case say so **once** and continue, never block.
-  2. If it produced no output and no config exists, offer the one-time setup: which app for `.sql`,
-     which for `.csv`, this repo only or all their repos. Their answers are written to
+  2. If it produced no output and no **usable** config exists, offer the one-time setup: which app
+     for `.sql`, which for `.csv`, this repo only or all their repos. Their answers are written to
      `.claude/config/viewer.local.yaml` (gitignored, per-user) or the user-level path — see
      `.claude/config/viewer.example.yaml`. "None / don't ask again" writes `enabled: false`.
+     Check usable, not merely present:
+     `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --viewer-plan`
+     reports `"usable": false` when config exists but opens nothing — a real state now that the
+     portable half (globs → categories, in `people/<id>.yaml`) and the machine half (categories →
+     applications, in `.claude/config/connections.local.yaml`) can be configured independently.
+     Treating "a file exists" as "configured" would leave that person permanently stuck with a
+     gate that never opens anything and never offers to fix itself.
   3. Print a short **what to look at** list — row counts, the grain key, and anything ②/③ flagged —
      so they know where to aim, not just that files opened.
   4. **Wait for explicit sign-off.** Under `all`, note what they already approved earlier in the

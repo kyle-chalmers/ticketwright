@@ -3,6 +3,7 @@ seam: viewer
 tool: xdg-open
 transport: cli          # freedesktop.org MIME associations
 requires: []            # routes are per-user config, not stack.yaml — see viewer.example.yaml
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   Needs `xdg-utils` (usually preinstalled on a desktop distro) and a running desktop session.
   Verify: `command -v xdg-open`.

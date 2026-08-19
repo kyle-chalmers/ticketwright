@@ -18,7 +18,8 @@ brief, nothing else. Follow [priming.md](priming.md) § Recall. Useful mid-sessi
 this before?", "which tickets touched VW_X?").
 
 ## Phase 0 — Resolve & preflight (halt-on-fail)
-1. Read `.claude/config/stack.yaml`: `project.*`, `seams.tracker`, `seams.vcs`. If the file is
+1. Read the merged config — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --json`,
+   never raw `stack.yaml`: `project.*`, `seams.tracker`, `seams.vcs`. If the team config is
    missing, say so and offer `/setup` — don't scaffold blind.
 2. **Verify** the tracker + vcs seams (run their `verify` commands). If one is unreachable, print
    that adapter's `auth` notes and offer to continue **local-only** (workspace + context still work;

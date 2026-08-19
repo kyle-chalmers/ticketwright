@@ -3,6 +3,7 @@ seam: vcs
 tool: azure-repos
 transport: cli         # git + `az repos` (Azure CLI + azure-devops extension)
 requires: [default_branch]   # stack.yaml seams.vcs.{default_branch, semantic_pr, worktree_root, org, project, repo}
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   `az login` + `az extension add --name azure-devops`; git creds via Git Credential Manager or a PAT.
   Set defaults: `az devops configure --defaults organization=https://dev.azure.com/{org} project={project}`.

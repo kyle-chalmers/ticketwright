@@ -3,6 +3,7 @@ seam: tracker
 tool: local
 transport: cli         # the filesystem — no API, no auth, no network
 requires: []           # reads `project.*` only (ticket_path, ticket_subdirs, terminal_status)
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   None. Verify with `test -w .` (add that as `seams.tracker.verify` in stack.yaml) — a writable
   working tree is the only precondition. Do NOT use `test -d tickets`: it fails in a brand-new

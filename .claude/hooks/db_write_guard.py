@@ -69,6 +69,11 @@ _BLOCK_SCALAR = re.compile(
 )
 
 
+# NOTE: this scanner is deliberately NOT replaced by bin/effective_config.py. See the long comment
+# at the top of _stack.py — routing the guard through a subprocess resolver turns its failure mode
+# from fail-safe into fail-open, and a resolver would parse config shapes this scanner intentionally
+# refuses to guess about. Every other consumer in the kit was migrated; these two were not, on
+# purpose.
 def seam_block(text: str, seam: str) -> str:
     """The lines under `<seam>:` inside the top-level `seams:` mapping.
 

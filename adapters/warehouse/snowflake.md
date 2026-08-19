@@ -3,6 +3,7 @@ seam: warehouse
 tool: snowflake
 transport: both        # `snow` CLI for scripts/exports; Snowflake MCP for interactive/semantic
 requires: [cli]        # stack.yaml seams.warehouse.{cli, default_warehouse, pii_role, dev_target}
+user_keys: [connection]   # tier-3 overridable: the ~/.snowflake/config.toml connection NAME is per-machine; default_warehouse / pii_role / dev_target are team decisions
 dev_key: dev_db         # legacy spelling of dev_target, still honored
 auth: |
   CLI:  ~/.snowflake/config.toml connection (USERNAME_PASSWORD_MFA for CLI/MCP).

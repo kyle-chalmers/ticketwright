@@ -3,6 +3,7 @@ seam: warehouse
 tool: synapse
 transport: cli         # `sqlcmd` (go-sqlcmd) — also covers Azure SQL / SQL Server / Fabric Warehouse
 requires: [server, database]   # stack.yaml seams.warehouse.{server, database, dev_target}
+user_keys: []             # tier-3 overridable: Azure AD via `az login`; server/database select data
 dev_key: dev_schema     # legacy spelling of dev_target, still honored
 auth: |
   `sqlcmd` (go-sqlcmd) with Azure AD: `-G --authentication-method ActiveDirectoryDefault` after

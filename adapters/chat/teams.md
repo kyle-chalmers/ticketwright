@@ -3,6 +3,7 @@ seam: chat
 tool: teams
 transport: mcp         # a Microsoft Teams / Graph MCP (server = {mcp}), or incoming-webhook fallback
 requires: [channel, default_mode, always_include]   # + `mcp` (server name) when using the MCP transport
+user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   A Teams MCP server (Graph) connected, OR an incoming-webhook URL per channel.
   Verify: a read-only "list channels"/"list teams" MCP call returns without error.
