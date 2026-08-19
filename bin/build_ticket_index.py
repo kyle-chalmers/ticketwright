@@ -68,8 +68,12 @@ OBSIDIAN_OBJECT_RGB = 14974299   # #E47D5B coral — object nodes (kclabs.ai acc
 
 
 def repo_root() -> Path:
-    if os.environ.get("CLAUDE_PROJECT_DIR"):
-        return Path(os.environ["CLAUDE_PROJECT_DIR"]).resolve()
+    # TICKETWRIGHT_PROJECT is the harness-neutral spelling (bin/kit_paths.py --project agrees);
+    # CLAUDE_PROJECT_DIR is still honored so existing installs keep working. Read inline rather than
+    # imported: selftest fixtures copy this script on its own, so a sibling import would break them.
+    for var in ("TICKETWRIGHT_PROJECT", "CLAUDE_PROJECT_DIR"):
+        if os.environ.get(var):
+            return Path(os.environ[var]).resolve()
     try:  # run by hand from inside a repo (no env var) → prefer the actual repo, not the kit dir
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                              capture_output=True, text=True).stdout.strip()

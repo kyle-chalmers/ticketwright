@@ -11,6 +11,7 @@ tool_gate: yes
 subagents: yes
 structured_questions: yes
 model_cmd: "claude -p --model {model} {prompt}"
+model_default: sonnet
 auth: |
   None beyond an authenticated Claude Code install.
   Verify: `command -v claude`.

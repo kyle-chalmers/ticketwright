@@ -7,7 +7,7 @@
   ticketwright enrich ...       refresh a ticket's curated index summary
 
 The kit assets ship bundled under ticketwright/_kit/; the run-* commands exec the bundled bin/ scripts
-with CLAUDE_PROJECT_DIR set to the current directory, so they read the repo you're standing in.
+with the project root set to the current directory, so they read the repo you're standing in.
 """
 from __future__ import annotations
 
@@ -38,7 +38,9 @@ def _run_script(script: str, rest: list[str]) -> int:
     if not path.is_file():
         print(f"ticketwright: bundled script missing: {path}", file=sys.stderr)
         return 2
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": os.getcwd()}
+    # TICKETWRIGHT_PROJECT is the harness-neutral name; CLAUDE_PROJECT_DIR stays for older kits
+    # vendored into a repo that predate it.
+    env = {**os.environ, "TICKETWRIGHT_PROJECT": os.getcwd(), "CLAUDE_PROJECT_DIR": os.getcwd()}
     return subprocess.call([sys.executable, str(path), *rest], env=env)
 
 
@@ -84,7 +86,7 @@ commands:
                           preserves existing per-repo config like stack.yaml)
   recall ...              prior-art recall against the repo at $PWD (e.g. --for ID | --object NAME | --eval)
   index ...               render / --check / --stats / --recurring the ticket index
-  enrich ...              refresh a ticket's curated index summary (needs `claude`)
+  enrich ...              refresh a ticket's curated index summary (needs a model CLI; see --model-cmd)
   --version               print version
 """
 

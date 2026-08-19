@@ -20,7 +20,7 @@ human-readable summaries.
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
 | `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
-| `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has `claude -p` write the curated summary/status/date/tags/refs, ingests + re-renders. (Claude-Code convenience.) | model (headless) |
+| `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/status/date/tags/refs, ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
 | `.claude/hooks/regenerate_ticket_index.py` | PostToolUse (Write/Edit) hook: auto-re-renders `INDEX.md` whenever a file under `tickets/` changes — new tickets appear immediately, edited READMEs flag `⚠`. | — |
 
@@ -142,7 +142,7 @@ only when output actually changes, and no-ops for edits outside `tickets/`.
 ### At ticket close
 
 Upgrade the closed ticket's row from auto-derived to curated, then commit. One command (reads the
-README, writes the summary via `claude -p`, ingests, re-renders):
+README, writes the summary via the runtime's model command, ingests, re-renders):
 
 ```bash
 python3 bin/enrich_ticket.py ENG-123      # or --branch to use the current branch's id

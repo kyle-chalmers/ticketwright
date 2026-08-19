@@ -44,8 +44,14 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
    echo '{"records":[ ... ]}' | bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" ingest_index_records.py --from-json -
    bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" build_ticket_index.py
    ```
-   (Claude-Code convenience: `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" enrich_ticket.py <ID>`
-   does steps 5–6 for one ticket via `claude -p`. The inline path above is agent-agnostic.)
+   **This inline path is the primary one** — it works under every runtime, because the host agent
+   you are already talking to writes the record. Skipping enrichment is what rots the corpus into a
+   folder of SQL nobody can find, so the path that always works is the one to lead with.
+
+   (Shortcut: `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" enrich_ticket.py <ID>` does steps 5–6 for one
+   ticket by calling a model headlessly. The command it runs resolves from the detected runtime's
+   `adapters/runtime/<name>.md`, so it is no longer Claude-only — but a runtime that documents no
+   headless command will tell you so and point back here.)
 
 ## Phase 3 — Verify
 7. `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" build_ticket_index.py --check` must

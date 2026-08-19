@@ -63,7 +63,8 @@ and uploads via `pypa/gh-action-pypi-publish`.
 - `ticketwright recall …` / `index …` — the prior-art recall + ticket-index engines, run against the
   repo at `$PWD`. Pure stdlib; no Claude Code required.
 - `ticketwright enrich …` — refresh a ticket's curated summary. Calls the model headlessly via
-  `claude -p`, so this one **does** need Claude Code on `PATH`.
+  a model CLI resolved per runtime (`adapters/runtime/*.md`, or `--model-cmd`), so this one **does**
+  need some model command on `PATH` — `claude` by default.
 
 The kit assets (`bin/`, `.claude/`, `adapters/`, `templates/`) are bundled into the wheel under
 `ticketwright/_kit/` via hatchling `force-include`, so the Claude Code **plugin** and `cp -r` install
