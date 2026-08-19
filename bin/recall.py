@@ -9,7 +9,7 @@ score breakdown. The `/ticket --recall` command runs this, then reads the top hi
 Usage:
   recall.py --for ENG-12 [--top 5] [--min-score N] [--json]   # query = that ticket's fields
   recall.py --query "genesys call metrics" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
-  recall.py --object BI.ANALYTICS.VW_LOAN          # reverse lookup: tickets that touched an object
+  recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
 
 Scoring (transparent): object match ×4 (IDF-discounted — a ubiquitous object counts less than a rare
@@ -47,12 +47,12 @@ def ci(values) -> set[str]:
 
 
 def leaf(name: str) -> str:
-    """Trailing object name, stripped of schema/db qualification: `bi.analytics.vw_loan` -> `vw_loan`."""
+    """Trailing object name, stripped of schema/db qualification: `bi.analytics.vw_orders` -> `vw_orders`."""
     return name.rsplit(".", 1)[-1]
 
 
 def object_hits(q_objects: set[str], r_objects: set[str]) -> list[str]:
-    """Row objects that match a query object, leaf-aware so `vw_loan` finds `bi.analytics.vw_loan`."""
+    """Row objects that match a query object, leaf-aware so `vw_orders` finds `bi.analytics.vw_orders`."""
     q_leaves = {leaf(q) for q in q_objects}
     return sorted(o for o in r_objects if o in q_objects or leaf(o) in q_leaves)
 

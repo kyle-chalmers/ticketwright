@@ -7,17 +7,26 @@
 ![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20git-success)
 
 **Ticketwright turns a Claude Code session into a careful data analyst.** Point it at a
-ticket-driven work repo (data intelligence, analytics, ops, regulatory reporting…) and it opens
-tickets, loads exactly the context each one needs, remembers every past ticket so you never rebuild
-what's been built, QC-reviews its own work against a validation pyramid, and never posts anything
-externally without your explicit go.
+ticket-driven work repo — data intelligence, analytics, ops, regulatory reporting — and it:
 
-It works with **your** tools — Jira, Azure DevOps, Linear, Asana, Monday, or GitHub Issues;
-Snowflake, BigQuery, Databricks, Postgres, Redshift, or Synapse; Slack or Teams; Drive or
-SharePoint; GitHub, GitLab, or Azure Repos — through one config file. More than one warehouse is
-fine (name the targets), and so is **no ticketing system at all**: set `id_mode: slug` and a folder
-you name becomes the ticket. Don't see yours? Adding it is
-[a single adapter file](adapters/README.md).
+- **opens tickets** and loads exactly the context each one needs
+- **remembers every past ticket**, so you never rebuild what's already been built
+- **QC-reviews its own work** against a validation pyramid
+- **never posts anything externally** without your explicit go
+
+It works with **your** tools, through one config file:
+
+| Seam | Works with |
+|---|---|
+| Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues — or **none at all** |
+| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse |
+| Chat | Slack · Teams |
+| Docs | Google Drive · SharePoint |
+| Git | GitHub · GitLab · Azure Repos |
+
+- **More than one warehouse is fine** — name the targets.
+- **No ticketing system is fine too** — set `id_mode: slug` and a folder you name becomes the ticket.
+- **Don't see yours?** Adding it is [a single adapter file](adapters/README.md).
 
 ## Quickstart (5 minutes)
 
@@ -52,15 +61,17 @@ set it up moves on:
 }
 ```
 
-The marketplace source is an explicit `https://…git` URL, not the `owner/repo` shorthand: the
-shorthand can resolve to SSH and fail for anyone without GitHub SSH keys, while the URL clones over
-HTTPS through your existing git credential helper (keychain / `gh auth login`). A fork edits just
-this one URL.
+Two details in that block are deliberate:
 
-`autoUpdate` re-installs **only on a formal release** — Claude Code refreshes when the plugin's
-*version* changes, and the version only moves in a tagged release commit, so day-to-day commits to
-`main` never pull teammates onto un-released work. (Prefer the user-level `/plugin install` above for
-personal, cross-repo use; use the committed block when you want the whole team on it.)
+- **The source is an explicit `https://…git` URL**, not the `owner/repo` shorthand. The shorthand can
+  resolve to SSH and fail for anyone without GitHub SSH keys; the URL clones over HTTPS through your
+  existing git credential helper (keychain / `gh auth login`). A fork edits just this one URL.
+- **`autoUpdate` re-installs only on a formal release.** Claude Code refreshes when the plugin's
+  *version* changes, and the version only moves in a tagged release commit — so day-to-day commits to
+  `main` never pull teammates onto un-released work.
+
+Prefer the user-level `/plugin install` above for personal, cross-repo use; use the committed block
+when you want the whole team on it.
 
 ## How work flows
 
@@ -89,24 +100,29 @@ rename map in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
 
 ## Never rebuild what's been built
 
-`tickets/INDEX.md` is an auto-maintained catalog of **every** ticket — status, one-line summary,
-tags, objects touched, cross-references — surfaced at the start of every session. When you open a
-ticket, `/ticket` ranks your prior work by shared objects/tags/keywords (deterministic, stdlib, no
-vector store) and writes a *reuse brief*: what to copy, which gotchas carry over, what's different
-this time. `tickets/OBJECTS.md` answers the reverse question — "which tickets touched `VW_X`?"
+- **`tickets/INDEX.md`** — an auto-maintained catalog of **every** ticket (status, one-line summary,
+  tags, objects touched, cross-references), surfaced at the start of every session.
+- **A reuse brief on every open.** `/ticket` ranks your prior work by shared objects, tags, and
+  keywords — deterministic, stdlib, no vector store — then writes up what to copy, which gotchas
+  carry over, and what's different this time.
+- **`tickets/OBJECTS.md`** — the reverse lookup: *which tickets touched `VW_X`?*
+
 Details: [docs/ticket-index.md](docs/ticket-index.md).
 
 ## See it as a graph (Obsidian)
 
-Ticketwright also writes a small, auto-maintained graph layer under `tickets/` — `graph/<id>.md`
-(a node per ticket) and `objects/<object>.md` (a node per data object) — so you can open the repo as
-an [Obsidian](https://obsidian.md) vault and *browse* your work: open a table like `ANALYTICS.VW_LOAN`
-and its local graph is every ticket that touched it; open a ticket and you see the objects it touched
-plus the tickets it built on. It **also writes `.obsidian/graph.json`**, so the Graph view opens
-already focused on the tickets↔objects web — READMEs and other notes filtered out, ticket nodes and
-object nodes color-coded — with **zero manual setup**. It never clobbers your own graph tweaks (forces,
-zoom, custom filter/groups are all preserved). It's plain markdown (no plugins, no wikilinks) and
-renders on GitHub too. On by default; set `project.graph_notes: false` to turn off the whole layer, or
+Ticketwright writes a small, auto-maintained graph layer under `tickets/` — `graph/<id>.md` (a node
+per ticket) and `objects/<object>.md` (a node per data object) — so you can open the repo as an
+[Obsidian](https://obsidian.md) vault and *browse* your work.
+
+- **Open a table** like `ANALYTICS.VW_ORDERS` and its local graph is every ticket that touched it.
+- **Open a ticket** and you see the objects it touched, plus the tickets it built on.
+- **Zero manual setup.** It also writes `.obsidian/graph.json`, so the Graph view opens already
+  focused on the tickets↔objects web — READMEs filtered out, ticket and object nodes color-coded.
+- **Your tweaks survive.** Forces, zoom, and custom filters/groups are never clobbered.
+- **Plain markdown** — no plugins, no wikilinks. It renders on GitHub too.
+
+On by default. Set `project.graph_notes: false` to turn off the whole layer, or
 `project.graph_config: false` to keep the nodes but stop managing `.obsidian/graph.json`.
 
 ## Sound like you (voice profiles)
@@ -148,11 +164,14 @@ Trust demands transparency: this plugin runs hooks, so here is every one of them
 Python stdlib-only, make **no network calls**, never write outside the repo, and fail open —
 a hook error never blocks your session.
 
-Two places where the DB guard *removes* a prompt rather than adding one, stated plainly: it
-auto-approves SQL it can verify is read-only (a single simple command, every referenced file read,
-every statement a `SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN`), and under `bypassPermissions` it prints a
-`systemMessage` instead of asking, because you already opted out of prompting for that session.
-Neither can loosen a `deny` rule in your settings — hooks can tighten permissions, not widen them
+Two places where the DB guard *removes* a prompt rather than adding one, stated plainly:
+
+- **Verifiably read-only SQL is auto-approved** — a single simple command, every referenced file
+  read, and every statement a `SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN`.
+- **Under `bypassPermissions` it prints a `systemMessage` instead of asking**, because you already
+  opted out of prompting for that session.
+
+Neither can loosen a `deny` rule in your settings — hooks can tighten permissions, never widen them
 past what your own rules allow.
 
 | Event | Script | What it does |
@@ -168,11 +187,15 @@ be vendored without hooks via the kit install.
 
 ## Adopting an existing repo
 
-Already have years of ticket folders and your own conventions? Run `/setup` — it detects the
-existing layout, infers the config from evidence (folders, CI, CLIs, MCP servers), classifies any
-custom commands you've built as *shadows / extends / unrelated* against the plugin's skills, and
-writes a `MIGRATION.md` checklist instead of overwriting anything. Adoption is incremental: run one
-real ticket through `/ticket → /review → /ship` before deleting anything custom.
+Already have years of ticket folders and your own conventions? Run `/setup`. It:
+
+- **detects your existing layout** and maps onto it rather than scaffolding over it
+- **infers the config from evidence** — folders, CI, installed CLIs, MCP servers
+- **classifies your custom commands** against the plugin's skills as *shadows / extends / unrelated*
+- **writes a `MIGRATION.md` checklist** instead of overwriting anything
+
+Adoption is incremental: run one real ticket through `/ticket → /review → /ship` before you delete
+anything custom.
 
 ## Installing without the plugin
 
@@ -188,15 +211,16 @@ ticketwright index --stats               # catalog coverage       — no Claude 
 ticketwright enrich ENG-123              # curated index summary  — needs `claude` on PATH
 ```
 
-`recall` and `index` are pure stdlib and run anywhere. `enrich` calls the model headlessly via
-`claude -p`, so it needs Claude Code installed. `init` copies the kit's files — skills, agents,
-hooks, adapters, templates, `bin/` — and preserves your edits on re-runs (`--force` to overwrite).
+- **`recall` and `index`** are pure stdlib and run anywhere.
+- **`enrich`** calls the model headlessly via `claude -p`, so it needs Claude Code installed.
+- **`init`** copies the kit's files — skills, agents, hooks, adapters, templates, `bin/` — and
+  preserves your edits on re-runs (`--force` to overwrite).
 
 **`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
-`AGENTS.md`; `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
-So on another harness (Cursor, Codex, Copilot CLI) you get the skill files but still have to
-render the config yourself. A harness-agnostic setup path is on the [roadmap](ROADMAP.md), not
-shipped — don't read this section as "Ticketwright runs anywhere today."
+`AGENTS.md` — `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
+On another harness (Cursor, Codex, Copilot CLI) you get the skill files but still have to render the
+config yourself. A harness-agnostic setup path is on the [roadmap](ROADMAP.md), not shipped — don't
+read this section as "Ticketwright runs anywhere today."
 
 ## Learn more
 
