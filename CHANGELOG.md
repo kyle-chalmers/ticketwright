@@ -7,6 +7,47 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **`/setup`'s question cap is retired, and the interview is re-cut into rounds.** The "at most 5
+  questions" promise had become the binding constraint on correctness — chat and docstore never
+  configured, `role`/`domain` never asked, dead `ticket_url_template` links, one person folder
+  forever. No number replaces it; the rule that does: **ask when a wrong or absent value still
+  yields a confident-looking output; leave a commented default when it fails loudly** at
+  `verify_stack.sh` or on first use. Phase 2 now lives in `.claude/skills/setup/interview.md`:
+  rounds 1–4 always run (who — including the team roster as identity-free `people/<id>.yaml`
+  placeholders; where work comes from — with tracker containers ranked by
+  `rank_projects_by_activity` and `terminal_status` asked plainly; where the data lives — required
+  keys, `dev_target`, multi-target branch; where work goes — VCS confirmed from `origin`, docstore
+  split into team folder vs machine mount root, per-adapter chat destination keys, and ONE email
+  question covering intake and delivery). Rounds 5–6 (role/domain/analysis tools; the two
+  behavioral policies) are individually skippable, each skip labeled with its cost and written
+  down twice — a `# TODO(setup)` line in `stack.yaml` and a punch-list entry in the report — and
+  the re-entry verbs now exist: `/setup role`, `/setup team`, `/setup policies`. Interviews are
+  prose everywhere (`AskUserQuestion` removed from skill frontmatter and bodies; the voice
+  interview's own ≤5 cap is kept — it is a deliberate scope limit on a short style interview).
+- **Two new `project` keys** (both optional, both tier 1): `intake` (default `[tracker]`) records
+  where work arrives — when it lists `email`/`chat`, `/ticket`'s priming step sweeps
+  `source_materials/` for forwarded threads; and `analysis_tools` (default `[]`) lists what the
+  team analyzes *with*, rendered into `AGENTS.md` as descriptive context — not a tool slot,
+  nothing verifies or executes it, and it is never appended to any permission allowlist. Answering
+  "email carries work out" records provider, sending identity and declared audience in a commented
+  `seams.chat.targets.email` block — **configured but not yet wired**: no email adapter ships yet,
+  and the setup report says so plainly.
+- **`docs/obsidian.md`** — install, open-the-repo-as-a-vault, the two node types, and the
+  `graph_notes`/`graph_config` opt-outs; linked from the README's Obsidian section and its
+  further-reading list. `/setup` now detects Obsidian and prints one pointer (the GitHub URL,
+  since `docs/` does not ship in the PyPI package) instead of asking anything.
+- **Selftest section 38** drives the completed-interview and skipped-rounds configs through
+  `verify_stack.sh` (no unset required keys; `always_include` non-empty; `ticket_url_template`,
+  `dev_target`, `intake` present; the machine mount root absent from committed config), pins the
+  CLI-probe exemption literal, the deprecation lines on surviving old spellings, and the re-entry
+  verbs; the `include_self` documentation gate now loops over every `adapters/chat/*.md` instead
+  of naming two files.
+
+### Changed
+- `adapters/README.md` and `stack.schema.md` now count all **six** shipped worked configs
+  (`stack.example.no-warehouse.yaml` was missing from both enumerations); `/setup --voice` routes
+  the team-wide `seams.chat.include_self` toggle to `/setup tool chat` instead of offering to
+  write team config from a person-scoped flow.
 - **Target selection is now a resolver mode, and `/ship` prints the resolved plan it feeds.**
   `bin/effective_config.py --seam <name> [--target <name>]` selects one tool slot — the seam's
   `default:` target, or an explicitly named one — and emits a single JSON object with inheritance

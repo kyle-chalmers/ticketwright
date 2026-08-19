@@ -308,11 +308,12 @@ verb contract for their seam:
   `antigravity` (Google; aliased `gemini-cli`), `opencode`, `devin` (aliased `windsurf`), `cline`
   — see below
 
-Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Five worked
+Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Six worked
 `stack.yaml` configs ship — Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
 Azure DevOps/Synapse/Teams/SharePoint/Azure Repos, Snowflake **+** Databricks (two warehouse targets
-in one seam), and a solo repo with **no tracker and no chat/docstore**. The same skills run against
-all five, unedited — which is the claim those configs exist to keep honest.
+in one seam), a repo with **no warehouse seam** (document/report deliverables), and a solo repo with
+**no tracker and no chat/docstore**. The same skills run against all six, unedited — which is the
+claim those configs exist to keep honest.
 
 > **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack) reference each operation with a
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on

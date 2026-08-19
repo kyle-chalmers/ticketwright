@@ -31,8 +31,10 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
    email and display name into committed TEAM config — it is person data in a team artifact, which
    is the leak the three-tier split exists to remove. It is still READ, so an existing repo keeps
    working, but nothing should create a new one.
-   While here, offer to set `seams.chat.include_self: true` so their chat messages also @-mention
-   them (in addition to `always_include`, never replacing it).
+   If they'd like their chat messages to also @-mention them, that is `seams.chat.include_self:
+   true` (in addition to `always_include`, never replacing it) — a **team** key in committed
+   `stack.yaml`, so this person-scoped flow must not write it. Point them at `/setup tool chat`,
+   the team flow that owns that block.
 
 3. **Render the seed.** `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/render.sh"
    templates/voice-profile.md.tmpl profile_id=<id> display_name="<name>" bootstrapped=<today>
@@ -40,9 +42,10 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
    handle — happens here, once, via the tracker adapter if useful; write it into the frontmatter. Do
    **not** make `/ship` resolve it live.)
 
-4. **Interview (≤5 short questions, `AskUserQuestion`).** Fill the template's sections: tone &
+4. **Interview (≤5 short questions, asked in prose).** Fill the template's sections: tone &
    register, bullets-vs-prose + greeting/sign-off, emoji, favored phrasings, banned words/tics.
-   Keep answers terse — this is a style guide, not an essay.
+   Keep answers terse — this is a style guide, not an essay. (The cap is deliberate: a style
+   interview is a genuinely short feature, unlike the repo interview, which runs in rounds.)
 
 5. **Optional: learn from exemplars.** Only with the privacy note above honored. From a few short
    approved samples, infer style cues and fold them into the sections. This is also the entry point

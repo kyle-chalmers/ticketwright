@@ -120,9 +120,11 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `default_epic` | string \| null | `ENG-100` | Parent epic for newly created tickets (null if tracker has no epics). |
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
+| `intake` | list | `[tracker, email]` | Where work arrives; any of `tracker`, `email`, `chat`. Optional; **defaults to `[tracker]`** — the example shows email intake *added* (a "email carries work in" answer in the setup interview), not the default. Consumer: when `email`/`chat` is listed, `/ticket`'s priming step sweeps `source_materials/` for forwarded threads — intake beyond the tracker arrives as files a human drops in, not API calls. |
 | `word_limits` | map | `{tracker_comment: 100, chat: 100, pr: 200, ticket: 200}` | Hard caps the comms skills enforce. |
 | `role` | enum | `generalist` | Persona for the rendered `AGENTS.md` role-focus snippet: `generalist`, `analyst`, `engineer`, or `scientist` (see `templates/roles/`). Optional; defaults to `generalist`. |
 | `domain` | string | `data analysis` | Short phrase naming the team's kind of work; fills the `{{domain}}` token in the rendered `AGENTS.md` ("Ticket-driven *{{domain}}* work"). Optional; defaults to `data analysis`. |
+| `analysis_tools` | list | `[notebooks, spreadsheets]` | The tools the team does the actual analysis in, rendered into `AGENTS.md` as **descriptive context for the agent**. Optional; defaults to `[]`. **Not a tool slot**: nothing verifies it and nothing executes from it — it has no adapter and no verb contract; it just tells the agent what the team's outputs are built with. |
 | `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 | `graph_config` | bool | `true` | Also write/merge `.obsidian/graph.json` (tickets↔objects filter + color groups) so the Graph view opens ready-to-read. Create/merge-only — never clobbers manual tweaks. On by default; set `false` to keep the nodes but not manage the Obsidian config. Ignored when `graph_notes` is `false`. |
 | `voice_profiles` | map \| null | *(see below)* | **LEGACY — still read, no longer written.** Per-person comms **voice profiles** now live in tier 2, `people/<id>.yaml`. This block holds one person's work email and display name in committed TEAM config, which is the identity leak the three-tier split removes. An existing block keeps resolving (with a one-time warning) so upgrading loses nothing; `/setup --voice` writes `people/<id>.yaml` instead. |
@@ -364,10 +366,11 @@ Keeps the fixed stakeholder list intact instead of overloading it with a per-tea
 
 ## Worked examples
 
-A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Four more
+A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Five more
 prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
 (Asana/BigQuery/Teams/SharePoint/GitLab), `stack.example.azure.yaml`
 (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos), `stack.example.multi-warehouse.yaml`
-(Jira/**Snowflake + Databricks**/Slack/Drive/GitHub — the named-targets shape above), and
+(Jira/**Snowflake + Databricks**/Slack/Drive/GitHub — the named-targets shape above),
+`stack.example.no-warehouse.yaml` (**no warehouse seam** — document/report deliverables), and
 `stack.example.solo.yaml` (**no tracker at all** — `tracker: local` + `id_mode: slug`, and no chat or
 docstore). To validate any config: `bash bin/verify_stack.sh`.

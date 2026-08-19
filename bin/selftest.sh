@@ -130,6 +130,7 @@ wl_ticket=200
 chat_always_include=Alice
 default_branch=main
 role_focus=**You are a senior engineer** doing ticket-driven work (filled from templates/roles/<role>.md).
+analysis_tools=notebooks, spreadsheets
 EOF
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
@@ -1826,7 +1827,9 @@ grep -qi 'wiki-link' docs/ticket-index.md && grep -qi 'wiki-link' .claude/config
 
 # A stated check count goes stale on every added test, so the docs state a FLOOR. Assert it against
 # the live counter — a static scan can't work, since loop-driven call sites each yield many checks.
-# Counting this assertion itself is why it is the last one.
+# NOTE: this is no longer the last assertion (sections now run after it), so checks added later are
+# not in PASS here — which only makes the floor comparison more conservative, never less. The floor
+# is a floor: adding checks anywhere is safe and needs no bump.
 floor="$(grep -oE '[0-9]+\+-check' docs/troubleshooting.md | head -1 | grep -oE '^[0-9]+')"
 { [ -n "$floor" ] && [ "$((PASS + 1))" -ge "$floor" ]; } \
   && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
@@ -2119,11 +2122,18 @@ np="$(yq '.policies | keys | length' .claude/config/stack.yaml 2>/dev/null)"
   && ok "/setup --voice is a first-class mode wired to voice.md" || bad "/setup --voice mode not wired"
 grep -qiE 'voice.*is never a .*seam|not.*a seam' .claude/skills/setup/SKILL.md \
   && ok "setup states voice is NOT a seam" || bad "setup doesn't clarify voice is not a seam"
-# (H) include_self is documented separately from always_include (not overloaded).
-{ grep -q 'include_self' .claude/config/stack.schema.md \
-  && grep -q 'include_self' adapters/chat/slack.md && grep -q 'include_self' adapters/chat/teams.md; } \
-  && ok "include_self documented in schema + both chat adapters (separate from always_include)" \
-  || bad "include_self not documented across schema + chat adapters"
+# (H) include_self is documented separately from always_include (not overloaded) — in the schema
+# and in EVERY chat adapter. Looped over adapters/chat/*.md, never an enumerated file list: an
+# assertion that names its own subjects stops covering anything new, and chat adapters added later
+# (email providers among them) must not escape this gate silently.
+is29=""
+grep -q 'include_self' .claude/config/stack.schema.md || is29=" stack.schema.md"
+for f in adapters/chat/*.md; do
+  grep -q 'include_self' "$f" || is29="$is29 $(basename "$f")"
+done
+[ -z "$is29" ] \
+  && ok "include_self documented in schema + every chat adapter (separate from always_include)" \
+  || bad "include_self not documented across schema + chat adapters" "$is29"
 # (I) comms/ drafts are gitignored (unsent wording never rides a PR).
 GV="$TMP/gvoice"; mkdir -p "$GV/tickets/d/ENG-1/comms"; git -C "$GV" init -q 2>/dev/null
 cp templates/gitignore.tmpl "$GV/.gitignore"
@@ -3467,6 +3477,7 @@ wl_ticket=200
 chat_always_include=Alice
 default_branch=main
 role_focus=x
+analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run /setup role)
 EOF
 absout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent.env" 2>"$S36/abs.err")"
 { grep -qF '/setup tool chat' <<<"$absout" && grep -qF '/setup tool warehouse' <<<"$absout" \
@@ -3697,6 +3708,221 @@ h37="$(python3 "$EC37" --help 2>&1)"
 grep -q 'no others' .claude/config/stack.schema.md \
   && bad "stack.schema.md still claims the five seams are exclusive ('no others')" \
   || ok "the schema's false exclusivity claim is gone (viewer + runtime acknowledged)"
+
+hdr "38 · the interview in rounds (cap retired; outcomes, skips, re-entry, email, obsidian)"
+# PROMPT 4b. The interview is prose a model executes, so the mechanically testable behavior is
+# (1) the rendered-config OUTCOME the rounds specify, driven through verify_stack.sh like every
+# other config fixture, and (2) the tested-artifact contract on the instruction files themselves.
+IV=".claude/skills/setup/interview.md"; SK38=".claude/skills/setup/SKILL.md"
+[ -f "$IV" ] && ok "interview.md ships (Phase 2 lives in its own reference file)" \
+  || bad "interview.md missing"
+iflat="$(tr '\n' ' ' < "$IV")"; skflat38="$(tr '\n' ' ' < "$SK38")"
+# (A) the cap is retired — SCOPED: SKILL.md's frontmatter description + its default-mode section,
+# interview.md, adopt.md and README.md. Deliberately NOT scanned: SKILL.md's --voice summary and
+# voice.md (the voice interview's own ≤5 cap is a KEPT feature) and CHANGELOG.md (history is never
+# rewritten). The pattern tolerates the hyphenated "≤5-question" form.
+capre='≤[[:space:]]*5|at most (5|five)|(5|five)[- ]question'
+dm38="$TMP/s38-scope.txt"
+{ grep '^description:' "$SK38"; sed -n '/^## Default mode/,$p' "$SK38"; } > "$dm38"
+cap38=""
+grep -EIiq "$capre" "$dm38" && cap38="$cap38 SKILL.md(description/default-mode)"
+for f in "$IV" .claude/skills/setup/adopt.md README.md; do
+  grep -EIiq "$capre" "$f" && cap38="$cap38 $f"
+done
+[ -z "$cap38" ] && ok "no question-count promise survives on the repo-interview surfaces" \
+  || bad "a question-count promise survived the cap retirement" "$cap38"
+grep -q '≤5' .claude/skills/setup/voice.md \
+  && ok "voice.md's own ≤5 cap is KEPT (a deliberate scope limit on a style interview)" \
+  || bad "voice.md's deliberate ≤5 scope limit went missing (4b keeps it)"
+# (B) rendered config, not prose: the completed-interview shape (mirrors interview.md's worked
+# block). Every adapter-required key is populated — jira site+cli, postgres conn, gdrive
+# drive_folder, slack mcp, github default_branch — because verify_stack exits 0 even while warning
+# about unset required keys, so "it passed" alone would certify a half-configured repo.
+IVR="$TMP/s38-full"; mkdir -p "$IVR/.claude/config"
+cat > "$IVR/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+  assignee_dir: alice
+  ticket_path: "tickets/{assignee}/{id}"
+  terminal_status: Done
+  ticket_url_template: "https://tracker.acme.example/browse/{id}"
+  intake: [tracker, email]
+  role: analyst
+  domain: data analysis
+  analysis_tools: [notebooks, spreadsheets]
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: cli
+    site: tracker.acme.example
+    cli: acli
+    verify: null
+  warehouse:
+    tool: postgres
+    adapter: adapters/warehouse/postgres.md
+    transport: cli
+    conn: "service=analytics"
+    dev_target: analytics_dev
+    verify: null
+  docstore:
+    tool: gdrive
+    adapter: adapters/docstore/gdrive.md
+    transport: cli
+    drive_folder: "Shared drives/Tickets"
+    verify: null
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: chatserver
+    default_channel: C0XXXXXXXXX
+    default_mode: draft
+    always_include: [Alice]
+    verify: null
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    verify: null
+policies:
+  db_write_requires_approval: high_risk
+  human_review_handoff: review
+EOF
+IVY="$IVR/.claude/config/stack.yaml"
+ivout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVY" --dry-run 2>&1)"
+grep -q 'All seams OK' <<<"$ivout" \
+  && ok "the completed-interview config verifies end to end" \
+  || bad "the completed-interview config failed verify_stack" "$ivout"
+grep -q 'required key(s) not set' <<<"$ivout" \
+  && bad "a completed interview left an adapter-required key unset (the ask-every-requires rule regressed)" "$ivout" \
+  || ok "no adapter-required key is unset — the interview asks for every requires: key"
+[ "$(yq '.seams.chat.always_include | length' "$IVY" 2>/dev/null)" -ge 1 ] 2>/dev/null \
+  && ok "always_include is present and non-empty in the rendered config (round 4)" \
+  || bad "always_include missing or empty in the rendered config"
+ivurl="$(yq '.project.ticket_url_template' "$IVY" 2>/dev/null)"
+{ [ -n "$ivurl" ] && [ "$ivurl" != "null" ]; } \
+  && ok "ticket_url_template is set (round 2 — a dead index link is the textbook silent-wrong)" \
+  || bad "ticket_url_template unset in the completed-interview config"
+yq -e '.seams.warehouse.dev_target' "$IVY" >/dev/null 2>&1 \
+  && ok "dev_target is present (round 3 — dev DDL has a separate home)" \
+  || bad "dev_target missing from the completed-interview config"
+yq -e '.project.intake' "$IVY" >/dev/null 2>&1 \
+  && ok "project.intake is written (round 4's email question fills a real key)" \
+  || bad "project.intake missing — the email question would be an ignored value"
+yq -e '.seams.docstore.drive_folder' "$IVY" >/dev/null 2>&1 \
+  && ok "the docstore's tier-1 half (drive_folder) lands in stack.yaml" \
+  || bad "drive_folder missing from the completed-interview config"
+grep -q 'mount_root' "$IVY" \
+  && bad "a machine mount root leaked into committed stack.yaml (a tier-3 value in tier 1)" \
+  || ok "the machine mount root is ABSENT from stack.yaml (report-only; routed to the person flow)"
+# (C) skip behavior: rounds 5-6 skipped ⇒ the two # TODO(setup) lines ride the config, and the
+# config still verifies. The TODO forms are the exact ones interview.md specifies, so the fixture
+# and the instructions cannot drift apart without one of these assertions going red.
+IVS="$TMP/s38-skip"; mkdir -p "$IVS/.claude/config"
+sed -e 's|^  role: analyst$|  # TODO(setup): round 5 skipped — role/domain/analysis_tools at defaults; finish with /setup role|' \
+    -e '/^  domain: data analysis$/d' -e '/^  analysis_tools:/d' \
+    -e 's|^  db_write_requires_approval: high_risk$|  # TODO(setup): round 6 skipped — policies at defaults; finish with /setup policies|' \
+    -e '/^  human_review_handoff: review$/d' \
+    "$IVY" > "$IVS/.claude/config/stack.yaml"
+printf '  hard_halt_before_external_posts: true\n' >> "$IVS/.claude/config/stack.yaml"
+skout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVS/.claude/config/stack.yaml" --dry-run 2>&1)"
+grep -q 'All seams OK' <<<"$skout" \
+  && ok "a config with rounds 5-6 skipped (TODO lines in place) still verifies" \
+  || bad "the skipped-rounds config failed verify_stack" "$skout"
+{ grep -q '# TODO(setup): round 5 skipped' "$IVS/.claude/config/stack.yaml" \
+  && grep -q '# TODO(setup): round 6 skipped' "$IVS/.claude/config/stack.yaml"; } \
+  && ok "each skipped round leaves an explicit # TODO(setup) line naming its re-entry command" \
+  || bad "the skip TODO lines are missing from the fixture"
+{ grep -q '# TODO(setup): round 5 skipped' "$IV" && grep -q '# TODO(setup): round 6 skipped' "$IV"; } \
+  && ok "interview.md specifies those exact TODO forms (fixture and instructions cannot drift)" \
+  || bad "interview.md no longer specifies the # TODO(setup) line forms"
+{ grep -q 'Skip this and' "$IV" && grep -qi 'per-round only' "$IV"; } \
+  && ok "skips are offered per round, labeled with their cost — never a global bail" \
+  || bad "the per-round consequence-labeled skip rule is missing from interview.md"
+{ grep -qi 'punch list' <<<"$iflat" && grep -qi 'punch list' <<<"$skflat38"; } \
+  && ok "the punch list is specified in interview.md AND in the Phase-4 report step" \
+  || bad "the punch-list requirement is missing from interview.md or SKILL.md's report step"
+# (D) every advertised re-entry verb resolves to a defined mode — a promise with no mechanism is
+# worse than no promise.
+rv38=""
+for v in role team policies; do
+  grep -q -- "/setup $v" "$IV" || rv38="$rv38 interview.md:/setup-$v"
+  grep '^## Mode' "$SK38" | grep -q "\`$v\`" || rv38="$rv38 SKILL.md-mode:$v"
+done
+[ -z "$rv38" ] && ok "re-entry verbs advertised (role/team/policies) all resolve to defined modes" \
+  || bad "a re-entry verb is advertised without a mechanism (or defined without being advertised)" "$rv38"
+# (E) the CLI-probe exemption survives VERBATIM. Section 3 exempts the setup CLI-detector line BY
+# LITERAL SUBSTRING in TWO separate greps — the tool-name leak grep AND the warehouse-product
+# grep (the probe also says `databricks`). Rewording, reordering or line-splitting the probe
+# breaks both, with failure messages that never say "you edited the probe".
+grep -q 'for c in snow acli gh glab bq databricks yq jq git' "$SK38" \
+  && ok "the CLI-detection probe line survives verbatim in setup/SKILL.md" \
+  || bad "the CLI probe line was reworded/split — section 3's two exemptions no longer match it"
+nex38="$(grep -c "grep -v 'for c in snow acli gh'" bin/selftest.sh)"
+[ "$nex38" -ge 2 ] \
+  && ok "both section-3 exemption greps still carry the literal probe substring ($nex38 found)" \
+  || bad "a section-3 exemption grep lost the probe literal (found $nex38, need 2)"
+# (F) the canonical spelling is present; every SURVIVING old spelling carries its deprecation
+# line. Deliberately NOT asserted: that old spellings are gone — prompt 4 keeps them working for
+# one release, so an absence assertion and that deprecation window cannot both hold.
+grep -q '/setup tool chat' "$SK38" \
+  && ok "the canonical /setup tool chat spelling is present" \
+  || bad "the canonical /setup tool chat spelling is missing"
+old38=""
+for f in $(grep -rlE '/setup (chat|docstore|warehouse)' .claude/skills README.md 2>/dev/null); do
+  grep -qiE 'deprecated spelling|old spelling' "$f" || old38="$old38 $f"
+done
+[ -z "$old38" ] && ok "every surviving old /setup <slot> spelling carries a deprecation line" \
+  || bad "an old /setup <slot> spelling survives without its deprecation line" "$old38"
+# (G) Obsidian: detect-and-guide, never a question. The doc exists and is linked from BOTH README
+# locations; the setup report prints the GitHub URL because docs/ does not ship in the wheel.
+[ -f docs/obsidian.md ] && ok "docs/obsidian.md ships" || bad "docs/obsidian.md missing"
+sed -n '/^## See it as a graph/,/^## /p' README.md | grep -q 'docs/obsidian.md' \
+  && ok "README's Obsidian section links docs/obsidian.md" \
+  || bad "docs/obsidian.md not linked from README's Obsidian section"
+sed -n '/^## Learn more/,/^## /p' README.md | grep -q 'docs/obsidian.md' \
+  && ok "README's further-reading list links docs/obsidian.md" \
+  || bad "docs/obsidian.md not linked from README's Learn more list"
+grep -q 'github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md' "$SK38" \
+  && ok "the setup report prints the doc's GitHub URL (docs/ is not in the PyPI package)" \
+  || bad "the setup report would print a bare docs/ path that a pip install does not have"
+# (H) the AskUserQuestion sweep held: interviews are prose everywhere in the skill surface —
+# frontmatter allowed-tools AND body text. (Runtime capability docs under adapters/runtime/ and
+# docs/ legitimately DESCRIBE the tool; they are not skills and are not scanned.)
+auq38="$(grep -rn 'AskUserQuestion' .claude/skills/ 2>/dev/null || true)"
+[ -z "$auq38" ] \
+  && ok "no skill authors an interview as a structured tool-call (AskUserQuestion fully swept)" \
+  || bad "AskUserQuestion survives in a skill" "$auq38"
+# (I) round 5's two new keys are wired end to end: schema row, template token, scaffold guidance,
+# and the intake consumer in /ticket's priming — a key nothing consumes is configuration theater.
+{ grep -q '{{analysis_tools}}' templates/AGENTS.md.tmpl \
+  && grep -q 'analysis_tools' .claude/skills/setup/scaffold.md \
+  && grep -q 'analysis_tools' .claude/config/stack.schema.md \
+  && grep -qi 'Not a tool slot' .claude/config/stack.schema.md; } \
+  && ok "analysis_tools: schema row (not-a-slot stated), template token, scaffold guidance" \
+  || bad "analysis_tools is not wired through schema + template + scaffold"
+grep -i 'permissions.allow' "$IV" | grep -qi 'not' \
+  && ok "interview.md forbids auto-appending analysis tooling to permissions.allow" \
+  || bad "the permissions.allow prohibition is missing from round 5"
+{ grep -q 'intake' .claude/config/stack.schema.md \
+  && grep -q 'intake' .claude/skills/ticket/priming.md \
+  && grep -q 'source_materials' .claude/skills/ticket/priming.md; } \
+  && ok "project.intake has a schema row and a real consumer (/ticket priming sweeps source_materials/)" \
+  || bad "project.intake lacks its schema row or its consumer"
+# (J) email: on "out", the answers are RECORDED (provider, identity, audience) in a commented
+# seams.chat.targets.email block, and both the interview and the report say plainly that email is
+# configured but not yet wired — so nobody believes a draft will send.
+{ grep -q 'gmail' "$IV" && grep -q 'outlook' "$IV" \
+  && grep -qi 'sending identity' <<<"$iflat" && grep -qi 'audience' "$IV" \
+  && grep -q 'seams.chat.targets.email' "$IV" \
+  && grep -qi 'configured but not yet wired' <<<"$iflat"; } \
+  && ok "email delivery records provider + identity + audience in a commented target block, honestly unwired" \
+  || bad "the email question's recorded-answers contract is incomplete in interview.md"
+grep -qi 'configured but not' <<<"$skflat38" \
+  && ok "the Phase-4 report states email is configured but not yet wired" \
+  || bad "the report step never says email is configured-but-not-wired"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

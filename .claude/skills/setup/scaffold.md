@@ -27,6 +27,12 @@ These absent-slot values are **render-time display values only** — they go int
 `AGENTS.md`, never into `stack.yaml`, where an absent tool slot stays omitted (or a commented
 block) per `stack.schema.md`.
 
+**`{{analysis_tools}}` follows the same always-pass rule** (flat substitution, no conditionals):
+pass the `project.analysis_tools` list as a comma-separated phrase, e.g.
+`analysis_tools=notebooks, spreadsheets`. When the list is empty or the round was skipped, pass a
+display value — `analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run
+/setup role)` — never an empty string and never a leftover token.
+
 Also write `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/CLAUDE.md.tmpl` — a
 one-line `@AGENTS.md` import so **Claude Code** auto-loads these rules (it reads `CLAUDE.md`; other
 agents read `AGENTS.md` directly). Keep it to that single import line.
