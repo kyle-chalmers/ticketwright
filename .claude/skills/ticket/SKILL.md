@@ -37,14 +37,15 @@ this before?", "which tickets touched VW_X?").
    run several tickets in parallel).
 6. **Scaffold** `project.ticket_path` with `project.ticket_subdirs` (create the subdirs empty —
    **no `.gitkeep` placeholders**; they fill with real files during build and git picks them up
-   then); tracker adapter `download_attachments` → `source_materials/` (silent if none); render
-   `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/ticket-README.md.tmpl` → the ticket dir —
+   then); tracker adapter `download_attachments` → `source_materials/` (silent if none);
+   resolve the kit once with `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" --kit)"`, then render
+   `"$KIT"/templates/ticket-README.md.tmpl` → the ticket dir —
    **only if that README doesn't already exist**. Where the tracker *is* the ticket folder, step 3's
    `create_ticket` already wrote it, and re-rendering would replace a briefed ticket with empty
    template tokens.
 6b. **Refresh the catalog** so the new ticket shows up immediately — it won't otherwise, because the
    PostToolUse index hook only fires on `Write`/`Edit` and scaffolding happens via Bash:
-   `python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py"` (writes this
+   `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" build_ticket_index.py` (writes this
    project's `tickets/INDEX.md` + `OBJECTS.md`; the new row shows `▱` until `/ship` curates it).
 
 ## Phase 3 — Prime context automatically (the part you never have to ask for)

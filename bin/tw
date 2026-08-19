@@ -5,9 +5,17 @@
 #   bash bin/tw <script> [args...]                          # run <kit>/bin/<script>
 #
 # Why this exists: skills used to locate kit assets through ${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR},
-# which expands to nothing under Codex, Cursor, Gemini CLI and the rest. bin/kit_paths.py is the
+# which expands to nothing under Codex, Cursor, Antigravity and the rest. bin/kit_paths.py is the
 # authority on where things are — but a skill has to FIND it before it can run it, and that is this
 # file's whole job.
+#
+# DO NOT "CLEAN UP" THE ${CLAUDE_PLUGIN_ROOT:-.} IN THE SKILLS THAT CALL THIS FILE. It looks like a
+# leftover Claude dependency and is not one. A Claude PLUGIN install puts no bin/ in the project at
+# all, so a bare `bash bin/tw` would break there, and in any fresh `git worktree` (which checks out
+# only tracked files), and for every repo that has not re-run /setup. The `:-.` half is what covers
+# every other install, and dropping $CLAUDE_PROJECT_DIR is the actual fix — it expanded to nothing
+# off Claude, silently turning the path into a bare relative one. Prompt 7 may tighten this to a
+# plain `bin/tw` once an installer guarantees the launcher is present and committed.
 #
 # Every diagnostic goes to stderr and stdout stays empty on failure, so "$(bash bin/tw --kit)" can
 # never capture an error string and turn it into a filesystem path.

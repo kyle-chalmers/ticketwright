@@ -64,7 +64,7 @@ canonical order resolves next — the ticket's declared target before the seam d
 - **Hand the deliverables to the human, then stop** (policy `human_review_handoff`; skip this whole
   bullet when it is `off`). Layers ①–④ prove the query is *internally* consistent; only a person can
   say the numbers are the right numbers. Do not emit a verdict before this:
-  1. `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/handoff.sh" <final_deliverables + qc_queries paths>`
+  1. `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" handoff.sh <final_deliverables + qc_queries paths>`
      — routes each file to the app that user chose. It exits 0 and stays silent when they have no
      viewer config; in that case say so **once** and continue, never block.
   2. If it produced no output and no config exists, offer the one-time setup: which app for `.sql`,
