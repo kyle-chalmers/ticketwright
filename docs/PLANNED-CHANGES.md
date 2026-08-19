@@ -597,20 +597,17 @@ commented lines. It restates the status quo. The load-bearing distinction is LOU
   ASK when a wrong or absent value still yields a CONFIDENT-LOOKING OUTPUT. Leave it a commented
   default when a wrong or absent value FAILS LOUDLY at `verify_stack.sh` or on first use.
 
-COROLLARY — AND MIND THE TRAP IN IT. Adapter-required keys are the largest source of questions
-(Jira `site` + `cli`; Asana `workspace_gid`; monday `board_id`; Databricks `warehouse_id` + `catalog` +
-`schema`; gdrive `base_path`, plus the extra keys each adapter's frontmatter comment names, which are
-NOT in its `requires:` list — do not conflate the two). It is tempting to leave them all `# TODO` on
-the grounds that they "fail loudly". CHECK THAT ASSUMPTION BEFORE RELYING ON IT: `bin/verify_stack.sh`
-NEVER READS ADAPTER `requires:` FRONTMATTER. It checks that the adapter file exists and runs the
-seam's `verify` command; a seam with `verify: null`, or a `verify` that does not touch the missing
-key, PASSES with the key absent. So "TODO and verify will point at it" — which
-`.claude/skills/setup/SKILL.md` promises today — is only true for keys a `verify` actually exercises.
-  THE RULE: ASK for every adapter-required key, and accept "I'll fill it in later" as an answer that
-  writes the `# TODO`. Asking costs one line and satisfies "properly set up"; silently deferring a
-  key nothing checks is how a repo ends up half-configured with a green verify. If you would rather
-  make `verify_stack.sh` validate `requires:` instead, that is a legitimate alternative — but pick
-  one and say which, do not leave the promise resting on a check that does not exist.
+COROLLARY — AND THIS PROMPT IS WHERE THE `requires:` TRAP GETS RESOLVED. Adapter-required keys are
+the largest source of questions (Jira `site` + `cli`; Asana `workspace_gid`; monday `board_id`;
+Databricks `warehouse_id` + `catalog` + `schema`; gdrive `base_path` — plus the extra keys each
+adapter's frontmatter COMMENT names, which are NOT in its `requires:` list; do not conflate the two).
+It is tempting to leave them all `# TODO` on the grounds that they fail loudly. THEY DO NOT — see the
+live-false-promise entry in the SELFTEST TRAP section above, which this prompt must not re-derive.
+  TAKE THE FIRST OF THE TWO FIXES THE TRAP SECTION ALLOWS: ASK for every adapter-required key, and
+  accept "I'll fill it in later" as the answer that writes the `# TODO`. Asking costs one line and
+  is what "properly set up" means; silently deferring a key nothing checks is how a repo ends up
+  half-configured behind a green verify. Making `verify_stack.sh` read `requires:` is the other
+  sanctioned fix and is a fine follow-up, but it is not this prompt's job.
 
 SHIP NO NUMBER. Do not replace "≤5 questions" with "≤N questions" or with a per-round target.
 Nothing counts rounds at runtime, and the premise of this change is that a stated number did damage
@@ -625,12 +622,11 @@ KEEP, and do not let a selftest grep catch them: `SKILL.md`'s `--voice` summary 
 "≤5 short questions" — that is the voice interview's own cap, a separate and genuinely short
 feature. `CHANGELOG.md`'s two hits are the historical 2.0.0 record; add a new entry, never rewrite
 those.
-Also REMOVE `AskUserQuestion` from `allowed-tools` in `SKILL.md` frontmatter, AND from the body:
-`SKILL.md` says "One AskUserQuestion round" and `voice.md` step 4 says
-"Interview (≤5 short questions, `AskUserQuestion`)". PROMPT 4 makes EVERY interview in this skill
-prose, so the `voice.md` call-out contradicts it and dropping only the frontmatter entry leaves the
-contradiction in place. Keep voice's ≤5 CAP; convert its MECHANISM to prose like the rest. Selftest
-section 4 only checks frontmatter validity, so all of this survives silently otherwise.
+Also REMOVE `AskUserQuestion` from `allowed-tools` in `SKILL.md` frontmatter AND from the body
+("One AskUserQuestion round"), and convert the `voice.md` site the trap section names — mechanism to
+prose, its ≤5 cap kept. Then SWEEP for any other `AskUserQuestion` reference rather than fixing only
+the named sites: selftest section 4 checks frontmatter validity only, so every one of these survives
+silently.
 
 ### (ii) Re-cut Phase 2 into rounds — BY SURVIVABILITY, NOT BY TOPIC
 Move the interview into a new `.claude/skills/setup/interview.md`, matching the existing
@@ -770,9 +766,8 @@ reviewer would rather these were their own prompt, splitting them out costs noth
   - `adapters/README.md` says "Five worked `stack.yaml` configs ship … The same skills run against
     all five", while `ROADMAP.md` says 6 and selftest counts 6 (`stack.yaml` + 5 examples).
     `.claude/config/stack.schema.md` likewise enumerates five and omits
-    `stack.example.no-warehouse.yaml`. Only those TWO need changing — `ROADMAP.md` is already correct
-    at 6, and it is the one selftest asserts against, so leave it alone and do not "fix" it to match
-    the other two or the suite goes red.
+    `stack.example.no-warehouse.yaml`. Change ONLY those two — and re-read the trap section's
+    "know which copy is authoritative" entry first.
   - `bin/selftest.sh` has a DUPLICATE `hdr "25 · …"` and its last section is 29 — do not assume
     sequential numbering when adding one. Its check-floor comment ("Counting this assertion itself
     is why it is the last one") is STALE: two sections already run after it, so a section appended
@@ -799,6 +794,12 @@ sections drive `verify_stack.sh`, and assert OUTCOMES:
     spelling carries its deprecation line.
   - `docs/obsidian.md` exists and is linked from both README locations; `AskUserQuestion` is gone
     from `allowed-tools`.
+  - WHILE YOU ARE IN THIS FILE, GENERALIZE ONE EXISTING ASSERTION: the `include_self` documentation
+    check names `adapters/chat/slack.md` and `adapters/chat/teams.md` individually, so any chat
+    adapter added later escapes it silently. Rewrite it to loop over `adapters/chat/*.md`. An
+    assertion that enumerates its own subjects stops covering anything new — the same class of bug as
+    the literal-substring leak-grep exemption. PROMPT 10 adds two chat adapters and is relying on
+    this being fixed here.
 
 Success criterion: a team finishes `/setup` with chat, docstore, owner routing and the two
 behavioral policies actually configured — and a solo user with no tracker and no warehouse is not
@@ -1163,10 +1164,10 @@ does NOT justify a sixth kind. Do not add an `adapters/email/` directory.
      - `adapters/README.md` carries a parenthetical list of the MCP-transport adapters
        ("Asana, Linear, Monday, Teams, Slack"). Nothing asserts it, so it will go stale silently.
        Update it in the same change.
-     - `include_self` is asserted as documented in `adapters/chat/slack.md` AND
-       `adapters/chat/teams.md` BY NAME. Two new chat adapters escape that check entirely, so they
-       will silently diverge from the existing two. Document `include_self` in both new adapters, and
-       consider generalizing that assertion to every `adapters/chat/*.md` rather than two named files.
+     - Document `include_self` in both new adapters. The assertion that it is documented names
+       `adapters/chat/slack.md` and `adapters/chat/teams.md` INDIVIDUALLY, so new chat adapters
+       escape it silently — PROMPT 4b generalizes that assertion to every `adapters/chat/*.md`, so by
+       the time this prompt runs the gate should already cover you. Verify that it does.
      - `CHANGELOG.md`: a new delivery channel is user-facing, and `AGENTS.md` requires an entry.
 
 2. BE HONEST ABOUT THE VERB MAPPING RATHER THAN PRETENDING IT IS CLEAN. `draft` and `send` map
