@@ -56,13 +56,16 @@ by adding the `viewer` seam. Specifically:
     ONE literal string, so a SECOND detector line added anywhere gets no exemption at all. PROMPT 4
     and any prompt rewriting the setup interview are the likely trippers — if you must change or add
     a detector line, update every exemption in the same change.
-    ⚠ A LIVE FALSE PROMISE, not merely dead: `.claude/skills/setup/SKILL.md` says an unfilled key can
-    be left as `# TODO` because "`verify` will point at it". `bin/verify_stack.sh` NEVER READS
-    `requires:` frontmatter — it checks that the adapter file exists and runs `verify`. So a seam with
-    `verify: null`, or a verify that does not exercise the missing key, PASSES with the key absent and
-    nothing ever points at the TODO. Do not build anything on the assumption that `requires:` is
-    enforced. Either ASK for required keys and let "later" be the answer that writes the TODO, or make
-    `verify_stack.sh` actually read `requires:` — but stop promising an enforcement that does not exist.
+    ✅ RESOLVED (was: a live false promise). `.claude/skills/setup/SKILL.md` said an unfilled key could
+    be left as `# TODO` because "`verify` will point at it", while `bin/verify_stack.sh` never read
+    `requires:` frontmatter at all — so a `verify: null` seam, or a verify that did not exercise the
+    missing key, passed with the key absent. `verify_stack.sh` NOW READS `requires:` and names every
+    unset key as a WARNING (never a failure — an unfilled key is a setup-time TODO, not an
+    unreachable tool, and failing would reject pre-existing configs). Two things follow for anyone
+    editing this area: `requires:` is now LOAD-BEARING, so listing a merely-preferred key there
+    produces a warning on a good config; and the presence check is deliberately NOT the interpolation
+    token file, which is filtered to scalars — `always_include` is a list, and reusing that filter
+    reported it missing on two shipped configs. Both are pinned by selftest section 30.
     Related dead-ish promises worth catching while in this file: `.claude/skills/setup/SKILL.md`
     says the `<seam>` mode will "ask one question", and `.claude/skills/setup/adopt.md` says
     "Confirm the inference with the user in ONE question" — both are question-count promises like the
@@ -601,13 +604,13 @@ COROLLARY — AND THIS PROMPT IS WHERE THE `requires:` TRAP GETS RESOLVED. Adapt
 the largest source of questions (Jira `site` + `cli`; Asana `workspace_gid`; monday `board_id`;
 Databricks `warehouse_id` + `catalog` + `schema`; gdrive `base_path` — plus the extra keys each
 adapter's frontmatter COMMENT names, which are NOT in its `requires:` list; do not conflate the two).
-It is tempting to leave them all `# TODO` on the grounds that they fail loudly. THEY DO NOT — see the
-live-false-promise entry in the SELFTEST TRAP section above, which this prompt must not re-derive.
-  TAKE THE FIRST OF THE TWO FIXES THE TRAP SECTION ALLOWS: ASK for every adapter-required key, and
-  accept "I'll fill it in later" as the answer that writes the `# TODO`. Asking costs one line and
-  is what "properly set up" means; silently deferring a key nothing checks is how a repo ends up
-  half-configured behind a green verify. Making `verify_stack.sh` read `requires:` is the other
-  sanctioned fix and is a fine follow-up, but it is not this prompt's job.
+The safety net now EXISTS — `verify_stack.sh` reads `requires:` and names unset keys (see the
+resolved trap entry above; do not re-derive it). That changes the argument but not the conclusion:
+  STILL ASK for every adapter-required key, and accept "I'll fill it in later" as the answer that
+  writes the `# TODO`. The warning catches a forgotten key; it does not make a half-configured repo
+  a good outcome, and "properly set up" is what the interview is for. The difference is that
+  deferring is now a tracked choice rather than a silent hole — which is exactly why asking costs
+  little: the user who says "later" gets a warning that names the key, every run.
 
 SHIP NO NUMBER. Do not replace "≤5 questions" with "≤N questions" or with a per-round target.
 Nothing counts rounds at runtime, and the premise of this change is that a stated number did damage

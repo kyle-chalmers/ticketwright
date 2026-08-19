@@ -50,7 +50,7 @@ fail=0
 # failure would be set in a subshell and lost.
 check_unit() {
   local label="$1" path="$2" parent="${3:-}"
-  local tool adapter verify seamtok adapter_path cmd
+  local tool adapter verify seamtok seamkeys adapter_path cmd
 
   # A target inherits any key it does not define itself — including tool/adapter/verify, so two
   # targets on one account can share all three and differ only in, say, default_warehouse.
@@ -78,6 +78,17 @@ check_unit() {
     yq -r "$parent | to_entries | .[] | select(.key != \"default\") | select(.value|type==\"!!str\" or type==\"!!int\" or type==\"!!float\") | [.key,(.value|tostring)] | @tsv" "$stack" 2>/dev/null >> "$seamtok" || true
   fi
 
+  # `seamkeys` is a bare list of the key NAMES this unit defines (plus, for a target, the parent's).
+  # Deliberately NOT the token file: that one is filtered to scalars because only scalars can
+  # interpolate, whereas presence is a different question — `always_include` is a LIST by design and
+  # would look permanently missing if the requires: check reused the scalar filter. It is also
+  # seam-scoped, so a project.* key can never stand in for a missing seam key of the same name.
+  seamkeys="$(mktemp)"
+  yq -r "$path | to_entries | .[] | .key" "$stack" 2>/dev/null >> "$seamkeys" || true
+  if [[ -n "$parent" ]]; then
+    yq -r "$parent | to_entries | .[] | select(.key != \"default\") | .key" "$stack" 2>/dev/null >> "$seamkeys" || true
+  fi
+
   # Width stays %-10s so single-warehouse output is byte-identical to previous releases; a longer
   # target label simply overflows its column (printf pads, never truncates).
   printf "▸ %-10s tool=%-10s" "$label" "$tool"
@@ -89,15 +100,36 @@ check_unit() {
     [[ -z "$adapter_path" && -f "$proj_root/$adapter" ]] && adapter_path="$proj_root/$adapter"
   fi
   if [[ -z "$adapter_path" ]]; then
-    echo "  ✗ adapter missing ($adapter)"; fail=1; rm -f "$seamtok"; return
+    echo "  ✗ adapter missing ($adapter)"; fail=1; rm -f "$seamtok" "$seamkeys"; return
+  fi
+
+  # 1b) are the adapter's REQUIRED keys actually set?
+  # Nothing else in the kit checks this, and `verify` is not a substitute: it only exercises the
+  # keys its command string happens to name. Jira `requires: [site, cli]` but verifies with
+  # `{key_prefix}`, so an unset `site` used to report "reachable"; a `verify: null` seam checked
+  # nothing at all; and an unset key that IS named interpolates to a literal `{base_path}`, failing
+  # with a message about a missing directory rather than a missing setting. That made /setup's
+  # "leave it a # TODO - verify will point at it" untrue for exactly the keys most likely to be
+  # deferred. WARN, never fail: an unfilled key is a setup-time TODO, not an unreachable tool, and
+  # failing would reject configs written before this check existed.
+  local reqlist missing k
+  reqlist="$(sed -n '1,20p' "$adapter_path" | sed -n 's/^requires:[[:space:]]*\[\([^]]*\)\].*/\1/p' | head -1)"
+  if [[ -n "$reqlist" ]]; then
+    missing=""
+    for k in $(printf '%s' "$reqlist" | tr ',' ' '); do
+      k="${k//[[:space:]]/}"
+      [[ -z "$k" ]] && continue
+      grep -qx "$k" "$seamkeys" 2>/dev/null || missing="$missing $k"
+    done
+    [[ -n "$missing" ]] && echo "  ⚠ required key(s) not set:$missing → see $adapter"
   fi
 
   # 2) verify reachable?
   if [[ -z "$verify" || "$verify" == "null" ]]; then
-    echo "  ⚠ no verify command (skills will warn)"; rm -f "$seamtok"; return
+    echo "  ⚠ no verify command (skills will warn)"; rm -f "$seamtok" "$seamkeys"; return
   fi
   cmd="$(interp "$verify" "$seamtok")"
-  rm -f "$seamtok"
+  rm -f "$seamtok" "$seamkeys"
   if [[ $dry -eq 1 ]]; then
     echo "  → would run: $cmd"; return
   fi
