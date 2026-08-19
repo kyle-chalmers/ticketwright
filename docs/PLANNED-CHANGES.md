@@ -91,9 +91,11 @@ unconfigured. That flow is correct and must keep working — note this constrain
 
 Work in WAVES. Inside a wave, sessions run concurrently in separate worktrees; between waves,
 everything merges first. The constraint is file collision, not sequence for its own sake: prompts 1,
-6 and 9 all touch the adapter/seam counts in `ROADMAP.md` and `docs/architecture.md`; 2 and 8 both
-own the resolver; 4 and 6 both touch `.claude/skills/setup/`; 5 and 8 both edit
-`.claude/skills/ship/SKILL.md`.
+6, 9 AND 10 all touch the adapter/seam counts in `ROADMAP.md` and `docs/architecture.md`; 2 and 8 both
+own the resolver; 4, 4b and 6 all touch `.claude/skills/setup/`; 5 and 8 both edit
+`.claude/skills/ship/SKILL.md`; and 4b additionally collides with 8-step-1 on
+`.claude/config/stack.schema.md` + `adapters/README.md` and with 9 on `README.md`, which is why it
+runs alone.
 
 | Wave | Runs concurrently | Effort | Why it is safe together |
 |---|---|---|---|
@@ -102,7 +104,7 @@ own the resolver; 4 and 6 both touch `.claude/skills/setup/`; 5 and 8 both edit
 | C | 4, 5 | high, high | 4 owns `skills/setup/`; 5 owns `skills/ticket|ship|review|spec-and-build`. Disjoint. |
 | D | 8-step-1, 6-item-1 | high, medium | 8 edits `ship/SKILL.md` only after 5 has merged. 6-item-1 needs 4's wording. |
 | E | 4b | high | ALONE, and it has to be. 4b collides with 8-step-1 on `stack.schema.md` + `adapters/README.md`, with 6-item-1 on `bin/selftest.sh`, and with 9 on `README.md` + `ROADMAP.md`. It also needs 4's verbs and invariant, 6-item-1's absent-seam token, and 6-item-2's tracker verb — all of which must have merged. |
-| F | 9 | medium | The docs restructure. 1, 6 and 8 must have settled the counts, and 4b must have landed its setup-section rewrite — 9 restructures `README.md` around it and must preserve it. NOT the last docs-toucher any more: prompt 10 moves the adapter count again in wave I, which is why 10 is scheduled after this rather than beside it. |
+| F | 9 | medium | The docs restructure. 1, 6 and 8-step-1 must have settled the counts (8 steps 2-5 land later, in H, and move no counts), and 4b must have landed its setup-section rewrite — 9 restructures `README.md` around it and must preserve it. NOT the last docs-toucher any more: prompt 10 moves the adapter count again in wave I, which is why 10 is scheduled after this rather than beside it. |
 | G | 7 | high | Needs 1 plus everything 2-5 settled. Split further on arrival. |
 | H | 8 steps 2-5 | high | The actual chat/docstore audience separation. NOT optional follow-up — it is what prompt 8's safety design exists for, and step 1 alone delivers none of it. Do not leave this unscheduled. |
 | I | 10 | high | Email adapters. LAST on purpose: a repo can hold only one `chat` seam until H lands, and email is where a wrong audience is least recoverable. It also moves the adapter counts, so it must not run beside 9. |
@@ -574,8 +576,10 @@ in the set while wave C already runs 4 concurrently with 5.
 last", but it is now the binding constraint on CORRECTNESS, and it ships repos configured wrong in
 ways nobody notices for weeks:
   - Chat and docstore are never configured (`.claude/skills/setup/SKILL.md` defers both), so the two
-    seams that carry work OUT of the repo ship as commented blocks — and `seams.chat.always_include`,
-    the "never solo-DM a stakeholder" list, ships EMPTY.
+    seams that carry work OUT of the repo ship as commented blocks — so `seams.chat.always_include`,
+    the "never solo-DM a stakeholder" list, is ABSENT. Say absent, not "empty": an implementer who
+    reads "empty" may write `always_include: []`, which is WORSE than the key being missing, and
+    PROMPT 8's non-empty rule binds only when `targets:` is present.
   - `role` and `domain` are never asked, so every rendered `AGENTS.md` says `generalist` /
     `data analysis`.
   - `ticket_url_template` is never asked, so every link in `INDEX.md` can be dead.
@@ -594,7 +598,7 @@ commented lines. It restates the status quo. The load-bearing distinction is LOU
   default when a wrong or absent value FAILS LOUDLY at `verify_stack.sh` or on first use.
 
 COROLLARY — AND MIND THE TRAP IN IT. Adapter-required keys are the largest source of questions
-(Jira `site`; Asana `workspace_gid`; monday `board_id`; Databricks `warehouse_id` + `catalog` +
+(Jira `site` + `cli`; Asana `workspace_gid`; monday `board_id`; Databricks `warehouse_id` + `catalog` +
 `schema`; gdrive `base_path`, plus the extra keys each adapter's frontmatter comment names, which are
 NOT in its `requires:` list — do not conflate the two). It is tempting to leave them all `# TODO` on
 the grounds that they "fail loudly". CHECK THAT ASSUMPTION BEFORE RELYING ON IT: `bin/verify_stack.sh`
@@ -612,7 +616,7 @@ SHIP NO NUMBER. Do not replace "≤5 questions" with "≤N questions" or with a 
 Nothing counts rounds at runtime, and the premise of this change is that a stated number did damage
 BECAUSE PEOPLE BELIEVED IT. State the discipline.
 
-### (i) Retire the cap — nine promise sites, three deliberate survivors
+### (i) Retire the cap — nine promise sites to rewrite, four to leave alone
 Rewrite: `SKILL.md` frontmatter `description`, the body intro, the Phase 2 header, and the `<seam>`
 mode's "ask one question"; `adopt.md`'s "(still ≤5-question) interview" AND its "Confirm the
 inference with the user in ONE question"; `README.md`'s three (the `≤5 questions` comment line, "at
@@ -766,8 +770,9 @@ reviewer would rather these were their own prompt, splitting them out costs noth
   - `adapters/README.md` says "Five worked `stack.yaml` configs ship … The same skills run against
     all five", while `ROADMAP.md` says 6 and selftest counts 6 (`stack.yaml` + 5 examples).
     `.claude/config/stack.schema.md` likewise enumerates five and omits
-    `stack.example.no-warehouse.yaml`. Reconcile all three. WARNING: selftest asserts the
-    worked-stack count against `ROADMAP.md`, so an edit near these blocks can go red.
+    `stack.example.no-warehouse.yaml`. Only those TWO need changing — `ROADMAP.md` is already correct
+    at 6, and it is the one selftest asserts against, so leave it alone and do not "fix" it to match
+    the other two or the suite goes red.
   - `bin/selftest.sh` has a DUPLICATE `hdr "25 · …"` and its last section is 29 — do not assume
     sequential numbering when adding one. Its check-floor comment ("Counting this assertion itself
     is why it is the last one") is STALE: two sections already run after it, so a section appended
@@ -1152,6 +1157,17 @@ does NOT justify a sixth kind. Do not add an `adapters/email/` directory.
        both new adapters listed in `adapters/README.md` § "Adapters shipped".
      - The chat seam asserts `chat) echo 4` by EXACT EQUALITY. Implement all four verbs in both
        adapters; do not weaken the check.
+     - MCP TOOL-NAME ISOLATION: `bin/selftest.sh` fails any adapter containing a literal
+       `mcp__<name>__` that is not the templated `mcp__{mcp}__`. Both of these will almost certainly
+       be MCP-transport adapters, so this is the trap most likely to bite — write the token form.
+     - `adapters/README.md` carries a parenthetical list of the MCP-transport adapters
+       ("Asana, Linear, Monday, Teams, Slack"). Nothing asserts it, so it will go stale silently.
+       Update it in the same change.
+     - `include_self` is asserted as documented in `adapters/chat/slack.md` AND
+       `adapters/chat/teams.md` BY NAME. Two new chat adapters escape that check entirely, so they
+       will silently diverge from the existing two. Document `include_self` in both new adapters, and
+       consider generalizing that assertion to every `adapters/chat/*.md` rather than two named files.
+     - `CHANGELOG.md`: a new delivery channel is user-facing, and `AGENTS.md` requires an entry.
 
 2. BE HONEST ABOUT THE VERB MAPPING RATHER THAN PRETENDING IT IS CLEAN. `draft` and `send` map
    directly, and `lookup_user` maps to the address book. `lookup_channel` → a distribution list is a
@@ -1159,9 +1175,11 @@ does NOT justify a sixth kind. Do not add an `adapters/email/` directory.
    to/cc/bcc. State the mapping and its rough edges in each adapter's frontmatter notes; a future
    reader must not infer parity with Slack that does not exist.
 
-3. THE REAL BLOCKER IS PROMPT 8, NOT THE DOC COUNTS. A repo can hold only ONE `chat` seam today —
-   `.claude/config/stack.schema.md` fixes the five keys and scopes multi-target to `warehouse` in
-   v1. A team on Slack internally AND email for stakeholder delivery — precisely the team that
+3. THE REAL BLOCKER IS PROMPT 8, NOT THE DOC COUNTS. A repo can hold only ONE `chat` seam today
+   because `.claude/config/stack.schema.md` scopes multi-target to `warehouse` in v1 — "no skill
+   resolves targets for the other four". Cite THAT, not the schema's "these five keys, no others"
+   line: that line is about seam KINDS rather than tools-per-kind, so it never supported this claim,
+   and PROMPT 8 step 1 replaces its exclusivity language outright, so by wave I it is gone. A team on Slack internally AND email for stakeholder delivery — precisely the team that
    answers "yes" to 4b's email question — CANNOT EXPRESS BOTH until PROMPT 8 sequence item 2 lands.
    That item is in WAVE H. Do not schedule this prompt against `8-step-1` in wave D; step 1 delivers
    the docs fix and the resolver, not chat targets.
