@@ -230,6 +230,13 @@ just moves values somewhere equally wrong.
       legacy `stack.yaml` block as a fallback and warn once, or ship a migration that writes the
       `people/<id>.yaml` files. Note `voices/<id>.md` is a RENDERED MARKDOWN profile — it is
       referenced from `people/<id>.yaml`, it does not become YAML.
+      TWO GATES MAKE THIS DEAD ON ARRIVAL IF MISSED: `.claude/skills/ship/SKILL.md` gates the voice
+      pass in TWO places on "only if `project.voice_profiles` is set". Move the map out of
+      `stack.yaml` without updating both and the feature silently switches off forever —
+      `resolve_user.py` is simply never called. `ship/SKILL.md` is prompt 5/8 territory, so treat this
+      as a declared CROSS-WAVE edit rather than a quiet one. Also `.claude/skills/setup/voice.md`
+      still instructs the agent to WRITE `project.voice_profiles` into committed `stack.yaml` — that
+      instruction is the identity leak itself and must move in the same change.
       MUST NOT contain a default warehouse target — target selection is team-owned.
       PRECEDENCE: a cross-repo copy at `${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/people/<id>.yaml`
       supplies defaults; the in-repo `people/<id>.yaml` overrides it key by key. Define this
@@ -272,7 +279,16 @@ own malfunction.
 Required: either leave `db_write_guard` reading the policy in-process, or — if it must consume the
 resolver — resolve the policy value BEFORE the try block and map every resolver failure explicitly to
 `MODE_ALL`, never to the blanket `return 0`. Add a test that a broken/absent resolver still yields
-`MODE_ALL`. This is the single highest-risk change in the document: it ships via `autoUpdate` to
+`MODE_ALL`.
+SECOND REASON, WHICH SETTLES IT: the asymmetry is one-directional. `.claude/hooks/_stack.py` reads
+the top-level `policies:` mapping by walking indentation, so a FLOW-STYLE
+`policies: {db_write_requires_approval: off}` is unreadable there today and therefore fails CLOSED
+(resolves to `MODE_ALL`). A subset-parsing resolver READS flow mappings, so migrating `db_write_mode`
+would turn that same file into a working `off`. Routing this policy through the resolver can only
+RELAX the guard, never tighten it. Leave the two policy readers (`_stack.py`, `db_write_guard.py`)
+exempt from the migration and document the exemption with its test, rather than migrating them behind
+a fallback: a "resolver first, raw scanner as fallback" design does not help, because a config the
+resolver parses successfully never reaches the fallback at all. This is the single highest-risk change in the document: it ships via `autoUpdate` to
 every repo at once, and the first symptom of getting it wrong is a destructive statement that has
 already run.
 
@@ -283,7 +299,11 @@ is gitignored and unreviewed; if it can set `db_write_requires_approval: off`, o
 gates with nothing in code review to catch it. The earlier scope rule named only warehouse keys
 (catalog/schema/database/warehouse_id/target/transport), which left this open. Merge by allowlist —
 only keys an adapter declares in `user_keys`, plus the structural `person:` — so an unanticipated key
-is refused by default instead of inherited.
+is refused by default instead of inherited. EXPRESS THE RULE OVER PATHS, NOT KEY NAMES: `targets`
+must remain a legal path segment, because `seams.warehouse.targets.lake.profile` is exactly the
+machine-local override this feature exists to enable (see `stack.example.multi-warehouse.yaml`). A
+blanket ban on a bare key name blocks the intended case. Reject a prohibited path explicitly with a
+distinct exit code naming the offending path — do not silently ignore it.
 
 ### The resolver
 Add `bin/effective_config.py`, the single authority merging all three tiers. NINE executables parse
@@ -318,6 +338,16 @@ Contract — a public CLI, not a hook helper:
   - A `verify:` command must never embed a MACHINE-LOCAL LITERAL. Use `{token}` interpolation where
     it needs a personal value — verified working at the multi-target level:
     `verify: "databricks --profile {profile} current-user me"`.
+    ⚠ AN UNRESOLVED TOKEN MUST NEVER RUN. `bin/verify_stack.sh`'s `interp()` substitutes only the
+    tokens present in its token file and leaves anything unmatched AS A LITERAL — so
+    `verify: "databricks --profile {profile} …"` executes `--profile {profile}` verbatim on a machine
+    with no tier-3 config. Make an unresolved `{token}` a SKIP-WITH-WARNING, never a run. This is a
+    CORRECTION to the tokenization advice on the line above, not an optional refinement.
+    KNOCK-ON: `stack.example.multi-warehouse.yaml` ships `profile: DEFAULT` and `bin/selftest.sh`
+    asserts the literal `databricks --profile DEFAULT current-user me` in its dry-run output — so the
+    kit's own example config warns under the new machine-local-literal rule. Either move that profile
+    into a shipped `connections.example.yaml` and make the assertion a tier-3-applied run, or exempt
+    shipped examples explicitly. Do not leave the kit warning about itself.
     This is NOT "every verify needs a token". Tokenless verifies are correct and must stay:
     `snow connection test` (`adapters/warehouse/snowflake.md:9`), `bq query --dry_run "SELECT 1"`
     (`adapters/warehouse/bigquery.md:9`) name nothing machine-specific.
