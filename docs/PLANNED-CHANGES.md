@@ -84,10 +84,26 @@ This document lives in a public repo. An earlier revision carried a real `~/.dat
 name in three places and a real work username in a fourth, taken from an actual setup run, and it was
 published before anyone noticed. It has been scrubbed, but a force-push does NOT un-publish: orphaned
 commits stay fetchable by SHA, so the old content is still retrievable from history.
+AND CHECK YOUR COMMIT MESSAGES, NOT ONLY YOUR DIFF. A branch cut BEFORE a scrub commit reintroduces
+the scrubbed string, and if it is in a commit MESSAGE it survives the later fix — tracked files are
+easy to scrub, history is not. This already happened once: a wave-A branch carried the scrubbed
+identifier in its messages and comments, and the fix was to squash to one clean commit so it left
+history rather than just the tree. Any branch based before the scrub commit needs its messages
+reviewed.
+
 So: when illustrating "a real run produced X", invent X. Never paste an account name, workspace host,
 warehouse id, role, profile, username, channel id, or absolute home-directory path from a real
 environment into this file or any prompt derived from it. The illustration works identically with a
 fixture value, and a fixture cannot be leaked.
+
+## "WARN ONCE" MUST SAY ONCE PER WHAT
+Several prompts below specify a warning that fires once. Per-process is NOT once. A legacy-config
+warning written that way fired on every `resolve_user` invocation, and since hooks, the statusline and
+`/ship` each call it several times a session it spammed the stderr of unrelated commands — it turned up
+in the output of the `gh` call that opened a PR. The fix was to move config problems to a lint command
+that runs once per run, where they belong, and to TTY-gate the courtesy warning so headless callers stay
+silent. So whenever you specify or implement a warning: name the scope (once per run, per session, per
+config file, per person), and pick a channel whose lifetime matches that scope.
 
 ## Standing constraints
 - `bin/selftest.sh` must pass. It is at 338 cases as of this writing and the count SHOULD grow —
