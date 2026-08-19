@@ -35,6 +35,10 @@ by adding the `viewer` seam. Specifically:
   - It derives the adapter count and seam count from the tree and requires `docs/architecture.md` to
     contain `**<N> adapters**` and `ROADMAP.md` to contain `- <N> adapters across <M> seams`.
   - It requires every shipped adapter to be listed in `adapters/README.md` § "Adapters shipped".
+  - KNOW WHICH COPY IS AUTHORITATIVE BEFORE "FIXING" A COUNT. `ROADMAP.md` is the file the selftest
+    asserts against and it is currently CORRECT (6 worked stacks); `adapters/README.md` says "Five
+    worked" and is the wrong one. Editing ROADMAP to match the prose elsewhere turns the suite red.
+    Where two docs disagree on a count, check which one the assertion reads before changing either.
   - It asserts per-seam verb counts by EXACT EQUALITY (`tracker) echo 6`, `warehouse) echo 3`,
     `chat) echo 4`, `docstore) echo 2`, `vcs) echo 4`, `viewer) echo 2`), checked against
     `grep -c '^## verb:'` in every adapter file.
@@ -52,6 +56,13 @@ by adding the `viewer` seam. Specifically:
     ONE literal string, so a SECOND detector line added anywhere gets no exemption at all. PROMPT 4
     and any prompt rewriting the setup interview are the likely trippers — if you must change or add
     a detector line, update every exemption in the same change.
+    ⚠ A LIVE FALSE PROMISE, not merely dead: `.claude/skills/setup/SKILL.md` says an unfilled key can
+    be left as `# TODO` because "`verify` will point at it". `bin/verify_stack.sh` NEVER READS
+    `requires:` frontmatter — it checks that the adapter file exists and runs `verify`. So a seam with
+    `verify: null`, or a verify that does not exercise the missing key, PASSES with the key absent and
+    nothing ever points at the TODO. Do not build anything on the assumption that `requires:` is
+    enforced. Either ASK for required keys and let "later" be the answer that writes the TODO, or make
+    `verify_stack.sh` actually read `requires:` — but stop promising an enforcement that does not exist.
     Related dead-ish promises worth catching while in this file: `.claude/skills/setup/SKILL.md`
     says the `<seam>` mode will "ask one question", and `.claude/skills/setup/adopt.md` says
     "Confirm the inference with the user in ONE question" — both are question-count promises like the
@@ -508,6 +519,10 @@ option chips, other runtimes render a numbered list, and the interview means the
 everywhere. This was previously written as a sub-bullet of the per-person flow, which wrongly scoped
 it to one mode; it derives from the harness-neutrality rule in this document's header and applies to
 the repo-configuration interview, the `/setup tool` interview, and the per-person flow alike.
+KNOWN SITE TO CONVERT: `.claude/skills/setup/voice.md` still instructs
+"Interview (≤5 short questions, `AskUserQuestion`)". Convert the MECHANISM to prose; the ≤5 cap there
+is a deliberate scope limit on a style interview and stays. Sweep for other `AskUserQuestion`
+references in the same pass rather than fixing only the one named here.
 
 State the invariant at the top of `.claude/skills/setup/SKILL.md` and enforce it. STATE IT BY
 PURPOSE, NOT BY FILE OWNERSHIP — the mechanical version ("team verbs write team config, person verbs
