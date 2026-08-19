@@ -228,15 +228,19 @@ draft arrives already sounding like you, and then learn from the edits you still
 
 - **Opt-in.** Off until a person has a `voice:` block in `people/<id>.yaml`. Build a profile with
   `/setup --voice`: a short interview (and, if you want, a few of your own already-sent lines).
-- **Per person.** `/ship` resolves who's shipping (`bin/resolve_user.py`, offline, via an explicit
-  identity→id map — never a fuzzy guess) and loads that person's `voices/<id>.md`.
+- **Per person.** `bin/whoami.py` resolves who is working (offline, via the identities each person
+  enumerates in `people/<id>.yaml` — never a fuzzy guess; on a miss it asks who you are and
+  remembers the answer with `--bind`). `/ship` maps that person to their voice profile
+  (`bin/resolve_user.py`, a thin shim over it) and loads their `voices/<id>.md`.
 - **Within the rails, always.** Voice shapes *phrasing only*. `/ship` runs a comms-lint step first
   (word limits, hyperlinks, include-list) and only then applies voice, so the profile can never
   breach a word limit, drop a hyperlink, or skip the stakeholder include-list.
 - **It combs itself.** `/ship` diffs what it drafted against what you approved and *proposes* profile
   updates from the delta — you approve each one; nothing is learned silently.
 - **Personal data.** A profile is your writing fingerprint. Committed by default (so a team shares
-  them like the ticket index); gitignore `voices/<id>.md` to keep yours private. It stores short
+  them like the ticket index); to keep yours private, point your `voice.path` outside the repo —
+  or gitignore it *before* its first commit, since gitignoring a file git already tracks does
+  nothing. It stores short
   approved exemplars — never full confidential threads.
 
 ## Safety rails (on by default)

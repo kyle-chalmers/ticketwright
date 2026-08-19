@@ -78,6 +78,16 @@ teammate one person's machine. Config is therefore three files:
 every consumer goes through it — nothing parses `stack.yaml` on its own any more. It is a public CLI
 needing no agent-specific environment variable, so it answers the same way under any harness.
 
+**WHO is working is resolved the same way.** [`bin/whoami.py`](../bin/whoami.py) is the single
+identity resolver (tier-3 `person:` → `$TICKETWRIGHT_PERSON` → the identities each person
+enumerates in `people/<id>.yaml`; statuses `resolved`/`miss`/`ambiguous`/`conflict`). It never
+guesses: a miss is answered by asking the person and recording the answer with
+`whoami.py --bind <id>`, an ambiguity is asked about rather than ranked, and a machine pinned to
+one person while git says another wins for the pin but warns naming both. `bin/resolve_user.py` is
+a thin shim over it that maps the resolved person to a voice profile, kept while `/ship` still
+calls it. The Claude SessionStart hook only *displays* the result ("Working as …") — it is never
+the resolver or the write path.
+
 **The scope rule is code, not documentation.** Tier 3 selects credentials and local paths; it can
 never change which catalog, schema, database or target is read, and it can never contribute a
 `policies:` block. Which keys are personal is declared per adapter in `user_keys:` frontmatter.
@@ -140,7 +150,8 @@ protection. The policy value is the shared contract; only the enforcement mechan
   `*.private.csv` / a `private/` subfolder), role snippets, and the productized-skill skeleton.
 - **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener),
-  `selftest.sh` (the CI suite + hook unit tests), and the index/recall
+  `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
+  (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), and the index/recall
   engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`, `recall.py`) —
   all stdlib-only.
 - **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via

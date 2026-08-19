@@ -154,26 +154,21 @@ def _load(path: Path, errors: list[ConfigError], label: str) -> dict | None:
 
 
 def resolve_person(root: Path, explicit: str | None, tier3: dict | None) -> str | None:
-    """--person -> $TICKETWRIGHT_PERSON -> tier-3 `person:` -> bin/resolve_user.py -> None.
+    """--person -> bin/whoami.py (tier-3 `person:` -> $TICKETWRIGHT_PERSON -> identity map) -> None.
 
-    The resolver does NOT grow its own identity matcher. `bin/resolve_user.py` is the kit's
-    existing, deliberately non-guessing matcher (git email -> git name -> $USER, exact only), and
-    PROMPT 3 keeps it as a shim in front of `whoami.py` for exactly this reason. Two independent
-    identity resolvers is the thing that must not happen.
+    The resolver does NOT grow its own identity matcher. `bin/whoami.py` is the kit's single,
+    deliberately non-guessing matcher (statuses resolved/miss/ambiguous/conflict, exact matches
+    only; `bin/resolve_user.py` is a voice-mapping shim over it). Two independent identity
+    resolvers is the thing that must not happen — so the whole order, including the
+    $TICKETWRIGHT_PERSON tier, lives THERE, and the already-parsed tier 3 is passed through. An
+    `ambiguous` or `miss` result yields no person rather than a pick.
     """
     if explicit:
         return explicit
-    env = os.environ.get("TICKETWRIGHT_PERSON")
-    if env:
-        return env.strip() or None
-    if tier3:
-        pid = tier3.get("person")
-        if isinstance(pid, str) and pid.strip():
-            return pid.strip()
     try:
-        import resolve_user  # noqa: PLC0415 — same dir; imported lazily to keep the CLI cheap
-        res = resolve_user.resolve(root)
-        if res and res.get("id"):
+        import whoami  # noqa: PLC0415 — same dir; imported lazily to keep the CLI cheap
+        res = whoami.resolve(root, tier3=tier3)
+        if res.get("id"):
             return str(res["id"])
     except Exception:  # noqa: BLE001 — identity is optional; never let it break config resolution
         pass

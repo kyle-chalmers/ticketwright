@@ -7,6 +7,23 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **`bin/whoami.py` — resolve WHO is working, on any harness.** One command answers the owner
+  question with a status of `resolved`, `miss`, `ambiguous` or `conflict`, never a guess:
+  tier-3 `person:` first (a one-time self-declaration for shared or oddly configured machines),
+  then `$TICKETWRIGHT_PERSON` (CI/headless), then the identities each person enumerates in
+  `people/<id>.yaml` (both tier-2 homes, matched exactly after trim + case-fold). A miss is
+  self-healing: the host agent asks who you are and runs `whoami.py --bind <id>`, which appends
+  that identity to your own `people/<id>.yaml` and pins `person:` in the machine tier — next
+  session resolves exactly, forever. Binding to someone *else's* file is refused unless explicitly
+  confirmed naming both people; an identity that already maps to another person is never appended
+  (it could only create ambiguity). A non-interactive miss resolves to NO owner — there is no
+  fallback to `project.assignee_dir`. When the identity is an email and the repo's remote is on a
+  public code host, `--bind` warns once and a *derived* email is never written — the gitignored
+  pin alone fixes the machine, and the warning says how to bind a handle, `$USER`, or (explicitly)
+  the email itself. The Claude
+  SessionStart banner now shows the result — "Working as … — new analyses go in tickets/<id>/" —
+  so a wrong resolution is caught immediately.
+
 - **Three-tier config.** `.claude/config/stack.yaml` (team, committed) is now merged with
   `people/<id>.yaml` (person, portable, committed) and `.claude/config/connections.local.yaml`
   (person + machine, gitignored) by a new resolver, `bin/effective_config.py`. It is a public CLI —
@@ -19,6 +36,17 @@ All notable changes to this project are documented here. Format loosely follows
   with a `file:line` instead of misreading. The kit's zero-runtime-dependency promise is intact.
 
 ### Changed
+- **`bin/resolve_user.py` is now a thin shim over `whoami.py`** that maps the resolved person to a
+  voice-profile id (kept while `/ship` calls it; scheduled for removal in a later release). Two
+  behavioral refinements ride along: the legacy `project.voice_profiles` fallback is now per
+  person — one teammate migrating to a tier-2 `voice:` block no longer switches the legacy map off
+  for everyone else — and an identity enumerated by two people resolves to *nothing* rather than
+  silently picking whichever file was read last. The two tier-2 homes now merge key by key (the
+  in-repo `identities:` list replaces the cross-repo one when both are set), matching
+  `effective_config.py`.
+- **`bin/effective_config.py` asks `whoami.py` who the person is**, which also aligns the
+  resolution order: a tier-3 `person:` pin now beats `$TICKETWRIGHT_PERSON`, and a person
+  *without* a voice block now resolves for tier-2 selection.
 - **`bin/verify_stack.sh` and `bin/handoff.sh` no longer require `yq`.** `verify_stack.sh` used to
   exit 1 without it.
 - **`/setup` writes tier-1 values only.** A detected machine-local value — a named profile or
@@ -34,6 +62,11 @@ All notable changes to this project are documented here. Format loosely follows
   never silently loses voice resolution.
 
 ### Fixed
+- `/setup --voice` and the README suggested gitignoring `voices/<id>.md` to keep a profile
+  private — which does nothing once git already tracks the file. Both now say to point
+  `voice.path` outside the repo, or gitignore the path *before* its first commit.
+- The productized-skill template still gated its voice pass on `project.voice_profiles` being set —
+  a condition that is permanently false in a migrated repo. It now gates on the resolution.
 - `bin/verify_stack.sh` silently accepted a `targets:` block with a missing or invalid `default:`.
   A shell field-splitting bug (TAB is IFS whitespace, so runs of empty fields collapsed) shifted the
   error message out of the variable that reported it, and a hard failure read as a pass.
