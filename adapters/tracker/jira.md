@@ -3,6 +3,7 @@ seam: tracker
 tool: jira
 transport: both        # acli (CLI) for reads/creates/transitions; Atlassian MCP for rich comments
 requires: [site, cli]  # stack.yaml seams.tracker.{site, cli, mcp, default_epic, terminal_status}
+container_key: project.key_prefix   # which config key a ranked container fills (see rank_projects_by_activity)
 auth: |
   CLI:  acli jira auth   (token in ~/.config/acli/token.txt; site/email in jira_config.yaml)
   MCP:  the tracker's MCP server (`{mcp}`, e.g. an Atlassian connector) must be connected (OAuth). Used for comment rendering.
@@ -69,6 +70,27 @@ script against the REST API that follows the 303 redirect to the download URL:
 ```bash
 # e.g. a helper you keep in bin/: download_jira_attachments.sh <id> <dest_dir>
 ```
+
+## verb: rank_projects_by_activity
+The ranked container is a Jira **project**. **In:** `scope` (the Jira site), `window_days` (90),
+`limit` (5), `scan_cap` (200), `container_cap` (25). **Out:** `{id, name, activity, last_activity,
+signal}` per project, most active first, `signal: items_updated`.
+```bash
+acli jira project list --json                          # candidates; take the first {container_cap}
+acli jira workitem search --json --limit <scan_cap> \
+  --jql "project in (<K1>,<K2>,…) AND updated >= -<window_days>d ORDER BY updated DESC"
+```
+Group the returned rows by project client-side: the row count per key is `activity`, its newest
+`updated` is `last_activity`. **One search, not one per project** — fanning out N calls is the fast
+route into the `acli` MFA lockout in gotchas below. When the row count equals `scan_cap` the scan
+saturated, so the true counts are `>= scan_cap`; rank those peers by `last_activity` instead.
+
+Picking a project sets `project.key_prefix` (this adapter's `container_key`) — a `project:` key, not
+a tracker seam key. It does **not** settle `default_epic` or `terminal_status`; resolve those from
+the chosen project's issue-type scheme and workflow.
+
+Return `unavailable` with the reason when `acli` is unauthenticated or the token cannot list
+projects — the caller says that line, then asks as it would have anyway.
 
 ## gotchas
 - `acli` Duo/MFA: an instant `250001/370001` = lockout (wait 15 min, don't retry); a hang = push pending.

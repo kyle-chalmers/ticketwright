@@ -3,6 +3,7 @@ seam: tracker
 tool: github-issues
 transport: cli         # `gh issue` (GitHub CLI); REST/GraphQL as fallback
 requires: [repo]       # stack.yaml seams.tracker.{repo, done_label?}  (repo = "owner/name")
+container_key: seams.tracker.repo   # which config key a ranked container fills (see rank_projects_by_activity)
 auth: |
   `gh auth login` (or `GH_TOKEN`). Verify: `gh auth status`.
 note: |
@@ -52,6 +53,32 @@ gh issue list --repo {repo} --search "<query>" --state all --limit <n> \
 ## verb: download_attachments
 GitHub stores issue attachments as URLs embedded in the body/comments. Parse them
 (`gh issue view --json body,comments`), then `curl -L "<url>" -o <dest>/<name>` (silent if none).
+
+## verb: rank_projects_by_activity
+The ranked container is a **repo** under an owner — not a GitHub Project. **In:** `scope` (the owner
+or org; there is no `owner` key in the seam, so split it off `repo`'s `owner/name` when one is
+already configured), `window_days` (90), `limit` (5), `scan_cap` (200), `container_cap` (25).
+**Out:** `{id, name, activity, last_activity, signal}` per repo, most active first, `id` = `owner/name`,
+`signal: items_updated`.
+```bash
+gh search issues "org:<scope> updated:>=<YYYY-MM-DD>" --limit <scan_cap> \
+  --json repository,updatedAt
+```
+One call: each hit already names its repo, so group client-side rather than looping repos. Fall back
+to enumerating first only when the search is unavailable:
+```bash
+gh repo list <scope> --source --no-archived --limit <container_cap> --json nameWithOwner
+gh issue list --repo <owner/name> --state all --search "updated:>=<YYYY-MM-DD>" \
+  --limit <scan_cap> --json number,updatedAt
+```
+`gh repo list` includes forks and archived repos by default — `--source --no-archived` is what keeps
+dead mirrors out of the ranking. `gh issue list` defaults to open issues, so **`--state all`
+matters**: a repo whose recent work all shipped and closed otherwise reads as dead.
+
+Picking a repo sets `seams.tracker.repo`. It does **not** settle `done_label` — that depends on
+whether the repo tracks status by label, by Projects field, or by open/closed.
+
+Return `unavailable` with the reason when `gh auth status` fails or the token lacks org read scope.
 
 ## gotchas
 - Ids are bare numbers — `fetch_ticket` takes `123`, not `ENG-123`.
