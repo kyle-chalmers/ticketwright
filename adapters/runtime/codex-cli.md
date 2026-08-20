@@ -16,6 +16,9 @@ subagent_isolation: unestablished   # separate agent threads documented, "own co
 reads_foreign_skills: none
 global_skills_root: ~/.agents/skills
 agents_root: .codex/agents/<name>.toml  # note: agents live under .codex/, unlike skills (.agents/)
+hook_wiring: unknown           # the events and deny protocol are documented; the hooks-CONFIG file location is not — wiring is manual until U6 #1 establishes it live
+hook_protocol: codex-json      # PreToolUse deny via hookSpecificOutput.permissionDecision (ask parsed but unsupported) or exit 2
+hook_wiring_caveat: hooks must be reviewed and trusted BY HASH before they run — installed is not armed, and an edit re-arms the review; Codex's own docs call hooks a guardrail, not a complete enforcement boundary.
 model_cmd: "codex exec --sandbox read-only --skip-git-repo-check {prompt}"
 model_sandbox: read-only   # verified against `codex exec --help`: --sandbox read-only
 auth: |

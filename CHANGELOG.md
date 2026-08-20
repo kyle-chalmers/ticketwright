@@ -7,6 +7,38 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **Hook degradation: the DB-write guard now travels beyond Claude Code** (PROMPT 7 / U3). The
+  deterministic scanner moved from the Claude hook into `bin/sql_scan.py` (one implementation,
+  behavior-identical — `tests/guard/golden.json` pins the Claude hook's stdin→stdout protocol
+  byte-for-byte across the move, and the existing guard selftests pass unmodified), and the new
+  `bin/hook_shim.py --runtime <name> --hook <name>` presents its verdicts in each runtime's own
+  hook protocol, selected by new adapter frontmatter (`hook_wiring`, `hook_protocol`,
+  `hook_wiring_caveat`, `rules_root`). `ticketwright install` now emits the wiring where a config
+  location is documented: `.cursor/hooks.json` with **`failClosed: true` set by the installer**
+  (required configuration — cursor hooks fail open by default), `.agents/hooks.json` for
+  antigravity (PreToolUse guard with `ask`/`force_ask` + PostToolUse index regeneration), and a
+  throw-to-deny plugin wrapper at `.opencode/plugins/` (`bin/opencode_tool_gate.js`). On runtimes
+  with no ask tier (codex-cli, opencode, devin) the default `high_risk` policy has no native
+  expression and **collapses to deny-with-escape** — destructive statements are denied with a
+  message naming the one-shot re-approval (the `TICKETWRIGHT_APPROVE=once` command prefix, or the
+  `.claude/config/approve.once` token: consumed on use, 15-minute expiry, gitignored by the
+  template) while additive statements pass untouched; the collapse is surfaced on the installer's
+  stdout and permanently in the new per-runtime × per-hook **enforcement table** in the rendered
+  `AGENTS.md` (replacing the now-false "for every other agent it is guidance" sentence), which the
+  cline install also emits into `.clinerules/` since cline users don't read AGENTS.md. The table's
+  vocabulary is deliberate: ENFORCEMENT is reserved for mechanisms proven in this kit's own test
+  contract (the native Claude hooks); an emitted-but-live-unverified mechanism is **WIRED**, and a
+  live confirmation on the punch list is what promotes it. Malformed
+  hook input is a per-runtime decision — ask on cursor/antigravity, deny-with-escape on the
+  deny-only three, never a silent allow where the installer configured fail-closed — and the
+  devin/opencode shim path exits **only** 0 or a deliberate 2 (devin logs-and-ignores any other
+  nonzero by documented design). Where even the hooks-config location is undocumented (codex-cli,
+  devin) the installer prints the exact manual wiring line instead of guessing a path. The Claude
+  Code path is unchanged: the hook keeps its in-process policy read, its fail-safe-to-`all`, and
+  its exit-0 contract — with one new, deliberate failure mode: if `bin/sql_scan.py` cannot be
+  imported, the hook asks on every Bash command in the configured repo (naming the fix) instead
+  of silently gating nothing. Whether each runtime honors its documented wiring remains
+  live-verification work (the U6 punch list); nothing here claims parity before that is paid.
 - **The full emission matrix: `ticketwright install --runtime <name>` now covers all seven
   runtimes** (PROMPT 7 / U2), driven entirely by adapter frontmatter — `reads_foreign_skills`
   and `skills_root` decide emit-vs-verify, `agents_root` decides agent-definition emission,

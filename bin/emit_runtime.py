@@ -208,6 +208,164 @@ def write_emitted(out: Path, content: str, foreign: list[Path]) -> bool:
     return True
 
 
+def hook_command(hook: str, tool: str) -> str:
+    """The wiring line for a kit hook on this runtime. It runs through bin/tw — the launcher that
+    finds the kit — so one line serves a vendored, wheel, or plugin-cache install alike."""
+    return f"bash bin/tw hook_shim.py --runtime {tool} --hook {hook}"
+
+
+_ENF_BEGIN = "<!-- ticketwright:enforcement:begin -->"
+_ENF_END = "<!-- ticketwright:enforcement:end -->"
+
+
+def enforcement_block(kit: Path) -> str | None:
+    """The enforcement table, extracted verbatim from the AGENTS.md template between its markers —
+    ONE authoring point, two surfaces (the rendered AGENTS.md, and the rules-root copy for a
+    runtime whose users never read AGENTS.md)."""
+    try:
+        text = (kit / "templates" / "AGENTS.md.tmpl").read_text(encoding="utf-8")
+        start = text.index(_ENF_BEGIN) + len(_ENF_BEGIN)
+        end = text.index(_ENF_END)
+    except (OSError, ValueError):
+        return None
+    return text[start:end].strip() + "\n"
+
+
+def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
+               foreign: list[Path]) -> int:
+    """Wire the kit's hooks for this runtime — or state, precisely, why they are not wired
+    (PROMPT 7 / U3). A missing hook must never SILENTLY weaken a safety policy.
+
+    Data-driven off adapter frontmatter (`hook_wiring`, `hook_protocol`, `hook_wiring_caveat`,
+    `rules_root`, `gate_ask_tier`) — the emitter carries protocol code, never a runtime name in
+    branch logic. The 3b collapse is surfaced once per install run on stdout (a safety decision,
+    never a buried config detail) and permanently in the enforcement table the rendered AGENTS.md
+    carries. Nothing here ever writes under .claude/ — the Claude Code wiring cannot be shadowed.
+    """
+    wiring = fm.get("hook_wiring", "unknown")
+    protocol = fm.get("hook_protocol", "unknown")
+    ask = fm.get("gate_ask_tier", "unknown")
+    prov = PROVENANCE_TEXT.format(version=version, runtime=tool)
+    caveat = fm.get("hook_wiring_caveat", "")
+
+    if wiring == "native":
+        print("  hooks     native — the Claude Code wiring (.claude-plugin/plugin.json, mirrored "
+              "in .claude/settings.json) is untouched; this installer never emits anything under "
+              ".claude/.")
+        return 0
+
+    # THE COLLAPSE (3b), stated per runtime class — once per install run, the "warn once" scope.
+    if ask == "no":
+        print("  policy    db_write_requires_approval=high_risk (the default) has NO native "
+              "expression here — no ask tier. It collapses to DENY-WITH-ESCAPE: destructive "
+              "statements are denied with a message naming the one-shot re-approval (the "
+              "`TICKETWRIGHT_APPROVE=once` command prefix, or the .claude/config/approve.once "
+              "token — consumed on use); additive statements pass untouched. It NEVER collapses "
+              "toward allow.")
+    elif ask == "yes":
+        print("  policy    db_write_requires_approval=high_risk is expressed as `ask` here — a "
+              "gated statement becomes a confirmation, not a refusal.")
+    else:
+        print("  policy    db_write_requires_approval degrades to GUIDANCE here — no verified "
+              "hook mechanism can express it (see the enforcement table in the rendered "
+              "AGENTS.md).")
+
+    if wiring == "unknown":
+        if protocol == "unknown":
+            print(f"  hooks     none wired on {tool} — no verified hook mechanism exists to wire "
+                  f"(see adapters/runtime/{tool}.md).")
+        else:
+            print(f"  hooks     shim-ready but NOT wired: {tool} documents its hook protocol, but "
+                  f"the hooks-config file location is not in the kit's research — wire the guard "
+                  f"yourself: `{hook_command('db_write_guard', tool)} || exit 2` (the suffix keeps "
+                  f"a bin/tw launcher failure inside the documented deny exit; the shim itself "
+                  f"already exits only 0 or 2), plus the session banners via "
+                  f"--hook session_context / ticket_index_context; live verification will "
+                  f"establish the config path.")
+        if caveat:
+            print(f"  caveat    {caveat}")
+    elif wiring.endswith(".json"):
+        cfg: dict[str, object] = {
+            "_provenance": prov,
+            "_schema_note": "hook-entry shape assembled from the documented fields; the config "
+                            "file's full schema is live-unverified — see the enforcement table "
+                            "in AGENTS.md.",
+        }
+        if protocol == "cursor-json":
+            cfg["hooks"] = {"beforeShellExecution": [
+                {"command": hook_command("db_write_guard", tool), "failClosed": True}]}
+            note = "failClosed: true is required configuration on a fail-open-by-default runtime"
+        elif protocol == "agy-json":
+            cfg["hooks"] = {
+                "PreToolUse": [{"command": hook_command("db_write_guard", tool)}],
+                "PostToolUse": [{"command": hook_command("regenerate_ticket_index", tool)}],
+            }
+            note = "PreToolUse guard (ask/force_ask) + PostToolUse index regeneration"
+        else:
+            print(f"emit_runtime: the {tool} adapter declares hook_wiring {wiring!r} with "
+                  f"hook_protocol {protocol!r}, which this emitter has no config shape for — fix "
+                  f"the adapter frontmatter.", file=sys.stderr)
+            return 2
+        out = project / wiring
+        if write_emitted(out, json.dumps(cfg, indent=2) + "\n", foreign):
+            print(f"  emitted   {out} (hook config; {note})")
+        if caveat:
+            print(f"  caveat    {caveat}")
+    elif wiring.endswith(".js"):
+        src = kit / "bin" / "opencode_tool_gate.js"
+        try:
+            body = src.read_text(encoding="utf-8")
+        except OSError:
+            print(f"emit_runtime: {src} is missing from the kit — cannot emit the plugin wrapper.",
+                  file=sys.stderr)
+            return 2
+        out = project / wiring
+        if write_emitted(out, f"// {prov}\n{body}", foreign):
+            print(f"  emitted   {out} (throw-to-deny plugin wrapper: exit 2 from the guard shim "
+                  f"becomes a thrown error, this runtime's documented deny)")
+        if caveat:
+            print(f"  caveat    {caveat}")
+    else:
+        print(f"emit_runtime: the {tool} adapter declares hook_wiring {wiring!r}, which this "
+              f"emitter does not recognize — fix the adapter frontmatter.", file=sys.stderr)
+        return 2
+
+    if wiring != "unknown":
+        # The wired commands run through bin/tw, which must exist IN THE PROJECT.
+        if not (project / "bin" / "tw").is_file():
+            print("  warning   the emitted hook wiring invokes `bash bin/tw ...`, but this "
+                  "project has no bin/tw — vendor the kit (pip install ticketwright && "
+                  "ticketwright init), or the wired hooks cannot run.")
+        # Session banners: not wired anywhere yet — no runtime documents BOTH a hooks-config
+        # location AND a context-injection schema the kit's research can cite. The fallback is
+        # the workflow instruction, carried in the enforcement table.
+        if fm.get("session_start") == "yes":
+            print(f"  note      session banners are not wired ({tool} documents a session-start "
+                  f"event, but not an injection schema this kit's research can cite) — run "
+                  f"`{hook_command('session_context', tool)}` and the ticket_index_context "
+                  f"variant at session start.")
+        else:
+            print(f"  note      no session-start event here — the banners are workflow: run "
+                  f"`{hook_command('session_context', tool)}` and the ticket_index_context "
+                  f"variant at session start; rules text is static, banner output is fresh.")
+
+    # The honesty artifact for a runtime whose users do not read AGENTS.md.
+    rules_root = fm.get("rules_root", "")
+    if rules_root:
+        block = enforcement_block(kit)
+        if block is None:
+            print("emit_runtime: templates/AGENTS.md.tmpl has no enforcement-table markers — "
+                  "cannot emit the rules artifact.", file=sys.stderr)
+            return 2
+        content = (f"<!-- {prov} -->\n\n# Ticketwright enforcement — what is mechanical here\n\n"
+                   + block)
+        out = project / rules_root / "ticketwright-enforcement.md"
+        if write_emitted(out, content, foreign):
+            print(f"  emitted   {out} (the enforcement table, emitted where {tool} users "
+                  f"actually read)")
+    return 0
+
+
 def report_foreign(foreign: list[Path]) -> int:
     for p in foreign:
         print(f"emit_runtime: {p} already exists and this installer did not emit it (no provenance "
@@ -358,11 +516,15 @@ def verify_native(project: Path, tool: str) -> int:
     if kit_paths.is_kit(project) and skills:
         print(f"{tool}: verify-only — nothing to emit. Vendored install found (kit markers "
               f"present; {len(skills)} SKILL.md files under .claude/skills/).")
+        print("  hooks     native — the Claude Code wiring is untouched; this installer never "
+              "emits anything under .claude/.")
         return 0
     plugin = kit_paths._plugin_kit(project)
     if plugin:
         print(f"{tool}: verify-only — nothing to emit. Installed as a Claude Code plugin "
               f"(kit at {plugin}).")
+        print("  hooks     native — the Claude Code wiring is untouched; this installer never "
+              "emits anything under .claude/.")
         return 0
     print(f"{tool}: no ticketwright install found for this project — no plugin-manifest entry, "
           "and no vendored kit (bin/kit_paths.py + adapters/ + templates/ + .claude/skills/).",
@@ -422,8 +584,7 @@ def verify_foreign(kit: Path, project: Path, fm: dict, tool: str, version: str) 
                       f"re-run the install that emitted it to refresh it.")
     foreign: list[Path] = []
     rc = emit_agents(kit, project, fm, tool, version, foreign)
-    print("  note: hooks (the db-write guard, the session banners) are not emitted yet — until "
-          "they are, db_write_requires_approval is guidance on this runtime, not enforcement.")
+    rc = max(rc, emit_hooks(kit, project, fm, tool, version, foreign))
     return max(rc, report_foreign(foreign))
 
 
@@ -433,8 +594,7 @@ def run_emit(kit: Path, project: Path, fm: dict, tool: str, version: str) -> int
     emitted = emit_skills(kit, emit_root, tool, version, foreign)
     print(f"{tool}: emitted {len(emitted)} skills into {emit_root}/")
     rc = emit_agents(kit, project, fm, tool, version, foreign)
-    print("  note: hooks (the db-write guard, the session banners) are not emitted yet — until "
-          "they are, db_write_requires_approval is guidance on this runtime, not enforcement.")
+    rc = max(rc, emit_hooks(kit, project, fm, tool, version, foreign))
     return max(rc, report_foreign(foreign))
 
 
@@ -459,8 +619,8 @@ def run_global(kit: Path, fm: dict, tool: str, version: str, mode: str) -> int:
     print(f"{tool}: emitted {len(emitted)} skills into {emit_root}/ (global)")
     print("  note: agent definitions are project-scoped (no global agents root is researched) — "
           "run the per-project install for them.")
-    print("  note: hooks (the db-write guard, the session banners) are not emitted yet — until "
-          "they are, db_write_requires_approval is guidance on this runtime, not enforcement.")
+    print("  note: hook wiring is project-scoped too (the guard reads the PROJECT's stack.yaml "
+          "policy) — the per-project install emits or explains it.")
     return report_foreign(foreign)
 
 

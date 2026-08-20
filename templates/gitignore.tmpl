@@ -44,6 +44,10 @@
 .claude/worktrees/
 # Which apps open your deliverables at a review gate is a personal choice, not a repo convention.
 .claude/config/*.local.yaml
+# The one-shot DB-write approval token (deny-with-escape on runtimes without an ask tier).
+# Consumed on use and expiring in minutes — but never committable: a committed token would be
+# a standing approval in the repo.
+.claude/config/approve.once
 
 # ── Python ──
 __pycache__/

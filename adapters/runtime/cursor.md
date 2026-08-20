@@ -16,6 +16,9 @@ subagent_isolation: documented
 reads_foreign_skills: .claude/skills, .codex/skills
 global_skills_root: ~/.cursor/skills
 agents_root: .cursor/agents/<name>.md
+hook_wiring: .cursor/hooks.json   # documented config file; the installer emits the guard entry with failClosed: true (required config, not tuning)
+hook_protocol: cursor-json        # preToolUse / beforeShellExecution return {"permission": "allow"|"deny"|"ask"}
+hook_wiring_caveat: cursor hooks fail OPEN by default — failClosed true in the emitted config is required configuration, not tuning; the config-file schema and the deny path are live-unverified.
 foreign_skills_caveat: Cursor also reads .codex/skills/ and .agents/skills/, so a copy emitted there for another runtime's users is visible here too — which copy wins is unverified upstream (the live-verification punch list covers it).
 model_cmd: ""
 model_sandbox: n/a   # no headless model command

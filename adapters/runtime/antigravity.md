@@ -17,6 +17,9 @@ subagent_isolation: documented
 reads_foreign_skills: none
 global_skills_root: unknown # two official pages disagree — see gotchas; U6 resolves it live
 agents_root: .agents/agents/<name>.md
+hook_wiring: .agents/hooks.json   # documented config file; the installer emits PreToolUse (guard, ask/force_ask) + PostToolUse (index regen)
+hook_protocol: agy-json           # PreToolUse returns decision allow|deny|ask|force_ask|deny_unless_prior_grant
+hook_wiring_caveat: what a FAILING hook does here is undocumented — treated as UNKNOWN, never assumed to hold.
 model_cmd: "agy -p {prompt}"
 model_sandbox: unverified   # docs describe a commandExecutionPolicy for subagents, not a verified CLI flag for `agy -p`
 auth: |

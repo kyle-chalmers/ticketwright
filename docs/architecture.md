@@ -124,6 +124,13 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   literals first so a verb quoted as data isn't mistaken for a statement. Read-only SQL takes an
   `allow` fast-path. Under `bypassPermissions` it emits a `systemMessage` instead of asking, since
   the operator has already opted out of prompting.
+  The scanner itself lives in [`bin/sql_scan.py`](../bin/sql_scan.py) (one deterministic
+  implementation, shared with the non-Claude shims — logic in `bin/`, hooks as presentation); the
+  hook is the Claude-protocol presenter, and `tests/guard/golden.json` pins its stdin→stdout
+  behavior byte-for-byte across that boundary. One failure mode is deliberate and new with the
+  split: if `bin/sql_scan.py` cannot be imported, the hook asks on **every** Bash command in the
+  configured repo (naming the broken module) rather than falling into its blanket fail-open
+  handler — nothing can be classified, so everything gates, visibly.
 - **`session_context.py`** (SessionStart) — primes every session with the configured stack, the
   skills, and the lifecycle.
 - **`ticket_index_context.py`** (SessionStart) — surfaces the ticket catalog (counts + most recent
@@ -131,10 +138,24 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
 - **`regenerate_ticket_index.py`** (PostToolUse/Write·Edit) — re-renders `tickets/INDEX.md`
   whenever a ticket folder changes.
 
-Hooks are the one Claude-Code-specific layer; the rest of the kit is agent-agnostic. Other agents
-read the same policies from `stack.yaml` and honor them via the skill-level hard-halts — that is
-**guidance, not enforcement**, and the docs should not imply those agents get equivalent runtime
-protection. The policy value is the shared contract; only the enforcement mechanism differs.
+The hook *files* above are the Claude-Code-specific presentation; the logic they present is
+harness-neutral. [`bin/hook_shim.py`](../bin/hook_shim.py) adapts the same hooks to the other
+runtimes' protocols (`--runtime <name> --hook <name>`, protocol selected by each runtime adapter's
+`hook_protocol` frontmatter), and `ticketwright install` emits the wiring where a config location
+is documented: `.cursor/hooks.json` (with `failClosed: true` — required configuration on a
+fail-open-by-default runtime), `.agents/hooks.json` for Antigravity (PreToolUse guard +
+PostToolUse index regen), and the `.opencode/plugins/` throw-to-deny wrapper
+([`bin/opencode_tool_gate.js`](../bin/opencode_tool_gate.js)). Where the runtime has no ask tier
+(codex-cli, opencode, devin), `high_risk` collapses to **deny-with-escape** — denied with a
+message naming the one-shot re-approval (`TICKETWRIGHT_APPROVE=once` prefix or the
+`.claude/config/approve.once` token, consumed on use) — never toward allow, and never blocking
+additive work. Where even the config location is undocumented (codex-cli, devin), the installer
+prints the manual wiring line instead of guessing a path. What each runtime mechanically enforces
+vs. merely reads as guidance is stated per runtime × per hook in the rendered `AGENTS.md`
+enforcement table (and in `.clinerules/` for Cline, whose users don't read AGENTS.md) — a missing
+hook never silently weakens a policy. Whether each runtime *honors* its documented wiring is
+live-verification work, tracked on the punch list, and the docs must not imply parity before it
+is paid.
 
 ## What's inside
 

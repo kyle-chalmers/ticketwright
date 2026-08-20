@@ -1,0 +1,186 @@
+{
+  "absent_key_fails_safe": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=all: this `snow` command carries a additive statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "additive_create_passes": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "all_gates_additive": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=all: this `snow` command carries a additive statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "alter_add_passes": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "alter_modify_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "bypass_drop_sysmsg": {
+    "exit": 0,
+    "stdout": "{\"systemMessage\": \"db_write_guard: high-risk warehouse statement detected (snow); approval not requested because the session is in bypassPermissions mode.\"}\n"
+  },
+  "cmdsub_defeats_fastpath": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "comment_on_passes": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "dontask_drop_still_asks": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "drop_in_comment_allow": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  },
+  "drop_in_string_allow": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  },
+  "drop_inline_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "file_create_or_replace_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "file_read_only_allow": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  },
+  "grant_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "indent4_custom_cli_gated": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=all: this `whcli` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "insert_into_passes": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "insert_overwrite_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "legacy_false_is_off": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "legacy_true_is_high_risk": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "malformed_stdin_exit0_silent": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "merge_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "multi_statement_highest_tier": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "newline_chain_drop_asks": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "newline_chain_not_allowed": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "non_bash_tool_silent": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "non_warehouse_silent": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "nondefault_target_cli_gated": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `trino` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "off_drop_silent": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "read_inline_allow": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  },
+  "second_q_payload_classified": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "sh_c_wrap_not_allowed": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "shell_operator_defeats_fastpath": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "stdin_redirect_delete_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `psql` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "tracker_cli_not_gated": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "unconfigured_repo_silent": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "unknown_value_fails_safe": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=all: this `snow` command carries a additive statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "unreadable_file_never_allowed": {
+    "exit": 0,
+    "stdout": ""
+  },
+  "unrecognized_verb_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "update_inline_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "with_delete_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"db_write_requires_approval=high_risk: this `snow` command carries a high-risk statement. Show the exact SQL and target environment, explain what it changes, and proceed only on explicit approval.\"}}\n"
+  },
+  "with_select_allow": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  },
+  "wrong_target_bypass_sysmsg": {
+    "exit": 0,
+    "stdout": "{\"systemMessage\": \"db_write_guard: SQL declares target `lake` (`trino`) but the command runs `snow`; approval not requested because the session is in bypassPermissions mode.\"}\n"
+  },
+  "wrong_target_match_allow": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  },
+  "wrong_target_mismatch_ask": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"ask\", \"permissionDecisionReason\": \"wrong warehouse: this command runs `snow`, but the SQL declares `-- warehouse-target: lake`, which uses `trino`. Confirm the target before running \\u2014 a query against the wrong warehouse returns plausible wrong numbers rather than an error.\"}}\n"
+  },
+  "wrong_target_typo_no_gate": {
+    "exit": 0,
+    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+  }
+}

@@ -11,13 +11,21 @@ What each tree holds mirrors the emission matrix (emit-vs-verify is decided by e
 
 - `codex-cli/` — the full skill emission under `.agents/skills/` (user-invocable-only skills
   included, each carrying its topmost warning block) plus the agent definition
-  `.codex/agents/qc-reviewer.toml`.
+  `.codex/agents/qc-reviewer.toml`. NO hook config: the hooks-config file location is not in the
+  kit's research, so the installer prints the manual wiring line instead of guessing a path.
 - `antigravity/` — the same `.agents/skills/` emission (one emission serves both runtimes; only
-  the provenance header's re-run command differs) plus `.agents/agents/qc-reviewer.md`.
-- `cursor/`, `devin/` — agent definitions only (`.cursor/agents/`, `.devin/agents/`): these
-  runtimes read the canonical `.claude/skills/` copy natively, so the installer verifies and
-  emits NO skill files. opencode and cline have no fixture tree because they emit nothing at all
-  (selftest asserts that as absence).
+  the provenance header's re-run command differs), `.agents/agents/qc-reviewer.md`, and the hook
+  config `.agents/hooks.json` (PreToolUse guard + PostToolUse index regen).
+- `cursor/`, `devin/` — no skill files (these runtimes read the canonical `.claude/skills/` copy
+  natively, so the installer verifies and emits no duplicate): cursor gets
+  `.cursor/agents/qc-reviewer.md` plus `.cursor/hooks.json` (with `failClosed: true` — required
+  configuration); devin gets `.devin/agents/qc-reviewer.md` only (its hooks-config location is
+  unresearched, like codex-cli's).
+- `opencode/` — the throw-to-deny plugin wrapper `.opencode/plugins/ticketwright-db-write-guard.js`
+  (its plugin root is documented; nothing else is emitted).
+- `cline/` — the enforcement-table honesty artifact `.clinerules/ticketwright-enforcement.md`
+  (extracted from `templates/AGENTS.md.tmpl` between its markers — cline users don't read
+  AGENTS.md); nothing else, and `.cline/` stays absent (selftest asserts it).
 
 Regenerate after a deliberate output change (repeat per emitting runtime):
 
@@ -29,10 +37,14 @@ cp -R "$tmp/.agents" "$tmp/.codex" tests/emit/codex-cli/
 rm -rf "$tmp"
 ```
 
-For antigravity, copy `.agents` only. For cursor/devin, first vendor a fixture project
+For antigravity, copy `.agents` only. For the verify runtimes (cursor/devin/opencode/cline), first
+vendor a fixture project
 (`mkdir -p "$tmp/adapters" "$tmp/templates" "$tmp/bin" && cp bin/kit_paths.py "$tmp/bin/" &&
 mkdir -p "$tmp/.claude" && cp -R .claude/skills "$tmp/.claude/skills"`), run the installer against
-it, and copy the emitted `.cursor`/`.devin` directory.
+it, and copy the emitted `.cursor` / `.devin` / `.opencode` / `.clinerules` directory. The
+enforcement-table markers in `templates/AGENTS.md.tmpl` feed the cline artifact, so an edit to
+that block regenerates `cline/` in the same commit; `bin/opencode_tool_gate.js` feeds the
+opencode wrapper the same way.
 
 Things to know before touching these:
 

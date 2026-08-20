@@ -16,6 +16,9 @@ subagent_isolation: unestablished   # "own context window" appears only on unoff
 reads_foreign_skills: .claude/skills, .agents/skills
 global_skills_root: ~/.config/opencode/skills
 agents_root: unknown        # subagents are user-definable (mode: subagent) but no definition file path is documented — stated, never guessed
+hook_wiring: .opencode/plugins/ticketwright-db-write-guard.js   # plugins auto-load from .opencode/plugins/ (plugins doc re-checked 2026-08-19)
+hook_protocol: exit-code       # the emitted plugin wrapper shells the shim and throws on exit 2 — "throwing an error prevents the tool from executing"
+hook_wiring_caveat: deny is delivered by throwing from tool.execute.before; what an entirely-failed plugin LOAD does is undocumented, and whether the wrapper is loaded at all is live-unverified.
 foreign_skills_caveat: OpenCode also reads .agents/skills/, so a copy emitted there for codex-cli/antigravity users is visible here too — which copy wins is unverified (the live-verification punch list covers it).
 model_cmd: "opencode run {prompt}"
 model_sandbox: unverified   # no restriction flag verified for `opencode run`

@@ -4404,16 +4404,26 @@ for rt in $verify_rts; do
     python3 bin/emit_runtime.py --runtime "$rt" --root "$VD_P" 2>&1)"; vrc=$?
   (cd "$VD_P" && find . -type f | sort) > "$E41/after.$rt"
   # The durable no-duplicate proof: the ONLY files a verify run may create are the agent
-  # definitions its adapter's agents_root declares — computed from the same data the emitter
-  # uses, so a regression that wrote a skill copy under ANY root (its own, .agents/, anywhere)
-  # shows up as an unexpected new file, not just as a miss on one probed directory.
+  # definitions its adapter's agents_root declares, PLUS (since U3) the hook wiring its
+  # hook_wiring declares and the enforcement artifact its rules_root declares — all computed
+  # from the same data the emitter uses, so a regression that wrote a skill copy under ANY root
+  # (its own, .agents/, anywhere) shows up as an unexpected new file, not just as a miss on one
+  # probed directory.
   vnew="$(comm -13 "$E41/before.$rt" "$E41/after.$rt")"
   want="$(python3 -c "import sys, pathlib; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter
 fm = read_frontmatter(pathlib.Path('adapters/runtime/$rt.md'))
 ar = fm.get('agents_root', '')
+lines = []
 if ar not in ('none', 'unknown'):
     for a in sorted(pathlib.Path('.claude/agents').glob('*.md')):
-        print('./' + ar.replace('<name>', a.stem))
+        lines.append('./' + ar.replace('<name>', a.stem))
+hw = fm.get('hook_wiring', 'unknown')
+if hw not in ('native', 'unknown'):
+    lines.append('./' + hw)
+rr = fm.get('rules_root', '')
+if rr:
+    lines.append('./' + rr + '/ticketwright-enforcement.md')
+print('\n'.join(sorted(lines)))
 ")"
   sroot="$(python3 -c "import sys; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter; \
 from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md'))['skills_root'].rsplit('/<name>/',1)[0])")"
@@ -4430,14 +4440,24 @@ from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')
     || bad "$rt's verify run broke its contract" "$vbad"
 done
 vdiff="$(diff -r "$VD_P/.cursor" tests/emit/cursor/.cursor 2>&1)" \
-  && ok "cursor's emitted agent definition matches tests/emit/cursor/ (and nothing else was written)" \
-  || bad "cursor's agent emission diverged" "$(head -3 <<<"$vdiff")"
+  && ok "cursor's emitted tree matches tests/emit/cursor/ (agent definition + hooks.json, nothing else)" \
+  || bad "cursor's emission diverged" "$(head -3 <<<"$vdiff")"
 vdiff="$(diff -r "$VD_P/.devin" tests/emit/devin/.devin 2>&1)" \
   && ok "devin's emitted agent definition matches tests/emit/devin/" \
   || bad "devin's agent emission diverged" "$(head -3 <<<"$vdiff")"
-{ [ ! -e "$VD_P/.cline" ] && [ ! -e "$VD_P/.opencode" ]; } \
-  && ok "cline and opencode runs emit no artifacts at all (nothing to pin — absence is the fixture)" \
-  || bad "cline or opencode wrote files their adapters do not declare a home for"
+# U3 gave cline and opencode emitted artifacts where they previously had none: opencode gets the
+# throw-to-deny plugin wrapper (its documented plugin root), cline gets the enforcement table in
+# its documented rules surface. Their fixture trees pin the bytes; .cline/ stays absent (cline's
+# own skills root gets no copy — the canonical .claude/skills/ is what it reads).
+vdiff="$(diff -r "$VD_P/.opencode" tests/emit/opencode/.opencode 2>&1)" \
+  && ok "opencode's emitted plugin wrapper matches tests/emit/opencode/ (throw-to-deny, nothing else)" \
+  || bad "opencode's plugin-wrapper emission diverged" "$(head -3 <<<"$vdiff")"
+vdiff="$(diff -r "$VD_P/.clinerules" tests/emit/cline/.clinerules 2>&1)" \
+  && ok "cline's emitted enforcement artifact matches tests/emit/cline/ (.clinerules copy)" \
+  || bad "cline's .clinerules emission diverged" "$(head -3 <<<"$vdiff")"
+[ ! -e "$VD_P/.cline" ] \
+  && ok "cline's own skills root stays empty (no duplicate of the canonical copy)" \
+  || bad "cline wrote files its adapter does not declare a home for"
 cl_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   python3 bin/emit_runtime.py --runtime cline --root "$VD_P" 2>&1)"
 grep -q 'not user-definable' <<<"$cl_out" \
@@ -4602,6 +4622,371 @@ sys.exit(0 if c.get("subagents") == "no" and c.get("subagent_isolation") == "unk
 PY
 [ $? -eq 0 ] && ok "an unrecognized runtime probes to the degraded pair (subagents=no, isolation=unknown)" \
   || bad "the unknown-runtime floor no longer lands the probe in the degraded branch" "$cli42"
+
+hdr "43 · hook degradation: sql_scan extraction, guard shims, the enforcement table (PROMPT 7 / U3)"
+# The riskiest boundary in the kit: the DB-write guard's scanner moved to bin/sql_scan.py and the
+# Claude hook became its presenter. What this section pins, in order: (1) the Claude protocol is
+# byte-identical across that move (golden corpus, generated from the pre-extraction hook) and the
+# scanner CLI agrees with the hook's decisions on the same corpus; (2) a BROKEN scanner gates MORE,
+# never less — the one deliberate new failure mode; (3) each runtime shim speaks its exact
+# documented schema, malformed input follows each runtime's DECLARED decision (never silent-allow
+# where fail-closed is configured), and the devin/opencode path can exit ONLY 0 or a deliberate 2;
+# (4) the one-shot escape round-trips offline; (5) the emitted wiring artifacts (failClosed: true
+# on cursor, both events on antigravity, the throw-to-deny wrapper on opencode) and the install
+# report's collapse statements; (6) the enforcement table in RENDERED output with no empty cell;
+# (7) the Claude wiring is untouched. Live runtime honoring is deliberately NOT asserted anywhere
+# here — that is the U6 punch list.
+
+# --- (1) behavior identity across the extraction ---------------------------------------------------
+python3 tests/guard/run_corpus.py --agreement >/dev/null 2>"$TMP/corpus.err" \
+  && ok "the Claude hook reproduces tests/guard/golden.json byte-for-byte, and bin/sql_scan.py's verdicts agree on the same corpus" \
+  || bad "the guard's Claude protocol drifted across the sql_scan extraction" "$(head -5 "$TMP/corpus.err")"
+
+# --- (2) a broken scanner gates MORE, never less ----------------------------------------------------
+BK="$TMP/broken-scan"; mkdir -p "$BK/kit" "$BK/proj/.claude/config"
+cp -R bin .claude adapters templates "$BK/kit/" 2>/dev/null   # a real kit shape, so resolve_kit lands HERE
+printf 'gitdir: fixture\n' > "$BK/proj/.git"
+printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' \
+  > "$BK/proj/.claude/config/stack.yaml"
+bkguard() {  # bkguard <command> [mode] — run the sabotaged kit's hook against the fixture repo
+  python3 -c 'import json,sys
+p={"tool_name":"Bash","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}
+if len(sys.argv)>3: p["permission_mode"]=sys.argv[3]
+print(json.dumps(p))' "$1" "$BK/proj" ${2:+"$2"} \
+    | env -u CLAUDE_PROJECT_DIR python3 "$BK/kit/.claude/hooks/db_write_guard.py" 2>/dev/null
+}
+rm "$BK/kit/bin/sql_scan.py"
+o="$(bkguard 'snow sql -q "DROP TABLE t"')"; r1=$?
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'sql_scan' <<<"$o" && [ "$r1" -eq 0 ] \
+  && ok "scanner DELETED: a destructive command still asks, names the broken module, exits 0" \
+  || bad "a deleted scanner weakened or crashed the Claude guard" "rc=$r1 $o"
+o="$(bkguard 'ls -la')"
+grep -q '"permissionDecision": "ask"' <<<"$o" \
+  && ok "scanner deleted: EVERY command in the configured repo is gated (nothing can be classified — more, never less)" \
+  || bad "a deleted scanner let an unclassifiable command through silently" "$o"
+o="$(bkguard 'snow sql -q "DROP TABLE t"' bypassPermissions)"
+grep -q 'systemMessage' <<<"$o" && ! grep -q 'permissionDecision' <<<"$o" \
+  && ok "scanner deleted + bypassPermissions: visible systemMessage, no prompt (the mode contract holds)" \
+  || bad "the broken-scanner path ignored bypassPermissions" "$o"
+printf 'seams:\n  warehouse:\n    cli: snow\npolicies:\n  db_write_requires_approval: off\n' \
+  > "$BK/proj/.claude/config/stack.yaml"
+o="$(bkguard 'snow sql -q "DROP TABLE t"')"
+[ -z "$o" ] && ok "scanner deleted + policy off: silent (an explicit operator instruction, readable without the scanner)" \
+  || bad "policy off stopped silencing the broken-scanner path" "$o"
+printf 'seams:\n  warehouse:\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' \
+  > "$BK/proj/.claude/config/stack.yaml"
+printf 'def broken(\n' > "$BK/kit/bin/sql_scan.py"   # syntax error: import fails, file present
+o="$(bkguard 'snow sql -q "SELECT 1"')"
+grep -q '"permissionDecision": "ask"' <<<"$o" \
+  && ok "scanner CORRUPTED (syntax error): still asks — any import failure maps to gating more" \
+  || bad "a corrupt scanner fell into the blanket fail-open handler" "$o"
+echo 'not json' | env -u CLAUDE_PROJECT_DIR python3 "$BK/kit/.claude/hooks/db_write_guard.py" >/dev/null 2>&1 \
+  && ok "scanner corrupted: malformed stdin still exits 0 silently (the Claude protocol contract survives the fault)" \
+  || bad "malformed stdin exited nonzero with a broken scanner (would BLOCK the call)"
+# A scanner that imports fine but CRASHES while classifying must gate too — without the local
+# boundary around assess(), this landed in main()'s blanket fail-open handler (gate-2 finding).
+printf 'def assess(*a, **k):\n    raise RuntimeError("selftest: scanner runtime fault")\n' \
+  > "$BK/kit/bin/sql_scan.py"
+o="$(bkguard 'snow sql -q "DROP TABLE t"')"; r=$?
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'failed while classifying' <<<"$o" && [ "$r" -eq 0 ] \
+  && ok "scanner CRASHES at classify time: still asks, names the fault, exits 0 (never the blanket fail-open)" \
+  || bad "a crashing scanner fell through to fail-open on Claude" "rc=$r $o"
+o="$(bkguard 'snow sql -q "DROP TABLE t"' bypassPermissions)"
+grep -q 'systemMessage' <<<"$o" \
+  && ok "scanner crashes + bypassPermissions: visible systemMessage, no prompt" \
+  || bad "the crash path ignored bypassPermissions" "$o"
+# A scanner that RETURNS GARBAGE is the same fault as one that raises: the fail-safe boundary must
+# cover the verdict's consumption, not just the call (adversarial-review P2-1 — decision["kind"] /
+# ["detail"] reads outside the try landed a KeyError in the blanket handler: a SILENT ALLOW).
+printf 'def assess(*a, **k):\n    return {}\n' > "$BK/kit/bin/sql_scan.py"
+o="$(bkguard 'snow sql -q "DROP TABLE t"')"; r=$?
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'failed while classifying' <<<"$o" && [ "$r" -eq 0 ] \
+  && ok "scanner returns an EMPTY verdict: still asks, names the fault, exits 0 (consumption is inside the boundary)" \
+  || bad "an empty scanner verdict fell through to a silent allow" "rc=$r $o"
+printf 'def assess(*a, **k):\n    return {"kind": "gate"}\n' > "$BK/kit/bin/sql_scan.py"
+o="$(bkguard 'snow sql -q "DROP TABLE t"')"; r=$?
+grep -q '"permissionDecision": "ask"' <<<"$o" && [ "$r" -eq 0 ] \
+  && ok "scanner returns a gate verdict with NO detail: still asks (a malformed field never reaches the blanket handler)" \
+  || bad "a field-less gate verdict fell through to a silent allow" "rc=$r $o"
+
+# --- (3) the shims: exact schemas, per-runtime malformed decisions, exit-code discipline ------------
+SH="$TMP/shimrepo"; mkdir -p "$SH/.claude/config"
+printf 'gitdir: fixture\n' > "$SH/.git"
+shstack() { printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: %s\n' "$1" > "$SH/.claude/config/stack.yaml"; }
+shpay() { python3 -c 'import json,sys; print(json.dumps({"tool_name":"Bash","tool_input":{"command":sys.argv[1]},"cwd":sys.argv[2]}))' "$1" "$SH"; }
+shim() { env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py "$@"; }
+shstack high_risk
+o="$(shpay 'snow sql -q "DROP TABLE t"' | shim --runtime codex-cli --hook db_write_guard)"; r=$?
+python3 -c '
+import json,sys
+d=json.loads(sys.argv[1])["hookSpecificOutput"]
+assert d["hookEventName"]=="PreToolUse" and d["permissionDecision"]=="deny", d
+assert "TICKETWRIGHT_APPROVE=once" in d["permissionDecisionReason"], d
+' "$o" 2>/dev/null && [ "$r" -eq 0 ] \
+  && ok "codex-cli: destructive SQL → permissionDecision deny in the exact documented schema, escape named, exit 0" \
+  || bad "the codex-cli deny schema is wrong" "rc=$r $o"
+o="$(shpay 'snow sql -q "CREATE TABLE t (a int)"' | shim --runtime codex-cli --hook db_write_guard)"; r=$?
+{ [ -z "$o" ] && [ "$r" -eq 0 ]; } \
+  && ok "codex-cli: additive SQL passes untouched under high_risk (the collapse never blocks additive work)" \
+  || bad "additive SQL was gated on a deny-only runtime" "rc=$r $o"
+o="$(echo 'not json' | shim --runtime codex-cli --hook db_write_guard --root "$SH")"; r=$?
+grep -q '"permissionDecision": "deny"' <<<"$o" && [ "$r" -eq 0 ] \
+  && ok "codex-cli: malformed stdin DENIES with the escape message (never a silent allow)" \
+  || bad "malformed stdin did not deny on codex-cli" "rc=$r $o"
+o="$(shpay 'snow sql -q "DROP TABLE t"' | shim --runtime cursor --hook db_write_guard)"; r=$?
+[ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["permission"])' "$o" 2>/dev/null)" = "ask" ] && [ "$r" -eq 0 ] \
+  && ok "cursor: destructive SQL → {\"permission\": \"ask\"} (the ask tier exists here — no collapse)" \
+  || bad "the cursor ask schema is wrong" "rc=$r $o"
+o="$(echo '{broken' | shim --runtime cursor --hook db_write_guard --root "$SH")"
+[ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["permission"])' "$o" 2>/dev/null)" = "ask" ] \
+  && ok "cursor: malformed stdin ESCALATES to ask (failClosed wiring must never be reopened by a swallowed parse error)" \
+  || bad "malformed stdin did not escalate on cursor" "$o"
+o="$(shpay 'snow sql -q "DROP TABLE t"' | shim --runtime antigravity --hook db_write_guard)"
+[ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["decision"])' "$o" 2>/dev/null)" = "ask" ] \
+  && ok "antigravity: destructive SQL under high_risk → decision ask" \
+  || bad "the antigravity ask schema is wrong" "$o"
+o="$(echo '[not,an,object' | shim --runtime antigravity --hook db_write_guard --root "$SH")"
+[ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["decision"])' "$o" 2>/dev/null)" = "ask" ] \
+  && ok "antigravity: malformed stdin ESCALATES to ask (its declared decision — never a silent allow)" \
+  || bad "malformed stdin did not escalate on antigravity" "$o"
+shstack all
+o="$(shpay 'snow sql -q "INSERT INTO t VALUES (1)"' | shim --runtime antigravity --hook db_write_guard)"
+[ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["decision"])' "$o" 2>/dev/null)" = "force_ask" ] \
+  && ok "antigravity: policy all → force_ask (ignores cached grants — the primitive the research earmarked for it)" \
+  || bad "policy all did not map to force_ask on antigravity" "$o"
+shstack high_risk
+shpay 'snow sql -q "DROP TABLE t"' | shim --runtime devin --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 2 ] && ok "devin: destructive SQL → exit 2 (the only documented block)" || bad "devin destructive did not exit 2"
+shpay 'snow sql -q "SELECT 1"' | shim --runtime devin --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 0 ] && ok "devin: read-only SQL → exit 0" || bad "devin read-only did not exit 0"
+echo 'garbage' | shim --runtime devin --hook db_write_guard --root "$SH" >/dev/null 2>&1
+[ $? -eq 2 ] && ok "devin: malformed stdin → exit 2 (denies, never a stray code)" || bad "devin malformed stdin exit was not 2"
+shpay 'snow sql -q "SELECT 1"' | env -u CLAUDE_PROJECT_DIR TICKETWRIGHT_SHIM_FAULT=raise \
+  python3 bin/hook_shim.py --runtime devin --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 2 ] && ok "devin: an injected INTERNAL error → deliberate exit 2 (any other nonzero is logged-and-ignored by documented design)" \
+  || bad "an internal shim error escaped as something other than exit 2 on devin"
+( cd "$BK/kit" && shpay 'snow sql -q "SELECT 1"' | env -u CLAUDE_PROJECT_DIR \
+    python3 bin/hook_shim.py --runtime devin --hook db_write_guard >/dev/null 2>&1 )
+[ $? -eq 2 ] && ok "devin: a BROKEN sql_scan in the kit → deliberate exit 2 (the import fault cannot fail open)" \
+  || bad "a broken scanner produced a non-2 exit on devin"
+shpay 'snow sql -q "DROP TABLE t"' | shim --runtime windsurf --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 2 ] && ok "the windsurf alias resolves to devin's exit-code protocol" || bad "the windsurf alias broke in the shim"
+# opencode speaks the same exit-code protocol THROUGH the emitted wrapper — the wrapper itself is
+# static-asserted against its fixture (executing it would need a JS runtime the suite cannot
+# assume); the shim side it shells to is exercised here.
+oc_msg="$(shpay 'snow sql -q "DROP TABLE t"' | shim --runtime opencode --hook db_write_guard 2>/dev/null)"; r=$?
+{ [ "$r" -eq 2 ] && grep -q 'TICKETWRIGHT_APPROVE=once' <<<"$oc_msg"; } \
+  && ok "opencode: destructive SQL → exit 2 with the escape message on stdout (what the wrapper throws)" \
+  || bad "the opencode shim path lost its deny or escape message" "rc=$r"
+shpay 'snow sql -q "INSERT INTO t VALUES (1)"' | shim --runtime opencode --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 0 ] && ok "opencode: additive SQL passes under high_risk" || bad "opencode gated additive SQL"
+echo '}{' | shim --runtime opencode --hook db_write_guard --root "$SH" >/dev/null 2>&1
+[ $? -eq 2 ] && ok "opencode: malformed stdin → exit 2 (denies — the wrapper turns it into a thrown error)" \
+  || bad "opencode malformed stdin did not deny"
+printf '{"tool_name":"Read","tool_input":{"file_path":"x"},"cwd":"%s"}' "$SH" | shim --runtime devin --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 0 ] && ok "a recognizably non-shell tool call passes: the guard's jurisdiction is shell commands" \
+  || bad "a non-shell tool call was gated by the shim"
+o="$(printf '{"tool_name":"Bash","tool_input":{},"cwd":"%s"}' "$SH" | shim --runtime devin --hook db_write_guard 2>&1)"; r=$?
+[ "$r" -eq 2 ] && ok "a shell-like tool with NO extractable command is unreadable input → denied, not guessed" \
+  || bad "an extractionless shell payload passed" "rc=$r"
+rm -f "$SH/.claude/config/stack.yaml"
+echo 'not json' | shim --runtime devin --hook db_write_guard --root "$SH" >/dev/null 2>&1
+[ $? -eq 0 ] && ok "no stack.yaml → the shim is silent (repo-gated, like the Claude hook — a de-configured repo must not brick)" \
+  || bad "the shim gated outside a configured repo"
+shstack off
+shpay 'snow sql -q "DROP TABLE t"' | shim --runtime codex-cli --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 0 ] && ok "policy off → the shim passes even destructive SQL (an explicit operator instruction)" \
+  || bad "policy off did not silence the shim"
+echo '{}' | shim --runtime claude-code --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 2 ] && ok "the shim REFUSES --runtime claude-code (the native hook's failure mode is not to be re-plumbed)" \
+  || bad "the shim accepted claude-code"
+echo '{}' | shim --runtime cline --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 2 ] && ok "the shim REFUSES cline (hook_protocol: unknown — no documented schema to speak)" \
+  || bad "the shim spoke an undocumented protocol for cline"
+
+# --- (4) the one-shot escape round-trips offline ----------------------------------------------------
+shstack high_risk
+shpay 'TICKETWRIGHT_APPROVE=once snow sql -q "DROP TABLE t"' | shim --runtime devin --hook db_write_guard >/dev/null 2>&1
+[ $? -eq 0 ] && ok "escape: the TICKETWRIGHT_APPROVE=once command prefix approves exactly that command (visible in the transcript)" \
+  || bad "the command-prefix escape did not approve"
+TOK="$SH/.claude/config/approve.once"; touch "$TOK"
+shpay 'snow sql -q "DROP TABLE t"' | shim --runtime devin --hook db_write_guard >/dev/null 2>&1; r1=$?
+tok_after=$([ -f "$TOK" ] && echo present || echo consumed)
+shpay 'snow sql -q "DROP TABLE t"' | shim --runtime devin --hook db_write_guard >/dev/null 2>&1; r2=$?
+{ [ "$r1" -eq 0 ] && [ "$tok_after" = "consumed" ] && [ "$r2" -eq 2 ]; } \
+  && ok "escape: the token approves exactly once — consumed on use, and the very next statement is denied again" \
+  || bad "the approval token did not round-trip (allowed=$r1 token=$tok_after second=$r2)"
+touch "$TOK"; python3 -c "import os,time,sys; p=sys.argv[1]; os.utime(p,(time.time()-3600,)*2)" "$TOK"
+shpay 'snow sql -q "DROP TABLE t"' | shim --runtime devin --hook db_write_guard >/dev/null 2>&1; r=$?
+{ [ "$r" -eq 2 ] && [ -f "$TOK" ]; } \
+  && ok "escape: a STALE token (>15 min) is ignored — an abandoned approval never covers a later statement" \
+  || bad "a stale token approved a destructive statement" "rc=$r"
+rm -f "$TOK"
+
+# --- (5) emitted wiring artifacts + the install report's collapse statements -----------------------
+E43="$TMP/e43"; mkdir -p "$E43/adapters" "$E43/templates" "$E43/bin" "$E43/.claude"
+cp bin/kit_paths.py "$E43/bin/"; cp -R .claude/skills "$E43/.claude/skills"
+grep -q '"failClosed": true' tests/emit/cursor/.cursor/hooks.json \
+  && grep -q 'hook_shim.py --runtime cursor --hook db_write_guard' tests/emit/cursor/.cursor/hooks.json \
+  && ok "the emitted cursor hook config contains \"failClosed\": true wired to the guard shim (required configuration, set by the installer)" \
+  || bad "the cursor hooks.json lost failClosed or the shim command"
+grep -q '"PreToolUse"' tests/emit/antigravity/.agents/hooks.json \
+  && grep -q '"PostToolUse"' tests/emit/antigravity/.agents/hooks.json \
+  && grep -q 'regenerate_ticket_index' tests/emit/antigravity/.agents/hooks.json \
+  && ok "the emitted antigravity hooks.json wires PreToolUse (guard) and PostToolUse (index regen) — its five-event surface, used where it maps" \
+  || bad "the antigravity hooks.json lost an event"
+grep -q 'tool.execute.before' tests/emit/opencode/.opencode/plugins/ticketwright-db-write-guard.js \
+  && grep -q 'throw new Error' tests/emit/opencode/.opencode/plugins/ticketwright-db-write-guard.js \
+  && grep -q 'emitted by ticketwright install v' tests/emit/opencode/.opencode/plugins/ticketwright-db-write-guard.js \
+  && ok "the emitted opencode wrapper throws to deny from tool.execute.before and carries provenance" \
+  || bad "the opencode plugin wrapper lost its deny path or provenance"
+# provenance-aware collision handling extends to hook configs: ours refresh, foreign fail loudly
+FC="$TMP/hookforeign"; mkdir -p "$FC/adapters" "$FC/templates" "$FC/bin" "$FC/.claude" "$FC/.cursor"
+cp bin/kit_paths.py "$FC/bin/"; cp -R .claude/skills "$FC/.claude/skills"
+printf '{"hooks": {"beforeShellExecution": []}}\n' > "$FC/.cursor/hooks.json"
+fo="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime cursor --root "$FC" 2>&1)"; fr=$?
+{ [ "$fr" -ne 0 ] && grep -q '"beforeShellExecution": \[\]' "$FC/.cursor/hooks.json" && grep -q 'not deleted' <<<"$fo"; } \
+  && ok "a hand-written .cursor/hooks.json is never clobbered — the install fails loudly (provenance-aware, like every emitted artifact)" \
+  || bad "a foreign hooks.json was overwritten or tolerated silently" "rc=$fr"
+co="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime codex-cli --root "$E43" 2>&1)"
+grep -q 'DENY-WITH-ESCAPE' <<<"$co" && grep -q 'NEVER collapses toward allow' <<<"$co" \
+  && grep -q 'trusted BY HASH' <<<"$co" && grep -q 'not in the kit'"'"'s research' <<<"$co" \
+  && ok "codex-cli install: the high_risk collapse is surfaced at install time, with trusted-by-hash and the unresearched-config-location gap stated" \
+  || bad "the codex-cli install report buried a safety statement" "$(grep -E 'policy|hooks|caveat' <<<"$co" | head -4)"
+do_="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime devin --root "$E43" 2>&1)"
+grep -q 'DENY-WITH-ESCAPE' <<<"$do_" && grep -q 'fails open BY DOCUMENTED DESIGN' <<<"$do_" \
+  && ok "devin install: deny-with-escape + the documented fail-open are stated on stdout" \
+  || bad "the devin install report is missing its safety statements"
+mkdir -p "$TMP/e43-agy"
+ao="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime antigravity --root "$TMP/e43-agy" 2>&1)"
+grep -q 'expressed as `ask`' <<<"$ao" && grep -q 'FAILING hook does here is undocumented' <<<"$ao" \
+  && ok "antigravity install: high_risk-as-ask stated, hook-failure mode stated as UNKNOWN (never assumed)" \
+  || bad "the antigravity install report is missing its statements"
+lo="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
+  python3 bin/emit_runtime.py --runtime cline --root "$E43" 2>&1)"
+grep -q 'degrades to GUIDANCE' <<<"$lo" && grep -q 'model-judged' <<<"$lo" \
+  && ok "cline install: guidance-only degradation stated (hooks unverified upstream, model-judged approvals)" \
+  || bad "the cline install report is missing its degradation statement"
+# the deny-with-escape set is exactly the gate_ask_tier:no set — data drives the collapse, per runtime
+denyset="$(python3 -c "
+import sys, pathlib
+sys.path.insert(0, 'bin')
+from kit_paths import read_frontmatter
+for f in sorted(pathlib.Path('adapters/runtime').glob('*.md')):
+    if f.name != 'README.md' and read_frontmatter(f).get('gate_ask_tier') == 'no':
+        print(read_frontmatter(f)['tool'])
+" | tr '\n' ',' )"
+[ "$denyset" = "codex-cli,devin,opencode," ] \
+  && ok "the deny-with-escape set is exactly the gate_ask_tier=no runtimes (codex-cli, devin, opencode) — the collapse is adapter data, not a hardcoded list" \
+  || bad "the deny-with-escape set drifted from the 3b axis" "$denyset"
+
+# --- (6) the enforcement table: rendered output, no empty cells, the false sentence gone -----------
+bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" > "$TMP/agents-rendered.md" 2>/dev/null
+grep -q 'For every other agent it is guidance, not enforcement' "$TMP/agents-rendered.md" \
+  && bad "the retired blanket guidance sentence survives in the rendered AGENTS.md (false once U3 landed)" \
+  || ok "the false 'every other agent is guidance' sentence is gone from the rendered AGENTS.md"
+tbl_bad="$(python3 - "$TMP/agents-rendered.md" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"<!-- ticketwright:enforcement:begin -->(.*?)<!-- ticketwright:enforcement:end -->",
+              text, re.S)
+if not m:
+    print("no enforcement markers in the rendered output"); raise SystemExit
+block = m.group(1)
+rows = {}
+for line in block.splitlines():
+    if line.startswith("| ") and not line.startswith("|--") and "Runtime" not in line:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        rows[cells[0]] = cells[1:]
+WANT = ["Claude Code", "Codex CLI", "Cursor", "Antigravity", "OpenCode", "Devin", "Cline"]
+bad = [f"missing row: {r}" for r in WANT if r not in rows]
+for name in WANT:
+    cells = rows.get(name, [])
+    if len(cells) != 5:
+        bad.append(f"{name}: {len(cells)} cells, want 5 (4 hooks + malformed-input)")
+        continue
+    for i, c in enumerate(cells[:4]):
+        if not c:
+            bad.append(f"{name}: empty hook cell {i}")
+        elif not re.match(r"^(ENFORCEMENT|WIRED|GUIDANCE|UNKNOWN)\b", c):
+            bad.append(f"{name}: hook cell {i} outside the closed vocabulary: {c[:40]!r}")
+    if not cells[4]:
+        bad.append(f"{name}: empty malformed-input cell")
+# the malformed-input column must carry each runtime's DECLARED decision
+for name, frag in [("Codex CLI", "denies"), ("OpenCode", "denies"), ("Devin", "denies"),
+                   ("Cursor", "ask"), ("Antigravity", "ask"), ("Cline", "UNKNOWN")]:
+    if name in rows and frag not in rows[name][4]:
+        bad.append(f"{name}: malformed-input cell does not state '{frag}'")
+# ENFORCEMENT is reserved for mechanisms proven in THIS repo's test contract (Claude Code);
+# an emitted-but-live-unverified mechanism is WIRED, and a live confirmation on the punch list
+# is what promotes it (adversarial-review ruling). Sharing Claude's word would imply a parity
+# tiebreaker 6 forbids.
+for name in WANT:
+    if name != "Claude Code":
+        for i, c in enumerate(rows.get(name, [])[:4]):
+            if c.startswith("ENFORCEMENT"):
+                bad.append(f"{name}: cell {i} claims ENFORCEMENT — only a live confirmation may promote WIRED")
+if "Claude Code" in rows and not all(c.startswith("ENFORCEMENT") for c in rows["Claude Code"][:4]):
+    bad.append("Claude Code: all four hook cells must be ENFORCEMENT (the proven native wiring)")
+for name, wired in [("Cursor", ".cursor/hooks.json"), ("Antigravity", ".agents/hooks.json"),
+                    ("OpenCode", ".opencode/plugins/")]:
+    if name in rows and (not rows[name][0].startswith("WIRED") or wired not in rows[name][0]):
+        bad.append(f"{name}: guard cell must be WIRED naming {wired}")
+if "Antigravity" in rows and not rows["Antigravity"][3].startswith("WIRED"):
+    bad.append("Antigravity: the regenerate cell must be WIRED (emitted PostToolUse entry)")
+for name in ["Codex CLI", "Devin"]:
+    if name in rows and not rows[name][0].startswith("GUIDANCE"):
+        bad.append(f"{name}: guard cell must be GUIDANCE (config location unresearched — never claim wiring that does not exist)")
+if "Cline" in rows and not all(c.startswith("UNKNOWN") for c in rows["Cline"][:4]):
+    bad.append("Cline: all four hook cells must be UNKNOWN (the stated case)")
+if "**WIRED**" not in block:
+    bad.append("the legend does not define WIRED")
+print("\n".join(bad))
+PY
+)"
+[ -z "$tbl_bad" ] && ok "the rendered enforcement table: 7 runtimes x (4 hooks + malformed-input), closed vocabulary, no empty cell, wired/unwired sets pinned" \
+  || bad "the enforcement table broke its contract" "$tbl_bad"
+for frag in 'trusted by hash' 'failClosed: true' 'fails open by documented design' 'deny-with-escape' 'model-judged'; do
+  grep -q "$frag" "$TMP/agents-rendered.md" || bad "the rendered AGENTS.md lost the caveat: $frag"
+done
+ok "the per-runtime caveats survive in RENDERED output (trusted-by-hash, failClosed, documented fail-open, deny-with-escape, model-judged)"
+grep -q '| Cline | UNKNOWN' tests/emit/cline/.clinerules/ticketwright-enforcement.md \
+  && grep -q '| Cursor | WIRED' tests/emit/cline/.clinerules/ticketwright-enforcement.md \
+  && ok "the .clinerules artifact carries the same table rows (one authoring point in the template, extracted at emit time)" \
+  || bad "the .clinerules enforcement copy lost the table"
+
+# --- (7) the Claude wiring is untouched -------------------------------------------------------------
+grep -q 'db_write_guard.py' .claude-plugin/plugin.json && grep -q 'db_write_guard.py' .claude/settings.json.tmpl \
+  && ! grep -q 'hook_shim' .claude-plugin/plugin.json && ! grep -q 'hook_shim' .claude/settings.json.tmpl \
+  && ok "Claude Code still runs the native hook directly — nothing routes it through the shim (plugin.json + settings template)" \
+  || bad "the Claude hook wiring changed (plugin.json / settings.json.tmpl)"
+grep -q 'sql_scan' bin/effective_config.py 2>/dev/null \
+  && bad "the resolver grew a dependency on the scanner (the two must stay decoupled)" \
+  || ok "bin/effective_config.py and bin/sql_scan.py stay decoupled (the policy exemption is intact)"
+hp_bad="$(python3 -c "
+import sys, pathlib
+sys.path.insert(0, 'bin')
+from kit_paths import read_frontmatter
+PIN = {'claude-code': ('native', 'claude-json'), 'codex-cli': ('unknown', 'codex-json'),
+       'cursor': ('.cursor/hooks.json', 'cursor-json'), 'antigravity': ('.agents/hooks.json', 'agy-json'),
+       'devin': ('unknown', 'exit-code'),
+       'opencode': ('.opencode/plugins/ticketwright-db-write-guard.js', 'exit-code'),
+       'cline': ('unknown', 'unknown')}
+bad = []
+for tool, (wiring, proto) in PIN.items():
+    fm = read_frontmatter(pathlib.Path(f'adapters/runtime/{tool}.md'))
+    if fm.get('hook_wiring') != wiring or fm.get('hook_protocol') != proto:
+        bad.append(f\"{tool}: {fm.get('hook_wiring')}/{fm.get('hook_protocol')} want {wiring}/{proto}\")
+    if tool != 'claude-code' and not fm.get('hook_wiring_caveat'):
+        bad.append(f'{tool}: no hook_wiring_caveat to print')
+print('; '.join(bad))
+")"
+[ -z "$hp_bad" ] && ok "pinned: hook_wiring + hook_protocol per runtime (a drive-by edit here re-routes a safety gate)" \
+  || bad "a hook wiring/protocol declaration drifted" "$hp_bad"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
