@@ -22,10 +22,10 @@ weak models).
 ## Seams, adapters, and the verb contract
 
 A **seam** is a tool slot the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`,
-and the optional `viewer`. A seam may name one tool or several **named targets** (v1: `warehouse`),
-and a seam whose tool is absent can still be filled by an adapter over local files — that is how a
-repo with no tracker runs unchanged. The wiring is hybrid — config names the tools, verification
-proves them:
+and the optional `viewer`. A seam may name one tool or several **named targets** — routed end to end
+today for `warehouse`, `chat` and `docstore` — and a seam whose tool is absent can still be filled by
+an adapter over local files, which is how a repo with no tracker runs unchanged. The wiring is
+hybrid — config names the tools, verification proves them:
 
 1. **`.claude/config/stack.yaml`** names which tool fills each seam + project facts + the 10
    policies. Schema: [.claude/config/stack.schema.md](../.claude/config/stack.schema.md).
@@ -36,7 +36,7 @@ proves them:
    run, unreachable ones halt with the adapter's auth notes.
 
 Skills are written **once against verbs** and never name a tool. Swapping a tool = edit
-`stack.yaml` + point at a different adapter; **no skill changes.** Proof: six configs ship —
+`stack.yaml` + point at a different adapter; **no skill changes.** Proof: seven configs ship —
 [`stack.yaml`](../.claude/config/stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub),
 [`stack.example.asana-bq.yaml`](../.claude/config/stack.example.asana-bq.yaml)
 (Asana/BigQuery/Teams/SharePoint/GitLab), and
@@ -44,14 +44,28 @@ Skills are written **once against verbs** and never name a tool. Swapping a tool
 (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos),
 [`stack.example.multi-warehouse.yaml`](../.claude/config/stack.example.multi-warehouse.yaml)
 (Snowflake **+** Databricks — two targets in one seam),
+[`stack.example.multi-audience.yaml`](../.claude/config/stack.example.multi-audience.yaml)
+(**two audiences** — internal chat + archive vs client-facing chat + delivery store, selected by a
+declared audience, never an inferred one),
 [`stack.example.solo.yaml`](../.claude/config/stack.example.solo.yaml) (**no tracker**, no chat, no
 docstore — the ticket folder is the tracker), and
 [`stack.example.no-warehouse.yaml`](../.claude/config/stack.example.no-warehouse.yaml) (**no
-warehouse** — document/report deliverables, nothing to query) — the same skills run against all six.
+warehouse** — document/report deliverables, nothing to query) — the same skills run against all seven.
 
 **Adding a tool:** write one adapter (copy the closest reference in the same seam; implement every
 verb section; keep the frontmatter), add a `verify` line to your `stack.yaml` seam, run
 `bash bin/verify_stack.sh`. No skill edits.
+
+**Two audiences in one repo:** a `chat` or `docstore` seam that holds named targets routes per
+ticket, from a **declaration** — the ticket's committed `delivery-plan.yaml` names its `audience:`
+and `classification:`, and `bin/delivery_plan.py` matches those against the values each target
+declares. Nothing infers an audience from prose, a channel name or a label, and nothing falls back:
+an absent or unmatched declaration halts and lists what is configured, because the target it would
+fall through to may be the external one. Each chat target carries its own non-empty `always_include`,
+applied after routing, and `bin/verify_stack.sh` fails a multi-target config that omits one. What the
+kit cannot do is check a destination's real sharing permissions — `sharing_scope` is a declaration,
+not a verification. Worked config:
+[`stack.example.multi-audience.yaml`](../.claude/config/stack.example.multi-audience.yaml).
 
 **The one seam whose config is not in `stack.yaml`:** `viewer` — which application opens a `.sql`
 or a `.csv` at a review gate. Every other seam names a tool the whole team shares; this one is a

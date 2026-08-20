@@ -103,6 +103,11 @@ RESERVED_SEAM_KEYS = {
     "dev_target", "dev_db", "dev_catalog", "dev_schema", "dev_dataset",
     "default_branch", "default_channel", "default_mode", "always_include", "include_self",
     "repo", "org", "team_id", "board_id", "workspace_gid",
+    # Delivery routing. `audience` and `classification` SELECT a target, `channel`/`drive_folder`
+    # ARE the destination, and `sharing_scope` is what the human authorizes at the /ship gate. A
+    # gitignored, unreviewed per-machine file must never be able to move a message to another
+    # audience or a client file to another store — the same reasoning that reserves `cli`.
+    "audience", "classification", "sharing_scope", "channel", "drive_folder",
 }
 # Whole blocks no overlay may contribute, at any tier.
 RESERVED_BLOCKS = {"policies", "project"}
@@ -219,6 +224,19 @@ def adapter_requires(adapter_rel: str | None, root: Path) -> list[str]:
     """The config keys an adapter declares it cannot work without."""
     fm = _adapter_frontmatter(adapter_rel, root)
     return _as_key_list(fm.get("requires")) if fm else []
+
+
+def adapter_key(adapter_rel: str | None, root: Path, key: str) -> str | None:
+    """One scalar an adapter spells for itself: `dev_key:`, `channel_key:`, `destination_key:`.
+
+    The pattern is deliberate and reused rather than re-invented per seam — an adapter names the key
+    ITS tool uses (Slack says `default_channel`, Teams says `channel`) so no skill ever has to know
+    which tool it is talking to. Callers validate the returned NAME before using it as a lookup:
+    adapter frontmatter is repo-supplied input, not documentation.
+    """
+    fm = _adapter_frontmatter(adapter_rel, root)
+    val = (fm or {}).get(key)
+    return val.strip() if isinstance(val, str) and val.strip() else None
 
 
 def _adapter_user_keys(adapter_rel: str | None, root: Path,
@@ -925,6 +943,13 @@ def _emit_verify_plan(res: Resolution) -> None:
             default_ok = True
         for i, (tname, target) in enumerate(targets.items()):
             if not isinstance(target, dict):
+                # SKIPPING a malformed target made it invisible: no unit row, no error, and a
+                # `targets:` block holding only junk sailed through every downstream check that
+                # keys on unit rows (including verify_stack's missing-router failure). A target
+                # that exists but cannot be verified is a finding, not an omission.
+                print(json.dumps({"kind": "seam_error", "seam": name,
+                                  "message": f"{name}: target '{tname}' is not a mapping of "
+                                             f"config keys — it cannot be verified or routed"}))
                 continue
             mark = "*" if (default_ok and tname == default) else ""
             print(json.dumps(_unit_row(res, {

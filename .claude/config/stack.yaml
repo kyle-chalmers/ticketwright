@@ -4,9 +4,11 @@
 # Google Drive / GitHub). Replace the values with your own, or run `/setup`
 # to generate this file by detecting your tooling and interviewing you.
 # Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.yaml
-# Five more examples live alongside this file: stack.example.asana-bq.yaml (Asana/BigQuery/Teams/
+# Six more examples live alongside this file: stack.example.asana-bq.yaml (Asana/BigQuery/Teams/
 # SharePoint/GitLab), stack.example.azure.yaml (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos),
 # stack.example.multi-warehouse.yaml (two warehouse targets in one seam),
+# stack.example.multi-audience.yaml (internal vs client delivery — two chat tools and two
+# docstores in one repo, routed by a declared audience),
 # stack.example.solo.yaml (no tracker at all — tracker: local + id_mode: slug), and
 # stack.example.no-warehouse.yaml (no warehouse seam — document/report deliverables).
 

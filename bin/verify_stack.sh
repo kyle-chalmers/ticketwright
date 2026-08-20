@@ -135,6 +135,40 @@ while IFS= read -r line; do
   fi
 done < "$PLAN"
 
+# ── delivery routing: the rules a multi-target chat/docstore slot must satisfy ───────────────
+# THESE FAIL, they do not warn. `always_include` — the never-solo-DM stakeholder list — had ZERO
+# mechanical enforcement before this block: it was prose in an adapter, and a config could omit it
+# forever without anything noticing. Replacing an unenforced prose convention with a new prose
+# convention would change nothing, so the check runs here, and a finding exits 1.
+#
+# Scope is deliberate and narrow: every rule binds ONLY when the slot declares `targets:`. A
+# single-mapping chat slot that omits `always_include` still verifies clean — otherwise every
+# shipped example config would break, which is a regression rather than a stricter rule.
+#
+# The semantics live in Python (one YAML reader, one resolver — the audit resolves through
+# bin/effective_config.py); the FAILURE lives here, where a person runs it.
+router="$kit_root/bin/delivery_plan.py"
+[[ -f "$router" ]] || router="$(cd "$(dirname "$0")" && pwd)/delivery_plan.py"
+if [[ -f "$router" ]]; then
+  ROUTE="$(python3 "$router" --stack "$stack" --audit --quiet 2>/dev/null)"; rrc=$?
+  if [[ -n "$ROUTE" ]]; then
+    echo "─────────────────────────────────────────────────────────"
+    while IFS="$SEP" read -r level message; do
+      [ -n "$message" ] || continue
+      if [[ "$level" == "error" ]]; then echo "  ✗ $message"; else echo "  ⚠ $message"; fi
+    done <<<"$ROUTE"
+  fi
+  [[ $rrc -ne 0 ]] && fail=1
+elif grep -Eq '"seam": "(chat|docstore)", "target": "' "$PLAN"; then
+  # The config declares chat/docstore targets but the router that ENFORCES their rules is gone.
+  # A silent skip here would report "All seams OK" on exactly the config class whose rules exist
+  # to prevent a client-data leak — an absent enforcer is a FAILURE on the configs it guards, and
+  # only on those (a repo with no such targets loses nothing when the router is absent).
+  echo "─────────────────────────────────────────────────────────"
+  echo "  ✗ this stack declares chat/docstore targets, but the delivery-routing checker is missing: $router"
+  fail=1
+fi
+
 # ── the leak lint ────────────────────────────────────────────────────────────────────────────
 # Warn, never fail: a committed value that belongs on one machine is a design problem to fix at
 # leisure, not a reason to block someone's work right now.

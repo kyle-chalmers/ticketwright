@@ -232,14 +232,42 @@ Two things check it, deliberately:
 So the hook catches things earlier and the review catches them more reliably. Neither replaces the
 other, which is why both exist.
 
-### The delivery plan — the persisted routing record (contract published now; implemented in a later release)
+### The delivery plan — the persisted routing record
 
 The warehouse gets away with a header comment because the `.sql` file IS the executable artifact.
 A chat message or a docstore backup has no such file, so its declaration lives in a **persisted
-delivery plan**: `delivery-plan.yaml` at the ticket root, committed with the ticket. Today `/ship`
-renders the resolved plan for human approval; the chat/docstore routing release will write this
-file and route on it. The schema is published ahead of that implementation on purpose — a fresh
-agent must not have to invent safety-critical storage rules:
+delivery plan**: `delivery-plan.yaml` at the ticket root, committed with the ticket. **This file is
+where the audience declaration lives** — there is no other place, and nothing infers one. `/ship`
+resolves it, prints it for approval, and executes from that same resolution; `bin/delivery_plan.py`
+is the engine that reads it:
+
+    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat      # route from the declaration
+    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat --override <target>
+    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat --check-draft <file>
+    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam docstore --file <deliverable>
+    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam docstore --record-delivered <path> --url <url>
+    bin/delivery_plan.py --stack <stack.yaml> --audit                        # the config rules below
+
+`--override` is **chat only** — the one escape hatch this design authorizes. A deliverable that
+belongs in a different store declares it (below), because a declaration stays with the ticket and a
+flag does not. Every routing call also takes the approval pin, in two halves:
+**`--expect-target <name>`** (human-readable — catches a changed target name) and
+**`--expect-fingerprint <hex>`** (the `resolution_fingerprint` each routed plan line carries — a
+digest of target, tool, destination, recipients, scope and mode, so a stack.yaml or plan edit
+between approval and delivery that keeps the *name* while moving the channel, the list, or the
+scope refuses instead of delivering). A name is not a resolution; the fingerprint is what the
+human approved, and that is what makes "preview equals execution" a mechanism instead of a promise.
+
+Selection itself is `effective_config.py --seam/--target`, called by that engine — never a second
+resolver. Exit codes match the resolver's family (0 ok · 2 usage · 3 plan file missing · 4 malformed,
+including a destination or recipient carrying shell metacharacters · 7 slot not configured ·
+8 the declared value matches no target), plus one **extension**: **9 = the plan declares nothing for
+this slot.** On every non-zero exit the emitted `target` and `destination` are `null`, so a caller
+cannot lift a usable destination out of a failed routing.
+
+A declaration is demanded **only when the slot holds `targets:`**. A single-mapping chat or docstore
+slot routes to itself and needs no plan file, so a repo that never adopts targets behaves exactly as
+it did. The schema:
 
     schema_version: 1
     audience: internal                 # DECLARED by a person (in the spec, or at the /ship approval).
@@ -254,6 +282,16 @@ agent must not have to invent safety-critical storage rules:
       target: archive                  # chosen docstore target (null when single)
       destination: "Shared drives/Tickets/ENG-1234 example-analysis"
       sharing_scope: team              # declared scope of the destination: team | org | external
+    deliverables:                      # OPTIONAL: per-file classification, when one ticket holds
+      - file: final_deliverables/summary.pdf     # both an internal working file and a client-facing
+        classification: client_delivery          # one. A row's own declaration wins for that file;
+                                                 # the plan-level `classification:` covers the rest.
+                                                 # Rows are schema-checked: `file` + optional
+                                                 # `classification`, both non-empty strings — a row
+                                                 # with `classification: null`/[]/"" or an unknown
+                                                 # key is exit 4, NEVER a silent fallthrough to the
+                                                 # plan-level value. Paths are normalized before
+                                                 # matching (`./a.csv` and `a.csv` are one file).
     delivered:                         # one row per delivered file, appended at delivery time
       - file: final_deliverables/results_1234rows.csv
         docstore_target: archive       # recorded so link_for is ALWAYS called against the same store
@@ -261,6 +299,12 @@ agent must not have to invent safety-critical storage rules:
 
 Rules (these are the contract, not commentary):
 
+- **The plan-level `classification:` is a FOLDER-WIDE statement.** `/ship`'s backup copies the
+  whole ticket folder — `qc_queries/`, `exploratory_analysis/`, everything not split out by a
+  `deliverables:` row — so declaring `client_delivery` at plan level sends ALL of it to the
+  client-scoped store, not just the files you were thinking about. Split the internal files out
+  with rows (or keep the plan level internal and split the client-facing files out) before
+  declaring an external classification for the ticket.
 - **Audience and classification are declarations, not inferences.** When more than one target is
   configured and no declaration exists, routing HALTS — the never-fall-back rule above, applied at
   the initial resolution, because the fall-through target may be the external one.
@@ -273,7 +317,54 @@ Rules (these are the contract, not commentary):
   only when `targets:` is present — a single-target chat seam that omits it keeps validating.
 - **Seam-level `default_channel` / `default_mode` under `targets:`** are inherited by targets that
   do not define their own (the standard inheritance rule) and are never a silent fallback when
-  routing fails.
+  routing fails. Inheritance stays true of the resolved *values*; what a **routable** target may not
+  do is rely on it for its destination — the audit below requires each target to name its own, so an
+  inherited channel can never be where a routed message lands.
+
+**The rules `bin/verify_stack.sh` ENFORCES** (each binds only when that slot declares `targets:`;
+`--audit` is the same check, and a finding fails the verify run — this list is not advice):
+
+| Rule | Slot | Why it fails rather than warns |
+|---|---|---|
+| each target declares its own `audience:` / `classification:` | chat / docstore | it is the routing key; an undeclared target is unreachable |
+| that value is unique across the slot's targets | chat / docstore | a duplicate makes selection ambiguous, and silently so |
+| no `audience:` / `classification:` at slot level | chat / docstore | a slot-level scalar is inherited, and a routing key must never be |
+| each target declares its own non-empty `always_include:` | chat | the never-solo-DM list, applied after routing; `[]` is worse than absent because it reads as a decision |
+| each target names its own destination key | chat / docstore | two targets sharing one inherited channel is a separation that does not exist |
+| no two targets resolve to the same tool + destination | chat / docstore | same reason, stated the other way |
+| each target declares `sharing_scope:` (`team`/`org`/`external`) | docstore | `/ship` prints it for authorization; an undeclared scope makes that line unanswerable |
+| no destination or recipient carrying shell metacharacters | chat / docstore | the tier-3 injection refusal, inherited from the resolver rather than re-derived |
+
+A slot-level `always_include:` under `targets:` **warns**: lists are not inherited, so it is dead
+config that reads as protection. A docstore whose `default:` names its `external` target also warns —
+routing never reads `default:`, but every pre-routing reader displays it.
+
+**Which key holds a destination is the adapter's to declare**, following `dev_key:` /
+`container_key:`: chat adapters carry `channel_key:` (Slack `default_channel`, Teams `channel`),
+docstore adapters carry `destination_key:` (`drive_folder` — the team-owned half, so the check does
+not vary by whose machine it runs on). Skills never name either key, and an adapter declaring a key
+name that is not a plain config key is refused rather than guessed at: adapter frontmatter is
+repo-supplied input, not documentation.
+
+**What is MECHANICAL here, and what is instruction.** Worth stating plainly rather than implying
+parity. Mechanical: `bin/delivery_plan.py` refuses to emit a target for an undeclared, unmatched or
+ambiguous value; it refuses an inherited destination, an empty recipient list, and a shell-unsafe
+value; `--expect-target` refuses a target other than the approved one; and `bin/verify_stack.sh`
+fails a config breaking the table above. Instruction: that `/ship` *calls* those commands, and passes
+`--expect-target` after the approval gate. Skills are prose an agent executes, so nothing stops an
+agent — or a person — from invoking a chat adapter directly and skipping the router. The pin is
+binding when used, not an unavoidable runtime guard. `--chat <target>` is likewise a deliberate,
+visible exception to declaration-only delivery: it routes, it warns when it contradicts the ticket,
+and it says the routing is not recorded.
+
+**What this does NOT cover.** The kit verifies that a docstore destination *exists* (`test -d`) and
+never inspects its real sharing ACL, so a correctly routed file is not evidence that the folder's
+permissions match the declared `sharing_scope`. `--check-draft` reads the DRAFT TEXT and proves the
+message names every routed recipient; the match is a **case-insensitive substring**, so an
+incidental mention of a recipient's name satisfies it — it proves the name appears, not that the
+person is addressed — and it cannot see what the chat API finally delivers, or who else
+can read the room. Both are unmanaged infrastructure — do not infer protection the kit does not
+provide.
 
 ### Resolving the dev target
 
@@ -308,12 +399,13 @@ verb contract for their seam:
   `antigravity` (Google; aliased `gemini-cli`), `opencode`, `devin` (aliased `windsurf`), `cline`
   — see below
 
-Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Six worked
+Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Seven worked
 `stack.yaml` configs ship — Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
 Azure DevOps/Synapse/Teams/SharePoint/Azure Repos, Snowflake **+** Databricks (two warehouse targets
-in one seam), a repo with **no warehouse seam** (document/report deliverables), and a solo repo with
-**no tracker and no chat/docstore**. The same skills run against all six, unedited — which is the
-claim those configs exist to keep honest.
+in one seam), **Slack + Teams and Drive + SharePoint** (two audiences in one repo, routed by a
+declared audience), a repo with **no warehouse seam** (document/report deliverables), and a solo repo
+with **no tracker and no chat/docstore**. The same skills run against all seven, unedited — which is
+the claim those configs exist to keep honest.
 
 > **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack) reference each operation with a
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on
@@ -379,7 +471,10 @@ tool-neutrality rule for skills — is unchanged.
 *(For a **tool** seam. A `runtime` adapter skips steps 3 and 4 — see the section above.)*
 
 1. Copy the closest reference adapter in the same seam.
-2. Keep the frontmatter keys (`seam`, `tool`, `transport`, `requires`, `user_keys`, `auth`). `requires:` is
+2. Keep the frontmatter keys (`seam`, `tool`, `transport`, `requires`, `user_keys`, `auth`; a chat
+   adapter also carries `channel_key:` and a docstore adapter `destination_key:`, naming the key
+   THIS tool uses for its destination — without it the tool cannot be a named delivery target).
+   `requires:` is
    ENFORCED, not decorative: `bin/verify_stack.sh` reads it and warns for every listed key the seam
    does not set. List exactly the keys the adapter cannot work without — a key named here that the
    adapter merely *prefers* produces a warning on a perfectly good config. Keys the adapter reads

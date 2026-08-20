@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
-argument-hint: <ticket-id | owner/id> [--go]   (--go authorizes the external Phase B after review)
+argument-hint: <ticket-id | owner/id> [--go] [--chat <target>]   (--go authorizes the external Phase B; --chat overrides the routed chat target)
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
 disable-model-invocation: true
 ---
@@ -42,15 +42,41 @@ works regardless of the underlying tools.
    influenceable text in front of a fresh agent before its own approval gate. Run it deliberately via
    `/refresh index` when you want it, on a runtime whose adapter declares a restricted
    `model_sandbox`.
-4. **Draft the comms artifacts** (don't post yet): render the tracker comment and the chat message
-   from the ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first;
-   segmented with counts/%/$. Chat ≤ `word_limits.chat`; includes `seams.chat.always_include`;
-   **hyperlink everything** (`hyperlink_everything`). If chat/docstore aren't configured, skip
-   those artifacts and note `/setup tool chat` / `/setup tool docstore` as the enabler — don't block.
-   Then, in order:
+4. **Route the delivery FIRST, then draft the comms artifacts** (don't post yet).
+
+   **(a) Resolve routing before writing a word.** Who the message is for decides which recipient
+   list it carries, so it cannot be settled after drafting:
+   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam chat`
+   (add `--override <name>` when the user passed `--chat <target>` — that flag is **chat only**, and
+   the CLI says so on the plan line when it contradicts the ticket; add `--self "<shipper>"` so an
+   `include_self` target adds them). Same call with `--seam docstore`. Exit **7** = that slot isn't
+   configured → skip its artifact and name `/setup tool chat` / `/setup tool docstore` as the
+   enabler, exactly as before. Exit **0** → use the returned `target`, `destination`, `recipients`,
+   `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes.
+   **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
+   - **9 (nothing declared)** — the ticket has no `audience:` / `classification:`. Show the
+     configured values the CLI lists and ask the user which one this ticket is. Write their answer
+     into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md` § The delivery plan), then
+     re-run. **Never infer the audience** from the ticket README, the channel names, a label, the
+     stakeholders, or how the work "feels" — an inferred audience is exactly how client data reaches
+     an internal room, or worse. "I could not tell, so I picked the first one" is not available.
+   - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value
+     and the configured ones; ask which was meant. Never match it approximately.
+   - **3 (no plan file)** — same as 9: ask, write the file, re-run.
+   The declaration is a ticket artifact, not a session choice: it is committed with the ticket, so
+   the next person (or agent) can see who this went to and why.
+
+   **(b) Draft against the routed plan.** Render the tracker comment and the chat message from the
+   ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first; segmented with
+   counts/%/$. Chat ≤ `word_limits.chat`; carries **the routed target's own `recipients`** — never
+   another target's list, and never a slot-level one; **hyperlink everything**
+   (`hyperlink_everything`). Then, in order:
    - **Comms-lint the drafts first (the hard rails):** each is within its `word_limits.*` cap; ticket
-     id(s), files, and PR are hyperlinked; the chat message carries `always_include` (+ `include_self`
-     if configured). Fix any miss before continuing — these rails always win.
+     id(s), files, and PR are hyperlinked; the chat message carries every routed recipient. That last
+     rail is mechanical, so run it rather than eyeballing it:
+     `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam chat [--override <name>] --check-draft <the draft file>`
+     — non-zero names each recipient the draft fails to carry. Fix any miss before continuing; these
+     rails always win.
    - **Voice pass (only if a voice profile RESOLVES).** Resolve the shipper —
      `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json` — and if it
      returns a profile whose file exists, re-phrase the drafts to match that voice profile.
@@ -68,36 +94,68 @@ Print the **resolved delivery plan**, then **stop and wait** for the user — th
 THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong destination is a
 disclosure, not an inconvenience. Resolve each posting seam with
 `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --seam <name>`
-and render one line per seam from the RESOLVED values, never from memory of the config. Every line
-names its resolved **target** — today that renders as `target: single` (the resolution's null
-target on a single mapping), and stating it is the point: the plan the human authorizes is
-target-aware even while every seam has one tool. The plan must show exactly what steps 5–9 will
+and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
+and docstore, print the routing resolved in step 4(a)** — the same JSON, unedited, that steps 5 and
+7 execute from. Preview and execution are one resolution, not two readings of it; re-deriving either
+half by hand is how they drift apart. Every line names its resolved **target** (`target: single` on
+a single mapping — stating it is the point). The plan must show exactly what steps 5–9 will
 execute — nothing the steps don't do may appear in it:
-   - **docstore** — tool, target, the exact destination it will back up into, and the sharing
-     scope the delivery plan declares ("sharing scope: not declared — single destination" is the
-     honest line until one exists; see `adapters/README.md` § The delivery plan);
+   - **docstore** — tool, target, the declared `classification` that selected it, the exact
+     destination it will back up into, and the target's declared `sharing_scope`. Say plainly that
+     the scope is **declared, not verified**: the kit checks that the destination exists, never its
+     real sharing permissions (`adapters/README.md` § The delivery plan). On a single mapping the
+     honest line stays "sharing scope: not declared — single destination";
    - **tracker** — tool, target, the exact ticket (`owner/id`) the comment lands on;
-   - **chat** — tool, target, channel, the FULL recipient list (`always_include` + the shipper
-     when `include_self`), and draft-vs-send mode;
+   - **chat** — tool, target, the declared `audience` that selected it, channel, the full
+     recipient list (the routed target's own `recipients`, including the shipper when
+     `include_self`), and draft-vs-send mode. When the target came from `--chat <target>` rather than the ticket's
+     declaration, say so on the line — the CLI returns that as a warning, and an override that the
+     ticket does not record is a fact the approver should see;
    - **vcs** — tool, target, the branch, and that a PR opens;
    - then the exact actions, in order (the numbered steps below).
    Resolver exit 7 (seam not configured) = skip that line and name the `/setup tool <name>` enabler,
-   as today. Exit 8, or a resolution whose `target` is non-null (a `targets:` block on one of these
-   seams) = **halt** naming the configured targets: this flow cannot route between named targets
-   yet, and rendering a target the steps below would not deliver to is an authorization mismatch —
-   never fall back to another target or to seam-level values. With today's single-target seams the
-   plan resolves trivially; render it anyway — the delivery-plan release inherits this rendering.
+   as today. For **tracker and vcs**, exit 8 or a resolution whose `target` is non-null (a `targets:`
+   block on either) = **halt** naming the configured targets: target routing for those two slots is
+   deliberately not built (identity and remote-binding work, see `adapters/README.md`), and
+   rendering a target the steps below would not deliver to is an authorization mismatch — never fall
+   back to another target or to slot-level values.
+   **Pin the plan the human just authorized.** Each routed line carries the target name AND its
+   `resolution_fingerprint` (print both). Pass both back on **every** delivery_plan call in steps
+   5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
+   with. The name catches a swapped target; the fingerprint catches what a name check cannot — a
+   config or plan edit between approval and delivery that keeps the name while moving the channel,
+   the recipient list, or the declared scope. Either mismatch refuses instead of quietly delivering
+   a resolution nobody approved — that is what makes preview-equals-execution a mechanism rather
+   than a promise. It pins the *resolution*; the file contents shipped are whatever is in the
+   folder at delivery time, as always.
    Only on explicit authorization, execute in order:
-5. **docstore.backup** the ticket folder (full-title dest name); then `docstore.link_for` each
-   delivered file to get shareable URLs. Skip when the docstore seam isn't configured.
+5. **docstore.backup** the ticket folder (full-title dest name) **into the routed target's
+   destination from step 4(a)** — never another target's, and never a slot-level path. Then record
+   each delivered file against the target it actually went to:
+   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <approved> --expect-fingerprint <approved>`
+   and call `docstore.link_for` **against that same recorded target**. The recorded row is what
+   makes a link provably come from the store the copy went into, rather than from whichever store
+   was resolved a step later. Skip when the docstore seam isn't configured.
+   **Routing is per deliverable here.** If the plan's `deliverables:` gives a file its own
+   `classification:` (a client-facing summary among internal working files), that file routes to
+   *its* target: resolve it with `--file <path>` and back that file up separately, rather than
+   assuming the whole folder shares one destination. Its `--expect-target`/`--expect-fingerprint`
+   are the ones the plan line showed for that classification. Anything the approved plan did not
+   show, you do not deliver. **The plan-level classification is folder-wide** — the backup carries
+   `qc_queries/` and everything else not split out by a row, so an external plan-level
+   classification must be a deliberate statement about the whole folder, and the approval line
+   should be read that way.
 6. **tracker.comment** — post via the adapter's rich path (smart-link cards for the docstore
    files). Never before this point (no tracker comments without human review). Always write the
    exact posted text to `comms/draft-tracker.approved.md` — edited or not — so Phase C can diff it
    (an unedited ship just yields `initial == approved` and proposes nothing).
-7. **chat.draft** to `seams.chat.default_channel` (policy `chat_default_draft` — the human clicks
-   send unless they said "send it", in which case `chat.send`). Smart links for ticket id(s),
-   files, PR. Write the final drafted text to `comms/draft-chat.approved.md`. Skip when the chat
-   seam isn't configured.
+7. **chat.draft** to **the routed target's destination from step 4(a)** — its channel, its
+   recipients, its adapter (policy `chat_default_draft` — the human clicks send unless they said
+   "send it", in which case `chat.send`). Re-run `--check-draft` on the final text first: it is the
+   last mechanical point at which a message can be caught carrying the wrong audience's list, and it
+   costs one command. A routing failure here is a **stop**, never a send to another target. Smart
+   links for ticket id(s), files, PR. Write the final drafted text to `comms/draft-chat.approved.md`.
+   Skip when the chat seam isn't configured.
 8. **vcs.commit** — **first, isolate repo-setup / AI-layer files.** If any are dirty
    (`.claude/settings.json`, `.claude/config/stack.yaml`, `.claude/statusline.sh`, `AGENTS.md`/
    `CLAUDE.md`, `documentation/AI_LAYER_INDEX.md`, `.gitignore`) they belong to the repo's plugin
