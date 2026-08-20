@@ -7,6 +7,26 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **The live-verification punch list, and a mechanical honesty linkage** (PROMPT 7 / U6 — the
+  wave-F2 closer). `docs/live-verification.md` writes down every claim wave F2 parked because
+  only a live external runtime can prove it: 12 entries (the U6 spec listed 11; the delta is a
+  dated amendment in `docs/PLANNED-CHANGES.md`), each naming the runtime, preconditions, the
+  exact steps a human with that runtime runs, what PASS looks like, and the exact edits a PASS
+  triggers — including a mechanical **WIRED → ENFORCEMENT promotion protocol** (per cell, never
+  per entry: the template cell, the named selftest-43 pins, the cline fixture regen, the adapter
+  caveat, and a **promotion ledger** line all move in one commit). PROMPT 7's own success
+  criterion is entry 1, staged honestly in two visits because the codex hooks-config location is
+  unresearched: establish it live first, ship the emitter change, then run the zero-hand-edit
+  lifecycle. The linkage is enforced by new selftest section 44: every `unknown`/`unverified`
+  value in `adapters/runtime/*.md` frontmatter (17 today), every WIRED enforcement-table cell
+  (4), every "unverified"-labeled emitted artifact, and every "(unverified)" metadata-mapping row
+  must be claimed on a punch-list `Covers:` line — read from `Covers:` lines only, so prose
+  cannot satisfy it — and a non-Claude ENFORCEMENT cell without a ledger line fails, so a
+  promotion can never be a template edit alone. Deliberately absent: any assertion that an entry
+  *passed* — the suite proves verification is owed and tracked; only a human with the runtime can
+  pay it. The enforcement-table legend now links the punch list by GitHub URL (the rendered
+  AGENTS.md lands in user repos and `docs/` does not ship in the wheel), and `docs/runtimes.md` /
+  `docs/architecture.md` link it in-repo.
 - **Hook degradation: the DB-write guard now travels beyond Claude Code** (PROMPT 7 / U3). The
   deterministic scanner moved from the Claude hook into `bin/sql_scan.py` (one implementation,
   behavior-identical — `tests/guard/golden.json` pins the Claude hook's stdin→stdout protocol

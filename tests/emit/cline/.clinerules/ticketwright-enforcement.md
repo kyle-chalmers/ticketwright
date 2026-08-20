@@ -12,8 +12,9 @@ but that the runtime honors it is live-verification work still owed — a WIRED 
 proven, and never reads as parity with ENFORCEMENT; **GUIDANCE** = a named file or workflow
 carries it and honoring it is on the agent; **UNKNOWN** = the runtime's behavior is undocumented —
 never assume protection. `ticketwright install --runtime <name>` emits the wiring where one is
-documented, and a live confirmation on the kit's punch list is what upgrades a WIRED cell to
-ENFORCEMENT.
+documented, and a live confirmation on the kit's punch list
+(<https://github.com/kyle-chalmers/ticketwright/blob/main/docs/live-verification.md>) is what
+upgrades a WIRED cell to ENFORCEMENT.
 
 | Runtime | `db_write_guard` | `session_context` | `ticket_index_context` | `regenerate_ticket_index` | Unreadable hook input |
 |---|---|---|---|---|---|
