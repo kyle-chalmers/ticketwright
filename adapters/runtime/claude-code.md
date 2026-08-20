@@ -16,6 +16,8 @@ subagent_isolation: documented
 reads_foreign_skills: none
 global_skills_root: ~/.claude/skills
 agents_root: .claude/agents/<name>.md   # native — this IS the canonical copy; the installer emits nothing
+hook_wiring: native            # the plugin manifest / .claude/settings.json already wire all four hooks; the installer emits nothing
+hook_protocol: claude-json     # PreToolUse permissionDecision deny|allow|ask — the native hooks speak it themselves; hook_shim refuses this runtime
 model_cmd: "claude -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch"
 model_sandbox: tools-withheld   # verified against `claude --help`: --disallowedTools is honored
 model_default: sonnet

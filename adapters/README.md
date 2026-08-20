@@ -335,6 +335,7 @@ frontmatter instead, and `bin/kit_paths.py` reads them:
 skills_root:  session_start:  tool_gate:  subagents:  structured_questions:
 model_cmd:  model_sandbox:  detect_env:
 gate_ask_tier:  gate_fail_mode:  subagent_isolation:  reads_foreign_skills:  global_skills_root:
+hook_wiring:  hook_protocol:  hook_wiring_caveat:  # + rules_root: on runtimes that don't read AGENTS.md
 ```
 
 `tool_gate` is the load-bearing one — it records whether that harness can intercept a command before
@@ -348,6 +349,18 @@ gate researched has no session hook; a runtime with a session hook has a gate th
 documented design), so nothing may average them into a single capability score. `gate_fail_mode`
 records the runtime's NATIVE default, not the installed state. Per-runtime values with footnoted
 caveats: `docs/runtimes.md` § "The matrix, machine-readable".
+
+`hook_wiring`, `hook_protocol` and `hook_wiring_caveat` drive the hook installer (PROMPT 7 / U3).
+`hook_wiring` is the artifact `ticketwright install` emits for the DB-write guard — a documented
+hooks-config file (`.cursor/hooks.json`, `.agents/hooks.json`), a documented plugin file
+(OpenCode), `native` (Claude Code — nothing is ever emitted under `.claude/`), or `unknown` (the
+protocol may be documented while the config location is not; the installer then prints the manual
+wiring line instead of guessing a path). `hook_protocol` selects which schema
+`bin/hook_shim.py` speaks (`codex-json`, `cursor-json`, `agy-json`, `exit-code`, `claude-json` =
+refused, `unknown` = refused). `hook_wiring_caveat` is the one-line honesty statement the install
+report prints verbatim (trusted-by-hash, documented fail-open, …). `rules_root` (cline only today)
+names a runtime's always-loaded rules surface when it is NOT `AGENTS.md`, so the enforcement table
+is emitted where that runtime's users actually read. Values are pinned by selftest section 43.
 
 `model_cmd` and `model_sandbox` are a pair. The first is the headless one-shot command
 `bin/enrich_ticket.py` runs; the second records whether that command is *restricted*, because the

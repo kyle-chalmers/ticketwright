@@ -243,7 +243,10 @@ The repository moved from `sst/opencode` to `anomalyco/opencode`.
   `tui.prompt.append`. So a session-start *notification* exists; a `session_context` equivalent does
   not. Treat the banner as unavailable here.
 - **Pre-execution gate** — `tool.execute.before`; "throwing an error prevents the tool from
-  executing." That is a hard deny. *Caveat:* a `permission.ask` hook exists in the SDK types but
+  executing." That is a hard deny. Plugins load from `.opencode/plugins/` (project) and
+  `~/.config/opencode/plugins/` (global): "Files in these directories are automatically loaded at
+  startup" (plugins doc, re-checked 2026-08-19) — which is where `ticketwright install` emits the
+  kit's throw-to-deny guard wrapper. *Caveat:* a `permission.ask` hook exists in the SDK types but
   [issue #7006](https://github.com/anomalyco/opencode/issues/7006) (open since 2026-01-05, still
   open as of 2026-08-19) reports it is never triggered, so there is no documented way to escalate to
   a confirmation rather than refuse.
@@ -345,10 +348,14 @@ Sources (accessed 2026-08-18; skills re-verified 2026-08-19): [rules](https://do
 ## What this means for the kit
 
 **`db_write_requires_approval` is mechanically enforceable well beyond Claude Code** — Codex CLI,
-Cursor, Antigravity, OpenCode and Devin all expose a pre-execution deny. PROMPT 7 should wire
-`db_write_guard` into each rather than declaring the policy guidance-only off Claude. But the
-rendered `AGENTS.md` must state the *specific* limitation per runtime, because none of these is a
-like-for-like replacement:
+Cursor, Antigravity, OpenCode and Devin all expose a pre-execution deny. Since wave F2 / U3
+(2026-08-19) the kit wires it where a config location is documented: the installer emits
+`.cursor/hooks.json` (with `failClosed: true`), `.agents/hooks.json` (Antigravity), and the
+`.opencode/plugins/` throw-to-deny wrapper, all fronting one scanner (`bin/sql_scan.py`) through
+`bin/hook_shim.py`; Codex CLI and Devin get a protocol-correct shim but manual wiring, because
+their hooks-CONFIG file locations are not recorded here — an honest gap the live punch list
+chases. The rendered `AGENTS.md` states the *specific* limitation per runtime in its enforcement
+table, because none of these is a like-for-like replacement:
 
 - **`high_risk` needs an `ask` tier, and only three runtimes have one.** This is the sharpest finding
   on this page, because `high_risk` is the policy's **default**. The enum is

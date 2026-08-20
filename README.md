@@ -355,7 +355,17 @@ ticketwright enrich ENG-123              # curated index summary  — needs a mo
   (`.codex/agents/*.toml`; markdown for cursor/devin/antigravity); where they are not (cline) or
   the definition path is undocumented (opencode), the report says so. `--global` emits into the
   runtime's declared per-user skills root and REFUSES where that root is unknown (antigravity —
-  its documented sources disagree) rather than guessing a path.
+  its documented sources disagree) rather than guessing a path. The install also wires the
+  **DB-write guard** where the runtime documents a home for it — `.cursor/hooks.json` (with
+  `failClosed: true`, required configuration), `.agents/hooks.json` for antigravity, a
+  throw-to-deny plugin under `.opencode/plugins/` — all fronting one scanner
+  (`bin/sql_scan.py`) through `bin/hook_shim.py`. Runtimes with no `ask` tier get the
+  `high_risk` policy as **deny-with-escape** (the deny names a one-shot re-approval), and the
+  report says so at install time; where even the hooks-config location is undocumented
+  (codex-cli, devin) the installer prints the manual wiring line instead of guessing. What is
+  ENFORCEMENT (proven — the native Claude hooks) vs WIRED (emitted, live confirmation owed) vs
+  GUIDANCE vs UNKNOWN per runtime × per hook is stated in the rendered
+  `AGENTS.md` enforcement table (and emitted into `.clinerules/` for cline).
 
 **`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
 `AGENTS.md` — `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.

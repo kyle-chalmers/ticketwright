@@ -17,6 +17,9 @@ subagent_isolation: documented
 reads_foreign_skills: .claude/skills   # vendor-format reading is toggleable in Devin's config
 global_skills_root: ~/.config/devin/skills
 agents_root: .devin/agents/<name>.md
+hook_wiring: unknown           # SessionStart/PreToolUse are documented; the hooks-config file location is not — wiring is manual until verified live
+hook_protocol: exit-code       # PreToolUse blocks ONLY via exit 2; any other nonzero is logged and does not block (documented fail-open) — the shim exits 2 deliberately, always
+hook_wiring_caveat: the hook path fails open BY DOCUMENTED DESIGN (only exit 2 blocks; any other nonzero is logged and ignored) — the shim exits 2 deliberately on every internal error.
 foreign_skills_caveat: Devin's reading of other vendors' formats (including .claude/skills/) is toggleable in its config — if the skills do not appear, check that setting before reinstalling.
 model_cmd: "devin -p {prompt}"
 model_sandbox: unverified   # docs mention a --sandbox mode, not verified for `devin -p`

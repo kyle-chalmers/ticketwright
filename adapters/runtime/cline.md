@@ -16,6 +16,10 @@ subagent_isolation: none    # subagents exist but are not user-definable — not
 reads_foreign_skills: .claude/skills
 global_skills_root: ~/.cline/skills   # documented for macOS/Linux (Windows: %USERPROFILE%\.cline\skills) — re-verified 2026-08-19
 agents_root: none           # subagents exist but are not user-definable — nothing for the kit to define
+hook_wiring: unknown           # the hooks doc is a stub; whether file-based hooks fire at all is unverified upstream (U6 #7)
+hook_protocol: unknown         # no return schema is documented for the current surface — hook_shim refuses rather than guesses
+hook_wiring_caveat: the hooks doc is a stub and approval classification is model-judged — the policy degrades to guidance here, and the .clinerules artifact says so where Cline users read.
+rules_root: .clinerules        # Cline's documented always-loaded rules surface — the install emits the enforcement table there, since Cline does not read AGENTS.md
 foreign_skills_caveat: .claude/skills/ is one of three documented skill locations here, and Cline's docs are the least settled of the seven — re-verify discovery before relying on it.
 model_cmd: ""
 model_sandbox: n/a   # no headless model command
