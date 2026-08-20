@@ -112,7 +112,8 @@ Two rules the encoding carries, stated here so nobody re-derives them wrongly:
   `gate_ask_tier` / `gate_fail_mode` / `subagent_isolation` / `global_skills_root` to `unknown`,
   `reads_foreign_skills` to `none`, the boolean rows to `no` — and every consumer must treat
   `unknown` as the never-optimistic case. Each `unknown` or `unverified` value here is owed a live
-  re-check (the wave-F2 punch list, `docs/live-verification.md`, once U6 lands).
+  re-check on the punch list, [`docs/live-verification.md`](live-verification.md) — and the link is
+  mechanical: `bin/selftest.sh` section 44 fails if such a value exists without a matching entry.
 
 ---
 
@@ -354,7 +355,7 @@ Cursor, Antigravity, OpenCode and Devin all expose a pre-execution deny. Since w
 `.opencode/plugins/` throw-to-deny wrapper, all fronting one scanner (`bin/sql_scan.py`) through
 `bin/hook_shim.py`; Codex CLI and Devin get a protocol-correct shim but manual wiring, because
 their hooks-CONFIG file locations are not recorded here — an honest gap the live punch list
-chases. The rendered `AGENTS.md` states the *specific* limitation per runtime in its enforcement
+([`docs/live-verification.md`](live-verification.md)) chases. The rendered `AGENTS.md` states the *specific* limitation per runtime in its enforcement
 table, because none of these is a like-for-like replacement:
 
 - **`high_risk` needs an `ask` tier, and only three runtimes have one.** This is the sharpest finding

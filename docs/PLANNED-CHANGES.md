@@ -1426,6 +1426,18 @@ red.
 No selftest assertion may claim a punch-list item "passed"; the list records that verification is
 OWED, and only a human with the runtime can pay it.
 
+AMENDMENT (2026-08-19, the U6 session, recorded per its gate-1 review): shipped as **12 entries**,
+not 11 — the #46 adversarial review routed the hook-shim jurisdiction-list check to U6 after this
+spec was written (entry 12); entry 4 also owns the Antigravity PostToolUse-regen WIRED cell and
+entry 6 also owns `opencode.agents_root` (both landed by U3/U5 after this list was cut); entry 5's
+"emitted skill frontmatter accepted" predates U2's verify-only decision for Devin and refolds into
+entries 8/9; entry 1 runs in two stages because the codex hooks-config location is unresearched —
+a one-visit "zero hand-edited files" run is impossible until the emitter learns the location that
+stage A establishes. The mechanical linkage is deliberately wider than the paragraph above: it
+also covers WIRED enforcement-table cells, "unverified"-labeled emitted artifacts, "(unverified)"
+metadata-mapping rows, and a promotion ledger (a non-Claude ENFORCEMENT cell without a ledger
+line fails). Full rationale: `docs/live-verification.md` § "Count, against the plan".
+
 ---
 
 Success-criterion mapping, stated plainly: U1–U5 prove the Codex artifacts are emitted correctly,

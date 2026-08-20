@@ -154,8 +154,9 @@ prints the manual wiring line instead of guessing a path. What each runtime mech
 vs. merely reads as guidance is stated per runtime × per hook in the rendered `AGENTS.md`
 enforcement table (and in `.clinerules/` for Cline, whose users don't read AGENTS.md) — a missing
 hook never silently weakens a policy. Whether each runtime *honors* its documented wiring is
-live-verification work, tracked on the punch list, and the docs must not imply parity before it
-is paid.
+live-verification work, tracked on the punch list ([`docs/live-verification.md`](live-verification.md),
+whose honesty link `bin/selftest.sh` section 44 enforces), and the docs must not imply parity
+before it is paid.
 
 ## What's inside
 

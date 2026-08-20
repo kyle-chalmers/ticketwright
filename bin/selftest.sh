@@ -4988,5 +4988,159 @@ print('; '.join(bad))
 [ -z "$hp_bad" ] && ok "pinned: hook_wiring + hook_protocol per runtime (a drive-by edit here re-routes a safety gate)" \
   || bad "a hook wiring/protocol declaration drifted" "$hp_bad"
 
+hdr "44 · the live-verification honesty linkage (PROMPT 7 / U6)"
+# docs/live-verification.md is the parked live-runtime work, written down — one entry per claim
+# only a live external runtime can prove. This section makes the honesty link MECHANICAL: every
+# unknown/unverified value in adapters/runtime/*.md frontmatter, every WIRED cell in the
+# enforcement table, every emitted artifact carrying an "unverified" label, and every
+# "(unverified)" metadata-mapping row must be claimed on some entry's Covers: line — a future
+# unverified claim without a tracked way to verify it turns this section red. Tokens are read
+# from Covers: lines ONLY, never from prose, so an example cannot satisfy the link. Deliberately
+# ABSENT here: any assertion that a punch-list item "passed" — the list records that verification
+# is OWED, and only a human with the runtime can pay it (U6's evidence-of-done states this rule).
+# The one forward-looking check: a non-Claude ENFORCEMENT cell (none exist today — section 43
+# forbids them) must carry a PROMOTED ledger line, so a promotion can never be a template edit
+# alone.
+
+LV="docs/live-verification.md"
+[ -s "$LV" ] && ok "docs/live-verification.md exists (the punch list the enforcement table cites)" \
+  || bad "docs/live-verification.md missing — U3's enforcement table cites a punch list that does not resolve"
+for sec in "## Recording a result" "promotion protocol" "## The entries" "## Promotion ledger"; do
+  grep -q "$sec" "$LV" 2>/dev/null && ok "punch list carries: $sec" \
+    || bad "punch list lost its section: $sec"
+done
+# The rendered AGENTS.md lands in user repos and docs/ does not ship in the wheel, so the legend
+# must point at the punch list by GitHub URL (same precedent as the obsidian.md pointer).
+grep -q 'github.com/kyle-chalmers/ticketwright/blob/main/docs/live-verification.md' templates/AGENTS.md.tmpl \
+  && ok "the enforcement-table legend links the punch list by GitHub URL (docs/ does not ship in the wheel)" \
+  || bad "the enforcement-table legend lost its punch-list URL"
+grep -q 'docs/live-verification.md' docs/runtimes.md \
+  && ok "docs/runtimes.md names the punch list" \
+  || bad "docs/runtimes.md lost its punch-list reference"
+
+lv_bad="$(python3 - <<'PY'
+import os, pathlib, re, sys, tempfile
+sys.path.insert(0, 'bin')
+from kit_paths import read_frontmatter
+
+doc_lines = pathlib.Path('docs/live-verification.md').read_text(encoding='utf-8').splitlines()
+bad = []
+
+# Covers: blocks only (from "Covers:" to the next blank line) — prose mentions never count.
+covers_lines, i = [], 0
+while i < len(doc_lines):
+    if doc_lines[i].startswith('Covers:'):
+        while i < len(doc_lines) and doc_lines[i].strip():
+            covers_lines.append(doc_lines[i]); i += 1
+    else:
+        i += 1
+covers_text = '\n'.join(covers_lines)
+# Exact backticked claims, not substrings: `codex-cli.hook` must never ride on the existing
+# `codex-cli.hook_wiring` token (gate-2 finding — a substring match is a false negative in
+# exactly the future-unknown direction this section exists to catch).
+claims = set(re.findall(r'`([^`]+)`', covers_text))
+if not covers_lines:
+    bad.append('no Covers: lines found — the punch list lost its entry structure')
+ledger = [l.strip() for l in doc_lines if l.strip().startswith('PROMOTED ')]
+
+def need(token, why):
+    if token not in claims:
+        bad.append(f'{why} — no Covers: line claims `{token}` (exact backticked token required)')
+
+# reader canary: the unknown scan is blind if read_frontmatter stops stripping inline comments
+with tempfile.NamedTemporaryFile('w', suffix='.md', delete=False) as tf:
+    tf.write('---\nseam: runtime\ntool: probe\nprobe_axis: unknown  # inline comment\n---\nbody\n')
+canary = read_frontmatter(pathlib.Path(tf.name)).get('probe_axis')
+os.unlink(tf.name)
+if canary != 'unknown':
+    bad.append(f'reader canary: read_frontmatter returned {canary!r} for "unknown  # comment" — the unknown scan below is blind')
+
+# (1) every unknown/unverified frontmatter value -> `<tool>.<key>` on a Covers: line
+unknown_count = 0
+adapters = sorted(pathlib.Path('adapters/runtime').glob('*.md'))
+for f in adapters:
+    fm = read_frontmatter(f)
+    tool = fm.get('tool') or f.stem
+    for key in sorted(fm):
+        val = fm[key]
+        if isinstance(val, str) and val.strip() in ('unknown', 'unverified'):
+            unknown_count += 1
+            need(f'{tool}.{key}', f'{f.name}: {key}: {val.strip()}')
+if unknown_count == 0:
+    bad.append('sanity: zero unknown/unverified frontmatter values found; if every axis is truly '
+               'resolved, retire this guard deliberately rather than letting it pass silently')
+
+# (2) every WIRED enforcement cell -> `<tool>.wired.<hook>`; every non-Claude ENFORCEMENT cell
+#     -> a PROMOTED ledger line (a promotion is never a template edit alone)
+tmpl = pathlib.Path('templates/AGENTS.md.tmpl').read_text(encoding='utf-8')
+m = re.search(r'<!-- ticketwright:enforcement:begin -->(.*?)<!-- ticketwright:enforcement:end -->',
+              tmpl, re.S)
+if not m:
+    bad.append('no enforcement markers in templates/AGENTS.md.tmpl')
+else:
+    NAME2TOOL = {'Claude Code': 'claude-code', 'Codex CLI': 'codex-cli', 'Cursor': 'cursor',
+                 'Antigravity': 'antigravity', 'OpenCode': 'opencode', 'Devin': 'devin',
+                 'Cline': 'cline'}
+    header_hooks = []
+    for line in m.group(1).splitlines():
+        if not line.startswith('| ') or line.startswith('|--'):
+            continue
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if cells[0] == 'Runtime':
+            header_hooks = [c.strip('`') for c in cells[1:5]]
+            continue
+        if not header_hooks:
+            continue
+        tool = NAME2TOOL.get(cells[0])
+        if tool is None:
+            bad.append(f'enforcement row {cells[0]!r} is not in section 44 runtime-name map — extend it')
+            continue
+        for hook, cell in zip(header_hooks, cells[1:5]):
+            if cell.startswith('WIRED'):
+                need(f'{tool}.wired.{hook}', f'enforcement WIRED cell {cells[0]} x {hook}')
+            if cell.startswith('ENFORCEMENT') and tool != 'claude-code':
+                want = f'PROMOTED {tool}.wired.{hook} '
+                if not any(l.startswith(want) for l in ledger):
+                    bad.append(f'{cells[0]} x {hook} claims ENFORCEMENT with no promotion-ledger '
+                               f'line ({want.strip()} ...)')
+
+# (3) every emitted fixture artifact carrying an "unverified" label -> its in-project path
+emit_hits = 0
+for p in sorted(pathlib.Path('tests/emit').rglob('*')):
+    if p.is_file() and 'unverified' in p.read_text(encoding='utf-8', errors='ignore'):
+        emit_hits += 1
+        rel = p.relative_to('tests/emit')
+        proj = str(pathlib.Path(*rel.parts[1:]))
+        if proj not in claims:
+            bad.append(f'{p} carries an unverified label — no Covers: line names `{proj}`')
+if emit_hits == 0:
+    bad.append('sanity: zero unverified-labeled files under tests/emit/; if every label is truly '
+               'gone, retire this guard deliberately rather than letting it pass silently')
+
+# (4) every "(unverified)" metadata-mapping row -> the emitted qc-reviewer path its agents_root
+#     derives (or the fallback token where no agents_root is declared)
+for f in adapters:
+    lines = f.read_text(encoding='utf-8').splitlines()
+    k = lines.index('---', 1) if '---' in lines[1:] else len(lines)
+    body = '\n'.join(lines[k + 1:])
+    if '(unverified)' not in body:
+        continue
+    fm = read_frontmatter(f)
+    tool = fm.get('tool') or f.stem
+    ar = (fm.get('agents_root') or '').strip()
+    if ar and ar not in ('none', 'unknown'):
+        path = ar.replace('<name>', 'qc-reviewer')
+        if path not in claims and f'{tool}.metadata_mapping' not in claims:
+            bad.append(f'{f.name}: "(unverified)" mapping row — no Covers: line names `{path}` '
+                       f'(or the fallback `{tool}.metadata_mapping`)')
+    else:
+        need(f'{tool}.metadata_mapping', f'{f.name}: "(unverified)" mapping row with no agents_root to derive an artifact from')
+
+print('\n'.join(bad))
+PY
+)"
+[ -z "$lv_bad" ] && ok "every unknown/unverified frontmatter value, WIRED cell, unverified-labeled artifact, and (unverified) mapping row is claimed on a punch-list Covers: line" \
+  || bad "an unverified claim exists without a tracked way to verify it" "$lv_bad"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
