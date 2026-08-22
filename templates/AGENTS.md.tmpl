@@ -25,7 +25,7 @@ objects → the tickets that touched them. `/ticket` surfaces the closest matche
 the index before starting, and never rebuild what's already been built.
 
 ## The stack (this repo)
-| Seam | Tool | Adapter |
+| Tool slot | Tool | Adapter |
 |---|---|---|
 | Tracker | {{tracker_tool}} | {{tracker_adapter}} |
 | Warehouse | {{warehouse_tool}} | {{warehouse_adapter}} |
@@ -44,7 +44,7 @@ Config lives in THREE tiers, and only the first is committed team config:
 
 | Tier | File | Holds |
 |---|---|---|
-| 1 team | `.claude/config/stack.yaml` | which tool fills each seam, which data the team reads, policies, ticket conventions |
+| 1 team | `.claude/config/stack.yaml` | which tool fills each tool slot, which data the team reads, policies, ticket conventions |
 | 2 person, portable | `people/<id>.yaml` (committed) | display name, identities, comms voice, file-type preferences |
 | 3 person, machine | `.claude/config/connections.local.yaml` (gitignored) | named profiles/connections, local mount roots |
 
@@ -73,7 +73,7 @@ in the repo; local analysis + output.
 tracker comments; chat messages; docstore backups.
 
 **DB-write protocol:** show the exact SQL → explain the change → wait for `yes` → run.
-(No warehouse seam in this repo? This whole section is inert — there are no DB writes to gate.)
+(No warehouse tool slot in this repo? This whole section is inert — there are no DB writes to gate.)
 
 How much is gated is set by `policies.db_write_requires_approval` in `.claude/config/stack.yaml`:
 
@@ -214,7 +214,7 @@ cap, a hyperlink, or the include-list. No profile ⇒ drafting is unchanged. Bui
 ## Quality control (the validation pyramid)
 Every deliverable: ① dialect lint → ② counts & dedup (duplicate detection is the primary test) →
 ③ cross-source reconciliation → ④ independent re-run + anti-pattern sweep → ⑤ human sign-off.
-No warehouse seam (or non-query deliverables): skip the layers with nothing to run; `/review` runs
+No warehouse tool slot (or non-query deliverables): skip the layers with nothing to run; `/review` runs
 layer ⑤ plus a claims-vs-evidence walk instead. Run `/review` before `/ship`.
 
 ## Git

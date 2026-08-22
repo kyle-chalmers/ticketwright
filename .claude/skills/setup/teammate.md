@@ -61,7 +61,7 @@ distinguish empty, half-finished, "I chose team defaults", or stale-after-the-st
 this flow always writes the full versioned shape (a writer convention `bin/effective_config.py`
 understands and polices):
 - `schema_version: 1`
-- `mode:` — `defaults` (they accepted team defaults; the file must then carry no seam overrides —
+- `mode:` — `defaults` (they accepted team defaults; the file must then carry no tool-slot overrides —
   the resolver rejects the combination) or `overrides` (personal values follow)
 - `stack_fingerprint:` — the sha256 of the stack file this was completed against:
   `!python3 -c "import hashlib;print(hashlib.sha256(open('.claude/config/stack.yaml','rb').read()).hexdigest())"`

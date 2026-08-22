@@ -28,12 +28,69 @@ works for any team storing ticket- or task-driven analysis work in a repo, datab
 - ❌ you need a project tracker, an ETL scheduler, or a BI dashboard — Ticketwright sits beside
   those; it does not replace them
 
-Install it per repo, point it at your team's work, and it:
+## What it builds: a team brain
 
-- **opens tickets** and loads exactly the context each one needs
-- **remembers every past ticket**, so you never rebuild what's already been built
-- **QC-reviews its own work** against a validation pyramid
-- **never posts anything externally** without your explicit go
+A Ticketwright repo is a shared corpus of tickets that makes your team's past work available to
+both people and AI. Every analysis lands in one place with its business context, its assumptions,
+its QC verdict and its deliverables, so any teammate - or any agent - can find prior work, judge
+whether it applies, and reuse it instead of rebuilding it. You can cite my analysis, I can cite
+yours, and neither of us has to interrupt the other to do it. Because the corpus is
+machine-readable, the assistant gets better at your team's domain the longer the team uses it.
+
+What that buys, and the mechanism behind each piece:
+
+- **Prior-art recall compounds.** `tickets/INDEX.md` is an auto-maintained catalog of every
+  ticket, surfaced at the start of every session, and `/ticket` opens with a reuse brief - prior
+  work ranked by shared objects, tags and keywords (deterministic, stdlib, no vector store), with
+  what to copy and which gotchas carry over. The engine is `bin/recall.py`, and what it ranks
+  against is `tickets/index_data.json` - the curated summaries written at ticket close (`/ship`
+  routes this through `/refresh index`; `bin/enrich_ticket.py` is the headless-model path,
+  `bin/ingest_index_records.py` the agent-neutral one). Every shipped ticket that gets curated
+  makes the next search better.
+  The failure mode, plainly: curation can fail or be skipped, and a skipped ticket falls back to
+  its bare README title (`▱` in the catalog) - keep skipping and the corpus rots toward a folder
+  of SQL nobody can find. Details: [docs/ticket-index.md](docs/ticket-index.md).
+- **Object-level memory.** `tickets/OBJECTS.md` maps every warehouse object to the tickets that
+  touched it, so "has anyone used this view, and what did they learn about it?" is a lookup. This
+  is the institutional knowledge hardest to keep in people's heads.
+- **Assumptions make prior work citable.** The `reduce_assumptions` policy requires assumptions in
+  the ticket README - a workflow policy the skills honor, not a mechanically enforced one. Without
+  written assumptions an old analysis is unciteable: you cannot tell whether its numbers apply to
+  your question. This is what separates a knowledge base from a file dump.
+- **QC verdicts are a quality signal on the corpus.** `/review`'s APPROVE / REQUEST-CHANGES
+  verdict sits next to the deliverable, so a reader can tell validated work from exploratory work
+  before reusing either.
+- **Old work re-runs.** The `deterministic_outputs` policy (explicit `ORDER BY` on exports,
+  golden-replay diffs on productized skills) keeps a prior analysis executable where its queries
+  and inputs still exist - a stronger claim than a document makes.
+- **Continuity.** When someone leaves, their reasoning survives with their SQL: the context,
+  assumptions and verdicts stay in the repo, readable by the next person and traceable by the
+  next agent.
+
+## The lifecycle is the map
+
+Every ticket moves through the same five phases, whatever tools sit underneath. The tool slots
+exist to serve the phases, and one slot can serve more than one phase:
+
+| Phase | Tool slots it can use |
+|---|---|
+| 1 · Open the work | tracker + vcs |
+| 2 · Do the work | warehouse + local tools |
+| 3 · Quality-check it | no slot of its own - `/review` plus human sign-off |
+| 4 · Deliver | vcs + docstore |
+| 5 · Announce and share | tracker + chat |
+
+"More tools" means named targets inside a slot - two warehouses, a team chat and a client chat -
+never more slots. And phase 3 is worth a second look: quality checking has no tool slot of its
+own. Every other phase has a dedicated external system available to it (available, not always
+present - trackerless, warehouse-less and docstore-less setups are all supported), but there is
+no QC service to plug in. `/review` and the `qc-reviewer` agent borrow the warehouse slot to
+re-run the deliverable queries, and under the default `human_review_handoff` policy the final
+gate is a person reading the output - the deliverables open in each reviewer's own applications,
+a per-user choice whose portable half lives in committed `people/<id>.yaml` and whose machine
+wiring stays local.
+
+The commands that drive these phases are in [How work flows](#how-work-flows) below.
 
 It works with **your** tools, through one config file:
 
@@ -205,17 +262,6 @@ Plugin skills are namespaced (`/ticketwright:ticket`); inside a configured repo 
 work too. (The v1 command names — `/start-ticket`, `/qc-review`, … — were retired in v3; see the
 rename map in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
 
-## Never rebuild what's been built
-
-- **`tickets/INDEX.md`** — an auto-maintained catalog of **every** ticket (status, one-line summary,
-  tags, objects touched, cross-references), surfaced at the start of every session.
-- **A reuse brief on every open.** `/ticket` ranks your prior work by shared objects, tags, and
-  keywords — deterministic, stdlib, no vector store — then writes up what to copy, which gotchas
-  carry over, and what's different this time.
-- **`tickets/OBJECTS.md`** — the reverse lookup: *which tickets touched `VW_X`?*
-
-Details: [docs/ticket-index.md](docs/ticket-index.md).
-
 ## See it as a graph (Obsidian)
 
 Ticketwright writes a small, auto-maintained graph layer under `tickets/` — `graph/<owner>.<id>.md`
@@ -223,12 +269,23 @@ Ticketwright writes a small, auto-maintained graph layer under `tickets/` — `g
 `objects/<object>.md` (a node per data object) — so you can open the repo as an
 [Obsidian](https://obsidian.md) vault and *browse* your work.
 
+The graph and the catalog are two renderings of one relationship model. The same cross-reference
+resolution in `bin/build_ticket_index.py` writes both in a single pass: `tickets/INDEX.md` and
+`tickets/OBJECTS.md` are how an agent queries the relationships, and the graph is how a person
+sees the shape of the corpus at a glance - which analyses cluster, which objects are load-bearing
+across many tickets, where the orphans are. Generated together, they cannot drift apart.
+
 - **Open a table** like `ANALYTICS.VW_ORDERS` and its local graph is every ticket that touched it.
 - **Open a ticket** and you see the objects it touched, plus the tickets it built on.
 - **Zero manual setup.** It also writes `.obsidian/graph.json`, so the Graph view opens already
   focused on the tickets↔objects web — READMEs filtered out, ticket and object nodes color-coded.
 - **Your tweaks survive.** Forces, zoom, and custom filters/groups are never clobbered.
 - **Plain markdown** — no plugins, no wikilinks. It renders on GitHub too.
+
+One asymmetry to know: `/ship`'s staging step names the catalog - `tickets/INDEX.md`,
+`tickets/OBJECTS.md`, `tickets/index_data.json` - and not `tickets/graph/` or `tickets/objects/`.
+The nodes are committed by default (nothing ignores them, and the same `--check` gate covers
+them), so stage them with the ticket when you want the graph browsable beyond your own clone.
 
 On by default. Set `project.graph_notes: false` to turn off the whole layer, or
 `project.graph_config: false` to keep the nodes but stop managing `.obsidian/graph.json`.

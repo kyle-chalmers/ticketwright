@@ -278,6 +278,24 @@ All notable changes to this project are documented here. Format loosely follows
   of naming two files.
 
 ### Changed
+- **The docs lead with what the kit is for** (PROMPT 9). `README.md` now opens with the team-brain
+  framing — the shared ticket corpus and six concrete benefits, each tied to the mechanism that
+  delivers it (curated recall via `tickets/index_data.json` + `bin/recall.py`, `tickets/OBJECTS.md`
+  object memory, written assumptions, QC verdicts, `deterministic_outputs`, continuity) — and
+  presents the five lifecycle phases with a slot-to-phase matrix **before** the tool-slot table;
+  `docs/architecture.md` gains the same lifecycle-first structure. Phase 3 is stated precisely:
+  quality checking has no tool slot of its own — it borrows the warehouse to re-verify, and under
+  the default `human_review_handoff` policy gates on a person reading the output. The graph layer
+  and the catalog are documented as two renderings of one relationship model (person ↔ agent), with
+  the `/ship` staging asymmetry stated (`INDEX.md`/`OBJECTS.md`/`index_data.json` are staged by
+  name; `tickets/graph/` + `tickets/objects/` are committed-by-default but unstaged) and multi-hop
+  graph traversal recorded in `ROADMAP.md` as a future enhancement. The "tool slot" terminology
+  sweep covers the remaining user-facing "seam" sites (`stack.schema.md` narrative,
+  `templates/AGENTS.md.tmpl`, `templates/plan.md.tmpl`, `docs/troubleshooting.md`, two `/setup`
+  reference lines); `seams:` config keys, adapter frontmatter, and contributor docs keep the
+  internal name. A voice audit holds README + docs/ to plain, concrete prose; selftest section 47
+  pins the mission/vision sentences, the lifecycle-before-slots ordering, the phase matrix, and
+  the filler-word absence.
 - `adapters/README.md` and `stack.schema.md` now count all **six** shipped worked configs
   (`stack.example.no-warehouse.yaml` was missing from both enumerations); `/setup --voice` routes
   the team-wide `seams.chat.include_self` toggle to `/setup tool chat` instead of offering to

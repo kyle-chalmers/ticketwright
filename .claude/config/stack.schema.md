@@ -1,12 +1,12 @@
 # `stack.yaml` — the tool registry (schema + policies)
 
-`stack.yaml` is the **single source of truth** for which concrete tool fills each abstract "seam"
+`stack.yaml` is the **single source of truth** for which concrete tool fills each tool slot
 and for the project facts the skills need. Skills never hardcode `acli`, `snow`, `slack`, channel
 IDs, epics, or paths — those live **here** and in the per-tool adapters. Swapping Jira→Asana or
 Snowflake→BigQuery means editing this file and pointing at a different adapter; **no skill changes.**
 
 The `setup` skill writes this file by interviewing you and detecting installed tooling.
-`bin/verify_stack.sh` reads it to smoke-test every seam.
+`bin/verify_stack.sh` reads it to smoke-test every tool slot.
 
 **This file is TIER 1 of three, and nothing should read it directly** — see "The three tiers" below.
 Skills, hooks and scripts read the MERGED result via `bin/effective_config.py`.
@@ -22,7 +22,7 @@ Config is therefore three files, merged by one resolver.
 
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
-| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each seam, which data the team reads, the 10 policies, ticket conventions |
+| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 10 policies, ticket conventions |
 | 2 PERSON, portable | `people/<id>.yaml` | yes | display name, tracker handle, identities, comms voice, file-type preferences |
 | 3 PERSON, machine | `.claude/config/connections.local.yaml` | **no** (gitignored) | named profiles/connections, local mount roots, the `person:` key |
 
@@ -36,7 +36,7 @@ file-type preferences between repos while one repo differs in one field.
 ```bash
 python3 bin/effective_config.py --root . --json          # everything, with per-key provenance
 python3 bin/effective_config.py --root . --key seams.warehouse.cli
-python3 bin/effective_config.py --root . --verify-plan   # one row per seam/target
+python3 bin/effective_config.py --root . --verify-plan   # one row per slot/target
 python3 bin/effective_config.py --root . --lint          # machine-local values in committed config
 python3 bin/effective_config.py --root . --seam warehouse --target lake   # select one target (inheritance applied)
 ```
@@ -50,7 +50,7 @@ missing/invalid `default:`) — never a silent fallback to another target.
 
 Tier 3 selects **credentials and local paths**. It may never change **logical data selection**:
 `catalog`, `schema`, `database`, `dataset`, `warehouse_id`, target selection, `transport`, or the
-seam's `tool`/`adapter`/`cli`. Two teammates must never silently read different data.
+slot's `tool`/`adapter`/`cli`. Two teammates must never silently read different data.
 
 Which keys are personal is declared **per adapter**, in a `user_keys:` frontmatter list — never
 hardcoded in a skill, and deliberately NOT derived from `requires:` (that is a minimum-capability
@@ -59,9 +59,9 @@ declaration; a warehouse can require a CLI yet still share team-level role and t
 The merge is an **allowlist over paths**. A tier-2/tier-3 file may write:
 
 - `seams.<seam>.targets.<existing-target>.<key>` where `<key>` is in that target's adapter
-  `user_keys:` — `targets` is a legal path *segment* (this is where a multi-target seam's personal
+  `user_keys:` — `targets` is a legal path *segment* (this is where a multi-target slot's personal
   credentials go) but never a settable value: creating, renaming or deleting a target is refused;
-- `seams.<seam>.<key>` on a single-mapping seam only — a multi-target seam has no adapter of its
+- `seams.<seam>.<key>` on a single-mapping slot only — a multi-target slot has no adapter of its
   own, so there would be nothing to declare which of its keys are personal;
 - the structural keys `person`, `schema_version`, `mode`, `stack_fingerprint`;
 - the tier-2 person block and the `viewer:` block.
@@ -101,7 +101,7 @@ unchanged. A literal `base_path:` still works and warns.
 
 ```yaml
 project:        # facts about this workspace, tool-independent
-seams:          # one entry per abstract seam → concrete tool + adapter + verify
+seams:          # one entry per tool slot → concrete tool + adapter + verify
 policies:       # behavioral rules every skill inherits (the kit's "global rules")
 ```
 
@@ -170,11 +170,11 @@ targets". Fields of a single mapping:
 |---|---|---|
 | `tool` | string | The concrete tool, e.g. `jira` / `asana` / `monday` / `linear`. |
 | `adapter` | path | The playbook that maps the verb contract → this tool's commands. |
-| `verify` | string \| null | A **read-only** smoke-test command. `{token}` interpolation from this seam's own keys + `project`. `null` = skip (skills warn). Non-zero exit ⇒ seam "unreachable". |
+| `verify` | string \| null | A **read-only** smoke-test command. `{token}` interpolation from this slot's own keys + `project`. `null` = skip (skills warn). Non-zero exit ⇒ slot "unreachable". |
 | `transport` | enum | `cli` \| `mcp` \| `both` — how the adapter talks to the tool. Drives the verify fallback. |
 | *(extra keys)* | any | Tool-specific config the adapter reads (site, warehouse, role, channel, base_path, …). |
 
-The `warehouse` seam may be `null`/omitted for non-data repos — `review`, `spec-and-build`, and
+The `warehouse` slot may be `null`/omitted for non-data repos — `review`, `spec-and-build`, and
 `refresh context` degrade gracefully (skip warehouse steps) when it is. `chat` and `docstore` may
 likewise be omitted: `/ship` skips those artifacts and names the `/setup` command that would enable
 them rather than blocking. `stack.example.solo.yaml` omits both.
@@ -188,7 +188,7 @@ generic to every slot; the worked (and today the only skill-routed) example is t
 ```yaml
   warehouse:
     default: prod              # REQUIRED when `targets:` is present; must name a key below
-    cli: snow                  # seam-level scalars are inherited by every target
+    cli: snow                  # slot-level scalars are inherited by every target
     targets:
       prod: { tool: snowflake,  adapter: adapters/warehouse/snowflake.md,  verify: "snow connection test" }
       lake: { tool: databricks, adapter: adapters/warehouse/databricks.md, verify: "…" }
@@ -196,7 +196,7 @@ generic to every slot; the worked (and today the only skill-routed) example is t
 
 | Field | Type | Meaning |
 |---|---|---|
-| `targets` | map | Named targets. **Its presence is the discriminator** for a multi-target seam. |
+| `targets` | map | Named targets. **Its presence is the discriminator** for a multi-target slot. |
 | `default` | string | Which target skills use when nothing else selects one. Required with `targets`. |
 
 Rules:
@@ -204,7 +204,7 @@ Rules:
 - **Inheritance.** A target inherits any key it doesn't define itself, including `tool` / `adapter` /
   `verify` — so two targets on one account can share all three and differ only in, say,
   `default_warehouse`. A target's own key wins. Inheritance is keyed on *absence*: an explicit
-  `verify: null` on a target means "skip", it does not fall back to the seam's command.
+  `verify: null` on a target means "skip", it does not fall back to the slot's command.
 - **List the default first.** Readers that predate this feature (an un-relaunched session's statusline
   and SessionStart banner) show the first target they find, so first == default keeps them honest.
   `bin/verify_stack.sh` warns when the default isn't first, and fails when `default` is missing or
@@ -415,12 +415,15 @@ and a hook that launched a desktop app on every file write would be a nuisance r
 
 The policy above decides **when** a gate fires; it does not name a single application. Which app
 opens a `.sql` is a personal choice — one teammate wants a SQL IDE, another a text editor, a third
-wants nothing to open — so that config is **per-user and gitignored**, resolved first-hit-wins:
+wants nothing to open — so that config is **per-user**, resolved first-hit-wins. Its portable half
+(which file types you care about) can live in your committed `people/<id>.yaml`; the machine half
+(which application) stays in gitignored local files:
 
 | # | Path | Scope |
 |---|---|---|
 | 1 | `.claude/config/viewer.local.yaml` | you, this repo (gitignored) |
 | 2 | `${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml` | you, every repo |
+| 2b | `people/<id>.yaml` (globs → categories, committed) + `connections.local.yaml` (categories → apps, gitignored) | you, composed from tiers 2 + 3 |
 | 3 | a `viewer:` block under `seams:` in this file | the whole team (committed) |
 
 None present ⇒ nothing opens, regardless of the policy value. Layer 3 exists for a team that wants
@@ -452,6 +455,6 @@ prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
 [`stack.example.multi-audience.yaml`](stack.example.multi-audience.yaml)
 (**two audiences** — Slack + Teams in one chat slot, Drive + SharePoint in one docstore slot,
 routed by the ticket's declared audience/classification),
-`stack.example.no-warehouse.yaml` (**no warehouse seam** — document/report deliverables), and
+`stack.example.no-warehouse.yaml` (**no warehouse slot** — document/report deliverables), and
 `stack.example.solo.yaml` (**no tracker at all** — `tracker: local` + `id_mode: slug`, and no chat or
 docstore). To validate any config: `bash bin/verify_stack.sh`.
