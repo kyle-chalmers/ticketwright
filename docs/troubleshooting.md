@@ -12,14 +12,14 @@ Just re-run it. Every skill is resume-safe by design:
 - **`/ship`** Phase A is idempotent (re-verify, tidy, drafts); Phase B halts before every external
   post, so a crash can't leave you half-posted — re-run and re-authorize.
 
-## "Seam unreachable" / auth errors
+## "Tool slot unreachable" / auth errors
 
-`bin/verify_stack.sh` (run by `/setup`, and by skills at preflight) names the failing seam. The fix
-lives in that tool's adapter: open `adapters/<seam>/<tool>.md` and follow its `auth:` notes (CLI
-login, `config.toml`, MCP server connect). For a personalized walk-through, run
-`/setup --teammate`. MCP-only seams need the server connected *in this session* — check `/mcp`.
+`bin/verify_stack.sh` (run by `/setup`, and by skills at preflight) names the failing tool slot.
+The fix lives in that tool's adapter: open `adapters/<seam>/<tool>.md` and follow its `auth:`
+notes (CLI login, `config.toml`, MCP server connect). For a personalized walk-through, run
+`/setup --teammate`. MCP-only tools need the server connected *in this session* — check `/mcp`.
 
-- **Setup time:** unreachable seams are a warning, not a failure — finish setup, auth later.
+- **Setup time:** an unreachable tool is a warning, not a failure — finish setup, auth later.
 - **Work time:** `/ticket` offers to continue local-only if the tracker is down; the warehouse
   slice halts (guessing at schemas is worse than waiting).
 
@@ -57,7 +57,7 @@ It means no `key_prefix` (or `key_prefixes`) was found in `stack.yaml` — which
 the prefix: the readers check `key_prefix` first, then the first entry of `key_prefixes`, and only then
 fall back to the directory name.
 
-If instead the statusline shows only one warehouse when you configured several, relaunch the session:
+If instead the statusline shows only one warehouse when you configured more than one, relaunch the session:
 bundled hook changes don't reach an installed copy until it is reinstalled, and an un-relaunched
 session displays the first target it finds. Listing the default target first keeps that honest.
 
@@ -88,7 +88,7 @@ by design. Worth filing with the exact statement so the additive allowlist can g
 
 **Still prompting in `bypassPermissions`?** The guard suppresses its own prompt there and prints a
 `systemMessage` instead. If you still get a dialog, something else is producing it — another
-PreToolUse hook (when several match, the most restrictive wins), or an `ask` rule in your
+PreToolUse hook (when more than one matches, the most restrictive wins), or an `ask` rule in your
 `permissions` settings, which `bypassPermissions` explicitly does not skip. Check for a second
 `Bash` hook at user scope before blaming this one.
 
@@ -135,7 +135,7 @@ The old names routed automatically through v2.x as deprecated aliases; they were
 `bash bin/selftest.sh` runs the kit's full 200+-check suite (config parsing, adapter coverage,
 frontmatter, hooks, render gate, index/recall engines) and pinpoints what's broken. If the
 self-test is green but a skill misbehaves, the issue is usually `stack.yaml` (wrong key, stub
-adapter) — `bash bin/verify_stack.sh` narrows it to a seam.
+adapter) — `bash bin/verify_stack.sh` narrows it to a tool slot.
 
 
 ## Config resolves to something you did not expect
@@ -154,7 +154,7 @@ team-owned — a data-selection key such as `catalog`, or a `policies:` block, b
 rejected rather than ignored.
 
 `python3 bin/effective_config.py --root . --lint` lists machine-local values sitting in committed
-config. `bash bin/verify_stack.sh` prints the same warnings alongside seam reachability.
+config. `bash bin/verify_stack.sh` prints the same warnings alongside tool reachability.
 
 **A verify command printed `skipped: unresolved {token}`** — that is correct, not a bug: the command
 needs a personal value and no `.claude/config/connections.local.yaml` supplies it. Set the key there.

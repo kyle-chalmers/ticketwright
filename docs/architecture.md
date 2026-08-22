@@ -19,20 +19,55 @@ The lifecycle the skills implement — plan → build → check → ship — des
 supplied the AI-layer model and the context-engineering stance (AI fails from missing context, not
 weak models).
 
-## Seams, adapters, and the verb contract
+## What the record is for
 
-A **seam** is a tool slot the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`, `vcs`,
-and the optional `viewer`. A seam may name one tool or several **named targets** — routed end to end
-today for `warehouse`, `chat` and `docstore` — and a seam whose tool is absent can still be filled by
-an adapter over local files, which is how a repo with no tracker runs unchanged. The wiring is
-hybrid — config names the tools, verification proves them:
+Ticketwright's product is the record: a corpus of tickets carrying the business context, the
+assumptions, the QC verdict and the deliverables of every analysis the team ships. The record has
+two readers - every artifact is consumed by a person *and* by an agent - and each mechanism on
+this page states which reader it serves rather than implying it serves both. The README's
+[team-brain section](../README.md#what-it-builds-a-team-brain) walks what that record buys a team;
+this page maps the machinery that delivers it.
 
-1. **`.claude/config/stack.yaml`** names which tool fills each seam + project facts + the 10
+## The lifecycle is the primary map
+
+Underneath the plan → build → check → ship commands, every ticket moves through five phases. Tool
+slots are secondary - they exist to serve phases, and one slot can serve more than one phase:
+
+| Phase | Tool slots it can use |
+|---|---|
+| 1 · Open the work | tracker + vcs |
+| 2 · Do the work | warehouse + local tools |
+| 3 · Quality-check it | no slot of its own - `/review` plus human sign-off |
+| 4 · Deliver | vcs + docstore |
+| 5 · Announce and share | tracker + chat |
+
+Phase 3 is the deliberate hole in the matrix: quality checking has no slot of its own. It still
+touches external systems - `/review` re-runs deliverable queries through the warehouse adapter,
+and so does the `qc-reviewer` agent. What it lacks is a dedicated external system: every other
+phase has one available to it (available, not always present - trackerless, warehouse-less and
+docstore-less configurations are all supported and ship as worked examples), while phase 3
+borrows the warehouse to re-verify and, under the default `human_review_handoff` policy, gates on
+a person reading the output in their own applications - per-user config whose portable half lives
+in committed `people/<id>.yaml` and whose machine wiring stays in gitignored local files. That is
+why this page leads with the phases: the phase the kit is proudest of does not appear in a tool
+inventory.
+
+## Tool slots, adapters, and the verb contract
+
+A **tool slot** is a capability the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`,
+`vcs`, and the optional `viewer`. Internally a slot is called a **seam** - the `seams:` config
+key, the adapter `seam:` frontmatter and the selftest all keep that name. A slot may name one tool
+or more than one **named target** — routed end to end today for `warehouse`, `chat` and
+`docstore` — and a slot whose tool is absent can still be filled by an adapter over local files,
+which is how a repo with no tracker runs unchanged. The wiring is hybrid — config names the tools,
+verification proves them:
+
+1. **`.claude/config/stack.yaml`** names which tool fills each slot + project facts + the 10
    policies. Schema: [.claude/config/stack.schema.md](../.claude/config/stack.schema.md).
 2. **`adapters/<seam>/<tool>.md`** maps the abstract **verb contract** (`fetch_ticket`, `query`,
    `draft`, `backup`, `commit`, …) to that tool's concrete commands. Contract:
    [adapters/README.md](../adapters/README.md).
-3. **`bin/verify_stack.sh`** pings each seam's read-only `verify` before use — reachable seams
+3. **`bin/verify_stack.sh`** pings each slot's read-only `verify` before use — reachable slots
    run, unreachable ones halt with the adapter's auth notes.
 
 Skills are written **once against verbs** and never name a tool. Swapping a tool = edit
@@ -43,7 +78,7 @@ Skills are written **once against verbs** and never name a tool. Swapping a tool
 [`stack.example.azure.yaml`](../.claude/config/stack.example.azure.yaml)
 (Azure DevOps/Synapse/Teams **+ Outlook email**/SharePoint/Azure Repos),
 [`stack.example.multi-warehouse.yaml`](../.claude/config/stack.example.multi-warehouse.yaml)
-(Snowflake **+** Databricks — two targets in one seam),
+(Snowflake **+** Databricks — two targets in one slot),
 [`stack.example.multi-audience.yaml`](../.claude/config/stack.example.multi-audience.yaml)
 (**three audiences** — internal chat + archive, client-facing chat + delivery store, and
 stakeholder delivery by email, selected by a declared audience, never an inferred one),
@@ -52,11 +87,11 @@ docstore — the ticket folder is the tracker), and
 [`stack.example.no-warehouse.yaml`](../.claude/config/stack.example.no-warehouse.yaml) (**no
 warehouse** — document/report deliverables, nothing to query) — the same skills run against all seven.
 
-**Adding a tool:** write one adapter (copy the closest reference in the same seam; implement every
-verb section; keep the frontmatter), add a `verify` line to your `stack.yaml` seam, run
-`bash bin/verify_stack.sh`. No skill edits.
+**Adding a tool:** write one adapter (copy the closest reference in the same slot's directory;
+implement every verb section; keep the frontmatter), add a `verify` line to your `stack.yaml`
+entry, run `bash bin/verify_stack.sh`. No skill edits.
 
-**Two audiences in one repo:** a `chat` or `docstore` seam that holds named targets routes per
+**Two audiences in one repo:** a `chat` or `docstore` slot that holds named targets routes per
 ticket, from a **declaration** — the ticket's committed `delivery-plan.yaml` names its `audience:`
 and `classification:`, and `bin/delivery_plan.py` matches those against the values each target
 declares. Nothing infers an audience from prose, a channel name or a label, and nothing falls back:
@@ -64,20 +99,23 @@ an absent or unmatched declaration halts and lists what is configured, because t
 fall through to may be the external one. Each chat target carries its own non-empty `always_include`,
 applied after routing, and `bin/verify_stack.sh` fails a multi-target config that omits one. What the
 kit cannot do is check a destination's real sharing permissions — `sharing_scope` is a declaration,
-not a verification. **Email is a chat target, not a sixth seam**: the `gmail`/`outlook` adapters map
+not a verification. **Email is a chat target, not a sixth slot**: the `gmail`/`outlook` adapters map
 the same four chat verbs (destination key `to`, `always_include` rendered as visible Cc, draft-first
 with `default_mode: draft` set explicitly), and the same routing rules bind — a wrongly-addressed
 email cannot be unsent, which is why nothing about email relaxes them. Worked config:
 [`stack.example.multi-audience.yaml`](../.claude/config/stack.example.multi-audience.yaml).
 
-**The one seam whose config is not in `stack.yaml`:** `viewer` — which application opens a `.sql`
-or a `.csv` at a review gate. Every other seam names a tool the whole team shares; this one is a
+**The one slot whose config is not in `stack.yaml`:** `viewer` — which application opens a `.sql`
+or a `.csv` at a review gate. Every other slot names a tool the whole team shares; this one is a
 personal preference, and a committed entry could never ask a new cloner what *they* want. So the
 repo decides **when** a gate fires (policy `human_review_handoff`) and each person decides **what**
-it opens, in a gitignored `.claude/config/viewer.local.yaml` (or a user-level file covering all
-their repos). `bin/handoff.sh` resolves the layers and owns the rails — it never launches in CI or
-a headless session, never opens a path outside the project, and is a silent no-op when nothing is
-configured. Details: [.claude/config/viewer.example.yaml](../.claude/config/viewer.example.yaml).
+it opens: the portable half (which file types you care about) lives in your committed
+`people/<id>.yaml`, the machine half (which application) in gitignored
+`.claude/config/connections.local.yaml`, and a full per-repo `.claude/config/viewer.local.yaml`
+(or a user-level file covering all your repos) wins when present. `bin/handoff.sh` resolves the
+layers and owns the rails — it never launches in CI or a headless session, never opens a path
+outside the project, and is a silent no-op when nothing is configured. Details:
+[.claude/config/viewer.example.yaml](../.claude/config/viewer.example.yaml).
 
 ## Config is three tiers behind one resolver
 
@@ -87,7 +125,7 @@ teammate one person's machine. Config is therefore three files:
 
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
-| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each seam, which data the team reads, the 10 policies |
+| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 10 policies |
 | 2 person, portable | `people/<id>.yaml` | yes | display name, identities, comms voice, file-type preferences |
 | 3 person, machine | `.claude/config/connections.local.yaml` | no | named profiles/connections, local mount roots |
 
@@ -188,7 +226,7 @@ before it is paid.
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
 - **32 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
   tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS). Six of
-  those directories are tool seams; the seventh, `runtime/`, declares what each agent harness can do
+  those directories are tool slots; the seventh, `runtime/`, declares what each agent harness can do
   (see [runtimes.md](runtimes.md)) and carries no verbs, because it is not a tool the project calls.
 - **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
   README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via
@@ -248,6 +286,30 @@ One implementation, three ways in: `ticketwright install` (the pip entrypoint re
 `bin/emit_runtime.py`), `bin/install.sh` (the shell convenience in the `bin/tw` launcher pattern),
 or the script directly. There is deliberately no fourth install route.
 
+## One relationship model, two renderings
+
+`bin/build_ticket_index.py` resolves tickets, objects and cross-references once, then writes the
+result twice, each rendering tuned to its reader:
+
+- **The catalog** - `tickets/INDEX.md`, `tickets/OBJECTS.md`, and the `bin/recall.py` ranking over
+  `tickets/index_data.json` - is how an **agent** queries the relationships.
+- **The graph layer** - `tickets/graph/<owner>.<id>.md` + `tickets/objects/<object>.md`, browsable
+  as an Obsidian vault ([docs/obsidian.md](obsidian.md)) - is how a **person** sees the shape of
+  the corpus: which analyses cluster, which objects are load-bearing across many tickets, where
+  the orphans are.
+
+Both come out of the same render pass, so they cannot drift apart (`project.graph_notes: false`
+turns the graph layer off). One staging asymmetry, stated rather than assumed away: `/ship`'s
+staging step names the catalog files - `tickets/INDEX.md`, `tickets/OBJECTS.md`,
+`tickets/index_data.json` - and not `tickets/graph/` or `tickets/objects/`. The nodes are
+committed by default (nothing ignores them, and `build_ticket_index.py --check` covers them), so
+stage them with the ticket when the graph should be shared.
+
+A genuine future enhancement, recorded in [ROADMAP.md](../ROADMAP.md): the graph's link structure
+is the only artifact that supports multi-hop traversal - "what connects these two analyses, two
+hops out, through which shared objects" - which `OBJECTS.md` cannot answer from its single
+object-to-tickets hop. Exposing that to agents would make the graph load-bearing for both readers.
+
 ## Design stances
 
 - **No vector store.** Recall is lexical + structural (object match ×4, tag ×3, cross-ref +5,
@@ -255,8 +317,8 @@ or the script directly. There is deliberately no fourth install route.
   rank → read-top-K shape scales past the point where the whole index fits in context.
 - **Deterministic before model.** Catalog rendering, recall ranking, render validation, and export
   plumbing are all plain code the model *calls*, not prose the model *approximates*.
-- **Degrade, don't die.** Missing seams skip their steps and name the fix (`/setup tool chat`);
-  unreachable seams halt with auth notes only where proceeding blind would be wrong.
+- **Degrade, don't die.** Missing tool slots skip their steps and name the fix (`/setup tool chat`);
+  unreachable ones halt with auth notes only where proceeding blind would be wrong.
 - **Out of scope (deliberately):** a heavy external knowledge-base/orchestration service
   (Archon-style retrieval over MCP). Task management is the tracker's job; orchestration is
   `/productize` + the host agent's own subagents.

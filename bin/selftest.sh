@@ -2120,8 +2120,9 @@ np="$(yq '.policies | keys | length' .claude/config/stack.yaml 2>/dev/null)"
 { grep -q '\-\-voice' .claude/skills/setup/SKILL.md && [ -f .claude/skills/setup/voice.md ] \
   && grep -q 'voice.md' .claude/skills/setup/SKILL.md; } \
   && ok "/setup --voice is a first-class mode wired to voice.md" || bad "/setup --voice mode not wired"
-grep -qiE 'voice.*is never a .*seam|not.*a seam' .claude/skills/setup/SKILL.md \
-  && ok "setup states voice is NOT a seam" || bad "setup doesn't clarify voice is not a seam"
+grep -qiE 'voice.*is never a .*seam|not.*a tool slot|not.*a seam' .claude/skills/setup/SKILL.md \
+  && ok "setup states voice is NOT a tool slot (never a seams.* entry)" \
+  || bad "setup doesn't clarify voice is not a tool slot"
 # (H) include_self is documented separately from always_include (not overloaded) — in the schema
 # and in EVERY chat adapter. Looped over adapters/chat/*.md, never an enumerated file list: an
 # assertion that names its own subjects stops covering anything new, and chat adapters added later
@@ -5847,6 +5848,51 @@ BOUT46="$(python3 "$DP46" --root "$BCC46" --plan "$BCC46/tk/delivery-plan.yaml" 
   && [ "$(printf '%s' "$BOUT46" | python3 -c 'import json,sys;print(json.load(sys.stdin)["recipients"])' 2>/dev/null)" = "['pm@acme.example']" ]; } \
   && ok "…and routing is unchanged: exit 0, the bcc value never joins the recipients" \
   || bad "the bcc warn changed routing behavior" "rc=$BRC46"
+
+hdr "47 · docs lead with the team brain + lifecycle (PROMPT 9)"
+# The mission and vision sentences are FIXED TEXT: the docs arrange them, never rewrite them.
+grep -qF "Ticketwright empowers a team to do a high volume of analysis without letting quality slide, on whatever tools they already use." README.md \
+  && ok "README carries the mission sentence verbatim" || bad "mission sentence missing or reworded in README"
+grep -qF "Any new or experienced member can pick up any analysis and be productive the same day, because the team's past work is written down and organized, and AI can trace it." README.md \
+  && ok "README carries the vision sentence verbatim" || bad "vision sentence missing or reworded in README"
+# The lifecycle is the primary map: phases precede the tool-slot list, in both restructured docs.
+rl_life="$(grep -n '^## The lifecycle is the map' README.md | head -1 | cut -d: -f1)"
+rl_slots="$(grep -n '^| Tool slot | Works with |' README.md | head -1 | cut -d: -f1)"
+{ [ -n "$rl_life" ] && [ -n "$rl_slots" ] && [ "$rl_life" -lt "$rl_slots" ]; } \
+  && ok "README: the lifecycle section precedes the tool-slot table" \
+  || bad "README: lifecycle section missing or placed after the tool-slot table" "life=$rl_life slots=$rl_slots"
+al_life="$(grep -n '^## The lifecycle is the primary map' docs/architecture.md | head -1 | cut -d: -f1)"
+al_slots="$(grep -n '^## Tool slots, adapters, and the verb contract' docs/architecture.md | head -1 | cut -d: -f1)"
+{ [ -n "$al_life" ] && [ -n "$al_slots" ] && [ "$al_life" -lt "$al_slots" ]; } \
+  && ok "architecture.md: the lifecycle section precedes the tool-slot section" \
+  || bad "architecture.md: lifecycle section missing or placed after the slots section" "life=$al_life slots=$al_slots"
+rl_brain="$(grep -n '^## What it builds: a team brain' README.md | head -1 | cut -d: -f1)"
+{ [ -n "$rl_brain" ] && [ -n "$rl_life" ] && [ "$rl_brain" -lt "$rl_life" ]; } \
+  && ok "README: the team-brain section precedes the lifecycle section" \
+  || bad "README: team-brain section missing or placed after the lifecycle section" "brain=$rl_brain life=$rl_life"
+# Phase 3's precision marker: quality checking has NO SLOT OF ITS OWN (never "calls no external
+# tool" — it borrows the warehouse to re-verify). Both restructured docs must state it.
+grep -q 'no slot of its own' README.md && grep -q 'no slot of its own' docs/architecture.md \
+  && ok "phase 3's 'no slot of its own' statement present in README and architecture.md" \
+  || bad "phase 3 lost its 'no slot of its own' statement (PROMPT 9 precision requirement)"
+# The slot-to-phase matrix names all five phases, in both files.
+pmiss=""
+for ph in "Open the work" "Do the work" "Quality-check" "Deliver" "Announce"; do
+  grep -q "$ph" README.md || pmiss="$pmiss README:${ph// /_}"
+  grep -q "$ph" docs/architecture.md || pmiss="$pmiss architecture:${ph// /_}"
+done
+[ -z "$pmiss" ] && ok "all five lifecycle phases are named in README and architecture.md" \
+  || bad "a lifecycle phase is missing from the slot-to-phase matrix" "$pmiss"
+# Voice audit: marketing filler stays out of user-facing docs. Scope is README + docs/ prose;
+# docs/PLANNED-CHANGES.md is a planning document and exempt. 'empower' is allowed only inside the
+# verbatim mission sentence (pinned above); the technical noun "agent harness" is not filler and
+# is deliberately NOT grepped.
+filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/PLANNED-CHANGES.md:' || true)"
+[ -z "$filler" ] && ok "no marketing filler in README + docs/ user-facing prose" \
+  || bad "marketing filler in user-facing docs (voice audit, PROMPT 9 rider 1)" "$filler"
+emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/PLANNED-CHANGES.md:' | grep -v 'empowers a team to do a high volume' || true)"
+[ -z "$emp" ] && ok "'empower' appears only inside the verbatim mission sentence" \
+  || bad "'empower' used outside the mission sentence" "$emp"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

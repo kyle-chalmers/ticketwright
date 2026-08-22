@@ -142,6 +142,14 @@ solid for keyed trackers (Jira/Linear) and good-with-caveats for integer/label o
 YouTrack / Plane (key-prefix → copy Linear/Jira) · Shortcut (integer → copy GitHub Issues) ·
 ClickUp / Height (label-status → copy Monday) · Trello (list-as-status → copy Asana).
 
+## Graph traversal for agents (future)
+
+The Obsidian graph layer and the machine-readable catalog render one relationship model, but only
+the graph's link structure supports **multi-hop traversal** — "what connects these two analyses,
+two hops out, through which shared objects." `tickets/OBJECTS.md` holds a single hop (object →
+tickets), so an agent cannot answer that today. Exposing traversal to agents (a walk over
+`tickets/graph/` links) would make the graph load-bearing for both readers.
+
 ## Ecosystem hardening — deferred (from the 2026-07 family-wide pass)
 
 Identified while cross-pollinating lessons across the plugin family (jobwright, streamsnow,

@@ -69,7 +69,7 @@ step at the end so the new person's comms sound like them from their first ship.
 Follow [voice.md](voice.md): identify the person → wire their `people/<id>.yaml` → render the seed
 from `templates/voice-profile.md.tmpl` → interview (≤5 questions) → optionally learn from short
 approved exemplars → save. `/ship` then drafts in that voice, within the hard comms rails. Requires
-an existing `stack.yaml`. (This is a first-class mode, **not** a seam — `voice` is never a
+an existing `stack.yaml`. (This is a first-class mode, **not** a tool slot — `voice` is never a
 `seams.*` entry.)
 
 ## Mode: `tool <chat|docstore|warehouse>` — add one tool slot to the team config (team-wide)
