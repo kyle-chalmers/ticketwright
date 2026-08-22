@@ -5884,13 +5884,14 @@ done
 [ -z "$pmiss" ] && ok "all five lifecycle phases are named in README and architecture.md" \
   || bad "a lifecycle phase is missing from the slot-to-phase matrix" "$pmiss"
 # Voice audit: marketing filler stays out of user-facing docs. Scope is README + docs/ prose;
-# docs/PLANNED-CHANGES.md is a planning document and exempt. 'empower' is allowed only inside the
+# docs/PROMPT-*.md are planning documents and exempt (PLANNED-CHANGES.md, the original planning
+# doc, is retired — its exemption became the PROMPT- prefix). 'empower' is allowed only inside the
 # verbatim mission sentence (pinned above); the technical noun "agent harness" is not filler and
 # is deliberately NOT grepped.
-filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/PLANNED-CHANGES.md:' || true)"
+filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/PROMPT-' || true)"
 [ -z "$filler" ] && ok "no marketing filler in README + docs/ user-facing prose" \
   || bad "marketing filler in user-facing docs (voice audit, PROMPT 9 rider 1)" "$filler"
-emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/PLANNED-CHANGES.md:' | grep -v 'empowers a team to do a high volume' || true)"
+emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/PROMPT-' | grep -v 'empowers a team to do a high volume' || true)"
 [ -z "$emp" ] && ok "'empower' appears only inside the verbatim mission sentence" \
   || bad "'empower' used outside the mission sentence" "$emp"
 

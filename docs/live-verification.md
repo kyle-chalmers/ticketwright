@@ -180,7 +180,8 @@ nothing about it).
 `gate_fail_mode` → the observed value (general protocol: section 43 `PIN` dict + section 40 pin
 move accordingly); any observed bypass path recorded in the adapter gotchas and the enforcement
 table's codex caveat. Stage B: PROMPT 7's success criterion recorded as met in
-`docs/PLANNED-CHANGES.md`; `docs/runtimes.md` re-dated.
+this page's promotion ledger (the planning document that tracked it is retired — git history has
+the full record); `docs/runtimes.md` re-dated.
 
 ### 2. Codex CLI — qc-reviewer addressable by name; isolation posture probed
 
@@ -629,8 +630,9 @@ explicitly out of this list's scope (it is code hardening, not a runtime observa
 
 ## Count, against the plan
 
-`docs/PLANNED-CHANGES.md` § U6 lists 11 entries. This page carries **12**, and the delta is
-recorded as a dated amendment in that section too:
+The U6 spec in the now-retired planning document (`docs/PLANNED-CHANGES.md`, in git history)
+listed 11 entries. This page carries **12**; the delta was recorded as a dated amendment there
+before retirement:
 
 - **+1**: entry 12 (the jurisdiction-list check) was routed to U6 by the adversarial review of
   #46 after the U6 spec was written.

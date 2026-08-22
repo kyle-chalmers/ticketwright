@@ -247,7 +247,7 @@ before it is paid.
 
 `.claude/skills/` is the ONE canonical home of every skill, and the installer translates FROM it at
 emit time — the source never moves, and no second copy is ever authoritative. This was decided, not
-defaulted (see the settled decisions in [PLANNED-CHANGES](PLANNED-CHANGES.md)); the reasons matter
+defaulted (recorded in the project's planning document, now retired into git history); the reasons matter
 to anyone adopting or extending the kit:
 
 - **Three things anchor the layout.** `pyproject.toml` force-includes the `.claude/*` paths into the
