@@ -253,9 +253,9 @@ belongs in a different store declares it (below), because a declaration stays wi
 flag does not. Every routing call also takes the approval pin, in two halves:
 **`--expect-target <name>`** (human-readable — catches a changed target name) and
 **`--expect-fingerprint <hex>`** (the `resolution_fingerprint` each routed plan line carries — a
-digest of target, tool, destination, recipients, scope and mode, so a stack.yaml or plan edit
-between approval and delivery that keeps the *name* while moving the channel, the list, or the
-scope refuses instead of delivering). A name is not a resolution; the fingerprint is what the
+digest of target, tool, destination, recipients, sender, scope and mode, so a stack.yaml or plan
+edit between approval and delivery that keeps the *name* while moving the channel, the list, the
+sender, or the scope refuses instead of delivering). A name is not a resolution; the fingerprint is what the
 human approved, and that is what makes "preview equals execution" a mechanism instead of a promise.
 
 Selection itself is `effective_config.py --seam/--target`, called by that engine — never a second
@@ -340,9 +340,18 @@ config that reads as protection. A docstore whose `default:` names its `external
 routing never reads `default:`, but every pre-routing reader displays it.
 
 **Which key holds a destination is the adapter's to declare**, following `dev_key:` /
-`container_key:`: chat adapters carry `channel_key:` (Slack `default_channel`, Teams `channel`),
-docstore adapters carry `destination_key:` (`drive_folder` — the team-owned half, so the check does
-not vary by whose machine it runs on). Skills never name either key, and an adapter declaring a key
+`container_key:`: chat adapters carry `channel_key:` (Slack `default_channel`, Teams `channel`,
+Gmail/Outlook `to` — ONE address string, a person or a distribution list; extra recipients belong in
+`always_include`, where each is validated and printed individually), docstore adapters carry
+`destination_key:` (`drive_folder` — the team-owned half, so the check does
+not vary by whose machine it runs on). A chat adapter whose medium has a first-class sender — the
+email adapters — additionally carries **`sender_key:`** (Gmail/Outlook `identity`): routing surfaces
+that value as `sender` on the routed plan line, REFUSES a named target whose sender key resolves to
+nothing (mail must not go out as whoever the transport happens to be authenticated as), refuses a
+shell-unsafe value, and folds it into the `resolution_fingerprint` — so a post-approval config edit
+swapping one shared mailbox for another refuses exactly like a moved channel. The value is
+inheritable from the slot on purpose (one shared identity serving two audiences is normal, unlike a
+shared destination). Adapters without `sender_key:` are unaffected: `sender` stays null. Skills never name either key, and an adapter declaring a key
 name that is not a plain config key is refused rather than guessed at: adapter frontmatter is
 repo-supplied input, not documentation.
 
@@ -391,7 +400,9 @@ verb contract for their seam:
 - **tracker:** `jira`, `azure-devops` (Azure Boards), `linear`, `asana`, `monday`, `github-issues`,
   `local` (**no tracker at all** — the ticket folder itself; pair with `project.id_mode: slug`)
 - **warehouse:** `snowflake`, `bigquery`, `databricks`, `postgres`, `redshift`, `synapse` (also Azure SQL / SQL Server / Fabric)
-- **chat:** `slack`, `teams`
+- **chat:** `slack`, `teams`, `gmail`, `outlook` (email is a chat **target**, not a sixth seam —
+  same four verbs, destination key `to`, `always_include` rendered as visible Cc, draft-first;
+  each adapter's frontmatter states the mapping's rough edges honestly)
 - **docstore:** `gdrive`, `sharepoint`
 - **vcs:** `github`, `gitlab`, `azure-repos`
 - **viewer** *(optional)*: `macos-open`, `xdg-open`, `windows-start` — pick the one for your OS
@@ -401,13 +412,14 @@ verb contract for their seam:
 
 Don't see your tool? Adding one is a single file — see "Writing a new adapter" below. Seven worked
 `stack.yaml` configs ship — Jira/Snowflake/Slack/Drive/GitHub, Asana/BigQuery/Teams/SharePoint/GitLab,
-Azure DevOps/Synapse/Teams/SharePoint/Azure Repos, Snowflake **+** Databricks (two warehouse targets
-in one seam), **Slack + Teams and Drive + SharePoint** (two audiences in one repo, routed by a
-declared audience), a repo with **no warehouse seam** (document/report deliverables), and a solo repo
+Azure DevOps/Synapse/Teams **+ Outlook email**/SharePoint/Azure Repos, Snowflake **+** Databricks
+(two warehouse targets in one seam), **Slack + Teams + Gmail and Drive + SharePoint** (three
+audiences in one repo — internal, client, and stakeholders-by-email — routed by a declared
+audience), a repo with **no warehouse seam** (document/report deliverables), and a solo repo
 with **no tracker and no chat/docstore**. The same skills run against all seven, unedited — which is
 the claim those configs exist to keep honest.
 
-> **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack) reference each operation with a
+> **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack, Gmail, Outlook) reference each operation with a
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on
 > your connected MCP server — confirm them once and adjust the adapter (never the skills).
 
@@ -473,7 +485,8 @@ tool-neutrality rule for skills — is unchanged.
 1. Copy the closest reference adapter in the same seam.
 2. Keep the frontmatter keys (`seam`, `tool`, `transport`, `requires`, `user_keys`, `auth`; a chat
    adapter also carries `channel_key:` and a docstore adapter `destination_key:`, naming the key
-   THIS tool uses for its destination — without it the tool cannot be a named delivery target).
+   THIS tool uses for its destination — without it the tool cannot be a named delivery target; a
+   chat adapter whose medium has a first-class sender also carries `sender_key:`, see above).
    `requires:` is
    ENFORCED, not decorative: `bin/verify_stack.sh` reads it and warns for every listed key the seam
    does not set. List exactly the keys the adapter cannot work without — a key named here that the

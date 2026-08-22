@@ -257,7 +257,17 @@ never case-folded, never fuzzy — against the value each target declares:
 | `classification` | docstore target | Same, for deliverables — e.g. `internal_archive` vs `client_delivery`. |
 | `always_include` | chat target | This target's own non-empty stakeholder list, applied **after** routing. Never inherited from the slot or another target. |
 | `sharing_scope` | docstore target | `team` \| `org` \| `external` — the **declared** scope of the destination, printed at the `/ship` approval. |
-| *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter. Each target must set its own. |
+| *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter (Slack `default_channel`, Teams `channel`, the Gmail/Outlook email adapters `to`). Each target must set its own. |
+
+**Email is a chat target, not a sixth slot.** The `gmail`/`outlook` adapters fill a chat target
+whose destination key is `to` — ONE address string (a person or a distribution list); extra
+recipients belong in that target's `always_include`, rendered as visible Cc. Give an email target
+its own `audience:` and its own non-empty `always_include:` like any other, plus an `identity:` —
+the shared mailbox mail goes out AS (the adapters' `sender_key:`); routing refuses a named email
+target without one, prints it on the `/ship` plan line, and pins it in the fingerprint. Set
+`default_mode: draft` on it **explicitly** — an unset `default_mode` is not documented as meaning
+draft, and an email cannot be unsent. Worked examples: `stack.example.multi-audience.yaml` (Gmail)
+and `stack.example.azure.yaml` (Outlook).
 
 **Docstore routing is per deliverable.** The plan's `classification:` covers the ticket; a
 `deliverables:` row may declare its own for one file (a client-facing summary alongside internal

@@ -369,6 +369,38 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                         if bad:
                             out.append(("error", f"{label}: recipient(s) carry shell "
                                                  f"metacharacters: {', '.join(bad)}"))
+                # 3b) the sender, when this adapter declares one (`sender_key:` — the email
+                #     adapters name `identity`, the shared mailbox mail goes out AS). Route time
+                #     enforces the same rule; the audit just names it earlier. Inheritable on
+                #     purpose (vals, not target): one shared identity serving two audiences is
+                #     normal, unlike a shared destination.
+                skey = ec.adapter_key(vals.get("adapter"), res.root, "sender_key")
+                if skey is not None and not KEY_NAME_RE.match(skey):
+                    out.append(("error", f"{label}: its adapter declares `sender_key: {skey}`, "
+                                         f"which is not a plain config key name — refusing to "
+                                         f"use it as a lookup"))
+                elif skey:
+                    sender = vals.get(skey)
+                    if not isinstance(sender, str) or not sender.strip():
+                        out.append(("error", f"{label}: its adapter declares `sender_key: {skey}` "
+                                             f"but no `{skey}:` is set — mail must not go out as "
+                                             f"whoever the transport happens to be authenticated "
+                                             f"as"))
+                    elif _unsafe(sender):
+                        out.append(("error", f"{label}: the `{skey}` value carries shell "
+                                             f"metacharacters — refusing to emit it as a sender"))
+                # 3c) `bcc:` is a key the kit deliberately maps to NOTHING — a hidden recipient
+                #     would make the delivered audience differ from what every reader sees, which
+                #     is why the email adapters document a no-bcc position. But a key someone
+                #     WROTE must not be ignored in silence: it reads as a considered choice that
+                #     was never honored (the slot-level always_include principle). A warn, never
+                #     an error — narrowing-only, and shipped configs keep validating.
+                if "bcc" in target:
+                    out.append(("warn", f"{label}: `bcc:` has no effect — the kit deliberately "
+                                        f"maps no hidden recipients (the no-bcc position in the "
+                                        f"email adapters); recipients belong in `always_include`, "
+                                        f"where each is visible, validated, and printed on the "
+                                        f"approval line"))
             else:
                 # 4) docstore: the declared scope of the destination. The kit never inspects a real
                 #    sharing ACL, so this value is what the /ship approval line shows a human — an
@@ -399,7 +431,8 @@ def _blank(seam_name: str, declared: str | None) -> dict:
             "declared_key": ROUTING_KEY.get(seam_name), "declared": declared,
             "target": None, "selected_by": None, "label": None, "tool": None, "adapter": None,
             "destination": None, "destination_key": None, "recipients": None,
-            "include_self": None, "mode": None, "sharing_scope": None,
+            "include_self": None, "mode": None, "sender": None, "sender_key": None,
+            "sharing_scope": None,
             "configured": [], "unsafe": [], "warnings": [], "error": None,
             "resolution_fingerprint": None}
 
@@ -574,6 +607,42 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         out["recipients"] = names
         out["include_self"] = bool(str(vals.get("include_self")).lower() in ("true", "1"))
         out["mode"] = str(vals.get("default_mode") or "draft")
+        # The SENDER, when this adapter declares one (`sender_key:` frontmatter — the email
+        # adapters name `identity`, the shared mailbox mail goes out AS). For a medium where the
+        # sender is a first-class header, WHO a message is from is part of what the human
+        # authorizes, so it is surfaced on the plan line and pinned by the fingerprint below — a
+        # post-approval config edit swapping one shared mailbox for another must refuse, exactly
+        # like a moved channel. Read from the RESOLVED values (vals, not own) on purpose: one
+        # shared identity serving two audiences is normal, unlike a shared destination.
+        skey = ec.adapter_key(vals.get("adapter"), res.root, "sender_key")
+        if skey is not None and not KEY_NAME_RE.match(skey):
+            err = _err("malformed", f"{unit['label']}: its adapter declares `sender_key: {skey}`, "
+                                    f"which is not a plain config key name — refusing to use it "
+                                    f"as a lookup")
+            return _fail(out, err)
+        if skey:
+            sender = vals.get(skey)
+            if not isinstance(sender, str) or not sender.strip():
+                if own is not None:
+                    # A routed target with no declared sender would go out as whoever the
+                    # transport happens to be authenticated as — a silent wrong-sender, refused
+                    # the same way a missing destination is.
+                    err = _err("malformed", f"{unit['label']}: its adapter declares `sender_key: "
+                                            f"{skey}` but no `{skey}:` value resolves — refusing "
+                                            f"to route a message whose sending identity is "
+                                            f"undeclared")
+                    return _fail(out, err)
+                out["warnings"] = out.get("warnings") or []
+                out["warnings"].append(f"adapter declares `sender_key: {skey}` but `{skey}:` is "
+                                       f"unset — the sender cannot be shown on the plan line; "
+                                       f"add it to the seam config")
+            elif _unsafe(sender):
+                out["unsafe"] = [skey]
+                err = _err("malformed", f"{unit['label']}: the `{skey}` value carries shell "
+                                        f"metacharacters — refusing to emit it as a sender")
+                return _fail(out, err)
+            else:
+                out["sender"], out["sender_key"] = sender.strip(), skey
     else:
         scope = vals.get("sharing_scope")
         if own is not None:
@@ -593,7 +662,7 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
 
 
 def _fingerprint(out: dict) -> str:
-    """A short digest of WHAT WAS RESOLVED — target, tool, destination, recipients, scope, mode.
+    """A short digest of WHAT WAS RESOLVED — target, tool, destination, recipients, sender, scope, mode.
 
     `--expect-target` pins only the target's NAME, and a name is not a resolution: editing
     stack.yaml between the approval and the delivery can keep the name while silently changing the
@@ -605,7 +674,7 @@ def _fingerprint(out: dict) -> str:
     """
     basis = {k: out.get(k) for k in ("seam", "target", "tool", "adapter", "destination",
                                      "destination_key", "recipients", "include_self",
-                                     "sharing_scope", "mode")}
+                                     "sender", "sender_key", "sharing_scope", "mode")}
     return hashlib.sha256(json.dumps(basis, sort_keys=True, default=str)
                           .encode("utf-8")).hexdigest()[:12]
 
@@ -613,8 +682,8 @@ def _fingerprint(out: dict) -> str:
 def _fail(out: dict, err: dict) -> tuple[dict, dict]:
     """Blank the routed fields. No caller can read a destination out of a failed routing."""
     out.update({"target": None, "selected_by": None, "label": None, "destination": None,
-                "destination_key": None, "recipients": None, "sharing_scope": None,
-                "resolution_fingerprint": None, "error": err})
+                "destination_key": None, "recipients": None, "sender": None, "sender_key": None,
+                "sharing_scope": None, "resolution_fingerprint": None, "error": err})
     return out, err
 
 
@@ -684,7 +753,7 @@ def main(argv: list[str] | None = None) -> int:
                          "human-readable half of the approval pin")
     ap.add_argument("--expect-fingerprint", default=None, metavar="HEX",
                     help="refuse unless the resolution_fingerprint still matches — pins the WHOLE "
-                         "resolution (target, tool, destination, recipients, scope, mode), so a "
+                         "resolution (target, tool, destination, recipients, sender, scope, mode), so a "
                          "stack.yaml or plan edit between approval and delivery halts instead of "
                          "silently changing where or to whom this delivers")
     ap.add_argument("--file", dest="file_rel", default=None, metavar="PATH",
@@ -798,7 +867,7 @@ def main(argv: list[str] | None = None) -> int:
         err = _err("target_changed",
                    f"the resolution changed after approval (fingerprint "
                    f"{out.get('resolution_fingerprint')}, approved {args.expect_fingerprint.strip()})"
-                   f" — the destination, recipients, scope or mode moved even though the target "
+                   f" — the destination, recipients, sender, scope or mode moved even though the target "
                    f"name may not have; re-print the plan and get it authorized again")
         out, err = _fail(out, err)
     if err:

@@ -3919,16 +3919,20 @@ grep -i 'permissions.allow' "$IV" | grep -qi 'not' \
   || bad "project.intake lacks its schema row or its consumer"
 # (J) email: on "out", the answers are RECORDED (provider, identity, audience) in a commented
 # seams.chat.targets.email block, and both the interview and the report say plainly that email is
-# configured but not yet wired — so nobody believes a draft will send.
+# configured but not yet ACTIVATED — so nobody believes a draft will send. (The wording moved from
+# "not yet wired" when PROMPT 10 shipped the gmail/outlook adapters: the missing piece is no longer
+# an adapter but the deliberate targets: conversion, and the block must point at the activated
+# worked example rather than at writing a new adapter.)
 { grep -q 'gmail' "$IV" && grep -q 'outlook' "$IV" \
   && grep -qi 'sending identity' <<<"$iflat" && grep -qi 'audience' "$IV" \
   && grep -q 'seams.chat.targets.email' "$IV" \
-  && grep -qi 'configured but not yet wired' <<<"$iflat"; } \
-  && ok "email delivery records provider + identity + audience in a commented target block, honestly unwired" \
+  && grep -qi 'configured but not yet activated' <<<"$iflat" \
+  && grep -q 'stack.example.multi-audience.yaml' "$IV"; } \
+  && ok "email delivery records provider + identity + audience in a commented target block, honestly unactivated" \
   || bad "the email question's recorded-answers contract is incomplete in interview.md"
 grep -qi 'configured but not' <<<"$skflat38" \
-  && ok "the Phase-4 report states email is configured but not yet wired" \
-  || bad "the report step never says email is configured-but-not-wired"
+  && ok "the Phase-4 report states email is configured but not yet activated" \
+  || bad "the report step never says email is configured-but-not-activated"
 
 hdr "39 · runtime installer skeleton (emit_runtime.py — verify-only vs translate-on-emit)"
 # The installer is the compatibility layer between the canonical .claude/skills/ source and each
@@ -5584,6 +5588,265 @@ grep -qi 'never infer the audience' "$SH45" \
 grep -q 'tracker and vcs' "$SH45" \
   && ok "/ship still halts on named targets for the two DEFERRED slots (tracker, vcs)" \
   || bad "/ship dropped the tracker/vcs named-target halt"
+
+hdr "46 · email is a chat target: gmail/outlook adapters + sender-pinned stakeholder routing (PROMPT 10)"
+# Email is the delivery path where a wrong audience is LEAST recoverable — a sent mail cannot be
+# unsent and cannot be scoped after the fact. Everything here is prompt 8's machinery INHERITED by
+# two new adapters, so the tests drive the same CLI the same way section 45 does and assert that
+# nothing about email relaxed a rule: routing still reads a declaration and halts without one, the
+# target's own always_include still binds, the fingerprint still pins the resolution — now
+# including the SENDER, the one fact email has that a channel does not.
+
+# --- (A) the four chat verbs by NAME, across every chat adapter ----------------------------------
+# Section 2 proves each chat adapter has the RIGHT NUMBER of verb headings, not the RIGHT ONES —
+# four typo'd verbs count four and pass. The email adapters are the first chat adapters added after
+# the contract settled, so the whole seam gets the name check (the rank_projects_by_activity
+# precedent).
+for v in draft send lookup_user lookup_channel; do
+  cvmiss=""
+  for f in adapters/chat/*.md; do
+    grep -qE "^## verb: $v( |$)" "$f" || cvmiss="$cvmiss $(basename "$f")"
+  done
+  [ -z "$cvmiss" ] && ok "every chat adapter names verb $v exactly" \
+    || bad "chat adapter(s) miss or misspell verb $v" "$cvmiss"
+done
+
+# --- (B) the honesty frontmatter both email adapters must carry ---------------------------------
+# The rough edges are load-bearing documentation: a future reader must not infer Slack parity that
+# does not exist. Pinned as literals because each one was a deliberate prompt-10 requirement.
+for f in adapters/chat/gmail.md adapters/chat/outlook.md; do
+  n="$(basename "$f")"
+  grep -q '^channel_key: to' "$f" \
+    && ok "$n declares channel_key: to (routing reads the adapter's own destination key)" \
+    || bad "$n does not declare channel_key: to"
+  grep -q '^sender_key: identity' "$f" \
+    && ok "$n declares sender_key: identity (the sender is part of the resolution)" \
+    || bad "$n does not declare sender_key: identity"
+  grep -q 'STRETCH' "$f" \
+    && ok "$n states the lookup_channel → distribution-list mapping is a STRETCH" \
+    || bad "$n does not admit the distribution-list stretch"
+  grep -qi 'no bcc\|NO bcc mapping' "$f" \
+    && ok "$n states there is deliberately no bcc mapping (no invisible audience widening)" \
+    || bad "$n does not state the no-bcc rule"
+  grep -q 'never falls back' "$f" \
+    && ok "$n states a routing failure never falls back to another chat target" \
+    || bad "$n does not state the never-fall-back rule"
+done
+
+# --- (C) the shipped worked examples: explicit draft-first, and both route ----------------------
+# `default_mode: draft` must be EXPLICIT on every email target: an unset default_mode is NOT
+# documented as meaning draft, and the gap between a draft a human clicks and a message already
+# gone is the whole safety margin here.
+for ex in .claude/config/stack.example.multi-audience.yaml .claude/config/stack.example.azure.yaml; do
+  [ "$(yq '.seams.chat.targets.email.default_mode' "$ex" 2>/dev/null)" = "draft" ] \
+    && ok "$(basename "$ex"): default_mode: draft is EXPLICIT on the email target" \
+    || bad "$(basename "$ex"): the email target does not set default_mode: draft explicitly"
+done
+DP46="$KIT/bin/delivery_plan.py"
+D46="$TMP/route46"; mkdir -p "$D46/.claude/config" "$D46/tk"
+cp "$KIT/.claude/config/stack.example.multi-audience.yaml" "$D46/.claude/config/stack.yaml"
+P46="$D46/tk/delivery-plan.yaml"
+r46() { R46="$(python3 "$DP46" --root "$D46" --plan "$P46" --quiet "$@" 2>/dev/null)"; R46RC=$?; }
+g46() { printf '%s' "$R46" | python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
+printf 'schema_version: 1\naudience: stakeholders\n' > "$P46"
+r46 --seam chat
+{ [ "$R46RC" -eq 0 ] && [ "$(g46 "d['target']")" = "email" ] && [ "$(g46 "d['tool']")" = "gmail" ] \
+  && [ "$(g46 "d['destination_key']")" = "to" ] \
+  && [ "$(g46 "d['destination']")" = "stakeholder-updates@acme.example" ] \
+  && [ "$(g46 "d['recipients']")" = "['pm@acme.example']" ] \
+  && [ "$(g46 "d['mode']")" = "draft" ] && [ "$(g46 "d['selected_by']")" = "declared" ]; } \
+  && ok "a declared stakeholders audience routes to the email target — gmail, key 'to', its OWN Cc list, draft mode" \
+  || bad "stakeholder email routing wrong" "rc=$R46RC target=$(g46 "d.get('target')") to=$(g46 "d.get('recipients')")"
+{ [ "$(g46 "d['sender']")" = "reports@acme.example" ] && [ "$(g46 "d['sender_key']")" = "identity" ]; } \
+  && ok "the routed plan carries the SENDER (who the mail goes out as is part of what the human authorizes)" \
+  || bad "the routed email plan has no sender" "sender=$(g46 "d.get('sender')")"
+AZ46="$TMP/route46-az"; mkdir -p "$AZ46/.claude/config" "$AZ46/tk"
+cp "$KIT/.claude/config/stack.example.azure.yaml" "$AZ46/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$AZ46/tk/delivery-plan.yaml"
+AZOUT="$(python3 "$DP46" --root "$AZ46" --plan "$AZ46/tk/delivery-plan.yaml" --seam chat --quiet 2>/dev/null)"
+{ [ "$(printf '%s' "$AZOUT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["tool"])' 2>/dev/null)" = "outlook" ] \
+  && [ "$(printf '%s' "$AZOUT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["sender"])' 2>/dev/null)" = "platform-reports@acme-corp.example" ] \
+  && [ "$(printf '%s' "$AZOUT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["mode"])' 2>/dev/null)" = "draft" ]; } \
+  && ok "the azure example's outlook target routes the same way (the second worked activation)" \
+  || bad "azure outlook routing wrong" "$AZOUT"
+
+# --- (D) email inherits the halts: no declaration, no near-miss, no fallback --------------------
+printf 'schema_version: 1\n' > "$P46"
+r46 --seam chat
+{ [ "$R46RC" -eq 9 ] && [ "$(g46 "d['target']")" = "None" ] && [ "$(g46 "d['destination']")" = "None" ]; } \
+  && ok "no declared audience = exit 9 with target and destination null — email added no inference path" \
+  || bad "an undeclared audience did not halt with email configured" "rc=$R46RC"
+printf '%s' "$R46" | grep -q "stakeholders" \
+  && ok "the halt lists the email audience among the configured values instead of picking one" \
+  || bad "the no-declaration halt does not list the email audience"
+printf 'schema_version: 1\naudience: stakeholder\n' > "$P46"
+r46 --seam chat
+{ [ "$R46RC" -eq 8 ] && [ "$(g46 "d['target']")" = "None" ]; } \
+  && ok "a near-miss audience (stakeholder vs stakeholders) = exit 8, never a fallback to another target" \
+  || bad "a near-miss audience resolved" "rc=$R46RC target=$(g46 "d.get('target')")"
+
+# --- (E) the target's OWN always_include binds for email too (audit + route time) ---------------
+NAI="$TMP/e46-noai"; mkdir -p "$NAI/.claude/config" "$NAI/tk"
+cat > "$NAI/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+seams:
+  chat:
+    default: internal
+    targets:
+      internal:
+        audience: internal
+        tool: slack
+        adapter: adapters/chat/slack.md
+        default_channel: C1
+        always_include: [Alice]
+        verify: null
+      email:
+        audience: stakeholders
+        tool: gmail
+        adapter: adapters/chat/gmail.md
+        to: list@acme.example
+        identity: reports@acme.example
+        default_mode: draft
+        verify: null
+EOF
+VOUT46="$(bash "$KIT/bin/verify_stack.sh" "$NAI/.claude/config/stack.yaml" --dry-run 2>&1)"; VRC46=$?
+{ [ "$VRC46" -ne 0 ] && printf '%s' "$VOUT46" | grep -q 'always_include'; } \
+  && ok "an email target with no always_include is REJECTED by verify (the never-solo rule reaches email)" \
+  || bad "an email target without always_include verified clean" "rc=$VRC46"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$NAI/tk/delivery-plan.yaml"
+python3 "$DP46" --root "$NAI" --plan "$NAI/tk/delivery-plan.yaml" --seam chat --quiet > "$TMP/e46.json" 2>/dev/null
+E46RC=$?; E46T="$(python3 -c "import json;print(json.load(open('$TMP/e46.json'))['target'])" 2>/dev/null)"
+{ [ "$E46RC" -eq 4 ] && [ "$E46T" = "None" ]; } \
+  && ok "…and refused at ROUTE time too (exit 4, no target) — enforcement does not require running verify" \
+  || bad "a list-less email target routed" "rc=$E46RC target=$E46T"
+
+# --- (F) the sender is enforced and pinned -------------------------------------------------------
+# A named email target with NO identity would send as whoever the transport is authenticated as —
+# a silent wrong-sender. Refused at audit and at route; a shell-unsafe identity is refused the
+# same way; and an identity EDIT after approval trips the fingerprint even though the target name
+# still matches.
+NID="$TMP/e46-noid"; mkdir -p "$NID/.claude/config" "$NID/tk"
+sed '/identity: reports@acme.example/d' "$NAI/.claude/config/stack.yaml" > "$NID/.claude/config/stack.yaml.tmp"
+sed 's/^        default_mode: draft$/        always_include: [pm@acme.example]\n        default_mode: draft/' \
+  "$NID/.claude/config/stack.yaml.tmp" > "$NID/.claude/config/stack.yaml"
+python3 "$DP46" --root "$NID" --audit --quiet > "$TMP/e46-audit.txt" 2>&1; ARC46=$?
+{ [ "$ARC46" -ne 0 ] && grep -q 'sender_key' "$TMP/e46-audit.txt"; } \
+  && ok "the audit rejects a named email target whose identity is unset, naming sender_key" \
+  || bad "an identity-less email target passed the audit" "rc=$ARC46 $(head -1 "$TMP/e46-audit.txt")"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$NID/tk/delivery-plan.yaml"
+python3 "$DP46" --root "$NID" --plan "$NID/tk/delivery-plan.yaml" --seam chat --quiet > "$TMP/e46.json" 2>/dev/null
+E46RC=$?; E46S="$(python3 -c "import json;print(json.load(open('$TMP/e46.json'))['sender'])" 2>/dev/null)"
+E46T="$(python3 -c "import json;print(json.load(open('$TMP/e46.json'))['target'])" 2>/dev/null)"
+{ [ "$E46RC" -eq 4 ] && [ "$E46T" = "None" ] && [ "$E46S" = "None" ]; } \
+  && ok "…and refused at route time (exit 4): mail never goes out as whoever happens to be authenticated" \
+  || bad "an identity-less email target routed" "rc=$E46RC target=$E46T"
+BID="$TMP/e46-badid"; mkdir -p "$BID/.claude/config" "$BID/tk"
+sed 's/identity: reports@acme.example/identity: "x$(id)@acme.example"/' \
+  "$NAI/.claude/config/stack.yaml" > "$BID/.claude/config/stack.yaml.tmp"
+sed 's/^        default_mode: draft$/        always_include: [pm@acme.example]\n        default_mode: draft/' \
+  "$BID/.claude/config/stack.yaml.tmp" > "$BID/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$BID/tk/delivery-plan.yaml"
+python3 "$DP46" --root "$BID" --plan "$BID/tk/delivery-plan.yaml" --seam chat --quiet > "$TMP/e46.json" 2>/dev/null
+E46RC=$?
+E46U="$(python3 -c "import json;print(json.load(open('$TMP/e46.json'))['unsafe'])" 2>/dev/null)"
+{ [ "$E46RC" -eq 4 ] && [ "$E46U" = "['identity']" ]; } \
+  && ok "a shell-unsafe identity is refused as a sender (the tier-3 injection rule, inherited)" \
+  || bad "a shell-unsafe identity was emitted as a sender" "rc=$E46RC unsafe=$E46U"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$P46"
+r46 --seam chat
+FP46="$(g46 "d['resolution_fingerprint']")"
+sed 's/identity: reports@acme.example/identity: other-mailbox@acme.example/' \
+  "$D46/.claude/config/stack.yaml" > "$TMP/e46-ident.yaml"
+python3 "$DP46" --stack "$TMP/e46-ident.yaml" --plan "$P46" --seam chat --expect-target email --quiet >/dev/null 2>&1 \
+  && NP46=pass || NP46=refuse
+python3 "$DP46" --stack "$TMP/e46-ident.yaml" --plan "$P46" --seam chat \
+  --expect-target email --expect-fingerprint "$FP46" --quiet > "$TMP/e46.json" 2>/dev/null
+E46RC=$?; E46T="$(python3 -c "import json;print(json.load(open('$TMP/e46.json'))['target'])" 2>/dev/null)"
+{ [ "$NP46" = "pass" ] && [ "$E46RC" -eq 8 ] && [ "$E46T" = "None" ]; } \
+  && ok "an identity edit passes the NAME pin but the FINGERPRINT refuses — the sender is part of what was approved" \
+  || bad "a post-approval identity swap slipped past the pin" "name=$NP46 rc=$E46RC target=$E46T"
+# Adapters WITHOUT sender_key are untouched: the slack target still routes, sender stays null.
+printf 'schema_version: 1\naudience: internal\n' > "$P46"
+r46 --seam chat
+{ [ "$R46RC" -eq 0 ] && [ "$(g46 "d['sender']")" = "None" ] && [ "$(g46 "d['sender_key']")" = "None" ]; } \
+  && ok "adapters without sender_key are unaffected (slack routes, sender null) — no new required key" \
+  || bad "the sender rule leaked onto a non-email adapter" "rc=$R46RC sender=$(g46 "d.get('sender')")"
+
+# --- (G) the draft rail reads ADDRESSES the same way it reads names ------------------------------
+printf 'schema_version: 1\naudience: stakeholders\n' > "$P46"
+printf 'ENG-1234 shipped. Summary linked. cc pm@acme.example\n' > "$D46/tk/good.md"
+printf 'ENG-1234 shipped. Summary linked. cc Alice\n' > "$D46/tk/wrong.md"
+r46 --seam chat --check-draft "$D46/tk/good.md"
+[ "$R46RC" -eq 0 ] && ok "a draft naming the routed address passes the comms rail" \
+  || bad "a correct email draft was rejected" "rc=$R46RC"
+r46 --seam chat --check-draft "$D46/tk/wrong.md"
+{ [ "$R46RC" -ne 0 ] && [ "$(g46 "d['missing_recipients']")" = "['pm@acme.example']" ]; } \
+  && ok "a draft missing the routed address is rejected, naming it — a wrong-audience mail is caught before send" \
+  || bad "a draft missing its routed address was accepted" "rc=$R46RC missing=$(g46 "d.get('missing_recipients')")"
+
+# --- (H) include_self on email: the shipper is ADDED, never substituted --------------------------
+IS46="$TMP/e46-self"; mkdir -p "$IS46/.claude/config" "$IS46/tk"
+sed 's/^        default_mode: draft$/        always_include: [pm@acme.example]\n        include_self: true\n        default_mode: draft/' \
+  "$NAI/.claude/config/stack.yaml" > "$IS46/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$IS46/tk/delivery-plan.yaml"
+ISOUT="$(python3 "$DP46" --root "$IS46" --plan "$IS46/tk/delivery-plan.yaml" --seam chat --self "alice@acme.example" --quiet 2>/dev/null)"
+[ "$(printf '%s' "$ISOUT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["recipients"])' 2>/dev/null)" = "['pm@acme.example', 'alice@acme.example']" ] \
+  && ok "include_self Cc's the shipper IN ADDITION to the stakeholder list, never instead" \
+  || bad "include_self did not add the shipper alongside the list" "$ISOUT"
+
+# --- (I) the ONE sanctioned exception stays visible ----------------------------------------------
+# Prompt 8's --chat override is explicit, human-invoked, and warned-as-unrecorded. It is inherited
+# for email UNCHANGED — pinning it here keeps it a documented exception rather than a quiet hole:
+# an override with nothing declared routes AND says the routing is not recorded with the ticket.
+printf 'schema_version: 1\n' > "$P46"
+r46 --seam chat --override email
+{ [ "$R46RC" -eq 0 ] && [ "$(g46 "d['target']")" = "email" ] \
+  && printf '%s' "$R46" | grep -q "not recorded"; } \
+  && ok "--override email (the one escape hatch) routes and SAYS the routing isn't recorded — visible, not quiet" \
+  || bad "the override exception changed shape for email" "rc=$R46RC"
+
+# --- (J) a written `bcc:` is warned about, never silently ignored --------------------------------
+# The kit deliberately maps no hidden recipients — but a key someone WROTE reads as a considered
+# choice, and honoring it with silence is how config becomes theater (the slot-level
+# always_include principle, from the adversarial review of this PR). A WARN, never an error:
+# narrowing-only, so existing configs keep validating and routing is unchanged.
+BCC46="$TMP/e46-bcc"; mkdir -p "$BCC46/.claude/config" "$BCC46/tk"
+cat > "$BCC46/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+seams:
+  chat:
+    default: internal
+    targets:
+      internal:
+        audience: internal
+        tool: slack
+        adapter: adapters/chat/slack.md
+        default_channel: C1
+        always_include: [Alice]
+        verify: null
+      email:
+        audience: stakeholders
+        tool: gmail
+        adapter: adapters/chat/gmail.md
+        to: list@acme.example
+        identity: reports@acme.example
+        always_include: [pm@acme.example]
+        bcc: [hidden@acme.example]
+        default_mode: draft
+        verify: null
+EOF
+python3 "$DP46" --root "$BCC46" --audit --quiet > "$TMP/e46-bcc.txt" 2>&1; BRC46=$?
+{ [ "$BRC46" -eq 0 ] && grep -q 'warn' "$TMP/e46-bcc.txt" && grep -q 'bcc' "$TMP/e46-bcc.txt"; } \
+  && ok "a chat target carrying bcc: audits clean (exit 0) WITH a warn row naming the ignored key" \
+  || bad "a written bcc: was silently ignored (or wrongly escalated to an error)" "rc=$BRC46 $(head -1 "$TMP/e46-bcc.txt")"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$BCC46/tk/delivery-plan.yaml"
+BOUT46="$(python3 "$DP46" --root "$BCC46" --plan "$BCC46/tk/delivery-plan.yaml" --seam chat --quiet 2>/dev/null)"; BRC46=$?
+{ [ "$BRC46" -eq 0 ] \
+  && [ "$(printf '%s' "$BOUT46" | python3 -c 'import json,sys;print(json.load(sys.stdin)["recipients"])' 2>/dev/null)" = "['pm@acme.example']" ]; } \
+  && ok "…and routing is unchanged: exit 0, the bcc value never joins the recipients" \
+  || bad "the bcc warn changed routing behavior" "rc=$BRC46"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

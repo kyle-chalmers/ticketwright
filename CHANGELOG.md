@@ -7,6 +7,33 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **Email is a delivery channel: `gmail` and `outlook` chat adapters** (PROMPT 10). Email is a chat
+  **target**, not a sixth tool slot — the same four verbs, the same routing, the same rules. The
+  honest mapping, stated in each adapter rather than implied away: `draft`/`send` map directly
+  (both products have native drafts); `lookup_user` is the address book; `lookup_channel` → a
+  distribution list is a **stretch** (a list address is opaque — resolving it proves the address
+  exists, not who reads it); and `always_include`/`default_channel` do not transfer cleanly to
+  to/cc/bcc — the adapters' destination key `to` is ONE address string, `always_include` renders as
+  **visible Cc**, and there is deliberately **no bcc mapping** (a hidden recipient would widen the
+  audience invisibly). An email target declares its **own** audience and its own non-empty
+  `always_include`, applied after routing, never inherited; routing comes only from the ticket's
+  declared audience (never from prose, address domains, or list names) and a failure **halts — it
+  never falls back to another chat target** (`--chat <target>` remains the one sanctioned,
+  human-explicit, warned-as-unrecorded override). **Draft-first, precisely:** the shipped examples
+  set `default_mode: draft` explicitly on every email target (an unset `default_mode` is not
+  documented as meaning draft), `policies.chat_default_draft` stays honored, and — honestly — the
+  send gate is `/ship`'s approval instruction plus the routed `mode`, not a runtime interlock; an
+  email cannot be unsent, which is why the margin lives in the draft a human clicks. Worked
+  activations of the setup interview's commented `seams.chat.targets.email` block:
+  `stack.example.multi-audience.yaml` (Slack + Teams + **Gmail**, three audiences) and
+  `stack.example.azure.yaml` (Teams + **Outlook**).
+- **The sender is part of the approved resolution.** Chat adapters may declare `sender_key:`
+  frontmatter (the email adapters name `identity` — the shared mailbox mail goes out AS, a
+  committed team decision). Routing surfaces that value as `sender` on the resolved plan `/ship`
+  prints, **refuses** a named email target whose identity is unset (mail must not go out as
+  whoever the transport happens to be authenticated as) or shell-unsafe, and folds it into the
+  `resolution_fingerprint` — a post-approval config edit swapping one mailbox for another now
+  refuses exactly like a moved channel. Adapters without `sender_key:` are untouched.
 - **Internal vs external delivery: `chat` and `docstore` route to named targets** (PROMPT 8,
   sequence items 2–3). A repo can now hold two chat tools and two document stores at once — Slack
   for the team and Teams for the client, an internal Drive archive and a client-facing SharePoint
