@@ -37,16 +37,39 @@ seams:
     dev_schema: dev
     verify: "sqlcmd -S {server} -d {database} -G --authentication-method ActiveDirectoryDefault -Q \"SELECT 1\""
 
+  # A multi-target chat slot: Teams inside the org, email (Outlook) out to stakeholders. Which one
+  # a ticket uses comes from its delivery-plan.yaml `audience:` declaration — never a guess, never
+  # a fallback (bin/delivery_plan.py; the routing rules live in adapters/README.md § The delivery
+  # plan). Each target declares its OWN audience, destination and always_include.
   chat:
-    tool: teams
-    adapter: adapters/chat/teams.md
-    transport: mcp
-    mcp: teams                          # your Teams MCP server name (adapter calls resolve as mcp__{mcp}__…)
-    channel: "Data Platform / General"
-    default_mode: draft
-    always_include: [Dana]               # fixed stakeholder list (never a self-tag)
-    # include_self: false                # also mention the shipper, in addition to always_include
-    verify: null
+    default: internal                   # STRUCTURAL only (pre-routing readers display it); routing never reads it
+    targets:
+      internal:
+        audience: internal              # the routing key a ticket declares
+        tool: teams
+        adapter: adapters/chat/teams.md
+        transport: mcp
+        mcp: teams                      # your Teams MCP server name (adapter calls resolve as mcp__{mcp}__…)
+        channel: "Data Platform / General"   # Teams' destination key (channel_key: channel)
+        default_mode: draft
+        always_include: [Dana]          # fixed stakeholder list (never a self-tag)
+        # include_self: false           # also mention the shipper, in addition to always_include
+        verify: null
+      # Email is a CHAT TARGET, not a sixth tool slot — the activated form of the commented
+      # `seams.chat.targets.email` block the setup interview writes on an email-out answer.
+      # An email cannot be unsent, so `default_mode: draft` is set EXPLICITLY on every email
+      # target: an unset default_mode is not documented as meaning draft.
+      email:
+        audience: stakeholders          # a ticket declaring `audience: stakeholders` routes HERE
+        tool: outlook
+        adapter: adapters/chat/outlook.md
+        transport: mcp
+        mcp: outlook
+        identity: platform-reports@acme-corp.example   # mail goes out AS this shared mailbox (team decision)
+        to: platform-updates@acme-corp.example         # the email adapters' destination key (channel_key: to) — ONE address
+        always_include: [dana@acme-corp.example]       # THIS target's own list, applied AFTER routing (rendered as Cc)
+        default_mode: draft
+        verify: null
 
   docstore:
     tool: sharepoint

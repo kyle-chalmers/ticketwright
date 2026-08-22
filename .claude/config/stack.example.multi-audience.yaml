@@ -1,12 +1,14 @@
-# stack.example.multi-audience.yaml — a team whose work goes to TWO audiences.
+# stack.example.multi-audience.yaml — a team whose work goes to MORE THAN ONE audience.
 #
-# Jira / Snowflake / Slack + Teams / Google Drive + SharePoint / GitHub. Internal updates go to
-# Slack and are archived on the team's Drive; client-facing delivery goes to a Teams channel shared
-# with the client and lands in the SharePoint library the client can see.
+# Jira / Snowflake / Slack + Teams + Gmail / Google Drive + SharePoint / GitHub. Internal updates
+# go to Slack and are archived on the team's Drive; client-facing delivery goes to a Teams channel
+# shared with the client and lands in the SharePoint library the client can see; a stakeholder
+# summary goes out BY EMAIL from a shared identity (the `email` target below — the activated form
+# of the commented `seams.chat.targets.email` block the setup interview writes).
 #
 # This file exists to prove one claim: ONE tool slot can hold more than one TOOL, and which one a
-# given ticket uses is DECLARED, never guessed. The chat slot below holds two different products at
-# once, and the two docstore targets are two different systems.
+# given ticket uses is DECLARED, never guessed. The chat slot below holds three different products
+# at once, and the two docstore targets are two different systems.
 #
 # HOW A TICKET PICKS: the ticket's `delivery-plan.yaml` declares `audience:` (chat) and
 # `classification:` (docstore); `bin/delivery_plan.py` matches that declaration against the
@@ -49,23 +51,24 @@ seams:
     dev_target: ANALYTICS_DEV
     verify: "snow connection test"
 
-  # ── MULTI-TARGET chat slot: internal Slack, client-facing Teams ────────────────────────────────
+  # ── MULTI-TARGET chat slot: internal Slack, client-facing Teams, stakeholder email ─────────────
   # Each target declares its OWN audience, its OWN destination, and its OWN non-empty
-  # `always_include`. None of the three is ever inherited — from the slot or from the other target.
+  # `always_include`. None of the three is ever inherited — from the slot or from another target.
   # `always_include` is applied AFTER routing, so the client channel can never pick up the internal
   # stakeholder list (or vice versa). Slot-level scalars (`default_mode` here) still inherit
   # normally; inheritance is a convenience for shared values, never a fallback when routing fails.
   #
-  # The two targets run different PRODUCTS, and each spells its destination key differently — Slack
-  # says `default_channel`, Teams says `channel`. No skill knows that: each adapter declares its own
-  # `channel_key:` in frontmatter, the way warehouse adapters declare `dev_key:`.
+  # The targets run different PRODUCTS, and each spells its destination key differently — Slack
+  # says `default_channel`, Teams says `channel`, the email adapters say `to`. No skill knows that:
+  # each adapter declares its own `channel_key:` in frontmatter, the way warehouse adapters declare
+  # `dev_key:`.
   #
   # List the DEFAULT target FIRST (pre-multi-target readers display the first target they find), and
   # prefer the INTERNAL target as `default:` — a reader that predates routing then names the least
   # consequential destination rather than the client's.
   chat:
     default: internal
-    default_mode: draft                  # inherited by both targets (neither overrides it)
+    default_mode: draft                  # inherited by slack/teams; the email target ALSO sets its own
     targets:
       internal:
         audience: internal               # the routing key `delivery-plan.yaml` declares
@@ -85,6 +88,22 @@ seams:
         channel: "19:shared-client-channel@thread.tacv2"   # Teams' destination key (channel_key: channel)
         always_include: [Dana]           # the client-side stakeholder, applied AFTER routing
         # include_self: false            # also mention the shipper, IN ADDITION to always_include
+        verify: null
+      # Email is a CHAT TARGET, not a sixth tool slot: same verbs, same routing, same draft-first
+      # rule. This is the activated form of the commented `seams.chat.targets.email` block the
+      # setup interview writes on an email-out answer (`provider:` becomes `tool:` + `adapter:`).
+      # An email is the least recoverable delivery — it cannot be unsent — so `default_mode: draft`
+      # is set EXPLICITLY here: an unset default_mode is not documented as meaning draft.
+      email:
+        audience: stakeholders           # a ticket declaring `audience: stakeholders` routes HERE
+        tool: gmail
+        adapter: adapters/chat/gmail.md
+        transport: mcp
+        mcp: gmail
+        identity: reports@acme.example   # mail goes out AS this shared identity (team decision)
+        to: stakeholder-updates@acme.example   # the email adapters' destination key (channel_key: to) — ONE address
+        always_include: [pm@acme.example]      # THIS target's own list, applied AFTER routing (rendered as Cc)
+        default_mode: draft              # EXPLICIT on every email target — the human clicks send
         verify: null
 
   # ── MULTI-TARGET docstore slot: internal archive vs client delivery ────────────────────────────

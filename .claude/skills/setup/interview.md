@@ -115,15 +115,17 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
     - **In (or both):** add `email` to `project.intake`. The consumer is `/ticket`'s priming
       step, which sweeps `source_materials/` for forwarded threads — intake beyond the tracker
       arrives as files a human drops in, not API calls.
-    - **Out (or both):** no email adapter ships yet, but "ask the direction and write a commented
-      block" is not a configured repo — so still run the configuration questions now and record
-      the answers: **which provider** (`gmail` | `outlook`), the **sending identity** (or shared
-      mailbox), and the **declared audience** plus its recipient list (which becomes that
-      target's `always_include` once targets are routable). Write them into a commented
+    - **Out (or both):** the email adapters ship (`adapters/chat/gmail.md` /
+      `adapters/chat/outlook.md`), but activating email delivery means converting the chat slot
+      to `targets:` form with a declared audience on EVERY target — a deliberate config change,
+      not an interview side effect. So run the configuration questions now and record the
+      answers: **which provider** (`gmail` | `outlook`), the **sending identity** (or shared
+      mailbox — the adapters' `sender_key: identity`), and the **declared audience** plus its
+      recipient list (which becomes that target's `always_include`). Write them into a commented
       `seams.chat.targets.email` block ending with a `# TODO` that names what is missing — the
-      adapter — and points at `adapters/README.md` § "Writing a new adapter". Say plainly, here
-      and in the Phase-4 report, that email is **configured but not yet wired**: no draft will
-      send until the adapter ships.
+      activation — and points at `stack.example.multi-audience.yaml` (the activated form). Say
+      plainly, here and in the Phase-4 report, that email is **configured but not yet
+      activated**: no draft will send until someone converts the slot.
 
 ## Round 5 — How you work (skippable)
 
@@ -213,14 +215,16 @@ seams:
     default_mode: draft
     always_include: [Alice]           # never empty when chat is configured
     verify: null
-    # targets:                        # round 4: email delivery, configured but NOT YET WIRED
+    # targets:                        # round 4: email delivery, configured but NOT YET ACTIVATED
     #   email:
     #     provider: gmail             # gmail | outlook
     #     identity: reports@acme.example
     #     audience: stakeholders
     #     always_include: [pm@acme.example]
-    #     # TODO: no email adapter ships yet — nothing sends. When it lands, activate this
-    #     # target; to build one sooner, see adapters/README.md § "Writing a new adapter".
+    #     # TODO: not yet activated — nothing sends. Activating means converting this chat
+    #     # slot to `targets:` form (a declared audience on EVERY target, `provider:` becomes
+    #     # `tool:` + `adapter:`, `default_mode: draft` set explicitly on the email target).
+    #     # The activated form is stack.example.multi-audience.yaml.
   vcs:
     tool: github
     adapter: adapters/vcs/github.md

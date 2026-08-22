@@ -219,8 +219,10 @@ Everything the interview does not ask ships as a **commented default** the user 
      (`/setup role` for round 5, `/setup policies` for round 6). Deferring must be trackable;
      "took defaults" must never be indistinguishable from "chose".
    - **Email, when round 4 recorded delivery:** say plainly that email is **configured but not
-     yet wired** — the commented target block holds the answers, no email adapter ships yet, and
-     nothing will send until one does.
+     yet activated** — the commented target block holds the answers, and nothing will send until
+     someone deliberately activates it: convert the chat slot to `targets:` form with a declared
+     audience on EVERY target (worked example: `stack.example.multi-audience.yaml`; the email
+     adapters ship as `adapters/chat/gmail.md` / `adapters/chat/outlook.md`).
    - **Obsidian — one line, never a question.** Detected: "this repo already opens as an Obsidian
      vault — the graph layer is in `tickets/graph/` + `tickets/objects/`." Not detected: the graph
      layer still renders; print the guide as its full GitHub URL —

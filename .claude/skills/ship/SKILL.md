@@ -108,7 +108,9 @@ execute — nothing the steps don't do may appear in it:
    - **tracker** — tool, target, the exact ticket (`owner/id`) the comment lands on;
    - **chat** — tool, target, the declared `audience` that selected it, channel, the full
      recipient list (the routed target's own `recipients`, including the shipper when
-     `include_self`), and draft-vs-send mode. When the target came from `--chat <target>` rather than the ticket's
+     `include_self`), the `sender` when the routed JSON carries one (an email target's sending
+     identity — WHO the message goes out as is part of what the human authorizes), and
+     draft-vs-send mode. When the target came from `--chat <target>` rather than the ticket's
      declaration, say so on the line — the CLI returns that as a warning, and an override that the
      ticket does not record is a fact the approver should see;
    - **vcs** — tool, target, the branch, and that a PR opens;

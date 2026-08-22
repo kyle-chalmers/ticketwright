@@ -41,12 +41,12 @@ Skills are written **once against verbs** and never name a tool. Swapping a tool
 [`stack.example.asana-bq.yaml`](../.claude/config/stack.example.asana-bq.yaml)
 (Asana/BigQuery/Teams/SharePoint/GitLab), and
 [`stack.example.azure.yaml`](../.claude/config/stack.example.azure.yaml)
-(Azure DevOps/Synapse/Teams/SharePoint/Azure Repos),
+(Azure DevOps/Synapse/Teams **+ Outlook email**/SharePoint/Azure Repos),
 [`stack.example.multi-warehouse.yaml`](../.claude/config/stack.example.multi-warehouse.yaml)
 (Snowflake **+** Databricks — two targets in one seam),
 [`stack.example.multi-audience.yaml`](../.claude/config/stack.example.multi-audience.yaml)
-(**two audiences** — internal chat + archive vs client-facing chat + delivery store, selected by a
-declared audience, never an inferred one),
+(**three audiences** — internal chat + archive, client-facing chat + delivery store, and
+stakeholder delivery by email, selected by a declared audience, never an inferred one),
 [`stack.example.solo.yaml`](../.claude/config/stack.example.solo.yaml) (**no tracker**, no chat, no
 docstore — the ticket folder is the tracker), and
 [`stack.example.no-warehouse.yaml`](../.claude/config/stack.example.no-warehouse.yaml) (**no
@@ -64,7 +64,10 @@ an absent or unmatched declaration halts and lists what is configured, because t
 fall through to may be the external one. Each chat target carries its own non-empty `always_include`,
 applied after routing, and `bin/verify_stack.sh` fails a multi-target config that omits one. What the
 kit cannot do is check a destination's real sharing permissions — `sharing_scope` is a declaration,
-not a verification. Worked config:
+not a verification. **Email is a chat target, not a sixth seam**: the `gmail`/`outlook` adapters map
+the same four chat verbs (destination key `to`, `always_include` rendered as visible Cc, draft-first
+with `default_mode: draft` set explicitly), and the same routing rules bind — a wrongly-addressed
+email cannot be unsent, which is why nothing about email relaxes them. Worked config:
 [`stack.example.multi-audience.yaml`](../.claude/config/stack.example.multi-audience.yaml).
 
 **The one seam whose config is not in `stack.yaml`:** `viewer` — which application opens a `.sql`
@@ -183,7 +186,7 @@ before it is paid.
   checklist inline and the verdict records `review_mode: inline-same-context` as the weaker check
   (`unestablished` isolation still fans out, recorded verbatim).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
-- **30 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
+- **32 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
   tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS). Six of
   those directories are tool seams; the seventh, `runtime/`, declares what each agent harness can do
   (see [runtimes.md](runtimes.md)) and carries no verbs, because it is not a tool the project calls.

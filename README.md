@@ -41,13 +41,13 @@ It works with **your** tools, through one config file:
 |---|---|
 | Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues · etc. — or **none at all** |
 | Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse · Supabase · DuckDB · etc. — or **none at all** |
-| Chat | Slack · Teams · etc. |
+| Chat | Slack · Teams · email (Gmail · Outlook) · etc. |
 | Docs | Google Drive · SharePoint · Dropbox · etc. |
 | Git | GitHub · GitLab · Azure Repos · Bitbucket · etc. |
 
 - **The lists are examples, not a whitelist** — any tool that fills a slot works. The first six
-  trackers, six warehouses, and the Slack/Teams/Drive/SharePoint/GitHub/GitLab/Azure-Repos set ship
-  as adapters today; wiring up another (Supabase, DuckDB, Bitbucket, Dropbox, …) is
+  trackers, six warehouses, and the Slack/Teams/Gmail/Outlook/Drive/SharePoint/GitHub/GitLab/Azure-Repos
+  set ship as adapters today; wiring up another (Supabase, DuckDB, Bitbucket, Dropbox, …) is
   [a single adapter file](adapters/README.md) — the skills never change.
 - **More than one warehouse is fine** — name the targets.
 - **No warehouse is fine too** — a team whose deliverables are documents, models, or reports just
