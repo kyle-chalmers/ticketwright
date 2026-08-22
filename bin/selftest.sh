@@ -5142,5 +5142,448 @@ PY
 [ -z "$lv_bad" ] && ok "every unknown/unverified frontmatter value, WIRED cell, unverified-labeled artifact, and (unverified) mapping row is claimed on a punch-list Covers: line" \
   || bad "an unverified claim exists without a tracked way to verify it" "$lv_bad"
 
+hdr "45 · chat/docstore delivery routing: a DECLARED audience, and always_include enforced in code (PROMPT 8 / items 2-3)"
+# The seam that can leak client data. Two properties are load-bearing and both are tested by
+# BEHAVIOR, never by grepping for a token:
+#   (1) routing reads a DECLARATION and halts when there isn't one — it never infers an audience
+#       from prose/labels and never falls back to a listed target, because the fallback may be the
+#       external one;
+#   (2) `always_include` is ENFORCED — a config omitting it is REJECTED, and a drafted message that
+#       fails to carry the routed list is REJECTED. (A presence grep for the token proves neither:
+#       it passes against a config that never applies the list and against a message that omits it.)
+DP="$KIT/bin/delivery_plan.py"
+D45="$TMP/route45"; mkdir -p "$D45/.claude/config" "$D45/tk"
+cp "$KIT/.claude/config/stack.example.multi-audience.yaml" "$D45/.claude/config/stack.yaml"
+PLAN45="$D45/tk/delivery-plan.yaml"
+route() { ROUT="$(python3 "$DP" --root "$D45" --plan "$PLAN45" --quiet "$@" 2>/dev/null)"; RRC=$?; }
+rget()  { printf '%s' "$ROUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
+
+# --- (A) a declared audience routes, and carries THAT target's own recipients -------------------
+printf 'schema_version: 1\naudience: client\nclassification: client_delivery\n' > "$PLAN45"
+route --seam chat
+{ [ "$RRC" -eq 0 ] && [ "$(rget "d['target']")" = "client" ] && [ "$(rget "d['tool']")" = "teams" ] \
+  && [ "$(rget "d['selected_by']")" = "declared" ] && [ "$(rget "d['recipients']")" = "['Dana']" ]; } \
+  && ok "a declared audience routes to that target, with the target's OWN recipient list" \
+  || bad "declared-audience routing wrong" "rc=$RRC target=$(rget "d.get('target')") to=$(rget "d.get('recipients')")"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$PLAN45"
+route --seam chat
+{ [ "$(rget "d['target']")" = "internal" ] && [ "$(rget "d['recipients']")" = "['Alice']" ] \
+  && [ "$(rget "d['destination']")" = "C0XXXXXXXXX" ] && [ "$(rget "d['destination_key']")" = "default_channel" ]; } \
+  && ok "the other audience routes to the other target — different tool, different key, different list" \
+  || bad "second audience routed wrong" "target=$(rget "d.get('target')") to=$(rget "d.get('recipients')")"
+route --seam docstore
+{ [ "$(rget "d['target']")" = "archive" ] && [ "$(rget "d['sharing_scope']")" = "team" ]; } \
+  && ok "a declared classification routes the docstore and reports its declared sharing scope" \
+  || bad "docstore classification routing wrong" "target=$(rget "d.get('target')")"
+
+# --- (B) every failure is a HALT with no target and no destination in the output -----------------
+# The output shape matters as much as the exit code: a caller that ignores the code must still not
+# be able to lift a usable destination out of a failed routing.
+printf 'schema_version: 1\n' > "$PLAN45"
+route --seam chat
+{ [ "$RRC" -eq 9 ] && [ "$(rget "d['target']")" = "None" ] && [ "$(rget "d['destination']")" = "None" ]; } \
+  && ok "no declaration = exit 9, and neither a target nor a destination is emitted" \
+  || bad "an undeclared audience did not halt cleanly" "rc=$RRC target=$(rget "d.get('target')")"
+printf '%s' "$ROUT" | grep -q "delivery-plan.yaml\|audience" \
+  && ok "the halt names what is missing (the plan's audience declaration)" \
+  || bad "the no-declaration halt does not say what to declare"
+{ printf '%s' "$ROUT" | grep -q "internal" && printf '%s' "$ROUT" | grep -q "client"; } \
+  && ok "the halt lists the configured audiences instead of picking one" \
+  || bad "the no-declaration halt does not list the configured audiences"
+printf 'schema_version: 1\naudience: externl\n' > "$PLAN45"
+route --seam chat
+{ [ "$RRC" -eq 8 ] && [ "$(rget "d['target']")" = "None" ]; } \
+  && ok "a declared audience matching no target = exit 8, never a fallback" \
+  || bad "an unmatched audience did not halt" "rc=$RRC target=$(rget "d.get('target')")"
+# Exact match, deliberately: a near-miss is a typo, and fuzzy-matching an audience is how a message
+# reaches the wrong room. `Client` is not `client`.
+printf 'schema_version: 1\naudience: Client\n' > "$PLAN45"
+route --seam chat
+[ "$RRC" -eq 8 ] && ok "audience matching is exact — a case variant halts rather than resolving" \
+  || bad "audience matching normalized a near-miss" "rc=$RRC target=$(rget "d.get('target')")"
+rm -f "$PLAN45"
+route --seam chat
+{ [ "$RRC" -eq 3 ] && [ "$(rget "d['target']")" = "None" ]; } \
+  && ok "a missing delivery plan on a multi-target slot = exit 3, no target" \
+  || bad "a missing plan did not halt" "rc=$RRC"
+printf 'schema_version: 2\naudience: internal\n' > "$PLAN45"
+route --seam chat
+[ "$RRC" -eq 4 ] && ok "a plan written to another schema_version is malformed, not read anyway" \
+  || bad "an unsupported plan schema_version was read" "rc=$RRC"
+
+# --- (C) the explicit override, and its honesty about not being recorded ------------------------
+printf 'schema_version: 1\naudience: client\n' > "$PLAN45"
+route --seam chat --override internal
+{ [ "$RRC" -eq 0 ] && [ "$(rget "d['target']")" = "internal" ] \
+  && [ "$(rget "d['selected_by']")" = "override" ] && [ "$(rget "d['recipients']")" = "['Alice']" ]; } \
+  && ok "--override selects a target explicitly and swaps in ITS recipient list" \
+  || bad "override routing wrong" "rc=$RRC target=$(rget "d.get('target')")"
+route --seam chat --override ghost
+{ [ "$RRC" -eq 8 ] && [ "$(rget "d['target']")" = "None" ]; } \
+  && ok "an unknown --override is exit 8, never a fallback to the declaration" \
+  || bad "an unknown override did not halt" "rc=$RRC"
+printf 'schema_version: 1\n' > "$PLAN45"
+route --seam chat --override client
+{ [ "$RRC" -eq 0 ] && printf '%s' "$ROUT" | grep -q "not recorded"; } \
+  && ok "an override with nothing declared routes but SAYS the routing isn't recorded with the ticket" \
+  || bad "an unrecorded override did not report itself"
+
+# --- (D) a rendered draft provably carries the routed list --------------------------------------
+# This is the half a presence grep cannot do: the check reads the DRAFT and reports the names it
+# fails to carry, so a message written for one audience cannot pass for the other.
+printf 'schema_version: 1\naudience: client\nclassification: client_delivery\n' > "$PLAN45"
+printf 'ENG-1234 shipped. Summary in the linked deck. cc Dana\n' > "$D45/tk/good.md"
+printf 'ENG-1234 shipped. Summary in the linked deck. cc Alice\n' > "$D45/tk/wrong.md"
+route --seam chat --check-draft "$D45/tk/good.md"
+[ "$RRC" -eq 0 ] && ok "a draft naming every routed recipient passes the comms rail" \
+  || bad "a correct draft was rejected" "rc=$RRC missing=$(rget "d.get('missing_recipients')")"
+route --seam chat --check-draft "$D45/tk/wrong.md"
+{ [ "$RRC" -ne 0 ] && [ "$(rget "d['missing_recipients']")" = "['Dana']" ]; } \
+  && ok "a draft carrying the WRONG audience's stakeholder is rejected, naming who is missing" \
+  || bad "a draft missing its routed recipient was accepted" "rc=$RRC missing=$(rget "d.get('missing_recipients')")"
+
+# --- (E) always_include (and the rest) ENFORCED by bin/verify_stack.sh --------------------------
+# The gate is the verify run's EXIT CODE, not a message: this list had zero mechanical enforcement
+# before — it was prose in an adapter — and a new prose rule replacing an unenforced prose rule
+# would change nothing. Fixtures are built by these two helpers rather than by string substitution:
+# `[Alice]` inside a bash ${var/pat/rep} pattern is a CHARACTER CLASS, so an edit like that silently
+# does nothing and the test then proves the wrong thing.
+V45="$TMP/vrfy45"; mkdir -p "$V45/.claude/config"
+vcfg() { printf '%s' "$1" > "$V45/.claude/config/stack.yaml"
+         VOUT="$(bash "$KIT/bin/verify_stack.sh" "$V45/.claude/config/stack.yaml" --dry-run 2>&1)"; VRC=$?; }
+chat_cfg() {  # chat_cfg <internal target body> <client target body> [extra slot-level line]
+  printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    default: internal\n    default_mode: draft\n%s    targets:\n      internal: {%s}\n      client: {%s}\n' \
+    "${3:-}" "$1" "$2"
+}
+SLACK_T='audience: internal, tool: slack, adapter: adapters/chat/slack.md, default_channel: C1, always_include: [Alice], verify: null'
+TEAMS_T='audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, always_include: [Dana], verify: null'
+
+vcfg "$(chat_cfg "$SLACK_T" "$TEAMS_T")"
+[ "$VRC" -eq 0 ] && ok "a well-formed two-target chat slot verifies clean" \
+  || bad "a valid multi-target chat config was rejected" "$(printf '%s' "$VOUT" | grep '✗' | head -2)"
+vcfg "$(chat_cfg "$SLACK_T" 'audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, verify: null')"
+{ [ "$VRC" -ne 0 ] && printf '%s' "$VOUT" | grep -q 'always_include'; } \
+  && ok "a chat target with NO always_include is REJECTED (non-zero exit), naming the key" \
+  || bad "always_include is not actually enforced" "rc=$VRC"
+vcfg "$(chat_cfg "$SLACK_T" 'audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, always_include: [], verify: null')"
+[ "$VRC" -ne 0 ] && ok "an EMPTY always_include is rejected too (worse than absent — it reads as a decision)" \
+  || bad "an empty always_include was accepted"
+vcfg "$(chat_cfg 'tool: slack, adapter: adapters/chat/slack.md, default_channel: C1, always_include: [Alice], verify: null' "$TEAMS_T")"
+[ "$VRC" -ne 0 ] && ok "a chat target with no declared audience is rejected (it would be unroutable)" \
+  || bad "a target with no audience was accepted"
+vcfg "$(chat_cfg "$SLACK_T" 'audience: internal, tool: teams, adapter: adapters/chat/teams.md, channel: X9, always_include: [Dana], verify: null')"
+[ "$VRC" -ne 0 ] && ok "two targets declaring the SAME audience are rejected (ambiguous routing)" \
+  || bad "duplicate audiences were accepted"
+vcfg "$(chat_cfg "$SLACK_T" "$TEAMS_T" '    audience: internal
+')"
+[ "$VRC" -ne 0 ] && ok "a slot-level audience is rejected — a routing key must never be inherited" \
+  || bad "a slot-level audience was accepted"
+# Two targets that both fall back to one inherited channel are a separation that does not exist.
+vcfg "$(chat_cfg 'audience: internal, tool: slack, adapter: adapters/chat/slack.md, always_include: [Alice], verify: null' 'audience: client, tool: slack, adapter: adapters/chat/slack.md, always_include: [Dana], verify: null' '    default_channel: CSHARED
+')"
+{ [ "$VRC" -ne 0 ] && printf '%s' "$VOUT" | grep -q 'inherited'; } \
+  && ok "targets relying on an INHERITED channel are rejected — inheritance is never a destination" \
+  || bad "two targets shared one inherited channel" "rc=$VRC"
+vcfg "$(chat_cfg "$SLACK_T" 'audience: client, tool: slack, adapter: adapters/chat/slack.md, default_channel: C1, always_include: [Dana], verify: null')"
+[ "$VRC" -ne 0 ] && ok "two targets resolving to the same tool+destination are rejected" \
+  || bad "colliding destinations were accepted"
+vcfg "$(chat_cfg "$SLACK_T" 'audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, always_include: ["D$(id)"], verify: null')"
+{ [ "$VRC" -ne 0 ] && printf '%s' "$VOUT" | grep -q 'metacharacters'; } \
+  && ok "a recipient carrying shell metacharacters is refused (the tier-3 injection rule, inherited)" \
+  || bad "a recipient with shell metacharacters was accepted" "rc=$VRC"
+# THE REGRESSION GUARD. The non-empty rule binds only under `targets:` — a single-mapping chat slot
+# that omits always_include must keep validating, or every shipped example config breaks.
+vcfg 'project:
+  key_prefix: ENG
+seams:
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: slack
+    default_channel: C0XXXXXXXXX
+    default_mode: draft
+    verify: null
+'
+[ "$VRC" -eq 0 ] && ok "a SINGLE-mapping chat slot with no always_include still verifies (the rule is targets-scoped)" \
+  || bad "the new rule broke single-target chat configs" "$(printf '%s' "$VOUT" | grep '✗' | head -2)"
+
+ds_cfg() {  # ds_cfg <archive target body> <client target body>
+  printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive: {%s}\n      client_delivery: {%s}\n' "$1" "$2"
+}
+DS_A='classification: internal_archive, sharing_scope: team, tool: gdrive, adapter: adapters/docstore/gdrive.md, drive_folder: "A", verify: null'
+DS_C='classification: client_delivery, sharing_scope: external, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null'
+vcfg "$(ds_cfg "$DS_A" "$DS_C")"
+[ "$VRC" -eq 0 ] && ok "a well-formed two-target docstore slot verifies clean" \
+  || bad "a valid multi-target docstore config was rejected" "$(printf '%s' "$VOUT" | grep '✗' | head -2)"
+vcfg "$(ds_cfg "$DS_A" 'classification: client_delivery, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null')"
+[ "$VRC" -ne 0 ] && ok "a docstore target with no declared sharing_scope is rejected" \
+  || bad "an undeclared sharing_scope was accepted"
+vcfg "$(ds_cfg 'classification: internal_archive, sharing_scope: everyone, tool: gdrive, adapter: adapters/docstore/gdrive.md, drive_folder: "A", verify: null' "$DS_C")"
+[ "$VRC" -ne 0 ] && ok "a sharing_scope outside team|org|external is rejected" \
+  || bad "an unknown sharing_scope was accepted"
+vcfg "$(ds_cfg "$DS_A" 'classification: internal_archive, sharing_scope: external, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null')"
+[ "$VRC" -ne 0 ] && ok "two docstore targets sharing one classification are rejected" \
+  || bad "duplicate classifications were accepted"
+# The shipped worked example must satisfy its own audit (section 1 proves it RESOLVES; this proves
+# it obeys the routing rules).
+python3 "$DP" --stack "$KIT/.claude/config/stack.example.multi-audience.yaml" --audit --quiet >/dev/null 2>&1 \
+  && ok "the shipped multi-audience example satisfies every routing rule" \
+  || bad "the shipped multi-audience example fails its own audit"
+
+# --- (E2) the same rules bind AT ROUTE TIME, not only in the audit ------------------------------
+# The audit runs when someone runs verify_stack.sh; routing runs when a message is about to be sent.
+# If enforcement lived only in the audit, an unverified config would still deliver — so routing
+# re-checks and REFUSES. "They should have run verify first" is not a safety property.
+R2="$TMP/route45b"; mkdir -p "$R2/.claude/config" "$R2/tk"
+printf 'schema_version: 1\naudience: client\n' > "$R2/tk/delivery-plan.yaml"
+printf '%s' "$(chat_cfg "$SLACK_T" 'audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, verify: null')" \
+  > "$R2/.claude/config/stack.yaml"
+python3 "$DP" --root "$R2" --plan "$R2/tk/delivery-plan.yaml" --seam chat --quiet > "$TMP/r2.json" 2>/dev/null
+R2RC=$?
+R2T="$(python3 -c "import json;print(json.load(open('$TMP/r2.json'))['target'])" 2>/dev/null)"
+{ [ "$R2RC" -ne 0 ] && [ "$R2T" = "None" ]; } \
+  && ok "routing REFUSES a target with no always_include, even on a config nobody verified" \
+  || bad "routing delivered to a target with no stakeholder list" "rc=$R2RC target=$R2T"
+printf '%s' "$(chat_cfg 'audience: internal, tool: slack, adapter: adapters/chat/slack.md, always_include: [Alice], verify: null' 'audience: client, tool: slack, adapter: adapters/chat/slack.md, always_include: [Dana], verify: null' '    default_channel: CSHARED
+')" > "$R2/.claude/config/stack.yaml"
+python3 "$DP" --root "$R2" --plan "$R2/tk/delivery-plan.yaml" --seam chat --quiet > "$TMP/r2.json" 2>/dev/null
+R2RC=$?
+R2D="$(python3 -c "import json;print(json.load(open('$TMP/r2.json'))['destination'])" 2>/dev/null)"
+{ [ "$R2RC" -ne 0 ] && [ "$R2D" = "None" ]; } \
+  && ok "routing REFUSES an inherited destination — a routed target never delivers to a shared channel" \
+  || bad "routing delivered to an inherited channel" "rc=$R2RC dest=$R2D"
+
+# --- (E3) the gate-2 hardening: chat-only override, an approved plan is binding, per-deliverable -
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\ndeliverables:\n  - file: final_deliverables/summary.pdf\n    classification: client_delivery\n' > "$PLAN45"
+route --seam docstore
+[ "$(rget "d['target']")" = "archive" ] \
+  && ok "the plan-level classification routes the ticket's deliverables by default" \
+  || bad "plan-level classification routing wrong" "target=$(rget "d.get('target')")"
+route --seam docstore --file final_deliverables/summary.pdf
+{ [ "$(rget "d['target']")" = "client_delivery" ] && [ "$(rget "d['sharing_scope']")" = "external" ]; } \
+  && ok "a deliverable declaring its OWN classification routes to its own store (per-deliverable)" \
+  || bad "per-deliverable classification ignored" "target=$(rget "d.get('target')")"
+route --seam docstore --override archive
+[ "$RRC" -eq 2 ] \
+  && ok "--override is refused for docstore — a store is DECLARED per deliverable, never flagged" \
+  || bad "a docstore override was accepted" "rc=$RRC"
+# An approved plan is binding: the human authorized ONE target, and a plan edited afterwards must
+# stop the delivery rather than redirect it.
+route --seam chat --expect-target internal
+[ "$RRC" -eq 0 ] && ok "--expect-target passes while routing still agrees with the approved plan" \
+  || bad "expect-target rejected a matching target" "rc=$RRC"
+printf 'schema_version: 1\naudience: client\n' > "$PLAN45"
+route --seam chat --expect-target internal
+{ [ "$RRC" -ne 0 ] && [ "$(rget "d['target']")" = "None" ]; } \
+  && ok "a plan edited AFTER approval refuses to route (preview==execution, mechanically)" \
+  || bad "an edited plan delivered to a target nobody approved" "rc=$RRC target=$(rget "d.get('target')")"
+route --seam chat --override internal
+printf '%s' "$ROUT" | grep -qi 'contradicts' \
+  && ok "an override contradicting the ticket's declaration says so on the plan line" \
+  || bad "a contradicting override was silent"
+# /ship renders `target: single` for a single mapping; passing that plan line back must MATCH, or
+# the approval pin would misfire on every single-target repo.
+SG="$TMP/single45"; mkdir -p "$SG/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_channel: C0X\n    default_mode: draft\n    always_include: [Alice]\n    verify: null\n' > "$SG/.claude/config/stack.yaml"
+printf 'schema_version: 1\n' > "$SG/dp.yaml"
+python3 "$DP" --root "$SG" --plan "$SG/dp.yaml" --seam chat --expect-target single --quiet >/dev/null 2>&1
+[ "$?" -eq 0 ] && ok "--expect-target single matches a single mapping's null target (the rendering sentinel)" \
+  || bad "the approval pin misfires on a single-target repo"
+python3 "$DP" --root "$SG" --plan "$SG/dp.yaml" --seam chat --expect-target client --quiet >/dev/null 2>&1
+[ "$?" -ne 0 ] && ok "a single mapping still refuses an approval pinned to a named target" \
+  || bad "a single mapping accepted a foreign expect-target"
+
+# --- (E4) adversarial-review hardening: rows honored-or-reported, the pin binds the RESOLUTION ---
+# The P1 from the adversarial review: a deliverables row someone wrote to keep a file INTERNAL was
+# silently overridden by the plan-level classification whenever its value wasn't a non-empty string
+# — `classification: null`, `[]`, `""`, a misspelled key, or the chat key `audience:` by mix-up all
+# routed the file to the client store with rc=0. Every shape now halts (exit 4), no target emitted.
+row_case() {  # row_case <label> <deliverables block yaml> <--file arg>
+  printf 'schema_version: 1\nclassification: client_delivery\n%s' "$2" > "$PLAN45"
+  python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file "$3" --quiet > "$TMP/e4.json" 2>/dev/null
+  E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
+  { [ "$E4RC" -eq 4 ] && [ "$E4T" = "None" ]; } \
+    && ok "a deliverables row with $1 is exit 4 with no target — never a fallthrough to plan level" \
+    || bad "a row with $1 fell through to the plan-level classification" "rc=$E4RC target=$E4T"
+}
+row_case "classification: null" 'deliverables:\n  - file: qc_queries/scratch.sql\n    classification: null\n' qc_queries/scratch.sql
+row_case "classification: []"   'deliverables:\n  - file: qc_queries/scratch.sql\n    classification: []\n' qc_queries/scratch.sql
+row_case "classification: \"\"" 'deliverables:\n  - file: qc_queries/scratch.sql\n    classification: ""\n' qc_queries/scratch.sql
+row_case "the chat key audience: (mix-up)" 'deliverables:\n  - file: a.csv\n    audience: internal\n' a.csv
+row_case "a misspelled key" 'deliverables:\n  - file: a.csv\n    clasification: internal_archive\n' a.csv
+row_case "a non-mapping row" 'deliverables:\n  - just a string\n' a.csv
+printf 'schema_version: 1\nclassification: client_delivery\ndeliverables: not a list\n' > "$PLAN45"
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --quiet > "$TMP/e4.json" 2>/dev/null
+E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
+{ [ "$E4RC" -eq 4 ] && [ "$E4T" = "None" ]; } \
+  && ok "a deliverables: block that is not a list of rows is exit 4 with no target" \
+  || bad "a malformed deliverables block was silently iterated into nothing" "rc=$E4RC target=$E4T"
+# The mix-up error must TEACH: it names the right key.
+printf 'schema_version: 1\nclassification: client_delivery\ndeliverables:\n  - file: a.csv\n    audience: internal\n' > "$PLAN45"
+E4MSG="$(python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file a.csv 2>&1)" || true
+grep -q 'did you mean' <<<"$E4MSG" \
+  && ok "the audience-key mix-up error names classification: as the fix" \
+  || bad "the mix-up error does not say what was meant"
+# Path normalization: a ./-prefixed row must MATCH its bare --file (the same fallthrough in a wig).
+printf 'schema_version: 1\nclassification: client_delivery\ndeliverables:\n  - file: ./qc_queries/scratch.sql\n    classification: internal_archive\n' > "$PLAN45"
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file qc_queries/scratch.sql --quiet > "$TMP/e4.json" 2>/dev/null
+{ [ "$?" -eq 0 ] && [ "$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])")" = "archive" ]; } \
+  && ok "a ./-prefixed row path matches its bare --file (normalized) and keeps the file internal" \
+  || bad "a ./-prefixed row silently missed its file and fell through to the client store"
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file qc_queries//scratch.sql --quiet > "$TMP/e4.json" 2>/dev/null
+{ [ "$?" -eq 0 ] && [ "$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])")" = "archive" ]; } \
+  && ok "a doubled-slash --file matches the row too (both sides normalized)" \
+  || bad "a doubled slash in the path degraded to the plan-level fallthrough"
+# Two rows naming one file (after normalization) is ambiguity, and ambiguity never picks.
+printf 'schema_version: 1\nclassification: internal_archive\ndeliverables:\n  - file: a.csv\n    classification: internal_archive\n  - file: ./a.csv\n    classification: client_delivery\n' > "$PLAN45"
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file a.csv --quiet >/dev/null 2>&1
+[ "$?" -eq 4 ] && ok "duplicate rows for one file are exit 4 — first-match-wins never silently routes" \
+  || bad "duplicate deliverables rows were resolved by picking one"
+
+# P2-1: the pin binds the RESOLUTION, not the name. Same target name, edited channel → refuse.
+printf 'schema_version: 1\naudience: client\nclassification: client_delivery\n' > "$PLAN45"
+route --seam chat
+E4FP="$(rget "d['resolution_fingerprint']")"
+[ -n "$E4FP" ] && [ "$E4FP" != "None" ] \
+  && ok "a routed plan line carries a resolution_fingerprint" \
+  || bad "no resolution_fingerprint emitted" "$E4FP"
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam chat --expect-fingerprint "$E4FP" --quiet >/dev/null 2>&1
+[ "$?" -eq 0 ] && ok "--expect-fingerprint passes while the resolution is unchanged" \
+  || bad "a matching fingerprint was refused"
+sed 's/19:shared-client-channel@thread.tacv2/19:some-other-room@thread.tacv2/' \
+  "$D45/.claude/config/stack.yaml" > "$TMP/e4-edited.yaml"
+python3 "$DP" --stack "$TMP/e4-edited.yaml" --plan "$PLAN45" --seam chat --expect-target client --quiet >/dev/null 2>&1 \
+  && E4NAME=pass || E4NAME=refuse
+python3 "$DP" --stack "$TMP/e4-edited.yaml" --plan "$PLAN45" --seam chat \
+  --expect-target client --expect-fingerprint "$E4FP" --quiet > "$TMP/e4.json" 2>/dev/null
+E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
+{ [ "$E4NAME" = "pass" ] && [ "$E4RC" -eq 8 ] && [ "$E4T" = "None" ]; } \
+  && ok "an edited channel passes the NAME pin but the FINGERPRINT refuses (exit 8, no target) — the pin binds the resolution" \
+  || bad "a same-name resolution change slipped past the approval pin" "name=$E4NAME rc=$E4RC target=$E4T"
+# The basis covers facts that do not change the folded recipient list: toggling include_self alone
+# must move the fingerprint, or a stale pin matches a materially different delivery.
+sed 's/always_include: \[Alice\]/always_include: [Alice], include_self: true/' \
+  "$D45/.claude/config/stack.yaml" > "$TMP/e4-selfed.yaml"
+printf 'schema_version: 1\naudience: internal\n' > "$PLAN45"
+FPA="$(python3 "$DP" --root "$D45" --plan "$PLAN45" --seam chat --quiet 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["resolution_fingerprint"])')"
+FPB="$(python3 "$DP" --stack "$TMP/e4-selfed.yaml" --plan "$PLAN45" --seam chat --quiet 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["resolution_fingerprint"])')"
+{ [ -n "$FPA" ] && [ -n "$FPB" ] && [ "$FPA" != "$FPB" ]; } \
+  && ok "toggling include_self alone moves the fingerprint (the basis is wider than the visible list)" \
+  || bad "an include_self toggle left the fingerprint unchanged" "$FPA vs $FPB"
+
+# P2-2: a routed docstore target with no sharing_scope refuses AT ROUTE TIME (audit bypassed).
+NS="$TMP/e4-noscope"; mkdir -p "$NS/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive: {classification: internal_archive, tool: gdrive, adapter: adapters/docstore/gdrive.md, drive_folder: "A", verify: null}\n      client_delivery: {classification: client_delivery, sharing_scope: external, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null}\n' > "$NS/.claude/config/stack.yaml"
+printf 'schema_version: 1\nclassification: internal_archive\n' > "$NS/dp.yaml"
+python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam docstore --quiet > "$TMP/e4.json" 2>/dev/null
+E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
+{ [ "$E4RC" -eq 4 ] && [ "$E4T" = "None" ]; } \
+  && ok "a routed docstore target with no sharing_scope refuses at route time (exit 4, parity with the audit)" \
+  || bad "a scope-less docstore target routed rc=0" "rc=$E4RC target=$E4T"
+# A junk-typed base_path may never REPLACE the type-checked drive_folder as the destination.
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive: {classification: internal_archive, sharing_scope: team, tool: gdrive, adapter: adapters/docstore/gdrive.md, drive_folder: "A", base_path: {x: 1}, verify: null}\n      client_delivery: {classification: client_delivery, sharing_scope: external, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null}\n' > "$NS/.claude/config/stack.yaml"
+printf 'schema_version: 1\nclassification: internal_archive\n' > "$NS/dp.yaml"
+E4D="$(python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam docstore --quiet 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["destination"])' 2>/dev/null)"
+[ "$E4D" = "A" ] && ok "a junk-typed base_path cannot replace the checked destination (the string stays)" \
+  || bad "an unchecked base_path was emitted as the destination" "dest=$E4D"
+# A plan that EXISTS but is malformed reports on a SINGLE-mapping slot too; only an ABSENT plan is excused.
+SM="$TMP/e4-single"; mkdir -p "$SM/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    drive_folder: "A"\n    verify: null\n' > "$SM/.claude/config/stack.yaml"
+printf 'schema_version: 1\ndeliverables: junk\n' > "$SM/dp.yaml"
+python3 "$DP" --root "$SM" --plan "$SM/dp.yaml" --seam docstore --quiet >/dev/null 2>&1
+[ "$?" -eq 4 ] && ok "a malformed plan reports exit 4 even on a single-mapping slot (broken record, not excused)" \
+  || bad "a malformed plan exited 0 on a single-mapping slot"
+python3 "$DP" --root "$SM" --plan "$SM/absent.yaml" --seam docstore --quiet >/dev/null 2>&1
+[ "$?" -eq 0 ] && ok "an ABSENT plan on a single-mapping slot still routes (the regression guard holds)" \
+  || bad "the malformed-plan tightening broke plan-less single-mapping repos"
+
+# P2-3: junk-typed destinations are refused in BOTH the audit and the route.
+printf '%s' "$(chat_cfg 'audience: internal, tool: slack, adapter: adapters/chat/slack.md, default_channel: [], always_include: [Alice], verify: null' "$TEAMS_T")" > "$NS/.claude/config/stack.yaml"
+VOUT="$(bash "$KIT/bin/verify_stack.sh" "$NS/.claude/config/stack.yaml" --dry-run 2>&1)"; VRC=$?
+{ [ "$VRC" -ne 0 ] && printf '%s' "$VOUT" | grep -q 'non-empty string'; } \
+  && ok "the audit rejects a non-string destination (channel: []) naming the type rule" \
+  || bad "junk-typed destination passed the audit" "rc=$VRC"
+printf 'schema_version: 1\naudience: internal\n' > "$NS/dp.yaml"
+python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam chat --quiet > "$TMP/e4.json" 2>/dev/null
+E4RC=$?; E4D="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['destination'])" 2>/dev/null)"
+{ [ "$E4RC" -eq 4 ] && [ "$E4D" = "None" ]; } \
+  && ok "routing refuses a junk-typed destination rather than emitting the raw value" \
+  || bad "routing emitted junk as a destination" "rc=$E4RC dest=$E4D"
+
+# P3a: an absent router is a FAILURE on configs that need it, and only on those.
+NK="$TMP/e4-nokit"; rm -rf "$NK"; mkdir -p "$NK/bin"
+cp "$KIT/bin/verify_stack.sh" "$KIT/bin/effective_config.py" "$KIT/bin/_yamlite.py" "$NK/bin/"
+cp -R "$KIT/adapters" "$NK/adapters"
+CLAUDE_PLUGIN_ROOT= bash "$NK/bin/verify_stack.sh" "$KIT/.claude/config/stack.example.multi-audience.yaml" --dry-run > "$TMP/e4nk.txt" 2>&1
+{ [ "$?" -eq 1 ] && grep -q 'delivery-routing checker is missing' "$TMP/e4nk.txt" \
+    && grep -q 'delivery_plan.py' "$TMP/e4nk.txt"; } \
+  && ok "a kit missing delivery_plan.py FAILS verify on a targets config, naming the missing FILE" \
+  || bad "the routing enforcement silently vanished with its file" "$(tail -2 "$TMP/e4nk.txt")"
+# A targets: block holding ONLY non-mapping entries emits no unit rows — it must still fail (the
+# resolver now reports each junk entry as a seam_error instead of skipping it invisibly).
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    default: internal\n    targets:\n      internal: junk string\n' > "$TMP/e4-junk.yaml"
+CLAUDE_PLUGIN_ROOT= bash "$NK/bin/verify_stack.sh" "$TMP/e4-junk.yaml" --dry-run > "$TMP/e4nk2.txt" 2>&1
+{ [ "$?" -eq 1 ] && grep -q 'not a mapping' "$TMP/e4nk2.txt"; } \
+  && ok "a targets: block of non-mapping entries fails verify even without the router (no invisible skip)" \
+  || bad "junk-only targets bypassed both the unit rows and the missing-router failure" "$(tail -2 "$TMP/e4nk2.txt")"
+CLAUDE_PLUGIN_ROOT= bash "$NK/bin/verify_stack.sh" "$KIT/.claude/config/stack.yaml" --dry-run >/dev/null 2>&1
+[ "$?" -eq 0 ] && ok "the same kit still passes a single-mapping config (the failure is scoped to targets)" \
+  || bad "the missing-router failure fires on configs that never needed the router"
+
+# --- (F) the delivered row binds link_for to the store backup actually used ----------------------
+printf 'schema_version: 1\naudience: client\nclassification: client_delivery\n' > "$PLAN45"
+route --seam docstore
+BACKUP_T="$(rget "d['target']")"
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --quiet \
+  --record-delivered "final_deliverables/out_12rows.csv" --url "https://example.invalid/d/x1" >/dev/null 2>&1
+REC_T="$(python3 - "$PLAN45" "$KIT/bin" <<'PY'
+import sys, pathlib
+sys.path.insert(0, sys.argv[2])
+from _yamlite import parse_file
+rows = parse_file(pathlib.Path(sys.argv[1])).get("delivered") or []
+print(rows[-1].get("docstore_target") if rows else "")
+PY
+)"
+{ [ -n "$BACKUP_T" ] && [ "$REC_T" = "$BACKUP_T" ]; } \
+  && ok "a delivered row records the docstore target actually routed, so link_for hits that same store" \
+  || bad "the delivered row does not match the routed target" "routed=$BACKUP_T recorded=$REC_T"
+
+# --- (G) tier 3 can never move an audience ------------------------------------------------------
+# A gitignored, unreviewed per-machine file that could re-point `audience` would be a routing
+# override with nothing in code review to catch it. REJECTED (exit 6), never ignored.
+T3="$TMP/tier3-45"; mkdir -p "$T3/.claude/config"
+cp "$KIT/.claude/config/stack.example.multi-audience.yaml" "$T3/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  chat:\n    targets:\n      internal:\n        audience: client\n' \
+  > "$T3/.claude/config/connections.local.yaml"
+python3 "$KIT/bin/effective_config.py" --root "$T3" --json --quiet >/dev/null 2>&1
+[ "$?" -eq 6 ] && ok "a tier-3 file re-pointing a target's audience is REJECTED, not ignored" \
+  || bad "tier 3 was allowed to change an audience declaration"
+
+# --- (H) /ship: routes before drafting, previews what it executes, and still halts on tracker/vcs -
+# PROSE WIRING PINS, not behavior — the same convention section 37 uses. A skill is prose an
+# agent executes, so these prove the instructions still SAY what the CLI assertions above make
+# true; they cannot prove an agent passed --expect-target at execution time. That honesty gap
+# is stated in adapters/README.md (§ What is MECHANICAL here, and what is instruction) rather
+# than papered over with a grep that would look like proof.
+SH45=".claude/skills/ship/SKILL.md"
+grep -q 'disable-model-invocation: true' "$SH45" \
+  && ok "/ship keeps disable-model-invocation (routing added no model surface)" \
+  || bad "/ship lost disable-model-invocation"
+grep -q 'claude -p' "$SH45" && bad "/ship reintroduced a headless model call" \
+  || ok "/ship still makes no headless model call"
+{ grep -q 'delivery_plan.py' "$SH45" && grep -q 'check-draft' "$SH45"; } \
+  && ok "/ship resolves routing and the draft rail through the delivery-plan CLI" \
+  || bad "/ship does not call the delivery-plan CLI"
+grep -q 'Route the delivery FIRST' "$SH45" \
+  && ok "/ship routes BEFORE drafting (the draft must carry the routed list)" \
+  || bad "/ship still drafts before it routes"
+grep -qi 'never infer the audience' "$SH45" \
+  && ok "/ship forbids inferring an audience in so many words" \
+  || bad "/ship does not forbid inferring the audience"
+grep -q 'tracker and vcs' "$SH45" \
+  && ok "/ship still halts on named targets for the two DEFERRED slots (tracker, vcs)" \
+  || bad "/ship dropped the tracker/vcs named-target halt"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -216,13 +216,79 @@ Rules:
   whose header must stay on row 1 with no preamble.
 - **Operational support is per slot, and stated here explicitly.** The `targets:` shape is legal on
   any slot — `bin/verify_stack.sh` validates it anywhere, and
-  `bin/effective_config.py --seam <slot> --target <name>` selects a target on any slot — but only
-  the **warehouse** slot is routed end to end by skills today (the `.sql` header, the dev-target
-  rule, and the `db_write_guard` cross-check all resolve warehouse targets). **chat** and
-  **docstore** have a published routing contract — the delivery plan in `adapters/README.md`
-  § Multi-target seams — that a later release implements; until then a multi-target chat/docstore
-  config validates, but no skill routes between its targets. **tracker** and **vcs** are deferred
-  (same section). Don't rely on target routing outside `warehouse` yet.
+  `bin/effective_config.py --seam <slot> --target <name>` selects a target on any slot. Three slots
+  are routed end to end by skills: **warehouse** (the `.sql` header, the dev-target rule, and the
+  `db_write_guard` cross-check), and now **chat** and **docstore** (the delivery plan below).
+  **tracker** and **vcs** are deferred — a multi-tracker repo needs target-owned id prefixes and
+  per-target URL templates before an id can name its own tracker, and PR routing must be bound to a
+  specific remote first. A `targets:` block on either validates, but no skill routes between them,
+  and `/ship` halts rather than pretending otherwise.
+
+### Delivery routing for `chat` and `docstore` — declared, never inferred
+
+The warehouse names its target inside the `.sql` file because that file IS the executable artifact.
+A chat message and a docstore backup have no such file, so **the declaration lives in the ticket's
+`delivery-plan.yaml`** (committed with the ticket; schema in `adapters/README.md` § The delivery
+plan). Chat routes on its `audience:`, docstore on its `classification:`, matched **exactly** —
+never case-folded, never fuzzy — against the value each target declares:
+
+```yaml
+  chat:
+    default: internal          # STRUCTURAL only: required by the verifier and shown by pre-routing
+    default_mode: draft        # readers. Chat and docstore routing never reads it.
+    targets:
+      internal:
+        audience: internal                 # the routing key a ticket declares
+        tool: slack
+        adapter: adapters/chat/slack.md
+        default_channel: C0XXXXXXXXX       # this tool's destination key (adapter `channel_key:`)
+        always_include: [Alice]            # THIS target's list, applied AFTER routing
+      client:
+        audience: client
+        tool: teams                        # a slot may hold two different TOOLS
+        adapter: adapters/chat/teams.md
+        channel: "19:…@thread.tacv2"       # Teams spells its destination key differently
+        always_include: [Dana]
+```
+
+| Field | Slot | Meaning |
+|---|---|---|
+| `audience` | chat target | What a ticket declares to reach this target. Required per target, unique across the slot, never set at slot level (a slot-level scalar would be inherited, and a routing key must never be). |
+| `classification` | docstore target | Same, for deliverables — e.g. `internal_archive` vs `client_delivery`. |
+| `always_include` | chat target | This target's own non-empty stakeholder list, applied **after** routing. Never inherited from the slot or another target. |
+| `sharing_scope` | docstore target | `team` \| `org` \| `external` — the **declared** scope of the destination, printed at the `/ship` approval. |
+| *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter. Each target must set its own. |
+
+**Docstore routing is per deliverable.** The plan's `classification:` covers the ticket; a
+`deliverables:` row may declare its own for one file (a client-facing summary alongside internal
+working files). Both are declarations someone wrote — neither is a fallback to a target. Rows are
+schema-checked: a row whose `classification:` is present but not a non-empty string, or that
+carries an unknown key, is malformed (exit 4) — never a silent fallthrough to the plan-level value.
+**The plan-level value is folder-wide**: the backup copies the whole ticket folder, so an external
+classification at plan level sends `qc_queries/` and everything else along unless rows split the
+internal files out.
+
+**An unresolvable audience is a halt, not a default.** No declaration, or a declared value matching
+no target, stops the flow and lists what is configured — it never falls through to `default:` or to
+the first-listed target, because that target may be the external one. `/ship` resolves this before
+drafting (so the draft carries the right list), prints it at the approval gate — each routed line
+carrying a `resolution_fingerprint` — and executes from the same resolution, passing
+`--expect-target`/`--expect-fingerprint` back so a config or plan edit after the approval refuses
+rather than silently changing the destination, the recipients, or the scope. `--chat <target>`
+overrides the declaration explicitly; nothing else does.
+
+**Inheritance vs. fallback.** Slot-level `default_channel` / `default_mode` are still inherited by
+targets that do not define their own, per the normal rule — but a *routable* target must name its
+own destination, so an inherited channel is never where a routed message lands, and inheritance is
+never a fallback when routing fails.
+
+**Every rule above binds only when `targets:` is present.** A single-mapping chat slot that omits
+`always_include` keeps validating exactly as before. `bin/verify_stack.sh` enforces the multi-target
+rules and **fails** on a violation (the full table is in `adapters/README.md`).
+
+**What the kit does not check.** `sharing_scope` is a declaration: the docstore verify confirms the
+destination exists, never its real sharing permissions. Routing a file to the target you meant is
+not evidence that the folder's ACL matches the scope you wrote.
 
 **Known limitation:** `tickets/OBJECTS.md` and the graph layer fold object names case-insensitively
 and are warehouse-blind, so `ANALYTICS.CUSTOMERS` on one target and `analytics.customers` on another
@@ -356,7 +422,9 @@ The file shape, all keys, and per-platform variants: `.claude/config/viewer.exam
 with `bash bin/handoff.sh --dry-run <file>`.
 
 `always_include` (under `seams.chat`) — a **fixed stakeholder list** always added to a chat message
-(e.g. `[Alice]`); the "never solo-DM a stakeholder" rule. It is *not* a self-tag.
+(e.g. `[Alice]`); the "never solo-DM a stakeholder" rule. It is *not* a self-tag. Under `targets:`
+it moves to each target and becomes **required and non-empty there**, enforced by
+`bin/verify_stack.sh`; a slot-level list is then dead config (lists are not inherited) and warns.
 
 `include_self` (under `seams.chat`, optional, default off) — when `true`, the chat adapter also
 mentions the **shipper** (resolved via `bin/resolve_user.py`) *in addition to* `always_include`.
@@ -366,11 +434,14 @@ Keeps the fixed stakeholder list intact instead of overloading it with a per-tea
 
 ## Worked examples
 
-A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Five more
+A worked example lives at [`stack.yaml`](stack.yaml) (Jira/Snowflake/Slack/Drive/GitHub). Six more
 prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
 (Asana/BigQuery/Teams/SharePoint/GitLab), `stack.example.azure.yaml`
 (Azure DevOps/Synapse/Teams/SharePoint/Azure Repos), `stack.example.multi-warehouse.yaml`
 (Jira/**Snowflake + Databricks**/Slack/Drive/GitHub — the named-targets shape above),
+[`stack.example.multi-audience.yaml`](stack.example.multi-audience.yaml)
+(**two audiences** — Slack + Teams in one chat slot, Drive + SharePoint in one docstore slot,
+routed by the ticket's declared audience/classification),
 `stack.example.no-warehouse.yaml` (**no warehouse seam** — document/report deliverables), and
 `stack.example.solo.yaml` (**no tracker at all** — `tracker: local` + `id_mode: slug`, and no chat or
 docstore). To validate any config: `bash bin/verify_stack.sh`.

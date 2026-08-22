@@ -1,0 +1,134 @@
+# stack.example.multi-audience.yaml — a team whose work goes to TWO audiences.
+#
+# Jira / Snowflake / Slack + Teams / Google Drive + SharePoint / GitHub. Internal updates go to
+# Slack and are archived on the team's Drive; client-facing delivery goes to a Teams channel shared
+# with the client and lands in the SharePoint library the client can see.
+#
+# This file exists to prove one claim: ONE tool slot can hold more than one TOOL, and which one a
+# given ticket uses is DECLARED, never guessed. The chat slot below holds two different products at
+# once, and the two docstore targets are two different systems.
+#
+# HOW A TICKET PICKS: the ticket's `delivery-plan.yaml` declares `audience:` (chat) and
+# `classification:` (docstore); `bin/delivery_plan.py` matches that declaration against the
+# `audience:` / `classification:` each target declares below. There is NO fallback — an undeclared
+# or unmatched value halts, because the target it would fall through to may be the external one.
+# `default:` below is STRUCTURAL ONLY (the verifier requires it and pre-routing readers display it);
+# chat and docstore routing never reads it.
+# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.multi-audience.yaml
+
+project:
+  key_prefix: ENG
+  key_prefixes: [ENG]
+  assignee_dir: alice
+  ticket_path: "tickets/{assignee}/{id}"
+  ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
+  default_epic: ENG-100
+  terminal_status: Done
+  ticket_url_template: "https://acme.atlassian.net/browse/{id}"
+  word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
+  graph_notes: true
+  graph_config: true
+
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: both
+    site: acme.atlassian.net
+    cli: acli
+    mcp: atlassian
+    verify: 'acli jira workitem search --jql "project = {key_prefix}" --limit 1'
+
+  warehouse:
+    tool: snowflake
+    adapter: adapters/warehouse/snowflake.md
+    transport: both
+    cli: snow
+    default_warehouse: ANALYTICS_WH
+    pii_role: PII_READER
+    dev_target: ANALYTICS_DEV
+    verify: "snow connection test"
+
+  # ── MULTI-TARGET chat slot: internal Slack, client-facing Teams ────────────────────────────────
+  # Each target declares its OWN audience, its OWN destination, and its OWN non-empty
+  # `always_include`. None of the three is ever inherited — from the slot or from the other target.
+  # `always_include` is applied AFTER routing, so the client channel can never pick up the internal
+  # stakeholder list (or vice versa). Slot-level scalars (`default_mode` here) still inherit
+  # normally; inheritance is a convenience for shared values, never a fallback when routing fails.
+  #
+  # The two targets run different PRODUCTS, and each spells its destination key differently — Slack
+  # says `default_channel`, Teams says `channel`. No skill knows that: each adapter declares its own
+  # `channel_key:` in frontmatter, the way warehouse adapters declare `dev_key:`.
+  #
+  # List the DEFAULT target FIRST (pre-multi-target readers display the first target they find), and
+  # prefer the INTERNAL target as `default:` — a reader that predates routing then names the least
+  # consequential destination rather than the client's.
+  chat:
+    default: internal
+    default_mode: draft                  # inherited by both targets (neither overrides it)
+    targets:
+      internal:
+        audience: internal               # the routing key `delivery-plan.yaml` declares
+        tool: slack
+        adapter: adapters/chat/slack.md
+        transport: mcp
+        mcp: slack
+        default_channel: C0XXXXXXXXX     # Slack's destination key (adapter: channel_key: default_channel)
+        always_include: [Alice]          # THIS target's stakeholders — never the client's
+        verify: null                     # MCP-only: reachability is checked via an MCP call
+      client:
+        audience: client                 # a ticket declaring `audience: client` routes HERE
+        tool: teams
+        adapter: adapters/chat/teams.md
+        transport: mcp
+        mcp: teams
+        channel: "19:shared-client-channel@thread.tacv2"   # Teams' destination key (channel_key: channel)
+        always_include: [Dana]           # the client-side stakeholder, applied AFTER routing
+        # include_self: false            # also mention the shipper, IN ADDITION to always_include
+        verify: null
+
+  # ── MULTI-TARGET docstore slot: internal archive vs client delivery ────────────────────────────
+  # Each target declares its own `classification:` (the routing key) and `sharing_scope:`. The scope
+  # is DECLARED, never verified: the kit checks that the mount exists and never inspects the real
+  # sharing ACL of a folder, so routing a file correctly is not evidence that the destination's
+  # permissions match. `/ship` prints the declared scope so a human authorizes it explicitly.
+  docstore:
+    default: archive
+    targets:
+      archive:
+        classification: internal_archive
+        sharing_scope: team
+        tool: gdrive
+        adapter: adapters/docstore/gdrive.md
+        transport: cli
+        drive_folder: "Shared drives/Tickets"    # team decision; mount_root is per-machine (tier 3)
+        verify: "test -d \"{base_path}\""
+      client_delivery:
+        classification: client_delivery
+        sharing_scope: external
+        tool: sharepoint
+        adapter: adapters/docstore/sharepoint.md
+        transport: cli
+        drive_folder: "Acme Client Portal/Deliverables"
+        verify: "test -d \"{base_path}\""
+
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    semantic_pr: true
+    worktree_root: ".claude/worktrees"
+    verify: "gh auth status"
+
+policies:
+  hard_halt_before_external_posts: true
+  db_write_requires_approval: high_risk
+  human_review_handoff: review
+  chat_default_draft: true
+  hyperlink_everything: true
+  skillify_everything: true
+  reduce_assumptions: true
+  commit_plan_before_implement: true
+  system_evolution: true
+  deterministic_outputs: true

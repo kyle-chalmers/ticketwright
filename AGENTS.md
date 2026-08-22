@@ -68,7 +68,7 @@ while `seam` stays the internal word (the `seams:` config key, adapter frontmatt
 contributor docs like this one). A seam is one of: `tracker`, `warehouse`, `chat`,
 `docstore`, `vcs`. Three layers wire it:
 1. `.claude/config/stack.yaml` — names which tool fills each seam, plus project facts and the 10
-   `policies`. Schema in `.claude/config/stack.schema.md`; six worked examples ship
+   `policies`. Schema in `.claude/config/stack.schema.md`; seven worked examples ship
    (`stack.yaml` + `stack.example.*.yaml`) and selftest runs skills against all of them.
 2. `adapters/<seam>/<tool>.md` — maps the abstract **verbs** (`fetch_ticket`, `query`, `draft`,
    `backup`, `commit`, …) to that tool's concrete commands. Contract + per-seam verb counts in

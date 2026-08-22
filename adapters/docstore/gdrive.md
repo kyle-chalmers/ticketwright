@@ -3,6 +3,7 @@ seam: docstore
 tool: gdrive
 transport: cli         # filesystem copy into the mounted Google Drive (CloudStorage)
 requires: [drive_folder]  # stack.yaml seams.docstore.drive_folder (+ tier-3 mount_root)
+destination_key: drive_folder   # the TEAM-owned destination key routing compares targets on (mount_root is machine-local)
 user_keys: [mount_root]   # tier-3 overridable: the local CloudStorage mount prefix. `drive_folder` (which destination) is a team decision
 auth: |
   Google Drive for Desktop must be mounted at the CloudStorage path.
@@ -13,6 +14,14 @@ auth: |
 
 Maps the `docstore` verb contract to a mounted Google Drive shared drive. Backups are plain
 filesystem copies; shareable links come from the file's macOS extended attribute.
+
+**Under named targets** (`seams.docstore.targets:`), `{base_path}` is the ROUTED target's own
+destination, chosen from the ticket `delivery-plan.yaml`'s `classification:` declaration
+(`bin/delivery_plan.py`) — never inferred from a folder name. `backup` records the target it used,
+and `link_for` is called against **that same target**, so a link can never be minted from a
+different store than the copy. The target's `sharing_scope:` is a DECLARATION: this adapter verifies
+that the mount exists (`test -d`) and never inspects the folder's real sharing ACL, so a correctly
+routed file is not evidence that the destination's permissions match the declared scope.
 
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).

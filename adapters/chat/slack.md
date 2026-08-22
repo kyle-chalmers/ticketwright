@@ -3,6 +3,7 @@ seam: chat
 tool: slack
 transport: mcp         # MCP ({mcp}) tools only
 requires: [mcp]        # stack.yaml seams.chat.{mcp, default_channel, default_mode, always_include}
+channel_key: default_channel   # THIS tool's destination key — read by delivery routing, never guessed by a skill
 user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
   The `slack` MCP server must be connected. Verify with a read-only search.
@@ -23,6 +24,14 @@ to *draft*, not send — the human clicks send unless they say "send it";
 voice-profile frontmatter (written once at `/setup --voice`) for `lookup_user`, else the resolver
 identity — and add that mention *in addition to* `{always_include}`. Never substitute the shipper
 *for* a stakeholder.
+
+**Under named targets** (`seams.chat.targets:`), every value below belongs to the ROUTED target:
+`{default_channel}` is that target's own channel (this adapter declares `channel_key:
+default_channel`, so routing reads the right key without any skill knowing this is Slack), and
+`{always_include}` is that target's own list — never another target's, and never a slot-level one.
+The routed target comes from the ticket's `delivery-plan.yaml` `audience:` declaration
+(`bin/delivery_plan.py`); it is never inferred from a channel name or from the message text, and a
+routing failure never falls back to another channel.
 
 ## verb: draft   (the default — policy chat_default_draft)
 ```

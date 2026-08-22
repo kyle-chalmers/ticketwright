@@ -7,6 +7,68 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Added
+- **Internal vs external delivery: `chat` and `docstore` route to named targets** (PROMPT 8,
+  sequence items 2–3). A repo can now hold two chat tools and two document stores at once — Slack
+  for the team and Teams for the client, an internal Drive archive and a client-facing SharePoint
+  library — and each ticket says which it is for. **The audience is DECLARED, never inferred.** It
+  lives in one place: the ticket's committed `delivery-plan.yaml` (`audience:` for chat,
+  `classification:` for docstore), matched exactly against the value each target declares.
+  `bin/delivery_plan.py` is the engine — it resolves through `bin/effective_config.py --seam/--target`
+  rather than being a second resolver — and nothing anywhere reads prose, a channel name, or a label
+  to guess. An absent or unmatched declaration is a **halt** listing what is configured (exit 9 / 8);
+  it never falls through to `default:` or the first-listed target, because that target may be the
+  external one. `/ship` resolves routing *before* drafting (so the draft carries the routed
+  recipients), prints that same resolution at the approval gate, and executes from it — preview and
+  execution are one resolution. `--chat <target>` overrides explicitly and says so on the plan line.
+  `tracker` and `vcs` targets remain deliberately unrouted, and `/ship` still halts on them.
+- **An approved delivery plan is binding.** Every routed plan line carries a
+  `resolution_fingerprint` — a digest of target, tool, destination, recipients, scope and mode —
+  and every routing call takes `--expect-target <name>` plus `--expect-fingerprint <hex>`, which
+  `/ship` passes back after the human authorizes the plan. A changed target name refuses; so does a
+  config or plan edit that keeps the name while moving the channel, the recipient list, the declared
+  scope, the adapter, the destination key, or the include_self setting — the digest covers the
+  facts a visible-recipient check cannot see. Preview-equals-execution is a mechanism, not a promise in prose.
+- **Docstore routing is per deliverable.** A `deliverables:` row in the plan may declare its own
+  `classification:` — a client-facing summary among internal working files routes to its own store,
+  and the delivered row records the target that file actually went to. The `--override` escape hatch
+  is **chat only**: a store belongs to a declaration that stays with the ticket, not to a flag in one
+  person's shell history, and an override that contradicts a declaration says so on the plan line.
+- **Routing enforces its own rules at the point of use**, not only in the verifier: a routed target
+  with no stakeholder list, no valid declared `sharing_scope`, a non-string destination, or one
+  relying on an inherited channel, is refused at send time even on a config nobody ran
+  `verify_stack.sh` against.
+- **`deliverables:` rows are schema-checked, never silently skipped.** A row whose
+  `classification:` is null/empty/non-string, an unknown key (including the chat key `audience:`
+  written by mix-up), or a `deliverables:` block that is not a list of rows is exit 4 — the row a
+  person wrote to keep a file internal is honored or reported, never quietly overridden by the
+  plan-level value. Paths are normalized before matching, so `./a.csv` and `a.csv` are one file;
+  two rows naming one file (after normalization) are ambiguity and refuse rather than first-match.
+  A plan that exists but is malformed reports exit 4 on every slot shape — only an ABSENT plan is
+  excused on a single mapping.
+  The docs now say plainly that a plan-level classification is a **folder-wide** statement.
+- **A missing routing checker is a failure, not a silent skip**: `verify_stack.sh` exits 1 naming
+  `bin/delivery_plan.py` when the config declares chat/docstore targets and the checker is absent —
+  reporting "All seams OK" on exactly the config class those rules guard would be worse than
+  failing.
+- **`always_include` is now enforced in code, not prose.** `bin/verify_stack.sh` **fails** a
+  multi-target chat slot whose target omits its stakeholder list, declares it empty, omits or
+  duplicates its `audience`, relies on an inherited channel, collides with another target's
+  destination, or carries shell metacharacters in a destination or recipient; docstore targets must
+  declare a `classification` and a `sharing_scope`. Every one of those rules binds **only when
+  `targets:` is present** — a single-mapping chat slot that omits `always_include` validates exactly
+  as before, and all previously shipped example configs are unchanged. `/ship` can also prove a
+  drafted message carries its routed list (`delivery_plan.py --check-draft`), which catches a draft
+  addressed to the wrong audience's stakeholders before it is sent.
+- **Seventh worked config** — `.claude/config/stack.example.multi-audience.yaml`: Jira / Snowflake /
+  Slack **+** Teams / Drive **+** SharePoint / GitHub, the internal-vs-client split end to end.
+- **Adapters spell their own destination key** — chat adapters carry `channel_key:` (Slack
+  `default_channel`, Teams `channel`), docstore adapters `destination_key:`, following the existing
+  `dev_key:` / `container_key:` pattern so no skill learns which tool it is talking to. An adapter
+  key name that is not a plain config key is refused rather than guessed at.
+- **Routing keys are unreachable from a per-machine file** — `audience`, `classification`,
+  `sharing_scope`, `channel` and `drive_folder` join the resolver's reserved seam keys, so a
+  gitignored tier-3 file can never move a message to another audience or a client file to another
+  store.
 - **The live-verification punch list, and a mechanical honesty linkage** (PROMPT 7 / U6 — the
   wave-F2 closer). `docs/live-verification.md` writes down every claim wave F2 parked because
   only a live external runtime can prove it: 12 entries (the U6 spec listed 11; the delta is a
