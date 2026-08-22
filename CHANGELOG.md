@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## Unreleased
+## [3.6.0] — 2026-08-22
 
 ### Added
 - **Email is a delivery channel: `gmail` and `outlook` chat adapters** (PROMPT 10). Email is a chat
@@ -460,7 +460,6 @@ All notable changes to this project are documented here. Format loosely follows
   safety gates with nothing in code review to catch it. Such a block is **rejected**, not ignored.
 - Tier 3 can never change which catalog, schema, database or target is read.
 
-## [Unreleased]
 
 ### Fixed
 - **`verify_stack.sh` now actually checks adapter-required keys.** `/setup` has always told you an
