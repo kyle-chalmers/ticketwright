@@ -3,7 +3,7 @@ name: refresh
 description: Maintain the repo's knowledge — `index` rebuilds the ticket catalog (INDEX.md), `context` rebuilds the domain knowledge pack (documentation/). Day-to-day, hooks keep these fresh automatically.
 ---
 
-<!-- emitted by ticketwright install v3.5.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v3.6.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /refresh
 

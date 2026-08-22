@@ -3,7 +3,7 @@ name: review
 description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
 ---
 
-<!-- emitted by ticketwright install v3.5.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v3.6.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /review
 

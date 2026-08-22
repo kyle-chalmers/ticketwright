@@ -4,7 +4,7 @@ description: Independent, read-only quality reviewer for a ticket's deliverables
 tools: Read, Bash, Glob, Grep
 ---
 
-<!-- emitted by ticketwright install v3.5.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v3.6.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # QC Reviewer (sub-agent)
 
