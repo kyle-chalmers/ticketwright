@@ -29,15 +29,36 @@ hdr()  { printf "\n\033[1m%s\033[0m\n" "$1"; }
 hdr "0 · tooling"
 command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
 command -v python3 >/dev/null 2>&1 && ok "python3 present" || bad "python3 missing"
+# Python 3.12+ escalates invalid \-escapes in plain strings to SyntaxWarning printed on EVERY
+# import — for a hook that means stderr noise on every single guard invocation (seen live on 3.14).
+hookswarn=""
+for hf in .claude/hooks/*.py; do
+  python3 -W error::SyntaxWarning -c "compile(open('$hf').read(),'$hf','exec')" 2>/dev/null || hookswarn="$hookswarn $hf"
+done
+[ -z "$hookswarn" ] && ok "every hook compiles clean under -W error::SyntaxWarning (no per-invocation stderr noise)" \
+  || bad "a hook raises SyntaxWarning on import — it will print on every tool call" "$hookswarn"
 
 hdr "1 · config parses + every seam resolves to an adapter (kit example stacks)"
 for s in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
   if yq -e '.seams|keys' "$s" >/dev/null 2>&1; then ok "parses: $s"; else bad "parse error: $s"; fi
   out="$(bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
-  if grep -q "All seams OK" <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
+  if grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
     ok "kit example stack resolves: $s"
   else bad "seam resolution failed: $s" "$(grep -E 'missing|UNREACHABLE' <<<"$out" | head -2)"; fi
 done
+
+# The summary line must CARRY the truth, not paper over it: the kit's own Acme stack has an
+# MCP-only chat seam and an unresolved docstore {base_path}, so a healthy run reports exactly
+# which seams are unverified — a teammate shipped against "All seams OK." while Slack was
+# completely unauthenticated, which is the failure this wording exists to prevent.
+vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1rc=$?
+{ [ "$vs1rc" -eq 0 ] \
+  && grep -q '3 OK, 2 unverified (chat, docstore).' <<<"$vs1" \
+  && grep -q 'MCP-only: not checkable from the shell' <<<"$vs1" \
+  && grep -q 'skipped: unresolved {base_path}' <<<"$vs1" \
+  && ! grep -q 'All seams OK' <<<"$vs1"; } \
+  && ok "verify_stack summary counts unverified seams by name (never 'All seams OK.' over a warning)" \
+  || bad "the verify_stack summary hides unverified seams" "rc=$vs1rc $(tail -3 <<<"$vs1")"
 
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
@@ -192,6 +213,13 @@ expect ask   "psql < wipe.sql (stdin redirect) → ask"       "psql mydb < $TMP/
 # non-Bash tool → no decision
 out="$(echo '{"tool_name":"Read","tool_input":{"file_path":"x"}}' | guard)"
 [ -z "$out" ] && ok "non-Bash tool passes through" || bad "non-Bash wrongly gated" "$out"
+# MCP-issued SQL is OUTSIDE the guard's jurisdiction — the "matcher: Bash" registration plus the
+# in-hook tool_name gate mean a warehouse MCP call never reaches it. That limit is documented
+# (AGENTS.md.tmpl, stack.schema.md, both warehouse adapters); this pins the BEHAVIOR so the docs
+# and the code cannot drift apart silently.
+out="$(echo '{"tool_name":"mcp__snowflake__query","tool_input":{"statement":"DROP TABLE t"}}' | guard)"
+[ -z "$out" ] && ok "mcp__* warehouse SQL is outside the guard's jurisdiction (documented limit, pinned)" \
+  || bad "an mcp__* payload produced guard output — the documented Bash-only jurisdiction changed" "$out"
 # malformed stdin must not crash: a nonzero PreToolUse exit would BLOCK the call
 echo 'not json at all' | guard >/dev/null 2>&1
 [ $? -eq 0 ] && ok "malformed payload → exit 0 (fail-open)" || bad "malformed payload did not exit 0"
@@ -293,7 +321,7 @@ gask() {  # gask <command> <project-dir> — payload built by a JSON encoder. Ha
 
 # A cli-less warehouse seam listed BEFORE the tracker must not adopt the tracker's CLI — else a
 # plain `create` on a ticket raises a bogus DB-write prompt.
-d="$(gstack nocli <<'YAML'
+gstack nocli <<'YAML' >"$TMP/hd296.out"
 seams:
   warehouse:
     tool: bigquery
@@ -302,23 +330,23 @@ seams:
     tool: jira
     cli: acli
 YAML
-)"
+d="$(cat "$TMP/hd296.out")"
 out="$(gask 'acli jira workitem create --summary x' "$d")"
 [ -z "$out" ] && ok "cli-less warehouse before tracker: tracker CLI not gated" || bad "warehouse seam scan leaked into the tracker seam" "$out"
 
 # Four-space indentation is valid YAML that yq reads; the scan must not assume two.
-d="$(gstack indent4 <<'YAML'
+gstack indent4 <<'YAML' >"$TMP/hd310.out"
 seams:
     warehouse:
         tool: custom
         cli: whcli
 YAML
-)"
+d="$(cat "$TMP/hd310.out")"
 out="$(gask 'whcli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "4-space-indented stack: warehouse CLI still gated" || bad "indent width narrowed CLI gating (destructive write would slip through)" "$out"
 
 # A multi-target seam declares one CLI per target; a non-default target's CLI must be gated too.
-d="$(gstack multi <<'YAML'
+gstack multi <<'YAML' >"$TMP/hd321.out"
 seams:
   warehouse:
     default: prod
@@ -330,7 +358,7 @@ seams:
         tool: trino
         cli: trino
 YAML
-)"
+d="$(cat "$TMP/hd321.out")"
 out="$(gask 'trino --execute "UPDATE t SET x=1"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "multi-target: non-default target CLI gated" || bad "a non-default target's CLI is not gated" "$out"
 
@@ -338,7 +366,7 @@ grep -q '"permissionDecision": "ask"' <<<"$out" && ok "multi-target: non-default
 # `cli:` following the scalar is still harvested. Uses `|-` to cover the indicator modifiers.
 #            `realcli` sits DEEPER than the `note:` header on purpose — that is what proves the
 #            skip actually *ends*, rather than swallowing every remaining nested line.
-d="$(gstack blockscalar <<'YAML'
+gstack blockscalar <<'YAML' >"$TMP/hd341.out"
 seams:
   warehouse:
     note: |-
@@ -348,27 +376,27 @@ seams:
       prod:
         cli: realcli
 YAML
-)"
+d="$(cat "$TMP/hd341.out")"
 out="$(gask 'not-a-cli --do-something CREATE' "$d")"
 [ -z "$out" ] && ok "block-scalar prose not harvested as a CLI" || bad "block-scalar body read as config" "$out"
 out="$(gask 'realcli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "scan resumes after a block scalar (deeper cli: still gated)" || bad "block-scalar skip swallowed the rest of the seam" "$out"
 
 # A comment between `seams:` and the first seam must not hide it (comments carry no indentation).
-d="$(gstack comment <<'YAML'
+gstack comment <<'YAML' >"$TMP/hd358.out"
 seams:
     # which warehouse we point at
   warehouse:
     cli: cmtcli
 YAML
-)"
+d="$(cat "$TMP/hd358.out")"
 out="$(gask 'cmtcli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "comment before the first seam doesn't hide it" || bad "a comment's indentation hid the warehouse seam (gating narrowed)" "$out"
 
 # Wrong-warehouse detection: right SQL, wrong target. A READ is gated too, because it returns
 # plausible numbers about the wrong system rather than erroring — the failure mode this feature
 # introduces. Only a CONFIRMED mismatch gates; an unknown name must never manufacture a prompt.
-d="$(gstack wrongwh <<'YAML'
+gstack wrongwh <<'YAML' >"$TMP/hd371.out"
 seams:
   warehouse:
     default: prod
@@ -376,7 +404,7 @@ seams:
       prod: {tool: snowflake, cli: snow}
       lake: {tool: databricks, cli: dbsqlcli}
 YAML
-)"
+d="$(cat "$TMP/hd371.out")"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d/q.sql"
 out="$(gask "snow sql -f $d/q.sql" "$d")"
 grep -q 'wrong warehouse' <<<"$out" \
@@ -389,20 +417,20 @@ printf -- '-- warehouse-target: typo\nSELECT 1;\n' > "$d/typo.sql"
 out="$(gask "snow sql -f $d/typo.sql" "$d")"
 ! grep -q 'wrong warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
 # A single-warehouse repo has no targets, so a stray header must not resolve to the seam's own cli.
-d1="$(gstack wrongwh1 <<'YAML'
+gstack wrongwh1 <<'YAML' >"$TMP/hd392.out"
 seams:
   warehouse:
     tool: snowflake
     cli: snow
 YAML
-)"
+d1="$(cat "$TMP/hd392.out")"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d1/q.sql"
 out="$(gask "snow sql -f $d1/q.sql" "$d1")"
 ! grep -q 'wrong warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
   || bad "a single-mapping seam resolved an undefined target and gated" "$out"
 # A quoted scalar is valid YAML. Leaving the quotes attached made every comparison mismatch, i.e. a
 # false prompt on a correct command — the worst outcome for a guard, since dismissed prompts stop working.
-dq="$(gstack quotedcli <<'YAML'
+gstack quotedcli <<'YAML' >"$TMP/hd405.out"
 seams:
   warehouse:
     default: prod
@@ -410,7 +438,7 @@ seams:
       prod: {tool: snowflake, cli: "snow"}
       lake: {tool: databricks, cli: 'dbsqlcli'}
 YAML
-)"
+dq="$(cat "$TMP/hd405.out")"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$dq/ok.sql"
 out="$(gask "snow sql -f $dq/ok.sql" "$dq")"
 ! grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
@@ -441,7 +469,7 @@ for shape in flowtargets aliastarget; do
 done
 
 # Inheritance: two targets sharing one seam-level cli must both resolve to it.
-d2="$(gstack wrongwh2 <<'YAML'
+gstack wrongwh2 <<'YAML' >"$TMP/hd444.out"
 seams:
   warehouse:
     default: prod
@@ -450,29 +478,29 @@ seams:
       prod: {tool: snowflake, default_warehouse: P}
       sbx:  {tool: snowflake, default_warehouse: S}
 YAML
-)"
+d2="$(cat "$TMP/hd444.out")"
 printf -- '-- warehouse-target: sbx\nSELECT 1;\n' > "$d2/q.sql"
 out="$(gask "snow sql -f $d2/q.sql" "$d2")"
 ! grep -q 'wrong warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
   || bad "seam-level cli inheritance produced a bogus mismatch" "$out"
 
 # A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
-d="$(gstack yamlanchor <<'YAML'
+gstack yamlanchor <<'YAML' >"$TMP/hd460.out"
 seams: &seam_map
   warehouse: &wh
     cli: anchcli
 YAML
-)"
+d="$(cat "$TMP/hd460.out")"
 out="$(gask 'anchcli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "YAML anchor on seams:/warehouse: still gates" || bad "a YAML anchor hid the warehouse seam (gating narrowed)" "$out"
 
 # A partial/malformed config with no `seams:` anchor is scanned whole rather than skipped —
 # over-gating costs a prompt, under-gating runs an unreviewed write.
-d="$(gstack noanchor <<'YAML'
+gstack noanchor <<'YAML' >"$TMP/hd471.out"
 warehouse:
   cli: barecli
 YAML
-)"
+d="$(cat "$TMP/hd471.out")"
 out="$(gask 'barecli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "no seams: anchor → still gates (fails safe)" || bad "config without a seams: key stopped gating entirely" "$out"
 
@@ -587,7 +615,7 @@ hdr "13 · privacy guard (no real ticket store committed to the public kit)"
 # it must be empty or fixture-only (ENG-/DEMO-/TEST-/SAMPLE-). This catches an accidental `cp` of a
 # real index_data.json + commit before it reaches the public repo.
 if git ls-files --error-unmatch tickets/index_data.json >/dev/null 2>&1; then
-  realids="$(python3 - <<'PY'
+  python3 - <<'PY' >"$TMP/hd590.out"
 import json, re
 try:
     d = json.load(open("tickets/index_data.json"))
@@ -597,7 +625,7 @@ ts = d.get("tickets", []) if isinstance(d, dict) else []
 bad = [str(t.get("id", "")) for t in ts if not re.match(r"^(ENG|DEMO|TEST|SAMPLE)-", str(t.get("id", "")))]
 print(" ".join(bad))
 PY
-)"
+  realids="$(cat "$TMP/hd590.out")"
   [ -z "$realids" ] && ok "tracked index_data.json is empty/fixture-only" \
     || bad "non-fixture ticket ids in the tracked store — committed ids must use ENG-/DEMO-/TEST-/SAMPLE-" "$realids"
 else
@@ -629,7 +657,7 @@ scrub="$(grep -rIlE 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[0-9]{3
 # structure: every command/skill has PARSEABLE frontmatter (a substring grep false-greens on broken
 # YAML — e.g. `argument-hint: [a] [b]` parses as a flow seq + trailing junk and drops ALL metadata when
 # loaded as a plugin). Validate flow-node values are complete + a description is present. Stdlib only.
-fm_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd632.out"
 import re, glob
 def check(f):
     m = re.match(r'^---\n(.*?)\n---', open(f, encoding='utf-8').read(), re.S)
@@ -667,7 +695,7 @@ def check(f):
 bad = [r for r in (check(f) for f in glob.glob('.claude/commands/*.md') + glob.glob('.claude/skills/*/SKILL.md')) if r]
 print("\n".join(bad))
 PY
-)"
+fm_bad="$(cat "$TMP/hd632.out")"
 [ -z "$fm_bad" ] && ok "every command/skill has valid, parseable frontmatter (+ a description)" || bad "frontmatter problem (would drop metadata as a plugin)" "$fm_bad"
 afail=""
 for f in adapters/*/*.md; do
@@ -700,6 +728,20 @@ python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert
   && ok "plugin.json valid + has name/version/hooks" || bad "plugin.json invalid/missing fields"
 python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); assert any(p.get('name')=='ticketwright' for p in d['plugins'])" 2>/dev/null \
   && ok "marketplace.json valid + lists ticketwright" || bad "marketplace.json invalid"
+# Claude Code's marketplace schema rejects a bare "." source (must start "./") and, on some
+# versions, a root-level "description" (metadata.description is accepted everywhere). Both
+# failures are SILENT on the declarative session-start path — a fresh clone just has no skills —
+# so the shipped manifest is pinned to the shape every CC version accepts (observed live on
+# 2.0.45 and 2.1.116).
+python3 - <<'MKPY'
+import json, sys
+d = json.load(open('.claude-plugin/marketplace.json'))
+p = next(p for p in d['plugins'] if p.get('name') == 'ticketwright')
+ok = p.get('source','').startswith('./') and 'description' not in d and bool(d.get('metadata',{}).get('description'))
+sys.exit(0 if ok else 1)
+MKPY
+[ $? -eq 0 ] && ok 'marketplace source starts "./" and description lives under metadata (installable on CC 2.0.x-2.1.x)' \
+  || bad 'marketplace.json regressed to a shape older Claude Code rejects (source "." or root description)' 
 # auto-discovery symlinks must resolve into .claude/* (loader rejected custom .claude paths in the manifest)
 { [ -L commands ] && [ -L skills ] && [ -L agents ] && [ -d commands ] && [ -d skills ] && [ -d agents ]; } \
   && ok "component symlinks resolve (commands/skills/agents → .claude/*)" || bad "plugin component symlinks broken"
@@ -849,9 +891,9 @@ done
 VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
 vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-# Require positive success ("All seams OK"), not just the absence of "adapter missing" — else a
+# Require positive success (a healthy summary: "All seams OK" or "N OK, M unverified"), not just the absence of "adapter missing" — else a
 # fixture that failed to create would falsely pass (the seam here has verify:null, so success prints).
-{ grep -q 'All seams OK' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
+{ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
   && ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)" \
   || bad "verify_stack failed on a project-external stack (adapter missing / no success line)" "$vout"
 # E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
@@ -865,7 +907,7 @@ va="$(sed -n '/^auth:/,/^---/p' adapters/tracker/jira.md | grep -c 'default_epic
   || bad "a verify depends on {default_epic} (fails when a project has no required epic)" "$ve"
 # E6 — adapter examples stay org-neutral: any ticket key shown in an adapter doc must use a
 # fixture prefix (ENG/DEMO/TEST/SAMPLE), never a project key copied from a live tracker.
-leak="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd868.out"
 import pathlib, re
 pat = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-\d+\b")
 allow = {"ENG", "DEMO", "TEST", "SAMPLE", "UTF", "SHA", "ISO", "RFC", "CVE", "PEP", "SOC"}
@@ -875,7 +917,7 @@ for f in sorted(pathlib.Path("adapters").rglob("*.md")):
         hits += [f"{f}:{n}:{m.group(0)}" for m in pat.finditer(ln) if m.group(1) not in allow]
 print("\n".join(hits))
 PY
-)"
+leak="$(cat "$TMP/hd868.out")"
 [ -z "$leak" ] && ok "adapter examples use fixture ticket keys only" \
   || bad "non-fixture ticket key in an adapter (public plugin!)" "$leak"
 # E7 — the DECLARE→CTE-params portability guardrail shipped where scripting is common.
@@ -1018,7 +1060,7 @@ CANON = {"source": "git", "url": "https://github.com/kyle-chalmers/ticketwright.
 
 def enablement_block(path, fence, after=None):
     """Pull the enablement block out by its FENCE LABEL, optionally only from the section
-    starting at `after`. Both guards matter: the Quickstart's first fenced block is bash, so
+    starting at `after`. Both guards matter: the Getting-started (Track 1) first fenced block is bash, so
     'first fence' logic grabs the wrong one, and without `after` an unrelated earlier json
     fence could be validated in place of the real thing."""
     t = open(path).read()
@@ -1051,12 +1093,12 @@ for label, d in (("scaffold.md", scaffold), ("README.md", readme)):
 PY
 grep -qi 'project-scoped' README.md \
   && ok "README documents the project-scoped install as the team default" || bad "README missing the project-scoped section"
-# The Quickstart must actually PRODUCE a project-scoped install. Match the two specific command
+# Getting-started Track 1 must actually PRODUCE a project-scoped install. Match the two specific command
 # lines, not incidental occurrences of the flag elsewhere in the file.
 { grep -qE '^claude plugin marketplace add https://github\.com/kyle-chalmers/ticketwright\.git --scope project$' README.md \
   && grep -qE '^claude plugin install ticketwright@ticketwright --scope project$' README.md; } \
-  && ok "README Quickstart installs at project scope (--scope project on both commands)" \
-  || bad "README Quickstart must pass --scope project to BOTH marketplace add and plugin install (both default to user scope)"
+  && ok "README Track 1 installs at project scope (--scope project on both commands)" \
+  || bad "README Track 1 must pass --scope project to BOTH marketplace add and plugin install (both default to user scope)"
 
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
 GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"
@@ -1162,7 +1204,7 @@ pr="$(python3 -c "import json; print(','.join(x['id'] for x in json.load(open('$
 hdr "24 · multi-target warehouse seam (default: + targets:)"
 MT=".claude/config/stack.example.multi-warehouse.yaml"
 mtout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MT" --dry-run 2>&1)"; mtrc=$?
-{ [ "$mtrc" -eq 0 ] && grep -q 'All seams OK' <<<"$mtout"; } \
+{ [ "$mtrc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$mtout"; } \
   && ok "multi-warehouse example resolves" || bad "multi-warehouse example does not resolve" "$mtout"
 [ "$(grep -c '▸ warehouse\[' <<<"$mtout")" -eq 2 ] \
   && ok "both warehouse targets get their own row" || bad "expected exactly 2 target rows" "$mtout"
@@ -1206,18 +1248,18 @@ done
 
 # --- fail closed on an unusable targets: block ---------------------------------------------------
 mtstack() { local d="$TMP/mt-$1"; mkdir -p "$d"; cat > "$d/stack.yaml"; printf '%s' "$d/stack.yaml"; }
-f="$(mtstack nodefault <<'YAML'
+mtstack nodefault <<'YAML' >"$TMP/hd1209.out"
 project: {key_prefix: ENG}
 seams:
   warehouse:
     targets:
       prod: {tool: snowflake, adapter: adapters/warehouse/snowflake.md, verify: "true"}
 YAML
-)"
+f="$(cat "$TMP/hd1209.out")"
 o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"; rc=$?
 { [ "$rc" -ne 0 ] && grep -q "no 'default:'" <<<"$o"; } \
   && ok "targets: without default: fails closed" || bad "missing default: was accepted" "$o"
-f="$(mtstack baddefault <<'YAML'
+mtstack baddefault <<'YAML' >"$TMP/hd1220.out"
 project: {key_prefix: ENG}
 seams:
   warehouse:
@@ -1225,7 +1267,7 @@ seams:
     targets:
       prod: {tool: snowflake, adapter: adapters/warehouse/snowflake.md, verify: "true"}
 YAML
-)"
+f="$(cat "$TMP/hd1220.out")"
 o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"; rc=$?
 { [ "$rc" -ne 0 ] && grep -q "not one of the defined targets" <<<"$o"; } \
   && ok "default: naming an unknown target fails closed" || bad "bad default: was accepted" "$o"
@@ -1235,7 +1277,7 @@ grep -q 'is not the first target' <<<"$o" \
   || ok "bad default: reports one clear error, not two"
 
 # --- seam-level scalars are inherited; a target's own key wins -----------------------------------
-f="$(mtstack inherit <<'YAML'
+mtstack inherit <<'YAML' >"$TMP/hd1238.out"
 project: {key_prefix: ENG}
 seams:
   warehouse:
@@ -1253,7 +1295,7 @@ seams:
         pii_role: OWN
         verify: "echo cli={cli} role={pii_role}"
 YAML
-)"
+f="$(cat "$TMP/hd1238.out")"
 o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"
 grep -q 'echo cli=snow role=SHARED' <<<"$o" \
   && ok "seam-level scalars are inherited by a target" || bad "seam-level inheritance broken" "$o"
@@ -1262,7 +1304,7 @@ grep -q 'echo cli=snow role=OWN' <<<"$o" \
 
 # tool/adapter/verify inherit too, so two targets on one account can share all three and differ
 # only in (say) default_warehouse. Keyed on absence: an explicit `verify: null` still means "skip".
-f="$(mtstack opinherit <<'YAML'
+mtstack opinherit <<'YAML' >"$TMP/hd1265.out"
 project: {key_prefix: ENG}
 seams:
   warehouse:
@@ -1275,7 +1317,7 @@ seams:
       sandbox: {default_warehouse: SBX_WH}
       mcponly: {verify: null}
 YAML
-)"
+f="$(cat "$TMP/hd1265.out")"
 o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$f" --dry-run 2>&1)"
 { grep -q 'echo shared wh=PROD_WH' <<<"$o" && grep -q 'echo shared wh=SBX_WH' <<<"$o"; } \
   && ok "seam-level tool/adapter/verify are inherited by targets" || bad "operational fields not inherited (target shows tool=? / adapter missing)" "$o"
@@ -1410,7 +1452,7 @@ grep -q 'signup-funnel-lift-analysis' "$S/tickets/INDEX.md" 2>/dev/null \
   && ok "slug mode: a folder with no tracker key IS catalogued" \
   || bad "slug mode: slug folder never reached INDEX.md"
 # The load-bearing assertion for this whole mode.
-refs="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY'
+CLAUDE_PROJECT_DIR="$S" python3 - <<'PY' >"$TMP/hd1413.out"
 import os, pathlib, sys
 sys.path.insert(0, "bin")
 from build_ticket_index import build_rows
@@ -1419,7 +1461,7 @@ print("PROSE=" + ",".join(rows["signup-funnel-lift-analysis"]["cross_refs"]))
 print("REAL=" + ",".join(rows["late-shipment-audit"]["cross_refs"]))
 print("TITLE=" + (rows["signup-funnel-lift-analysis"]["title"] or ""))
 PY
-)"
+refs="$(cat "$TMP/hd1413.out")"
 grep -q '^PROSE=$' <<<"$refs" \
   && ok "slug mode: prose-only README yields ZERO cross-refs (hyphenated words aren't ids)" \
   || bad "slug mode: ordinary prose became cross-references" "$refs"
@@ -1461,14 +1503,14 @@ Inline `` [[notes]] `` is an example, not a link.
 [[notes]]
 ~~~
 EOF
-refs2="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY2'
+CLAUDE_PROJECT_DIR="$S" python3 - <<'PY2' >"$TMP/hd1464.out"
 import os, pathlib, sys
 sys.path.insert(0, "bin")
 from build_ticket_index import build_rows
 rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
 print("DQ=" + ",".join(rows["data-quality"]["cross_refs"]))
 PY2
-)"
+refs2="$(cat "$TMP/hd1464.out")"
 # KNOWN LIMITATION, deliberate: a wiki-link inside an INDENTED code block (4 spaces) still counts.
 # Treating every 4-space line as code silently dropped real links in list continuations, which is the
 # worse failure for this payload. Fenced and inline code — how examples are actually written — are
@@ -1487,14 +1529,14 @@ Detail in [the notes](../notes/README.md#summary), see also [go][k].
 
 The wiki-link [[notes]] is what actually creates an edge.
 EOF
-refs3="$(CLAUDE_PROJECT_DIR="$S" python3 - <<'PY3'
+CLAUDE_PROJECT_DIR="$S" python3 - <<'PY3' >"$TMP/hd1490.out"
 import os, pathlib, sys
 sys.path.insert(0, "bin")
 from build_ticket_index import build_rows
 rows = {r["id"]: r for r in build_rows(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"]))}
 print("DQ=" + ",".join(rows["data-quality"]["cross_refs"]))
 PY3
-)"
+refs3="$(cat "$TMP/hd1490.out")"
 grep -q '^DQ=notes$' <<<"$refs3" \
   && ok "slug mode: only wiki-links count — markdown destinations are not references" \
   || bad "markdown link destinations leaked back in as references" "$refs3"
@@ -1859,7 +1901,7 @@ hoff() {  # hoff PROJDIR ARGS... — never allowed to actually launch anything
     bash bin/handoff.sh "$@" 2>/dev/null
 }
 
-VP="$(vproj basic <<'YAML'
+vproj basic <<'YAML' >"$TMP/hd1862.out"
 tool: macos-open
 adapter: adapters/viewer/macos-open.md
 open_cmd: 'open -a {app} {path}'
@@ -1871,7 +1913,7 @@ routes:
   - glob: "*.csv"
     app: Sheet App
 YAML
-)"
+VP="$(cat "$TMP/hd1862.out")"
 o="$(hoff "$VP" --dry-run "$VP/tickets/q.sql")"
 grep -q 'open -a SqlApp' <<<"$o" && ok "a .sql routes to its configured app" || bad "sql route not applied" "$o"
 
@@ -1918,7 +1960,7 @@ grep -q 'one.csv' <<<"$o" && ok "an in-project symlink resolving inside the proj
 
 # Regression: `.enabled // "true"` in yq/jq treats a literal false as ABSENT, so the one value that
 # must be honored was being overridden by its own default.
-VOFF="$(vproj off <<'YAML'
+vproj off <<'YAML' >"$TMP/hd1921.out"
 enabled: false
 tool: macos-open
 open_cmd: 'open -a {app} {path}'
@@ -1927,7 +1969,7 @@ routes:
   - glob: "*.sql"
     app: SqlApp
 YAML
-)"
+VOFF="$(cat "$TMP/hd1921.out")"
 o="$(hoff "$VOFF" --dry-run "$VOFF/tickets/q.sql")"
 [ -z "$o" ] && ok "enabled: false is honored (opt-out never re-prompts)" || bad "enabled:false still opened files" "$o"
 # The opt-out must survive a trailing YAML comment, and the SessionStart banner has to agree with
@@ -1952,7 +1994,7 @@ o="$(hoff "$VNONE" "$VNONE/tickets/q.sql")"; rc=$?
   && ok "no viewer config → silent, exit 0 (feature is off, nothing blocks)" || bad "unconfigured repo was not silent" "$o rc=$rc"
 
 # Resolution order: the per-user repo file must win over a team-wide seams.viewer in stack.yaml.
-VORD="$(vproj order <<'YAML'
+vproj order <<'YAML' >"$TMP/hd1955.out"
 tool: macos-open
 open_cmd: 'open -a {app} {path}'
 default_cmd: 'open {path}'
@@ -1960,7 +2002,7 @@ routes:
   - glob: "*.sql"
     app: PerUserApp
 YAML
-)"
+VORD="$(cat "$TMP/hd1955.out")"
 printf 'seams:\n  viewer:\n    tool: macos-open\n    open_cmd: %s\n    default_cmd: %s\n    routes:\n      - glob: "*.sql"\n        app: TeamApp\n' \
   "'open -a {app} {path}'" "'open {path}'" > "$VORD/.claude/config/stack.yaml"
 o="$(hoff "$VORD" --dry-run "$VORD/tickets/q.sql")"
@@ -2010,7 +2052,7 @@ else
     || bad "handoff.sh still depends on yq" "$o rc=$rc"
   o="$(PATH="$NOYQ" CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh \
         "$KIT/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
-  { [ "$rc" -eq 0 ] && grep -q 'All seams OK' <<<"$o"; } \
+  { [ "$rc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$o"; } \
     && ok "verify_stack.sh resolves every seam with yq absent from PATH entirely" \
     || bad "verify_stack.sh still depends on yq (it used to exit 1 without it)" "$o rc=$rc"
 fi
@@ -2154,7 +2196,7 @@ grep -q 'voice_profiles' .claude/config/stack.schema.md \
 VP="$TMP/vp"; mkdir -p "$VP/.claude/config"
 printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    path: "voices/{profile_id}.md"\n    map:\n      "a@b": a\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VP/.claude/config/stack.yaml"
 vpo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VP/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -q 'All seams OK' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
+grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
 
 hdr "30 · verify_stack reports unset adapter-required keys (requires: was never read)"
 # /setup tells the user an unfilled key can be left as `# TODO` because "verify will point at it".
@@ -2324,7 +2366,7 @@ for f in adapters/runtime/*.md; do
 done
 [ -z "$rt_bad" ] && ok "every runtime adapter declares the full capability set and no verbs" \
   || bad "a runtime adapter is missing a capability key (or invented verbs)" "$rt_bad"
-mc_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd2327.out"
 import sys, shlex, pathlib
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -2341,7 +2383,7 @@ for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
         bad.append(f"{f.name}: shell metacharacter in model_cmd")
 print("\n".join(bad))
 PY
-)"
+mc_bad="$(cat "$TMP/hd2327.out")"
 [ -z "$mc_bad" ] && ok "every declared model_cmd tokenizes cleanly (no trailing comment, no shell metachars)" \
   || bad "a runtime model_cmd would not parse safely as argv" "$mc_bad"
 # The honest floor: an unrecognized harness must claim nothing — PER KEY. A generic "no" is not a
@@ -2480,7 +2522,7 @@ grep -qi 'tracker-sourced' .claude/skills/ship/SKILL.md && ok "/ship states WHY 
 # --- scripts, not just skills, must locate kit assets without a Claude variable ----------------
 # verify_stack read $CLAUDE_PLUGIN_ROOT directly, which is empty under every other harness.
 vso="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-{ grep -q 'All seams OK' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
+{ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
   && ok "verify_stack resolves adapters with no Claude env var (project-external stack)" \
   || bad "verify_stack cannot find adapters without a Claude variable" "$vso"
 grep -q 'kit_paths\|/tw" --kit' bin/verify_stack.sh \
@@ -2713,7 +2755,7 @@ printf '{"tool_name":"Write","tool_input":{"file_path":"%s"},"cwd":"%s"}' \
 # shipped config, one of them is misreading real user data. Supported inputs only — the anchor and
 # alias fixtures in section 6b are deliberately OUTSIDE the subset and are covered by the rejection
 # assertions below instead.
-oracle_bad="$(python3 - <<'PY2'
+python3 - <<'PY2' >"$TMP/hd2716.out"
 import glob, json, subprocess, sys
 sys.path.insert(0, "bin")
 import _yamlite
@@ -2730,10 +2772,10 @@ for f in sorted(glob.glob(".claude/config/*.yaml")) + ["people/alice.yaml"]:
         bad.append(f"{f}: differs from yq")
 print("\n".join(bad))
 PY2
-)"
+oracle_bad="$(cat "$TMP/hd2716.out")"
 [ -z "$oracle_bad" ] && ok "_yamlite matches yq on every shipped config + people file" \
   || bad "the stdlib parser and yq disagree on real config" "$oracle_bad"
-fm_bad="$(python3 - <<'PY2'
+python3 - <<'PY2' >"$TMP/hd2736.out"
 import glob, sys
 sys.path.insert(0, "bin")
 import _yamlite
@@ -2753,7 +2795,7 @@ for f in sorted(glob.glob("adapters/*/*.md")):
         bad.append(f"{f}: no user_keys declaration")
 print("\n".join(bad))
 PY2
-)"
+fm_bad="$(cat "$TMP/hd2736.out")"
 [ -z "$fm_bad" ] && ok "every adapter's frontmatter parses and declares user_keys" \
   || bad "adapter frontmatter unreadable or undeclared" "$fm_bad"
 
@@ -3053,6 +3095,16 @@ whorun --bind alice >/dev/null 2>&1
 [ "$(grep -c 'ghost@void' "$WI/people/alice.yaml")" = "1" ] \
   && ok "re-binding the same identity appends nothing (re-read before write; no duplicates)" \
   || bad "a concurrent/duplicate bind duplicated the identity"
+# An --identity value matching NO local candidate (git email/name, $USER) is legitimate — it may
+# belong to the person's other machine — but on THIS machine it will never resolve, and a teammate
+# bound a handle on the tool's own advice and only later discovered it was inert. The bind must
+# still succeed (exit 0, written), the note must go to stderr, and stdout must stay machine-readable.
+whorun --bind alice --identity totally-foreign-handle >"$TMP/who-id.out" 2>"$TMP/who-id.err"; irc=$?
+{ [ "$irc" -eq 0 ] && grep -q 'matches no local identity candidate' "$TMP/who-id.err" \
+  && ! grep -q 'matches no local' "$TMP/who-id.out" \
+  && grep -q 'totally-foreign-handle' "$WI/people/alice.yaml"; } \
+  && ok "binding a foreign --identity succeeds, WARNS on stderr, and keeps stdout clean" \
+  || bad "the foreign-identity bind is silent, noisy on stdout, or refused" "rc=$irc $(cat "$TMP/who-id.err")"
 python3 -c 'import sys; sys.path.insert(0,"bin"); import _yamlite
 d=_yamlite.parse_file(sys.argv[1])
 ids=[str(i).lower() for i in d.get("identities") or []]
@@ -3806,7 +3858,7 @@ policies:
 EOF
 IVY="$IVR/.claude/config/stack.yaml"
 ivout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVY" --dry-run 2>&1)"
-grep -q 'All seams OK' <<<"$ivout" \
+grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
   && ok "the completed-interview config verifies end to end" \
   || bad "the completed-interview config failed verify_stack" "$ivout"
 grep -q 'required key(s) not set' <<<"$ivout" \
@@ -3842,7 +3894,7 @@ sed -e 's|^  role: analyst$|  # TODO(setup): round 5 skipped — role/domain/ana
     "$IVY" > "$IVS/.claude/config/stack.yaml"
 printf '  hard_halt_before_external_posts: true\n' >> "$IVS/.claude/config/stack.yaml"
 skout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVS/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -q 'All seams OK' <<<"$skout" \
+grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$skout" \
   && ok "a config with rounds 5-6 skipped (TODO lines in place) still verifies" \
   || bad "the skipped-rounds config failed verify_stack" "$skout"
 { grep -q '# TODO(setup): round 5 skipped' "$IVS/.claude/config/stack.yaml" \
@@ -4137,7 +4189,7 @@ hdr "40 · capability vocabulary: the 3b safety axes as data (PROMPT 7 / U5)"
 # research and its live re-checks (the U6 punch list); no assertion here claims a live behavior.
 
 # --- closed vocabulary: an enum key holding a value outside its enum is a typo, not a finding ----
-cv_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4140.out"
 import re, sys, pathlib
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -4168,7 +4220,7 @@ for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
         bad.append(f"{f.name}:global_skills_root={gsr!r}")
 print("\n".join(bad))
 PY
-)"
+cv_bad="$(cat "$TMP/hd4140.out")"
 [ -z "$cv_bad" ] && ok "every runtime adapter's 3b keys hold closed-vocabulary/well-formed values (parsed as consumers parse them)" \
   || bad "a runtime adapter declares an out-of-vocabulary or malformed capability value" "$cv_bad"
 
@@ -4217,7 +4269,7 @@ PY
 # --- the axes are INDEPENDENT, and the data proves it (nothing may average them into one score) --
 # Antigravity: the richest gate researched, and NO session hook. Devin: a session hook, and a gate
 # that fails open by documented design. Any single derived score would erase exactly this.
-ind40="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4220.out"
 import sys
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -4231,7 +4283,7 @@ if not (dvn.get("session_start") == "yes" and dvn.get("gate_fail_mode") == "open
     probs.append("devin no longer shows session-hook-with-fail-open-gate")
 print("\n".join(probs))
 PY
-)"
+ind40="$(cat "$TMP/hd4220.out")"
 [ -z "$ind40" ] && ok "the 3b axes genuinely diverge in the data (richer gate != session hook != fail mode)" \
   || bad "the axis-independence examples no longer hold — check what got edited" "$ind40"
 
@@ -4252,7 +4304,7 @@ grep -q 'only researched runtime' adapters/runtime/claude-code.md \
   || ok "claude-code.md no longer claims the pre-tool ask tier is exclusive"
 
 # --- the human-readable matrix and the machine-readable frontmatter must agree ------------------
-mm_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4255.out"
 import re, sys, pathlib
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -4280,7 +4332,7 @@ for tool, name in DISPLAY.items():
         bad.append(f"{name}: doc says {rows.get(name)}, frontmatter says {want}")
 print("\n".join(bad))
 PY
-)"
+mm_bad="$(cat "$TMP/hd4255.out")"
 [ -z "$mm_bad" ] && ok "runtimes.md's machine-readable table matches the adapter frontmatter (all 7 x 5 keys)" \
   || bad "runtimes.md's capability-key table drifted from the frontmatter it documents" "$mm_bad"
 
@@ -4296,7 +4348,7 @@ hdr "41 · the emission matrix: all seven runtimes, metadata mapping, agent defi
 E41="$TMP/e41"; mkdir -p "$E41"
 
 # --- structure: the two installer-driving adapter keys hold legal forms ---------------------------
-ar_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4299.out"
 import sys, pathlib
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -4313,12 +4365,12 @@ for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
         bad.append(f"{f.name}: verify-mode adapter with no foreign_skills_caveat to print")
 print("\n".join(bad))
 PY
-)"
+ar_bad="$(cat "$TMP/hd4299.out")"
 [ -z "$ar_bad" ] && ok "every adapter declares a legal agents_root, and every verify-mode adapter carries its printed caveat" \
   || bad "an adapter's installer-driving key is malformed or missing" "$ar_bad"
 # The emit-vs-verify split is a safety-relevant declaration — pin the verify set so a drive-by
 # edit to reads_foreign_skills cannot silently flip a runtime between emitting and verifying.
-verify_rts="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4321.out"
 import sys, pathlib
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -4330,13 +4382,13 @@ for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
     if ".claude/skills" in foreign:
         print(fm["tool"])
 PY
-)"
+verify_rts="$(cat "$TMP/hd4321.out")"
 [ "$(echo $verify_rts | tr ' ' ',')" = "cline,cursor,devin,opencode" ] \
   && ok "pinned: the verify-not-emit set is exactly cline, cursor, devin, opencode (from reads_foreign_skills)" \
   || bad "the emit-vs-verify split flipped for some runtime — that is a safety-axis edit" "got: $verify_rts"
 
 # --- the metadata mapping table: all three fields x seven runtimes, closed statuses --------------
-mt_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4339.out"
 import re, pathlib
 FIELDS = ("`allowed-tools`", "`disable-model-invocation`", "`tools:`")
 LEGAL = {"native", "mapped (unverified)", "lost"}
@@ -4359,7 +4411,7 @@ for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
             bad.append(f"{f.name}: {field} status must be native|mapped (unverified)|lost with a non-empty how-cell")
 print("\n".join(bad))
 PY
-)"
+mt_bad="$(cat "$TMP/hd4339.out")"
 [ -z "$mt_bad" ] && ok "every adapter's Metadata mapping table covers all three fields with closed-vocabulary statuses (losses named, never empty)" \
   || bad "a metadata mapping table is missing a field, an illegal status, or an unexplained loss" "$mt_bad"
 
@@ -4593,7 +4645,7 @@ grep -q 'Summary · review mode' "$RSK42" \
 # The forbidden list is DERIVED from adapters/runtime frontmatter (tool + aliases + spelling
 # variants), so a future runtime is covered without editing this check. "claude" alone is excluded:
 # .claude/ paths and CLAUDE_* env vars are kit structure, not a runtime name.
-rt42="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd4596.out"
 import re, sys, pathlib
 sys.path.insert(0, "bin")
 from kit_paths import read_frontmatter
@@ -4620,7 +4672,7 @@ for path in targets:
                 leaks.append(f"{path}:{no}: {n}")
 print("\n".join(sorted(set(leaks))))
 PY
-)"
+rt42="$(cat "$TMP/hd4596.out")"
 [ -z "$rt42" ] && ok "no runtime name appears in /review or qc-reviewer (list derived from adapter data)" \
   || bad "a runtime name leaked into the review path — the branch must key off capability values" "$rt42"
 
@@ -4911,7 +4963,7 @@ bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" > "$TMP/agent
 grep -q 'For every other agent it is guidance, not enforcement' "$TMP/agents-rendered.md" \
   && bad "the retired blanket guidance sentence survives in the rendered AGENTS.md (false once U3 landed)" \
   || ok "the false 'every other agent is guidance' sentence is gone from the rendered AGENTS.md"
-tbl_bad="$(python3 - "$TMP/agents-rendered.md" <<'PY'
+python3 - "$TMP/agents-rendered.md" <<'PY' >"$TMP/hd4914.out"
 import re, sys
 text = open(sys.argv[1], encoding="utf-8").read()
 m = re.search(r"<!-- ticketwright:enforcement:begin -->(.*?)<!-- ticketwright:enforcement:end -->",
@@ -4977,7 +5029,7 @@ if "**WIRED**" not in block:
     bad.append("the legend does not define WIRED")
 print("\n".join(bad))
 PY
-)"
+tbl_bad="$(cat "$TMP/hd4914.out")"
 [ -z "$tbl_bad" ] && ok "the rendered enforcement table: 7 runtimes x (5 hooks + malformed-input), closed vocabulary, no empty cell, wired/unwired sets pinned" \
   || bad "the enforcement table broke its contract" "$tbl_bad"
 for frag in 'trusted by hash' 'failClosed: true' 'fails open by documented design' 'deny-with-escape' 'model-judged'; do
@@ -5048,7 +5100,7 @@ grep -q 'docs/live-verification.md' docs/runtimes.md \
   && ok "docs/runtimes.md names the punch list" \
   || bad "docs/runtimes.md lost its punch-list reference"
 
-lv_bad="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd5051.out"
 import os, pathlib, re, sys, tempfile
 sys.path.insert(0, 'bin')
 from kit_paths import read_frontmatter
@@ -5168,7 +5220,7 @@ for f in adapters:
 
 print('\n'.join(bad))
 PY
-)"
+lv_bad="$(cat "$TMP/hd5051.out")"
 [ -z "$lv_bad" ] && ok "every unknown/unverified frontmatter value, WIRED cell, unverified-labeled artifact, and (unverified) mapping row is claimed on a punch-list Covers: line" \
   || bad "an unverified claim exists without a tracked way to verify it" "$lv_bad"
 
@@ -5567,14 +5619,14 @@ route --seam docstore
 BACKUP_T="$(rget "d['target']")"
 python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --quiet \
   --record-delivered "final_deliverables/out_12rows.csv" --url "https://example.invalid/d/x1" >/dev/null 2>&1
-REC_T="$(python3 - "$PLAN45" "$KIT/bin" <<'PY'
+python3 - "$PLAN45" "$KIT/bin" <<'PY' >"$TMP/hd5570.out"
 import sys, pathlib
 sys.path.insert(0, sys.argv[2])
 from _yamlite import parse_file
 rows = parse_file(pathlib.Path(sys.argv[1])).get("delivered") or []
 print(rows[-1].get("docstore_target") if rows else "")
 PY
-)"
+REC_T="$(cat "$TMP/hd5570.out")"
 { [ -n "$BACKUP_T" ] && [ "$REC_T" = "$BACKUP_T" ]; } \
   && ok "a delivered row records the docstore target actually routed, so link_for hits that same store" \
   || bad "the delivered row does not match the routed target" "routed=$BACKUP_T recorded=$REC_T"
@@ -6048,7 +6100,7 @@ gi_shape=0; git -C "$GI48" check-ignore -q tickets/a/ENG-1/source_materials/note
 # The corpus carries the two cases that decide whether the heuristic is real: a curated-NAMED file
 # whose body is a transcript (content must beat filename) and ordinary timestamped notes (must not
 # trip). tests/source_materials/README.md explains each fixture.
-c48="$(python3 - <<'EOF' 2>&1
+python3 - <<'EOF' >"$TMP/hd6051.out" 2>&1
 import json, sys
 sys.path.insert(0, "bin")
 import scan_source_materials as s
@@ -6061,7 +6113,7 @@ for name, want in golden.items():
         bad.append(f"{name}: want {want['kind']}, got {got['kind']}")
 print("; ".join(bad))
 EOF
-)"
+c48="$(cat "$TMP/hd6051.out")"
 [ -z "$c48" ] && ok "classifier matches the golden corpus on every fixture" \
   || bad "classifier drifted from tests/source_materials/golden.json" "$c48"
 k48() { python3 -c "
@@ -6290,6 +6342,20 @@ grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
   && grep -qi 'document shape, never *\*\*meaning\*\*' <<<"$enf_flat"; } \
   && ok "pin: the table states the guard's jurisdiction limit (Bash; shape, not meaning)" \
   || bad "the enforcement table omits the guard or its honest limits"
+# The DB guard has the SAME limit and, until now, no pin — which is exactly how README prose grew
+# an "inspects every warehouse command" overclaim while the hook gated Bash payloads only. Pin the
+# sentence AND its honest consequence, mirroring the source_material_guard pin above.
+{ grep -qi 'db_write_guard[^ ]* has the same jurisdiction limit' <<<"$enf_flat" \
+  && grep -qi 'guidance the agent follows, not a gate the runtime enforces' <<<"$enf_flat"; } \
+  && ok "pin: the table states db_write_guard's jurisdiction (Bash only; MCP SQL never reaches it)" \
+  || bad "the enforcement table omits db_write_guard's Bash-only jurisdiction"
+# Pre-install honesty: the hooks ship WITH the plugin, so the rendered doc must name the install
+# command and say the table is guidance until it runs — the first, uninstalled session is exactly
+# the one where a newcomer pokes at the warehouse.
+{ grep -q 'claude plugin install ticketwright@ticketwright' templates/AGENTS.md.tmpl \
+  && grep -q '/ticketwright:ticket' templates/AGENTS.md.tmpl; } \
+  && ok "pin: the template names the plugin-install command and the namespaced skill form" \
+  || bad "the template lost the pre-install note or the /ticketwright: namespacing line"
 # Both shell guards must be wired wherever ONE of them is — a runtime with half the gate is worse
 # than one with none, because the table would read as protection.
 # The emitters must wire ONE entry covering both guards (`--hook shell_guards`), never two array
@@ -6324,7 +6390,7 @@ hdr "50 · docstore without a mount: the rclone adapter + drive-mount guidance"
 RC="adapters/docstore/rclone.md"
 
 # --- (A) frontmatter: the tier split is declared, not implied ------------------------------------
-rc_fm="$(python3 - <<'PY'
+python3 - <<'PY' >"$TMP/hd6327.out"
 import sys
 sys.path.insert(0, "bin")
 import _yamlite
@@ -6342,7 +6408,7 @@ for k in ("remote_path", "target_sentinel"):
     if k not in (fm.get("requires") or []): bad.append(f"requires:{k}")
 print(" ".join(bad))
 PY
-)"
+rc_fm="$(cat "$TMP/hd6327.out")"
 [ -z "$rc_fm" ] \
   && ok "rclone.md declares destination_key: remote_path (team) + user_keys: [remote] (machine)" \
   || bad "rclone.md frontmatter wrong — the tier split is what keeps a destination reviewable" "$rc_fm"
@@ -6364,7 +6430,7 @@ done
 # avoids: grepping the whole verb section lets the PROSE that bans `sync` satisfy the check that
 # bans it; a line-anchored match misses `rclone --progress sync`; and shell quoting (`rclone
 # "sync"`) or an escape (`s\ync`) slips past any bare pattern. So parse the fences and shlex them.
-rc_verbs="$(python3 - <<'PYC'
+python3 - <<'PYC' >"$TMP/hd6367.out"
 import json, re, shlex
 t = open("adapters/docstore/rclone.md", encoding="utf-8").read()
 DESTRUCTIVE = {"sync", "move", "moveto", "delete", "deletefile", "rmdir", "rmdirs", "purge"}
@@ -6402,7 +6468,7 @@ for verb in ("backup", "link_for"):
         rep["dest_missing"].append(verb)
 print(json.dumps(rep))
 PYC
-)"
+rc_verbs="$(cat "$TMP/hd6367.out")"
 rcq() { printf '%s' "$rc_verbs" | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin)[sys.argv[1]]))" "$1"; }
 grep -q '"backup: rclone' <<<"$rc_verbs" && grep -q 'copy' <<<"$rc_verbs" \
   && ok "the backup verb's runnable command is \`rclone copy\`" \
@@ -6455,7 +6521,7 @@ printf 'schema_version: 1\nclassification: internal_archive\n' > "$RCP50/tk/deli
 # drifts from what these tests exercise, the tests stop proving anything about the real adapter.
 # Compare the WHOLE command on both sides, parsed rather than grep-fragmented: a substring match
 # would stay green while text before or after the fragment drifted.
-vfy_cmp="$(python3 - "$RCP50/.claude/config/stack.yaml" <<'PYV'
+python3 - "$RCP50/.claude/config/stack.yaml" <<'PYV' >"$TMP/hd6458.out"
 import re, sys
 sys.path.insert(0, "bin")
 import _yamlite
@@ -6470,7 +6536,7 @@ fixture = (node.get("verify") or "").strip()
 print("MATCH" if documented and documented == fixture
       else f"DRIFT documented=[{documented}] fixture=[{fixture}]")
 PYV
-)"
+vfy_cmp="$(cat "$TMP/hd6458.out")"
 [ "$vfy_cmp" = "MATCH" ] \
   && ok "the fixture's verify is the COMPLETE command rclone.md documents (no test/ship drift)" \
   || bad "the rclone fixture and the adapter's documented verify have diverged" "$vfy_cmp"
@@ -6721,7 +6787,7 @@ o="$(lint50 gdrive adapters/docstore/gdrive.md drive_folder "Shared drives/Ticke
 # from publishing a token, which is why the adapter names it as forbidden rather than staying silent.
 # "Invoked" means it appears in a RUNNABLE fenced block, not in the prose that BANS it — a
 # line-oriented grep cannot tell those apart, and the ban wraps across lines and matched itself.
-ch50="$(python3 - <<'PY50'
+python3 - <<'PY50' >"$TMP/hd6724.out"
 import pathlib, re
 # `config dump` prints the whole config too, and a runnable line can hide in a ~~~ fence or a
 # 4-space indented block as easily as in a ``` one. Cover all three, or the check is decorative.
@@ -6747,7 +6813,7 @@ for root in ("adapters", ".claude"):
                 hits.append(f"{f}: {m.group(0)}")
 print(" ".join(hits))
 PY50
-)"
+ch50="$(cat "$TMP/hd6724.out")"
 [ -z "$ch50" ] \
   && ok "no runnable block invokes \`rclone config show\`/\`listremotes --json\` or reads rclone.conf" \
   || bad "a credential-bearing rclone command is invoked rather than warned about" "$ch50"
@@ -6762,7 +6828,7 @@ grep -q 'rclone listremotes' "$RC" && grep -qi 'decrypted' "$RC" \
 SMG50=".claude/hooks/source_material_guard.py"
 # Assert the REGEX's behavior, not that the file contains the string "rclone": a static word
 # match would stay green against a pattern that no real command form hits.
-smgcov="$(python3 - <<'PYS'
+python3 - <<'PYS' >"$TMP/hd6765.out"
 import re, sys
 src = open(".claude/hooks/source_material_guard.py", encoding="utf-8").read()
 def grab(name):
@@ -6790,7 +6856,7 @@ must_not = ["rclone lsd remote:p --max-depth 1", "rclone cat remote:p/.ticketwri
 bad = [c for c in must if not cov(c)] + [f"FP:{c}" for c in must_not if cov(c)]
 print(" | ".join(bad))
 PYS
-)"
+smgcov="$(cat "$TMP/hd6765.out")"
 [ -z "$smgcov" ] \
   && ok "the guard's copy detection covers every rclone directory form (flags, absolute path) and no read-only one" \
   || bad "rclone copy escapes the source-material guard — the unmounted backup would bypass it" "$smgcov"
@@ -7382,6 +7448,25 @@ src = open(sys.argv[1]).read()
 calls = re.findall(r"subprocess\.\w+\(\s*\[([^\]]*)\]", src, re.S)
 sys.exit(1 if any("claude" in c or "plugin" in c for c in calls) else 0)
 UNPY
+
+
+hdr "52 · selftest itself parses under stock macOS bash 3.2 (self-lint)"
+# bash 3.2 — /bin/bash on every Mac — mis-scans a heredoc nested inside $( ): backticks,
+# apostrophes, or parens in the BODY desync the parser, hundreds of sections print ✓, and the run
+# dies mid-file with a syntax error (observed live by three teammates, three releases in a row:
+# 6 sites in v3.6.1 grew to 9 by v3.7.0+). Every such site is written heredoc-first instead:
+#   python3 - <<'TAG' >"$TMP/out"  …  TAG   then   var="$(cat "$TMP/out")"
+# This lint keeps the forbidden shape out of the file on EVERY platform, so a Linux CI run or a
+# Homebrew-bash Mac still catches what only a stock Mac would hit at runtime.
+hd52="$(grep -nE '="\$\(.* <<-?['"'"'\"]' bin/selftest.sh | grep -v '52 ·' | grep -v 'hd52=' || true)"
+[ -z "$hd52" ] && ok "no heredoc nested inside \$( ) anywhere in selftest (bash 3.2-parseable by construction)" \
+  || bad "a heredoc inside \$( ) crept back in — stock macOS bash 3.2 cannot parse it; capture via a temp file instead" "$hd52"
+# And when a bash 3.2 actually exists on this machine, prove the promise directly.
+if [ -x /bin/bash ] && /bin/bash -c '[ "${BASH_VERSINFO[0]}" -eq 3 ]' 2>/dev/null; then
+  /bin/bash -n bin/selftest.sh 2>"$TMP/hd52.err" \
+    && ok "/bin/bash (3.2) parses selftest end to end" \
+    || bad "/bin/bash (3.2) cannot parse selftest" "$(head -2 "$TMP/hd52.err")"
+fi
 
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
