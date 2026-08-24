@@ -477,7 +477,11 @@ out="$(gask 'barecli -e "DROP TABLE x"' "$d")"
 grep -q '"permissionDecision": "ask"' <<<"$out" && ok "no seams: anchor → still gates (fails safe)" || bad "config without a seams: key stopped gating entirely" "$out"
 
 hdr "7 · session_context hook (SessionStart priming)"
-out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
+# CLAUDE_CONFIG_DIR is pinned at an empty dir so this banner cannot vary with the CONTRIBUTOR'S own
+# plugin install: .claude/settings.json is gitignored here, and the update-notice footer reads a real
+# ~/.claude/plugins manifest when pointed at one. Section 50 exercises that footer on purpose.
+out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" \
+  CLAUDE_CONFIG_DIR="$TMP/no-config" python3 .claude/hooks/session_context.py 2>&1)"
 grep -q "ENG" <<<"$out" && grep -qi "Lifecycle" <<<"$out" && ok "emits stack + lifecycle summary" || bad "session context missing/empty" "$out"
 
 hdr "8 · statusline renders"
@@ -6816,6 +6820,569 @@ rcleak50="$(grep -rn 'rclone' .claude/skills .claude/commands .claude/agents 2>/
 [ -z "$rcleak50" ] \
   && ok "no skill INVOKES rclone — tool choice stays in stack.yaml + the adapter" \
   || bad "rclone leaked into skill orchestration (the golden rule)" "$rcleak50"
+hdr "51 · update notice: a pending release is VISIBLE, and every other case is silence (PROMPT: update-notice)"
+# The gap this exists for: `autoUpdate: true` refreshes the marketplace CATALOG, but Claude Code does
+# not re-install a project-scoped plugin from it — so a release lands on the machine and is silently
+# not running. Everything below asserts OUTPUT AND EXIT CODE, because "prints nothing" and "prints
+# nothing because it crashed" are the two states this CLI must never confuse.
+UN="$TMP/unotice"
+
+# --- fixture builders ----------------------------------------------------------------------------
+un_repo() { mkdir -p "$1/.claude"; printf '%s' "$2" > "$1/.claude/settings.json"; }
+# The default eligible repo: marketplace `acmehub` with autoUpdate, plugin `acme` enabled.
+un_settings() {
+  cat <<JSON
+{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"},"autoUpdate":${1:-true}}},
+ "enabledPlugins":{"acme@acmehub":${2:-true}}}
+JSON
+}
+# `un_catalog <config-root> <version>` — what the cached marketplace advertises.
+un_catalog() {
+  mkdir -p "$1/plugins/marketplaces/acmehub/.claude-plugin"
+  printf '{"name":"acme","version":"%s"}' "$2" \
+    > "$1/plugins/marketplaces/acmehub/.claude-plugin/plugin.json"
+}
+# `un_manifest <config-root> <repo> <version>` — one project-scoped record for <repo>, plus a
+# FOREIGN repo's record. That foreign path is the privacy fixture: it is real data in the real file,
+# and it must never reach the output.
+UN_FOREIGN="/Users/someone-else/Development/private-repo"
+un_manifest() {
+  mkdir -p "$1/plugins"
+  cat > "$1/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$UN_FOREIGN","installPath":"$UN_FOREIGN/cache","version":"9.9.9"},
+  {"scope":"project","projectPath":"$2","installPath":"$2/cache","version":"$3"}
+]}}
+JSON
+}
+# `un_json <path> <json>` writes a fixture through json.dump, and `un_parses <path> <label>` proves
+# it parsed. Both matter more than they look: a printf-escaped "\n" lands as a LITERAL newline inside
+# a JSON string, which makes the document malformed — and then a test named "the regex refused this
+# name" actually measures the JSON parser refusing the file. DEFINED HERE, with the other builders,
+# because a shell function is only callable after its definition is reached: these once lived
+# further down the section and the earlier caller silently did nothing.
+un_json() { python3 -c 'import json,sys; json.dump(json.loads(sys.argv[2]), open(sys.argv[1],"w"))' "$1" "$2"; }
+un_parses() {
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$1" 2>/dev/null \
+    && ok "fixture is VALID JSON, so the next silence is the check and not a parse error: $2" \
+    || bad "fixture is malformed JSON — the next assertion would be vacuous: $2"
+}
+# `un_run <config-root> <repo>` — sets UN_OUT, UN_ERR and UN_RC IN THE CALLING SHELL.
+# NEVER wrap a call in command substitution: `$( … )` runs the function in a subshell, the variable
+# assignments die with that subshell, and un_clean then reads the initialized 0/"" forever — which
+# is exactly how every exit-code and stderr assertion in this section became a silent no-op once
+# already. The harness-capture check below is what keeps that from coming back.
+UN_SCRIPT="bin/update_notice.py"
+UN_OUT=""; UN_ERR=""; UN_RC=0
+un_run() {
+  python3 "$UN_SCRIPT" --root "$2" --config-root "$1" >"$TMP/un.out" 2>"$TMP/un.err"
+  UN_RC=$?
+  UN_OUT="$(cat "$TMP/un.out")"; UN_ERR="$(cat "$TMP/un.err")"
+}
+# Every case must exit 0 with an empty stderr — asserted once, here, so no case can pass by crashing.
+un_clean() {
+  { [ "$UN_RC" -eq 0 ] && [ -z "$UN_ERR" ]; } && return 0
+  bad "$1: exit=$UN_RC stderr=$UN_ERR"; return 1
+}
+# Silence is judged on the RAW FILE, never on "$UN_OUT": command substitution strips trailing
+# newlines, so a regression that printed nothing but "\n" would read as empty and pass every case
+# below. -s is the byte-exact question.
+un_quiet() { [ ! -s "$TMP/un.out" ]; }
+# …and "exactly one line" is asked of the RAW BYTES for the same reason: "$UN_OUT" came through
+# command substitution, which strips every trailing newline, so `notice\n\n` would count as one line.
+un_one_line() {
+  python3 -c '
+import sys
+b = open(sys.argv[1], "rb").read()
+sys.exit(0 if b.endswith(b"\n") and b.count(b"\n") == 1 and len(b) > 1 else 1)
+' "$TMP/un.out"
+}
+# THE HARNESS MUST BE ABLE TO FAIL. Point it at a script that exits nonzero and writes to stderr; if
+# the capture works, both land in the parent shell. If this ever regresses to a subshell, it is this
+# assertion that breaks first rather than everything below passing quietly.
+printf 'import sys\nsys.stderr.write("boom\\n")\nraise SystemExit(7)\n' > "$TMP/un-fail.py"
+UN_SCRIPT="$TMP/un-fail.py"; un_run "$TMP" "$TMP"
+{ [ "$UN_RC" -eq 7 ] && [ "$UN_ERR" = "boom" ]; } \
+  && ok "the harness captures exit code + stderr in the PARENT shell (no subshell swallow)" \
+  || bad "un_run's capture is lost — every exit-code assertion below would be vacuous" \
+        "rc=$UN_RC err=$UN_ERR"
+UN_SCRIPT="bin/update_notice.py"
+
+# --- the firing condition: catalog newer than installed -------------------------------------------
+UR="$UN/repo"; UC="$UN/cfg"
+un_repo "$UR" "$(un_settings)"; un_catalog "$UC" 3.6.1; un_manifest "$UC" "$UR" 3.5.0
+un_run "$UC" "$UR"; out="$UN_OUT"
+if un_clean "newer"; then
+  { un_one_line && grep -q '3\.6\.1' <<<"$out" && grep -q '3\.5\.0' <<<"$out" \
+    && grep -q 'claude plugin uninstall acme@acmehub --scope project' <<<"$out" \
+    && grep -q 'claude plugin install acme@acmehub --scope project' <<<"$out"; } \
+    && ok "a newer catalog prints ONE line carrying both versions and the uninstall+install pair" \
+    || bad "the notice line is wrong" "$out"
+  # The names come from the repo's own settings, never a hardcoded 'ticketwright' — this is what
+  # keeps a fork or a rename working.
+  grep -q 'ticketwright' <<<"$out" \
+    && bad "the notice hardcodes ticketwright instead of reading the repo's configured names" \
+    || ok "plugin + marketplace names are read from the repo settings (fork-safe)"
+  # PRIVACY: installed_plugins.json lists other repos' paths. None may ever be printed.
+  { grep -qF "$UN_FOREIGN" <<<"$out" || grep -qF "$UR" <<<"$out" || grep -qF "$UC" <<<"$out"; } \
+    && bad "the notice leaked a filesystem path from installed_plugins.json" "$out" \
+    || ok "no filesystem path from installed_plugins.json reaches the output"
+fi
+
+# --- everything else is silence -------------------------------------------------------------------
+# Each case MUTATES ONE THING from the firing fixture above, so a pass can never be vacuous: the same
+# fixture demonstrably fires, and the single mutation is what silences it.
+un_silent() {  # un_silent <label> <config-root> <repo>
+  local label="$1"; shift
+  un_run "$1" "$2"; out="$UN_OUT"
+  un_clean "$label" || return 0
+  un_quiet && ok "silent: $label" \
+    || bad "silent: $label — wrote $(wc -c < "$TMP/un.out") bytes to stdout" "$out"
+}
+mkver() { C2="$UN/cfg-$1"; rm -rf "$C2"; un_catalog "$C2" "$2"; un_manifest "$C2" "$UR" "$3"; }
+
+mkver equal   3.6.1     3.6.1 ; un_silent "versions equal"                          "$C2" "$UR"
+mkver older   3.5.0     3.6.1 ; un_silent "catalog OLDER (never a downgrade)"        "$C2" "$UR"
+mkver pad     3.6       3.6.0 ; un_silent "3.6 == 3.6.0 (shorter tuple zero-padded)" "$C2" "$UR"
+mkver prerel  3.7.0-rc1 3.6.1 ; un_silent "a non-integer segment (prerelease)"       "$C2" "$UR"
+mkver blank   3..1     3.6.1 ; un_silent "an EMPTY version segment"                  "$C2" "$UR"
+# str.isdigit() is True for fullwidth and superscript digits, which int() then rejects — a crash
+# where the contract says silence. The parser takes ASCII digits only.
+mkver wide    "3.6.１" 3.6.1 ; un_silent "a fullwidth digit in the version (isdigit lies)" "$C2" "$UR"
+mkver sup     "3.6.³"  3.6.1 ; un_silent "a superscript digit in the version"          "$C2" "$UR"
+mkver empty   3.6.1     ""    ; un_silent "the installed record has an empty version" "$C2" "$UR"
+# The padding case must not pass merely because the parser rejected something: prove the same
+# fixture DOES fire when the catalog is genuinely ahead by that trailing segment.
+mkver padfire 3.6.1 3.6 ; un_run "$C2" "$UR"; out="$UN_OUT"; un_clean "padfire" || true
+grep -q '3\.6\.1 is available' <<<"$out" \
+  && ok "control: 3.6 vs 3.6.1 DOES fire (so the zero-padding silence is not vacuous)" \
+  || bad "3.6 vs 3.6.1 did not fire — the padding assertion above is vacuous" "$out"
+
+# Manifest shapes.
+mkver shape 3.6.1 3.5.0
+printf '{"version":1}' > "$C2/plugins/installed_plugins.json"
+un_silent "the manifest has no top-level plugins mapping" "$C2" "$UR"
+printf '{"plugins":{"acme@acmehub":{"scope":"project"}}}' > "$C2/plugins/installed_plugins.json"
+un_silent "the plugin entry is a mapping, not a list" "$C2" "$UR"
+printf '{"plugins":{"acme@acmehub":[{"scope":"project","projectPath":"%s"' "$UR" \
+  > "$C2/plugins/installed_plugins.json"
+un_silent "the manifest JSON is truncated" "$C2" "$UR"
+cat > "$C2/plugins/installed_plugins.json" <<JSON
+{"plugins":{"acme@acmehub":[{"scope":"user","installPath":"/x","version":"3.5.0"}]}}
+JSON
+un_silent "only a USER-scope record exists (project scope is what the notice is about)" "$C2" "$UR"
+cat > "$C2/plugins/installed_plugins.json" <<JSON
+{"plugins":{"acme@acmehub":[{"scope":"project","projectPath":"$UN_FOREIGN","version":"3.5.0"}]}}
+JSON
+un_silent "no record whose projectPath is this repo" "$C2" "$UR"
+# THE AMBIGUITY RULE, exercised rather than asserted: two project records for the SAME repo at
+# DIFFERENT versions. Guessing between them is how a notice tells someone to downgrade.
+cat > "$C2/plugins/installed_plugins.json" <<JSON
+{"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$UR","version":"3.5.0"},
+  {"scope":"project","projectPath":"$UR","version":"3.6.0"}]}}
+JSON
+un_silent "TWO project records match this repo (ambiguous — never guess a version)" "$C2" "$UR"
+# The SAME ambiguity wearing a disguise: one record spells the canonical path, the other a symlink
+# to it. Counting only the textual match would pick a version and call it the answer.
+mkver dual 3.6.1 3.5.0
+ln -snf "$UR" "$UN/repo-alias"
+un_json "$C2/plugins/installed_plugins.json" "{\"plugins\":{\"acme@acmehub\":[{\"scope\":\"project\",\"projectPath\":\"$UR\",\"version\":\"3.5.0\"},{\"scope\":\"project\",\"projectPath\":\"$UN/repo-alias\",\"version\":\"3.6.0\"}]}}"
+un_silent "one CANONICAL record plus one SYMLINKED record for this repo (still ambiguous)" "$C2" "$UR"
+# The lexical trap a normpath shortcut would fall into: `<root>/aliasdir/..` COLLAPSES to `<root>`
+# on paper, but aliasdir is a symlink, so the path really names somewhere else. Matching it would be
+# a false positive — this repo told a version it does not run.
+mkver lex 3.6.1 3.5.0
+mkdir -p "$UN/elsewhere"; ln -snf "$UN/elsewhere" "$UR/aliasdir"
+un_json "$C2/plugins/installed_plugins.json" "{\"plugins\":{\"acme@acmehub\":[{\"scope\":\"project\",\"projectPath\":\"$UR/aliasdir/..\",\"version\":\"3.5.0\"}]}}"
+un_silent "a record spelled <root>/<symlink>/.. — collapses textually, resolves elsewhere" "$C2" "$UR"
+rm -f "$UR/aliasdir"
+# resolve() defaults to strict=False, which collapses `..` LEXICALLY when a component is missing:
+# `<root>/missing/..` comes back as `<root>` and would match a repo it does not name.
+mkver strictres 3.6.1 3.5.0
+un_json "$C2/plugins/installed_plugins.json" "{\"plugins\":{\"acme@acmehub\":[{\"scope\":\"project\",\"projectPath\":\"$UR/missing/..\",\"version\":\"3.5.0\"}]}}"
+un_silent "a record naming a NONEXISTENT component (<root>/missing/..) — strict resolution refuses it" "$C2" "$UR"
+# A relative record resolves against THIS PROCESS'S cwd, so a child launched inside the repo would
+# match a record that names no repo at all.
+mkver relrec 3.6.1 3.5.0
+un_json "$C2/plugins/installed_plugins.json" '{"plugins":{"acme@acmehub":[{"scope":"project","projectPath":".","version":"3.5.0"}]}}'
+( cd "$UR" && python3 "$KIT/bin/update_notice.py" --root "$UR" --config-root "$C2" > "$TMP/un.out" 2>&1 )
+un_quiet && ok "silent: a RELATIVE projectPath ('.') never matches, even run from inside the repo" \
+  || bad "a relative projectPath matched against the process cwd" "$(cat "$TMP/un.out")"
+rm -f "$C2/plugins/installed_plugins.json"
+un_silent "installed_plugins.json is missing entirely" "$C2" "$UR"
+# A NON-CANONICAL --root must still match the manifest's projectPath. Claude Code writes a resolved
+# path; a person (or a worktree) hands over a symlink or a trailing slash, and a textual compare
+# would report "not installed here" for a repo that plainly is.
+mkver link 3.6.1 3.5.0
+ln -snf "$UR" "$UN/repo-link"
+un_run "$C2" "$UN/repo-link"; out="$UN_OUT"; un_clean "symlinked root" || true
+grep -q '3\.6\.1 is available' <<<"$out" \
+  && ok "a symlinked --root still matches the manifest's projectPath" \
+  || bad "a symlinked --root missed its own install record" "$out"
+un_run "$C2" "$UR/"; out="$UN_OUT"; un_clean "trailing slash" || true
+grep -q '3\.6\.1 is available' <<<"$out" \
+  && ok "a trailing slash on --root still matches" || bad "a trailing slash broke the match" "$out"
+
+# Catalog shapes. The catalog version comes from the cached marketplace's own plugin.json — a
+# marketplace laid out any other way is SILENCE, never a second guess at where the version lives.
+mkver cat 3.6.1 3.5.0
+CATP="$C2/plugins/marketplaces/acmehub/.claude-plugin/plugin.json"
+rm -f "$CATP"
+un_silent "the cached marketplace plugin.json is missing" "$C2" "$UR"
+printf '{"name":"other","version":"9.9.9"}' > "$CATP"
+un_silent "the catalog manifest names a DIFFERENT plugin" "$C2" "$UR"
+printf '{"name":"acme"}' > "$CATP"
+un_silent "the catalog manifest has no version" "$C2" "$UR"
+printf '{"name":"acme","version":361}' > "$CATP"
+un_silent "the catalog version is a number, not a string" "$C2" "$UR"
+printf '{"name":"acme","version":"3.6.1"' > "$CATP"
+un_silent "the catalog JSON is truncated" "$C2" "$UR"
+printf '["acme","3.6.1"]' > "$CATP"
+un_silent "the catalog manifest is a list, not a mapping" "$C2" "$UR"
+
+# EVERY settings case below runs against $UCX, a config root that holds an install record FOR THAT
+# REPO. Without that they were vacuous: a repo with no record is silent whatever its settings say, so
+# "silent because autoUpdate is false" and "silent because this repo has no install" were the same
+# observation. un_register adds the record AND proves the fixture fires with GOOD settings, so the
+# only thing left that can silence the paired case is the settings check it names.
+UCX="$UN/cfg-settings"; un_catalog "$UCX" 3.6.1
+mkdir -p "$UCX/plugins"; printf '{"plugins":{"acme@acmehub":[]}}' > "$UCX/plugins/installed_plugins.json"
+un_register() {  # un_register <repo> <label>
+  python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["plugins"]["acme@acmehub"].append(
+    {"scope": "project", "projectPath": sys.argv[2], "version": "3.5.0"})
+json.dump(d, open(sys.argv[1], "w"))
+' "$UCX/plugins/installed_plugins.json" "$1"
+  un_repo "$1" "$(un_settings)"
+  un_run "$UCX" "$1"
+  { [ "$UN_RC" -eq 0 ] && grep -q '3\.6\.1 is available' <<<"$UN_OUT"; } \
+    && ok "control: the fixture FIRES with good settings — $2" \
+    || bad "control did not fire; the paired silence would be vacuous — $2" "$UN_OUT"
+}
+
+# Repo-settings shapes that are MALFORMED rather than opted out — also silence, never a traceback.
+RJ="$UN/repo-badjson"; un_register "$RJ" "truncated settings.json"
+printf '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":true}},' > "$RJ/.claude/settings.json"
+un_silent "the repo settings.json is truncated" "$UCX" "$RJ"
+RL="$UN/repo-list"; un_register "$RL" "extraKnownMarketplaces as a list"
+un_repo "$RL" '{"extraKnownMarketplaces":[],"enabledPlugins":{"acme@acmehub":true}}'
+un_silent "extraKnownMarketplaces is a list, not a mapping" "$UCX" "$RL"
+RE2="$UN/repo-enablist"; un_register "$RE2" "enabledPlugins as a list"
+un_repo "$RE2" '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":true}},"enabledPlugins":["acme@acmehub"]}'
+un_silent "enabledPlugins is a list, not a mapping" "$UCX" "$RE2"
+RTR="$UN/repo-truthy"; un_register "$RTR" "autoUpdate as a truthy string"
+un_repo "$RTR" '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":"yes"}},"enabledPlugins":{"acme@acmehub":true}}'
+un_silent "autoUpdate is a truthy STRING, not true (never guess at intent)" "$UCX" "$RTR"
+RNP="$UN/repo-nopair"; un_register "$RNP" "an enabledPlugins key with no @ half"
+un_repo "$RNP" '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":true}},"enabledPlugins":{"acme":true}}'
+un_silent "an enabledPlugins key with no @marketplace half" "$UCX" "$RNP"
+# The names are interpolated into a shell command the notice invites a person to PASTE. A name that
+# is not an ordinary identifier does not fire — otherwise the reader is handed a line that does
+# something other than what it looks like, and the "one line" contract breaks on a newline.
+for hostile in 'acme; rm -rf ~@acmehub' 'acme$(id)@acmehub' 'acme@acmehub"' 'ac me@acmehub'; do
+  RX="$UN/repo-hostile"
+  [ -f "$RX/.claude/settings.json" ] || un_register "$RX" "hostile plugin names"
+  python3 - "$RX/.claude/settings.json" "$hostile" <<'UNPY'
+import json, sys
+json.dump({"extraKnownMarketplaces": {"acmehub": {"autoUpdate": True}},
+           "enabledPlugins": {sys.argv[2]: True}}, open(sys.argv[1], "w"))
+UNPY
+  un_silent "a plugin name carrying shell metacharacters (${hostile}) never reaches the command" "$UCX" "$RX"
+done
+# A newline inside the name would split the notice into two lines — the same rule catches it.
+RNL="$UN/repo-newline"; un_register "$RNL" "a newline inside the plugin name"
+printf '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":true}},"enabledPlugins":{"ac\nme@acmehub":true}}' \
+  > "$RNL/.claude/settings.json"
+un_silent "a newline inside the plugin name (the one-line contract cannot be split)" "$UCX" "$RNL"
+
+# Repo-settings shapes — the deliberate opt-outs /setup already honors.
+RO="$UN/repo-off"; un_register "$RO" "autoUpdate: false"
+un_repo "$RO" "$(un_settings false true)"
+un_silent "autoUpdate is explicitly false (a deliberate opt-out)" "$UCX" "$RO"
+RD="$UN/repo-dis"; un_register "$RD" "the plugin disabled in enabledPlugins"
+un_repo "$RD" "$(un_settings true false)"
+un_silent "the plugin is explicitly disabled in enabledPlugins" "$UCX" "$RD"
+RN="$UN/repo-nomk"; un_register "$RN" "no extraKnownMarketplaces block"
+un_repo "$RN" '{"enabledPlugins":{"acme@acmehub":true}}'
+un_silent "no extraKnownMarketplaces block in the repo settings" "$UCX" "$RN"
+RB="$UN/repo-bare"; un_register "$RB" "no .claude/settings.json at all"
+rm -f "$RB/.claude/settings.json"
+un_silent "the repo has no .claude/settings.json at all (a vendored or pip install)" "$UCX" "$RB"
+RT="$UN/repo-two"; un_register "$RT" "two eligible plugin@marketplace pairs"
+un_repo "$RT" '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":true},"bhub":{"autoUpdate":true}},"enabledPlugins":{"acme@acmehub":true,"bee@bhub":true}}'
+un_silent "TWO eligible plugin@marketplace pairs (ambiguous — never name the wrong one)" "$UCX" "$RT"
+# The marketplace name is used as a PATH COMPONENT under plugins/marketplaces/. `.` and `..` clear
+# the identifier check but would read a manifest from the wrong directory entirely.
+#
+# THE FIXTURE IS BUILT SO THAT REMOVING THE GUARD WOULD FIRE. Asserting silence against a config
+# root that has no record for the traversed pair proves nothing — it would be silent either way.
+# So each case gets its own config root carrying (a) an install record under the traversed key
+# `acme@..`, and (b) a catalog manifest at exactly the path the traversal would reach:
+# marketplaces/../.claude-plugin -> plugins/.claude-plugin. With the guard, silence. Without it, a
+# notice sourced from a directory nobody named.
+for trav in ".." "."; do
+  RV="$UN/repo-trav-$(printf '%s' "$trav" | tr -d '.')x"; mkdir -p "$RV/.claude"
+  CV="$UN/cfg-trav-$(printf '%s' "$trav" | tr -d '.')x"
+  mkdir -p "$CV/plugins/marketplaces"
+  TRAVDIR="$(cd "$CV/plugins/marketplaces" && cd "$trav" && pwd)/.claude-plugin"
+  mkdir -p "$TRAVDIR"
+  printf '{"name":"acme","version":"3.6.1"}' > "$TRAVDIR/plugin.json"
+  un_json "$CV/plugins/installed_plugins.json" "{\"plugins\":{\"acme@$trav\":[{\"scope\":\"project\",\"projectPath\":\"$RV\",\"version\":\"3.5.0\"}]}}"
+  un_json "$RV/.claude/settings.json" "{\"extraKnownMarketplaces\":{\"$trav\":{\"autoUpdate\":true}},\"enabledPlugins\":{\"acme@$trav\":true}}"
+  # Prove the fixture is loaded: the same config root fires for an ordinary marketplace name.
+  RVOK="$RV-ok"; mkdir -p "$RVOK/.claude"
+  un_catalog "$CV" 3.6.1
+  un_json "$CV/plugins/installed_plugins.json" "{\"plugins\":{\"acme@$trav\":[{\"scope\":\"project\",\"projectPath\":\"$RV\",\"version\":\"3.5.0\"}],\"acme@acmehub\":[{\"scope\":\"project\",\"projectPath\":\"$RVOK\",\"version\":\"3.5.0\"}]}}"
+  un_repo "$RVOK" "$(un_settings)"
+  un_run "$CV" "$RVOK"
+  grep -q '3\.6\.1 is available' <<<"$UN_OUT" \
+    && ok "control: this config root FIRES for an ordinary marketplace name (trav='$trav')" \
+    || bad "traversal control did not fire; the paired silence would be vacuous (trav='$trav')" "$UN_OUT"
+  un_silent "a marketplace named '$trav' — a path component, with a catalog planted where it would land" "$CV" "$RV"
+done
+# …and the guard itself, asserted directly, with an ordinary name as the control.
+python3 - "$KIT/bin/update_notice.py" <<'UNPY' && ok "eligible_pair() refuses '.' and '..' for either name, and accepts an ordinary one" || bad "eligible_pair() does not refuse the traversal names"
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("un", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+def settings(plugin, marketplace):
+    return {"extraKnownMarketplaces": {marketplace: {"autoUpdate": True}},
+            "enabledPlugins": {f"{plugin}@{marketplace}": True}}
+
+if m.eligible_pair(settings("acme", "acmehub")) != ("acme", "acmehub"):
+    print("control: an ordinary pair was refused", file=sys.stderr); sys.exit(1)
+for plugin, marketplace in (("acme", ".."), ("acme", "."), ("..", "acmehub"), (".", "acmehub")):
+    if m.eligible_pair(settings(plugin, marketplace)) is not None:
+        print("accepted %r@%r" % (plugin, marketplace), file=sys.stderr); sys.exit(1)
+UNPY
+
+# A TRAILING newline is the case a `^…$` anchor silently accepts (`$` matches before a final
+# newline), so each of the four strings the notice interpolates is pinned separately. These fixtures
+# go through json.dump ON PURPOSE: a printf-escaped "\n" lands as a LITERAL newline inside the JSON
+# string, which makes the document malformed — and then every one of these tests passes for the
+# wrong reason, the parser rejecting the file rather than the regex rejecting the name. Each fixture
+# is proven parseable first, so "silent" can only mean the name/version check refused it.
+RTN="$UN/repo-trailnl"; un_register "$RTN" "a trailing newline on the plugin name"
+un_json "$RTN/.claude/settings.json" '{"extraKnownMarketplaces":{"acmehub":{"autoUpdate":true}},"enabledPlugins":{"acme\n@acmehub":true}}'
+un_parses "$RTN/.claude/settings.json" "trailing newline on the plugin name"
+un_silent "a TRAILING newline on the plugin name" "$UCX" "$RTN"
+RTM="$UN/repo-trailmk"; un_register "$RTM" "a trailing newline on the marketplace name"
+un_json "$RTM/.claude/settings.json" '{"extraKnownMarketplaces":{"acmehub\n":{"autoUpdate":true}},"enabledPlugins":{"acme@acmehub\n":true}}'
+un_parses "$RTM/.claude/settings.json" "trailing newline on the marketplace name"
+un_silent "a TRAILING newline on the marketplace name" "$UCX" "$RTM"
+mkver catnl 3.6.1 3.5.0
+CATNL="$C2/plugins/marketplaces/acmehub/.claude-plugin/plugin.json"
+un_json "$CATNL" '{"name":"acme","version":"3.6.1\n"}'
+un_parses "$CATNL" "trailing newline on the catalog version"
+un_silent "a TRAILING newline on the CATALOG version" "$C2" "$UR"
+mkver insnl 3.6.1 3.5.0
+INSNL="$C2/plugins/installed_plugins.json"
+un_json "$INSNL" '{"plugins":{"acme@acmehub":[{"scope":"project","projectPath":"'"$UR"'","version":"3.5.0\n"}]}}'
+un_parses "$INSNL" "trailing newline on the installed version"
+un_silent "a TRAILING newline on the INSTALLED version" "$C2" "$UR"
+
+# Bounded input: this runs as a child inside a SessionStart budget, so it must not agree to parse an
+# arbitrarily large file, and it must not be BLOCKABLE by a non-regular one.
+mkver big 3.6.1 3.5.0
+python3 -c "
+import json,sys
+recs=[{'scope':'project','projectPath':'/x/%d'%i,'version':'1.0.0'} for i in range(80000)]
+recs.append({'scope':'project','projectPath':sys.argv[2],'version':'3.5.0'})
+open(sys.argv[1],'w').write(json.dumps({'plugins':{'acme@acmehub':recs}}))
+" "$C2/plugins/installed_plugins.json" "$UR"
+[ "$(wc -c < "$C2/plugins/installed_plugins.json")" -gt 4194304 ] \
+  && ok "oversize fixture is genuinely over the 4MiB cap ($(wc -c < "$C2/plugins/installed_plugins.json") bytes)" \
+  || bad "oversize fixture is not actually oversize — the next assertion would be vacuous"
+un_silent "an installed_plugins.json past the size cap" "$C2" "$UR"
+# A symlink is judged by its TARGET: open() follows the link and the fstat is of the descriptor, so
+# a link to an oversize file is refused too.
+mkver bigln 3.6.1 3.5.0
+BIGSRC="$C2/plugins/installed_plugins.json.big"
+mv "$UN/cfg-big/plugins/installed_plugins.json" "$BIGSRC"
+ln -snf "$BIGSRC" "$C2/plugins/installed_plugins.json"
+un_silent "a SYMLINK to an oversize manifest (open follows the link, fstat judges the fd)" "$C2" "$UR"
+# The BOUNDARY, both sides — a cap nobody tests at the edge is a cap that drifts. JSON tolerates
+# leading whitespace, so the same document is padded to exactly the cap and to exactly one over it.
+un_pad() {  # un_pad <path> <exact-byte-size> <repo>
+  python3 -c '
+import json, sys
+doc = json.dumps({"plugins": {"acme@acmehub": [
+    {"scope": "project", "projectPath": sys.argv[3], "version": "3.5.0"}]}})
+size = int(sys.argv[2])
+open(sys.argv[1], "w").write(" " * (size - len(doc)) + doc)
+' "$1" "$2" "$3"
+  [ "$(wc -c < "$1")" -eq "$2" ] || bad "padding produced $(wc -c < "$1") bytes, wanted $2"
+}
+mkver cap 3.6.1 3.5.0
+un_pad "$C2/plugins/installed_plugins.json" 4194304 "$UR"
+un_run "$C2" "$UR"; out="$UN_OUT"
+un_clean "at the cap" && { grep -q '3\.6\.1 is available' <<<"$out" \
+  && ok "a manifest of exactly MAX_BYTES is accepted (the cap is inclusive)" \
+  || bad "a manifest at exactly the cap was refused — the boundary is off by one" "$out"; }
+un_pad "$C2/plugins/installed_plugins.json" 4194305 "$UR"
+un_silent "a manifest of exactly MAX_BYTES + 1 (one byte over)" "$C2" "$UR"
+mkver fifo 3.6.1 3.5.0
+rm -f "$C2/plugins/installed_plugins.json"
+if mkfifo "$C2/plugins/installed_plugins.json" 2>/dev/null; then
+  t0=$(date +%s); un_run "$C2" "$UR"; out="$UN_OUT"; t1=$(date +%s)
+  { un_quiet && [ "$UN_RC" -eq 0 ] && [ -z "$UN_ERR" ] && [ $((t1 - t0)) -lt 5 ]; } \
+    && ok "a FIFO where the manifest should be is silence, not a hang ($((t1 - t0))s)" \
+    || bad "a FIFO manifest hung or produced output ($((t1 - t0))s)" "$out"
+  rm -f "$C2/plugins/installed_plugins.json"
+else
+  ok "mkfifo unavailable — non-regular-file case skipped on this host"
+fi
+
+# --- the hook is a PRESENTER, and it fails open ---------------------------------------------------
+# A fixture kit: the hook resolves bin/ from CLAUDE_PLUGIN_ROOT, so a stand-in update_notice.py here
+# proves the failure paths without touching the real one.
+UK="$UN/kit"; mkdir -p "$UK/bin" "$UK/adapters" "$UK/templates" "$UK/.claude/hooks"
+cp bin/kit_paths.py bin/effective_config.py bin/_yamlite.py bin/whoami.py "$UK/bin/"
+cp .claude/hooks/session_context.py .claude/hooks/_stack.py "$UK/.claude/hooks/"
+HR="$UN/hookrepo"; mkdir -p "$HR/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: duckdb\n' > "$HR/.claude/config/stack.yaml"
+un_repo "$HR" "$(un_settings)"
+HC="$UN/hookcfg"; un_catalog "$HC" 3.6.1; un_manifest "$HC" "$HR" 3.5.0
+HN="$UN/hookcfg-none"; mkdir -p "$HN"        # an empty config root: eligible repo, nothing installed
+# Writes the banner to $TMP/banner.out and echoes it. Comparisons use the FILE (`cmp`), because
+# "$(hook_banner …)" strips trailing newlines — so an extra blank final line would compare equal to
+# the baseline and "byte-identical" would be a claim the test never checked.
+hook_banner() {  # hook_banner <config-root> [outfile]
+  echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$HR" CLAUDE_PLUGIN_ROOT="$UK" \
+    CLAUDE_CONFIG_DIR="$1" python3 "$UK/.claude/hooks/session_context.py" 2>/dev/null \
+    > "${2:-$TMP/banner.out}"
+  cat "${2:-$TMP/banner.out}"
+}
+# `un_same_banner <label>` — run against the pending-release config root and require the bytes to
+# match the recorded baseline exactly.
+un_same_banner() {
+  hook_banner "$HC" "$TMP/banner.cmp" >/dev/null
+  cmp -s "$TMP/banner.cmp" "$TMP/banner.base" && ok "$1" || bad "$1 — banner bytes differ"
+}
+cp bin/update_notice.py "$UK/bin/"
+withnotice="$(hook_banner "$HC")"
+{ [ "$(grep -c 'is available' <<<"$withnotice")" -eq 1 ] \
+  && grep -q '3\.6\.1 is available' <<<"$withnotice"; } \
+  && ok "the SessionStart banner gains EXACTLY ONE notice line when a release is pending" \
+  || bad "the banner did not pick up exactly one notice" "$withnotice"
+baseline="$(hook_banner "$HN" "$TMP/banner.base")"
+{ [ -s "$TMP/banner.base" ] && ! grep -q 'is available' "$TMP/banner.base"; } \
+  && ok "baseline banner renders in full with no notice line" || bad "baseline banner wrong" "$baseline"
+# (1) a BROKEN CLI must leave the banner byte-identical to the baseline.
+printf 'import sys\nsys.stderr.write("boom\\n")\nraise SystemExit(3)\n' > "$UK/bin/update_notice.py"
+un_same_banner "fail-open: a broken update_notice.py leaves the banner byte-identical"
+# (2) a CHATTY CLI — multi-line output, or a line alongside stderr noise — is not a notice either.
+printf 'print("line one")\nprint("line two")\n' > "$UK/bin/update_notice.py"
+un_same_banner "fail-open: multi-line CLI output is rejected, banner byte-identical"
+printf 'import sys\nprint("looks like a notice")\nsys.stderr.write("warn\\n")\n' > "$UK/bin/update_notice.py"
+un_same_banner "fail-open: output alongside stderr noise is rejected, banner byte-identical"
+# Stderr holding ONLY a newline: `proc.stderr.strip()` reads that as empty, so this is the fixture
+# that fails if the check ever softens back to a stripped comparison.
+printf 'import sys\nprint("looks like a notice")\nsys.stderr.write("\\n")\n' > "$UK/bin/update_notice.py"
+un_same_banner "fail-open: stderr holding only a newline still rejects the line"
+# (3) a HANGING CLI must time out inside the hook budget and change nothing.
+printf 'import time\ntime.sleep(60)\n' > "$UK/bin/update_notice.py"
+t0=$(date +%s); hook_banner "$HC" "$TMP/banner.cmp" >/dev/null; t1=$(date +%s)
+{ cmp -s "$TMP/banner.cmp" "$TMP/banner.base" && [ $((t1 - t0)) -lt 10 ]; } \
+  && ok "fail-open: a hanging CLI times out inside the 10s hook budget, banner byte-identical" \
+  || bad "a hanging update_notice.py blocked or changed the banner ($((t1 - t0))s)"
+# (4) an EMPTY-output CLI is the ordinary no-notice case and must also change nothing.
+printf 'pass\n' > "$UK/bin/update_notice.py"
+un_same_banner "a silent CLI leaves the banner byte-identical (the ordinary no-notice case)"
+# (5) whitespace-only output is not a notice either.
+printf 'print("   ")\n' > "$UK/bin/update_notice.py"
+un_same_banner "whitespace-only CLI output is rejected, banner byte-identical"
+# U+2028 LINE SEPARATOR renders as a second line in plenty of viewers and contains no "\n" at all,
+# so a `"\n" in out` check would wave it through. str.splitlines() is the check that catches it.
+printf 'print("notice\\u2028SECOND LINE")\n' > "$UK/bin/update_notice.py"
+un_same_banner "a Unicode line separator (U+2028) in CLI output is rejected, banner byte-identical"
+# TRAILING separators are the ones a strip()-first gate waves through: str.strip() treats U+2028 as
+# whitespace, and it collapses a doubled final newline. The gate validates the RAW stdout, so both
+# are refused — "exactly one line" has to mean exactly, or the claim is decoration.
+printf 'import sys\nsys.stdout.write("notice\\u2028")\n' > "$UK/bin/update_notice.py"
+un_same_banner "a TRAILING U+2028 is rejected (strip() would have called it whitespace)"
+printf 'import sys\nsys.stdout.write("notice\\n\\n")\n' > "$UK/bin/update_notice.py"
+un_same_banner "a DOUBLED final newline is rejected (only one trailing newline is normalized)"
+# …and the well-behaved single trailing newline a plain print() emits still fires, so the two
+# assertions above are strictness, not breakage.
+printf 'print("acme 9.9.9 is available - control line")\n' > "$UK/bin/update_notice.py"
+grep -q 'control line' <<<"$(hook_banner "$HC")" \
+  && ok "control: one line with a single trailing newline IS admitted" \
+  || bad "the presenter rejects ordinary print() output — the gate is too strict"
+# A carriage return could redraw the banner lines above it — one line by newline count, not by what
+# a terminal would show.
+printf 'print("notice\\rOVERWRITE")\n' > "$UK/bin/update_notice.py"
+un_same_banner "a control character (CR) in CLI output is rejected, banner byte-identical"
+# (6) no CLI at all — a partially vendored kit.
+rm -f "$UK/bin/update_notice.py"
+un_same_banner "fail-open: a missing update_notice.py leaves the banner byte-identical"
+
+# The child timeout is a share of the hook's budget, not the whole of it: prove the banner the
+# session actually depends on still renders well inside 10s on the HAPPY path, so the hung-CLI
+# assertion above is measuring headroom rather than luck.
+cp bin/update_notice.py "$UK/bin/"
+t0=$(date +%s); hook_banner "$HC" >/dev/null; t1=$(date +%s)
+[ $((t1 - t0)) -lt 5 ] \
+  && ok "the happy-path banner renders in $((t1 - t0))s, well inside the 10s hook budget" \
+  || bad "the banner took $((t1 - t0))s — the child timeout leaves the parent no headroom"
+
+# --- the harness-neutral route --------------------------------------------------------------------
+# A usage error must not be able to write argparse's diagnostic into a hook's stderr check.
+out="$(python3 bin/update_notice.py --not-a-flag 2>&1)"; rc=$?
+{ [ "$rc" -eq 0 ] && [ -z "$out" ]; } \
+  && ok "a usage error is silence with exit 0 (argparse can never surface a diagnostic)" \
+  || bad "a bad flag produced output or a nonzero exit" "rc=$rc $out"
+# `--help` is the ONE documented exception to "silence or one line" — a harness-neutral CLI needs
+# discoverable help. It is only safe because the presenter refuses multi-line output, so assert BOTH
+# halves: help exists, and it could never reach a banner.
+help_out="$(python3 bin/update_notice.py --help 2>/dev/null)"; help_rc=$?
+{ [ "$help_rc" -eq 0 ] && grep -q '^usage: ' <<<"$help_out" \
+  && grep -q '\-\-root' <<<"$help_out" && grep -q '\-\-config-root' <<<"$help_out"; } \
+  && ok "--help prints REAL usage naming both flags and exits 0 (the documented exception)" \
+  || bad "--help output is not recognizable usage text" "rc=$help_rc $help_out"
+# Contract 1 (exit 0, ALWAYS) has NO exceptions — including the one path that deliberately writes.
+# `--help` renders BEFORE argparse exits, so a closed stdout raises from the act of printing help.
+for flags in "--help" "--root $UR --config-root $UC"; do
+  # shellcheck disable=SC2086
+  python3 bin/update_notice.py $flags >&- 2>/dev/null; rc=$?
+  [ "$rc" -eq 0 ] \
+    && ok "exit 0 with stdout CLOSED ($flags)" \
+    || bad "a closed stdout produced exit $rc ($flags)"
+done
+grep -q 'ONE deliberate exception is `--help`' bin/update_notice.py \
+  && ok "the docstring STATES the --help exception rather than overclaiming absolute silence" \
+  || bad "update_notice.py claims absolute silence while --help prints usage"
+cp bin/update_notice.py "$UK/bin/"
+printf 'import sys\nsys.argv=["x","--help"]\nexec(open(%s).read())\n' "\"$KIT/bin/update_notice.py\"" \
+  > "$UK/bin/update_notice.py"
+un_same_banner "even --help output cannot reach the banner (the presenter rejects multi-line)"
+cp bin/update_notice.py "$UK/bin/"
+out="$(bash bin/tw update_notice.py --root "$UR" --config-root "$UC" 2>&1)"
+grep -q '3\.6\.1 is available' <<<"$out" \
+  && ok "reachable through the bin/tw launcher (every runtime, not just Claude Code)" \
+  || bad "bin/tw could not run update_notice.py" "$out"
+grep -q 'update_notice.py --root' docs/runtimes.md \
+  && ok "docs/runtimes.md names the launcher form for runtimes without a session-start hook" \
+  || bad "docs/runtimes.md does not name the update_notice launcher form"
+# No CLAUDE_* variable is REQUIRED: the CLI must work from its flags alone.
+out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u CLAUDE_CONFIG_DIR \
+  python3 bin/update_notice.py --root "$UR" --config-root "$UC" 2>&1)"
+grep -q '3\.6\.1 is available' <<<"$out" \
+  && ok "no Claude environment variable required (harness-neutral)" \
+  || bad "update_notice.py needs a CLAUDE_* variable" "$out"
+# It NAMES the remediation; it must never RUN it. A kit that silently swaps its own running code has
+# a worse property than a stale version, so the only subprocess here is git rev-parse.
+python3 - "$KIT/bin/update_notice.py" <<'UNPY' && ok "the notice only NAMES the remediation; it never executes a plugin command" || bad "update_notice.py appears to execute a plugin command"
+import re, sys
+src = open(sys.argv[1]).read()
+calls = re.findall(r"subprocess\.\w+\(\s*\[([^\]]*)\]", src, re.S)
+sys.exit(1 if any("claude" in c or "plugin" in c for c in calls) else 0)
+UNPY
+
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
