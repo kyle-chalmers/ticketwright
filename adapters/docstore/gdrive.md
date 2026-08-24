@@ -8,6 +8,8 @@ user_keys: [mount_root]   # tier-3 overridable: the local CloudStorage mount pre
 auth: |
   Google Drive for Desktop must be mounted at the CloudStorage path.
   Verify: `test -d "{base_path}"`.
+  Not installed, or no mount available (e.g. Linux)? Install steps per OS, the `mount_root` tier
+  split, and the mountless `rclone` alternative: <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>.
 ---
 
 # Google Drive adapter

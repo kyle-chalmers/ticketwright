@@ -224,7 +224,7 @@ before it is paid.
   checklist inline and the verdict records `review_mode: inline-same-context` as the weaker check
   (`unestablished` isolation still fans out, recorded verbatim).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
-- **32 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
+- **33 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
   tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS). Six of
   those directories are tool slots; the seventh, `runtime/`, declares what each agent harness can do
   (see [runtimes.md](runtimes.md)) and carries no verbs, because it is not a tool the project calls.

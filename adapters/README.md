@@ -343,8 +343,11 @@ routing never reads `default:`, but every pre-routing reader displays it.
 `container_key:`: chat adapters carry `channel_key:` (Slack `default_channel`, Teams `channel`,
 Gmail/Outlook `to` — ONE address string, a person or a distribution list; extra recipients belong in
 `always_include`, where each is validated and printed individually), docstore adapters carry
-`destination_key:` (`drive_folder` — the team-owned half, so the check does
-not vary by whose machine it runs on). A chat adapter whose medium has a first-class sender — the
+`destination_key:` (`drive_folder` for the mounted stores, `remote_path` for `rclone` — always the
+team-owned half, so the check does not vary by whose machine it runs on; the per-machine half,
+`mount_root` or the rclone `remote` name, is composed into `base_path` by the resolver and is what
+makes the routed destination — and therefore the `resolution_fingerprint` — move when someone
+re-points a personal alias after an approval). A chat adapter whose medium has a first-class sender — the
 email adapters — additionally carries **`sender_key:`** (Gmail/Outlook `identity`): routing surfaces
 that value as `sender` on the routed plan line, REFUSES a named target whose sender key resolves to
 nothing (mail must not go out as whoever the transport happens to be authenticated as), refuses a
@@ -403,7 +406,7 @@ verb contract for their seam:
 - **chat:** `slack`, `teams`, `gmail`, `outlook` (email is a chat **target**, not a sixth seam —
   same four verbs, destination key `to`, `always_include` rendered as visible Cc, draft-first;
   each adapter's frontmatter states the mapping's rough edges honestly)
-- **docstore:** `gdrive`, `sharepoint`
+- **docstore:** `gdrive`, `sharepoint`, `rclone` (mountless — Drive/OneDrive/Dropbox/S3/Box via the rclone CLI)
 - **vcs:** `github`, `gitlab`, `azure-repos`
 - **viewer** *(optional)*: `macos-open`, `xdg-open`, `windows-start` — pick the one for your OS
 - **runtime** *(capability declarations, not a tool seam)*: `claude-code`, `codex-cli`, `cursor`,

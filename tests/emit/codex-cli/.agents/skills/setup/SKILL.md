@@ -122,7 +122,7 @@ which prints the resolved commands without launching anything. Never commit this
 ## Default mode — configure the repo
 
 ### Phase 1 — Detect (no questions yet)
-1. **CLIs:** `!for c in snow acli gh glab bq databricks yq jq git; do command -v $c >/dev/null && echo "✓ $c" || echo "– $c"; done`
+1. **CLIs:** `!for c in snow acli gh glab bq databricks yq jq git rclone; do command -v $c >/dev/null && echo "✓ $c" || echo "– $c"; done`
 2. **MCP servers** connected this session (tracker / chat / warehouse servers).
 3. **Repo facts — probes, not questions.**
    - **Origin:** read the `origin` remote URL — one probe, two facts: whether the remote sits on
@@ -140,6 +140,9 @@ which prints the resolved commands without launching anything. Never commit this
      (tier-3) value: display what was found and route it to the person flow
      (`.claude/config/connections.local.yaml`, [teammate.md](teammate.md) steps 3–4). Writing it
      into committed `stack.yaml` is exactly the leak the tier split exists to prevent.
+     Found **no** mount and the configured docstore expects one? Do not ask — print the guide as its
+     full GitHub URL, <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>, which covers installing the mount per OS and the mountless `rclone`
+     adapter. Never a bare `docs/` path: `docs/` does not ship in the PyPI package.
    - **Names only, here too:** report profile/connection/mount *names* and paths — never echo a
      tool config file's contents anywhere; those files can hold plaintext secrets.
 4. **Existing state — four routes, checked in order.** First write the boundary down: the ADOPT

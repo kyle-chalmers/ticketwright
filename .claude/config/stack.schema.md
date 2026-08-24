@@ -296,9 +296,27 @@ never a fallback when routing fails.
 `always_include` keeps validating exactly as before. `bin/verify_stack.sh` enforces the multi-target
 rules and **fails** on a violation (the full table is in `adapters/README.md`).
 
+**A docstore needs no desktop mount.** The `gdrive`/`sharepoint` adapters write into a sync folder,
+so they need one installed (per-OS steps:
+<https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>). The `rclone` adapter
+fills the same slot with no mount at all, across Drive, OneDrive, Dropbox, S3 and Box. It splits the
+destination on the same tier line: `remote_path` is the team's destination (tier 1, committed, and
+path-only — never prefixed with a remote name) and `target_sentinel` is the team-pinned token that
+proves a remote reaches it; the rclone `remote` NAME is per-machine (tier 3), because one person's
+alias for an account is not a team decision. The resolver composes `{base_path}` =
+`{remote}:{remote_path}` exactly as it composes `{mount_root}/{drive_folder}`, so a tier-3 alias
+change moves the `resolution_fingerprint` and refuses rather than redirecting a delivery. Every
+rclone command interpolates `{base_path}` rather than the two halves — that is what keeps the
+destination a delivery EXECUTES identical to the one a human approved, including when a team pins
+`base_path` literally in committed config (which is linted, since it discards the tier split).
+Reachability is not identity: `rclone lsd` can succeed against a different account holding the same
+path, so the shipped `verify` compares the sentinel's exact contents.
+
 **What the kit does not check.** `sharing_scope` is a declaration: the docstore verify confirms the
 destination exists, never its real sharing permissions. Routing a file to the target you meant is
-not evidence that the folder's ACL matches the scope you wrote.
+not evidence that the folder's ACL matches the scope you wrote. With `rclone` the blast radius is
+wider — an S3 bucket can be public and `rclone link` mints accountless URLs — and none of that is
+inspected either.
 
 **Known limitation:** `tickets/OBJECTS.md` and the graph layer fold object names case-insensitively
 and are warehouse-blind, so `ANALYTICS.CUSTOMERS` on one target and `analytics.customers` on another
