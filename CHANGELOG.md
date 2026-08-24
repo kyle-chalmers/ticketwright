@@ -6,6 +6,56 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **The plugin installs again on Claude Code 2.0.x–2.1.x.** `marketplace.json` declared
+  `"source": "."` (the schema requires `"./"`) and a root-level `description` some versions reject —
+  both failures are *silent* on the declarative session-start path, so a fresh clone simply had no
+  skills and `/setup` returned "unknown command" with no diagnostic. Found by three teammates
+  onboarding on the same day. The manifest now uses `"./"` + `metadata.description`, selftest §16
+  pins the installable shape, and `docs/troubleshooting.md` gains a symptom-first "slash commands
+  are missing" section covering all three install failure modes (register-without-install, silent
+  schema rejection, phantom installPath) plus the `settings.local.json` escape hatch.
+- **`bin/selftest.sh` runs on stock macOS bash again.** bash 3.2 (`/bin/bash` on every Mac)
+  mis-parses a heredoc nested inside `$( )`; six such sites in v3.6.1 grew to nine by v3.7.0+, so
+  the suite died mid-file after §31 while its earlier ✓ output scrolled past — the "bash 3.2-safe"
+  claim was false three releases running. All 43 heredoc-in-`$()` sites now capture via temp files,
+  §52 lints the file for the forbidden shape on every platform, and CI gains a macOS job running
+  the parse gate + the full suite under `/bin/bash`. 1099 checks pass under both bash 5.3 and 3.2.57.
+- **`verify_stack.sh` no longer prints "All seams OK." over unverified seams.** A completely
+  unauthenticated MCP-only chat seam sat under an all-green banner (observed live). The summary now
+  counts three states and names the unverified seams — `3 OK, 2 unverified (chat, docstore).` —
+  with distinct wording for "MCP-only: the agent must probe in-session" vs "skipped: unresolved
+  {token}". Exit codes are unchanged.
+- **`whoami` warnings are honest and useful.** The public-host message hedges (github.com hosts
+  private org repos; visibility is unverifiable offline), the advice recommends `$USER` concretely,
+  and binding an `--identity` that matches no local candidate now warns on stderr instead of
+  reporting an inert bind as clean success. `_stack.py` compiles without `SyntaxWarning` under
+  Python 3.12+ (it printed to stderr on every hook call).
+
+### Changed
+- **Getting started is two tracks.** The README now documents the founder path ("Setting up a
+  repo") and the teammate path ("Joining a configured repo") separately, each step with its check —
+  including the fact the old doc omitted: the committed `enabledPlugins`/`extraKnownMarketplaces`
+  registers and clones the marketplace but does **not** install the plugin; `claude plugin install
+  ticketwright@ticketwright` + a full restart come first. Prerequisites are stack-derived rather
+  than a fixed list (`yq` is no longer demanded of rendered repos — nothing there uses it), and
+  Windows onboarding is honestly labeled untested.
+- **`db_write_guard`'s jurisdiction is stated everywhere it matters.** The guard sees **Bash** —
+  SQL issued through a warehouse MCP server never reaches it, while `transport: mcp` is a legal
+  warehouse configuration. The rendered AGENTS enforcement table now carries the same
+  jurisdiction paragraph its sibling guard always had (test-pinned), plus a pre-install honesty
+  note: hooks ship *with* the plugin, so the first, uninstalled session has no mechanical gates at
+  all. Both warehouse adapters route **writes through the CLI** and keep MCP for read/exploration;
+  `snowflake.md` documents the real config-file precedence chain (`SNOWFLAKE_HOME` →
+  `~/.snowflake/` → macOS Application Support) and a fallback expected-target probe for repos whose
+  `default_warehouse` is still an open TODO. Mechanical MCP enforcement (adapter-declared payload
+  paths) is deferred to its own change.
+- **Setup flow closes the gaps four onboardings found.** `teammate.md` checks git identity before
+  binding (step 0.5) and makes the in-session MCP probe an explicit rule; `interview.md` offers the
+  rclone mountless route when `mount_root` cannot resolve (Drive for desktop now requires IT device
+  approval); the rendered settings allowlist matches the invocation shapes skills actually use
+  instead of eight `bin/…` paths that never match.
+
 ### Added
 - **A visible "release available" notice.** `autoUpdate: true` refreshes the marketplace *catalog*
   but does not re-install a project-scoped plugin from it
