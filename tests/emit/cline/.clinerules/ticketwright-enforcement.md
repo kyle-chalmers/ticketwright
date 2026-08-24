@@ -38,6 +38,21 @@ a browser never reaches it. And its classifier matches filenames and document sh
 against the bulk artifact, not a confidentiality review, and nothing in it replaces a person
 reading the file.
 
+`db_write_guard` has the same jurisdiction limit, so state it too: it sees **Bash** — a warehouse
+CLI command in a shell payload (including SQL hidden in a `-f` file or a stdin redirect). SQL
+issued through a warehouse MCP server, or any other non-Bash tool, never reaches it; on the MCP
+transport the DB-write policy is guidance the agent follows, not a gate the runtime enforces.
+Route warehouse WRITES through the CLI, where the gate can actually see them, and keep the MCP
+path for read/exploration.
+
+And a limit that precedes every runtime row: the hooks ship WITH the plugin. Until the plugin is
+installed and the session restarted, every ENFORCEMENT cell above is GUIDANCE — a teammate's very
+first session in this repo, exactly the one where a newcomer pokes at the warehouse, has no hooks
+at all. Install first: `claude plugin install ticketwright@ticketwright`. And one privacy rule for
+that same onboarding window: never run bare `snow connection list` — it prints account, user, and
+role into the transcript. Enumerate connection NAMES only:
+`snow connection list --format JSON | python3 -c "import json,sys;[print(c['connection_name']) for c in json.load(sys.stdin)]"`.
+
 Per-runtime caveats — the part that keeps the table honest:
 
 - **Claude Code** — the native hooks in `.claude/hooks/` (`db_write_guard` sees SQL hidden in a

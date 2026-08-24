@@ -405,7 +405,10 @@ Under `bypassPermissions` the hook stays silent and emits a `systemMessage` inst
 the operator has already opted out of prompting, so a prompt there is incoherent. Every other
 permission mode gets a normal `ask`. For agents other than Claude Code this policy is
 **guidance, not enforcement**: they read it in `AGENTS.md` and are trusted to honor it, since
-hooks are the only mechanically enforced layer.
+hooks are the only mechanically enforced layer. And even under Claude Code the hook's
+jurisdiction is **Bash**: it inspects warehouse CLI commands in shell payloads (a `-f` file or
+stdin redirect included), so SQL issued through a warehouse MCP server never reaches it — on
+`transport: mcp` the policy is skill-level guidance there too. Route writes through the CLI.
 
 ### `human_review_handoff` — the other enum
 

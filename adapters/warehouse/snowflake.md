@@ -3,10 +3,19 @@ seam: warehouse
 tool: snowflake
 transport: both        # `snow` CLI for scripts/exports; Snowflake MCP for interactive/semantic
 requires: [cli]        # stack.yaml seams.warehouse.{cli, default_warehouse, pii_role, dev_target}
-user_keys: [connection]   # tier-3 overridable: the ~/.snowflake/config.toml connection NAME is per-machine; default_warehouse / pii_role / dev_target are team decisions
+user_keys: [connection]   # tier-3 overridable: the snow-CLI connection NAME is per-machine (config file location varies — see auth); default_warehouse / pii_role / dev_target are team decisions
 dev_key: dev_db         # legacy spelling of dev_target, still honored
 auth: |
-  CLI:  ~/.snowflake/config.toml connection (USERNAME_PASSWORD_MFA for CLI/MCP).
+  CLI:  a named connection in the snow CLI's config.toml (USERNAME_PASSWORD_MFA for CLI/MCP).
+  Config-file precedence (state it precisely — both directions of the mistake are real):
+    1. `SNOWFLAKE_HOME` env var or a `--config-file` flag, when set;
+    2. `~/.snowflake/config.toml`, whenever that directory exists;
+    3. otherwise the OS default — on macOS `~/Library/Application Support/snowflake/config.toml`
+       (the common case on a fresh Mac).
+  So a hand-made `~/.snowflake/config.toml` is either a shadow file that changes nothing (env var
+  set) or a file that silently takes precedence over the working macOS-default config. Don't guess
+  files — ask the CLI which connections are live (`snow connection list`; during onboarding use
+  the names-only projection below, never the bare command).
   Verify: `snow connection test` (read-only).
   Duo lockout signature: instant 250001/370001 = locked (wait 15 min); hang = push pending.
 ---
@@ -15,6 +24,11 @@ auth: |
 
 Maps the `warehouse` verb contract to Snowflake via the `snow` CLI (preferred for repeatable scripts
 and CSV export) and the Snowflake MCP (preferred for interactive exploration + the semantic layer).
+
+**Write routing:** WRITES go through the CLI; the MCP transport is for read/exploration. The
+`db_write_guard` hook inspects Bash-issued CLI commands only and cannot see MCP-issued SQL, so a
+mutation routed through the MCP would bypass the mechanical gate — on that path the
+`db_write_requires_approval` policy is guidance, not enforcement.
 
 ## Per-person setup notes (consumed by the onboarding flow; not verbs)
 - **Enumerate connections by NAME only.** Never run bare `snow connection list` during
@@ -34,6 +48,15 @@ and CSV export) and the Snowflake MCP (preferred for interactive exploration + t
   ```
   A connection pointed at a different account fails it, and an interactive MFA prompt here is a
   normal first-run outcome.
+- **Fallback when `{default_warehouse}` is still an unanswered TODO** (a fresh repo, before the
+  team decides the warehouse) — the probe above is unrunnable, but you can still evidence where
+  the connection lands:
+  ```bash
+  snow sql -q "SELECT CURRENT_ACCOUNT(), CURRENT_ROLE(), CURRENT_WAREHOUSE();" -c {connection}
+  snow sql -q "SELECT CURRENT_AVAILABLE_ROLES();" -c {connection}
+  ```
+  That names the account, the active role/warehouse, and every role on offer — enough to confirm
+  the right target (or catch the wrong one) before the team fills in `default_warehouse`.
 
 ## verb: query
 ```bash
