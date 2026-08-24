@@ -5909,10 +5909,17 @@ printf 'project:\n  key_prefix: ENG\n' > "$G48/.claude/config/stack.yaml"
 printf '# ENG-1: x\n\nx.\n' > "$G48/tickets/alice/ENG-1/README.md"
 printf 'SELECT * FROM ANALYTICS.VW_ORDERS;\n' > "$G48/tickets/alice/ENG-1/q.sql"
 CLAUDE_PROJECT_DIR="$G48" python3 bin/build_ticket_index.py >/dev/null 2>&1
+# BOTH directories, separately: /ship stages tickets/graph/ AND tickets/objects/, so a gate that
+# only covered the ticket stubs would leave half the staged claim unproven.
 rm -f "$G48/tickets/graph/alice.ENG-1.md"
 CLAUDE_PROJECT_DIR="$G48" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
-  && bad "--check passes with a graph node missing (the staging instruction rests on this gate)" \
-  || ok "--check gates the graph nodes, so a node left unstaged is CI drift"
+  && bad "--check passes with a ticket node missing (the staging instruction rests on this gate)" \
+  || ok "--check gates tickets/graph/, so a stub left unstaged is CI drift"
+CLAUDE_PROJECT_DIR="$G48" python3 bin/build_ticket_index.py >/dev/null 2>&1
+rm -f "$G48/tickets/objects/ANALYTICS.VW_ORDERS.md"
+CLAUDE_PROJECT_DIR="$G48" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
+  && bad "--check passes with an object node missing (half the staged graph layer is ungated)" \
+  || ok "--check gates tickets/objects/ too, so an object note left unstaged is CI drift"
 CLAUDE_PROJECT_DIR="$G48" python3 bin/build_ticket_index.py >/dev/null 2>&1
 c48="$(CLAUDE_PROJECT_DIR="$G48" python3 bin/build_ticket_index.py --check 2>&1)"
 grep -q 'graph layer' <<<"$c48" \
@@ -5927,18 +5934,21 @@ grep -q 'graph layer' <<<"$c48off" \
   || ok "--check omits the graph layer when graph_notes is off"
 
 # --- (B) every instruction that names the index commit names the whole index ---------------------
-# Enumerated, not grepped repo-wide: these four are the sites that tell a human or an agent WHICH
-# files to stage. CHANGELOG.md is deliberately absent — history is never rewritten (section 38).
-for f in .claude/skills/ship/SKILL.md .claude/skills/refresh/SKILL.md \
-         .claude/skills/refresh/index.md docs/ticket-index.md; do
+# Enumerated, not grepped repo-wide: these are the sites that tell a human or an agent WHICH files
+# to stage — the two skills, the reference doc, and enrich_ticket.py, whose docstring and completion
+# line are the ONE such instruction a person meets without going through a skill at all (it
+# re-renders, so it moves the graph layer too). CHANGELOG.md is deliberately absent — history is
+# never rewritten (section 38).
+IDX48=".claude/skills/ship/SKILL.md .claude/skills/refresh/SKILL.md \
+       .claude/skills/refresh/index.md docs/ticket-index.md bin/enrich_ticket.py"
+for f in $IDX48; do
   { grep -q 'tickets/graph/' "$f" && grep -q 'tickets/objects/' "$f" \
     && grep -q 'graph_notes' "$f"; } \
     && ok "$f stages the graph layer with the catalog, gated on graph_notes" \
     || bad "$f names only the catalog files in the index commit"
 done
 u48=""
-for f in .claude/skills/ship/SKILL.md .claude/skills/refresh/SKILL.md \
-         .claude/skills/refresh/index.md docs/ticket-index.md; do
+for f in $IDX48; do
   grep -qiE 'all three' "$f" && u48="$u48 $f"
 done
 [ -z "$u48" ] && ok "no index-commit instruction still counts the staged set as three" \
@@ -5950,7 +5960,11 @@ gj48="$TMP/gate48"; mkdir -p "$gj48/.claude/config" "$gj48/tickets/alice/ENG-1"
 printf 'project:\n  key_prefix: ENG\n' > "$gj48/.claude/config/stack.yaml"
 printf '# ENG-1: x\n\nx.\n' > "$gj48/tickets/alice/ENG-1/README.md"
 CLAUDE_PROJECT_DIR="$gj48" python3 bin/build_ticket_index.py >/dev/null 2>&1
-printf '{"schema_version": 1, "tickets": [{"id": "ENG-404", "summary": "not on disk"}]}\n' \
+# A WELL-FORMED record (load_data keeps only records carrying both owner and id as strings — an
+# ownerless one is dropped, which would make this a no-op change and prove nothing). ENG-404 has no
+# folder, so it never enters `rows` and the rendering is unchanged: what is left on the table is
+# purely the store file's own bytes, which is exactly the thing --check must not be gating.
+printf '{"schema_version": 1, "tickets": [{"owner": "alice", "id": "ENG-404", "summary": "no folder on disk"}]}\n' \
   > "$gj48/tickets/index_data.json"
 CLAUDE_PROJECT_DIR="$gj48" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
   && ok "--check leaves the curated store alone (it is the render's input, not a rendering)" \

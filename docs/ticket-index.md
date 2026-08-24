@@ -155,7 +155,7 @@ graph looks right for the whole team; per-user `.obsidian/workspace.json` is git
 
 ```bash
 python3 bin/build_ticket_index.py             # (re)render INDEX.md + OBJECTS.md from the store + folders
-python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if any rendered file (both catalog files, plus the graph nodes) != a fresh render
+python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if any rendered file (both catalog files, plus the graph nodes when that layer is on) != a fresh render
 python3 bin/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects
 python3 bin/build_ticket_index.py --recurring --min-tickets 8   # objects touched by many tickets → productize candidates
 ```

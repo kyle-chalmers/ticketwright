@@ -33,7 +33,9 @@ Owner is part of ticket identity: a bare id that exists under more than one `tic
 folder is a HARD STOP (exit 3) naming every owner — pass the `owner/id` locator to pick one.
 Enriching every matching folder was the old behavior and is exactly the guess this forbids.
 
-Then commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the ticket.
+Then commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the ticket, plus
+tickets/graph/ + tickets/objects/ when project.graph_notes is on (the default) — the re-render
+touches the graph layer too, and --check gates it.
 """
 from __future__ import annotations
 
@@ -353,7 +355,8 @@ def main() -> int:
     subprocess.run([sys.executable, str(ingest), "--from-json", "-"],
                    input=json.dumps({"records": records}), text=True, check=True)
     subprocess.run([sys.executable, str(render)], check=True)
-    print("Done. Commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the ticket.", file=sys.stderr)
+    print("Done. Commit tickets/INDEX.md + tickets/OBJECTS.md + tickets/index_data.json with the "
+          "ticket — plus tickets/graph/ + tickets/objects/ if the graph layer is on.", file=sys.stderr)
     return 0
 
 

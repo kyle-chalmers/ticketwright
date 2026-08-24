@@ -969,7 +969,7 @@ def write_obsidian_graph(root: Path) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render tickets/INDEX.md + OBJECTS.md")
-    ap.add_argument("--check", action="store_true", help="exit 1 if INDEX.md/OBJECTS.md or the graph nodes are stale vs a fresh render")
+    ap.add_argument("--check", action="store_true", help="exit 1 if INDEX.md/OBJECTS.md — or the graph nodes, when the layer is on — are stale vs a fresh render")
     ap.add_argument("--stats", action="store_true", help="print coverage + health stats and exit 0")
     ap.add_argument("--recurring", action="store_true",
                     help="list objects touched by many tickets over a long span (productize candidates)")

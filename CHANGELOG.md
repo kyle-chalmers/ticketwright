@@ -15,9 +15,15 @@ All notable changes to this project are documented here. Format loosely follows
   contributor's `--check` was the thing that noticed. Step 8 now stages `tickets/graph/` +
   `tickets/objects/` too, when `project.graph_notes` is on (the default). 3.6.0 documented this as
   an asymmetry to live with; it was a gap to close.
-- **The same under-count in three more places**, all of which told a reader to commit "all three"
-  index files: `/refresh`'s index mode (`SKILL.md` + `index.md`) and `docs/ticket-index.md`, the
-  last of which describes itself as wired into the ship skill and so has to agree with it.
+- **The same under-count everywhere else it appeared.** `/refresh`'s index mode (`SKILL.md` +
+  `index.md`) and `docs/ticket-index.md` all told a reader to commit "all three" index files — the
+  last describes itself as wired into the ship skill, so it has to agree with it. `bin/enrich_ticket.py`
+  said it in two places of its own (the module docstring and the line it prints when it finishes),
+  and it matters most there: it re-renders, so it moves the graph layer, and it is the one such
+  instruction a person meets without going through a skill at all.
+- **Descriptions of what the renderer writes and the gate covers**, in `/refresh index`'s opening
+  summary, `/ticket`'s catalog-refresh step, and this repo's own `AGENTS.md` command list — each
+  named the two catalog files and stopped there.
 - **`--check`'s clean line named only what it used to compare.** It printed
   `tickets/INDEX.md + OBJECTS.md are up to date.` after comparing the graph nodes as well; it now
   names the graph layer when the layer is on, and still doesn't when `graph_notes` is off. The four
@@ -38,11 +44,13 @@ All notable changes to this project are documented here. Format loosely follows
   a row or node that moved for *another* ticket, so the step asks for a look at the index diff and
   for the carried change to be named in the commit message instead of bundled in silently. This was
   already true of `INDEX.md` and `OBJECTS.md`; naming it is the honest half of widening the list.
-- New selftest section 48 pins it from both ends: mechanically, that `--check` really does fail on a
-  missing graph node, that its clean line tracks the `graph_notes` flag, and that no instruction
-  claims the curated store is gated; and as prose wiring, that all four index-commit instructions
-  name the graph paths, that none still says "all three", and that the retired asymmetry does not
-  creep back into the two docs.
+- New selftest section 48 pins it from both ends. Mechanically: `--check` fails on a node deleted
+  from `tickets/graph/` *and* on one deleted from `tickets/objects/` (both halves of what `/ship`
+  now stages), its clean line tracks the `graph_notes` flag in both directions, and a well-formed
+  curated record that changes no rendering leaves `--check` clean — the honest proof that the store
+  is an input. As prose wiring: the five enumerated index-commit instructions each name the graph
+  paths and the flag, none still says "all three", and the retired asymmetry cannot creep back into
+  the two docs. What it pins is that enumeration, not every sentence in the repo.
 
 ## [3.6.0] — 2026-08-22
 
