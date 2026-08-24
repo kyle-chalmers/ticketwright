@@ -30,8 +30,20 @@
 .obsidian/workspace.json.bak
 .obsidian/cache
 
+# ── Source material: raw meeting transcripts stay OUT of git by default ──
+# Curated excerpts are committed; raw full transcripts are not. The patterns below are ACTIVE, not
+# a suggestion — a meeting transcript is the most PII-dense artifact a ticket folder holds. Note
+# that the CSV-family rules above do NOT cover markdown, which is the format notetakers export.
+# The committed, curated form is `YYYY-MM-DD-<slug>-meeting.md`: trim to decisions and action
+# items, name it that way, and it commits normally.
+# To track a raw file anyway: `git add -f <path>` plus an explicit approval. The kit's
+# source_material_guard hook asks first either way, and it also catches a transcript whose
+# filename gives nothing away (`notes.md`) — which no gitignore pattern can.
+**/source_materials/*transcript*
+**/source_materials/private/
 # Downloaded attachments are inputs you didn't author and often carry PII — keep them local.
-# Uncomment to enforce (you can still `git add -f` a specific small input you mean to track):
+# Uncomment to ignore ALL of them, not just transcripts (you can still `git add -f` one you mean
+# to track):
 # **/source_materials/*
 # !**/source_materials/.gitkeep
 

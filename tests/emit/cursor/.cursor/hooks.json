@@ -4,7 +4,7 @@
   "hooks": {
     "beforeShellExecution": [
       {
-        "command": "bash bin/tw hook_shim.py --runtime cursor --hook db_write_guard",
+        "command": "bash bin/tw hook_shim.py --runtime cursor --hook shell_guards",
         "failClosed": true
       }
     ]

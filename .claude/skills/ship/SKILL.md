@@ -131,7 +131,16 @@ execute — nothing the steps don't do may appear in it:
    than a promise. It pins the *resolution*; the file contents shipped are whatever is in the
    folder at delivery time, as always.
    Only on explicit authorization, execute in order:
-5. **docstore.backup** the ticket folder (full-title dest name) **into the routed target's
+5. **Scan the source material first, then docstore.backup.** The backup copies the WHOLE ticket
+   folder, so run
+   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" scan_source_materials.py --ticket <ticket-dir>`
+   and **halt on a non-zero exit** — a raw meeting transcript is about to be copied out of the
+   repo. The remedy here is NOT the `private/` folder: `.gitignore` has no bearing on the
+   adapter's `cp -r`, so `private/` protects git and nothing else. Remove the file from the folder,
+   or have the human approve the copy explicitly. (The `source_material_guard` hook asks about the
+   same command; this call is what makes the halt visible on runtimes whose hooks are not wired.
+   Neither reads MEANING — a curated summary quoting confidential material passes both.) Then
+   **docstore.backup** the ticket folder (full-title dest name) **into the routed target's
    destination from step 4(a)** — never another target's, and never a slot-level path. Then record
    each delivered file against the target it actually went to:
    `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <approved> --expect-fingerprint <approved>`
@@ -175,7 +184,11 @@ execute — nothing the steps don't do may appear in it:
    silently. **Before staging, list the
    `final_deliverables/` files that will be committed and confirm none carry PII/customer data that
    shouldn't be in git** — if any do, have the user rename them `*.private.csv` (etc.) or move them
-   under a `private/` subfolder (both gitignored) first. Then **vcs.open_pr** (semantic title; body =
+   under a `private/` subfolder (both gitignored) first. **Then run the same source-material scan
+   as step 5** (`scan_source_materials.py --ticket <ticket-dir>`) and halt on a non-zero exit:
+   `source_materials/` is committed too, and a raw transcript whose filename gives nothing away
+   (`notes.md`) is matched by no gitignore pattern. Here `private/` IS a valid remedy, alongside
+   trimming the file to the curated `YYYY-MM-DD-<slug>-meeting.md` form. Then **vcs.open_pr** (semantic title; body =
    Business Impact / Deliverables / Technical Notes / QC).
 9. **transition** the ticket toward `project.terminal_status` if appropriate.
 

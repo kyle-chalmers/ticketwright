@@ -188,7 +188,8 @@ asked for) from "this person is new" (the teammate route above).
 ### Phase 2 — Interview, in rounds (detected answers pre-selected, defaults visible)
 Run the interview in [interview.md](interview.md). Six rounds, cut by whether skipping is
 survivable: **rounds 1–4 always run** (who · where work comes from · where the data lives · where
-work goes), **rounds 5–6 are individually skippable** (how you work · house rules), the skip
+work goes — round 4's one intake/delivery question covers email *and* whether an AI notetaker
+carries work in, which writes `meetings` into `project.intake`), **rounds 5–6 are individually skippable** (how you work · house rules), the skip
 offered at that round's header and labeled with its cost — never as a global "take defaults for
 the rest". What earns a question is the rule at the top of this file, not a count. Every chosen
 adapter's required keys are asked; "I'll fill it in later" writes the key as a `# TODO` and keeps

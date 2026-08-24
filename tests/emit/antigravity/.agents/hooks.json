@@ -4,7 +4,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "command": "bash bin/tw hook_shim.py --runtime antigravity --hook db_write_guard"
+        "command": "bash bin/tw hook_shim.py --runtime antigravity --hook shell_guards"
       }
     ],
     "PostToolUse": [
