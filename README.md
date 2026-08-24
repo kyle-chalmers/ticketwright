@@ -127,6 +127,20 @@ marketplace entry — no CLI flag sets this one — so teammates pick up tagged 
 "autoUpdate": true
 ```
 
+One honest caveat while the gap reported in
+[claude-code#61854](https://github.com/anthropics/claude-code/issues/61854) persists (verified live
+2026-08-23): `autoUpdate` refreshes the marketplace CATALOG on session start, but Claude Code does not
+yet re-install a project-scoped plugin from it - so a new release reaches every teammate's machine
+without being swapped in. Until that lands upstream, picking up a release is one command pair, run
+from the repo:
+
+```bash
+claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project
+```
+
+(It may reorder keys in `.claude/settings.json`; the content is identical - `git checkout` the file
+if you want zero diff.)
+
 Then **commit the file**, and Ticketwright travels with the repo. `/ticketwright:setup` adds that key for
 you if you'd rather not hand-edit; see [Project-scoped by default](#project-scoped-by-default) for the
 finished file. Both commands default to `--scope user`, so **omit `--scope project` only if you want
@@ -226,12 +240,12 @@ Three details in that block are deliberate:
 - **`source: "git"` is the discriminator `claude plugin marketplace add` writes** for an `https://…git`
   URL — that `source` object is copied from the CLI's own output rather than hand-authored. (`git` and
   `url` are *different* marketplace source types; don't swap one for the other.)
-- **`autoUpdate` is scoped to formal releases.** Claude Code re-installs when the plugin's *version*
-  changes, and the version only moves in a tagged release commit — so day-to-day commits to `main` don't
-  pull teammates onto un-released work. Neither Quickstart command writes this key (no flag sets it);
-  `/ticketwright:setup` adds it, or add it by hand. Note the refresh itself is **not** guaranteed for
-  git-sourced marketplaces (see the upstream caveat in [ROADMAP.md](ROADMAP.md)) — if teammates land on a
-  stale version, `claude plugin marketplace update ticketwright` is the manual pull.
+- **`autoUpdate` is scoped to formal releases.** The version only moves in a tagged release commit —
+  so day-to-day commits to `main` never put teammates onto un-released work. Neither Quickstart command
+  writes this key (no flag sets it); `/ticketwright:setup` adds it, or add it by hand. What it does
+  today: it refreshes the marketplace *catalog*; Claude Code does not yet swap the installed
+  project-scoped plugin to the new version (the Quickstart caveat above has the pick-up command pair,
+  and `claude plugin marketplace update ticketwright` refreshes the catalog by hand).
 
 Installing without `--scope project` puts Ticketwright in your own `~/.claude/settings.json` instead —
 right for personal, cross-repo use, but your teammates get nothing. Use the committed block when you

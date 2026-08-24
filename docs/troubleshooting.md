@@ -100,7 +100,7 @@ project `stack.yaml` it does nothing at all.
 
 | Install method | Upgrade | Notes |
 |---|---|---|
-| Claude Code plugin (project scope) | the committed `autoUpdate` is meant to pick up each tagged release | not guaranteed for git-sourced marketplaces — to pull manually: `claude plugin marketplace update ticketwright`, or `claude plugin update ticketwright --scope project` |
+| Claude Code plugin (project scope) | the committed `autoUpdate` is meant to pick up each tagged release | the catalog refreshes but the installed plugin is not yet swapped (claude-code #61854) — to pull manually: `claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project` (`claude plugin update` does not work at project scope) |
 | Claude Code plugin (user scope) | `claude plugin update ticketwright` | defaults to `--scope user`, matching a no-`--scope` install |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
 | vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
