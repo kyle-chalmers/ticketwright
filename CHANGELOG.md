@@ -7,6 +7,67 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **A docstore without a desktop mount: the `rclone` adapter.** The two shipped document stores
+  both write into a desktop sync folder, which leaves anyone who cannot run a sync agent — every
+  Linux user, since Google ships no Drive for Desktop client — with a bare `test -d` failure and no
+  route forward. `adapters/docstore/rclone.md` fills the same slot with the same **two** verbs
+  across Drive, OneDrive, Dropbox, S3 and Box, with no mount in the path. It splits the destination
+  on the existing tier line: `remote_path` is the team's destination (tier 1, committed, path-only
+  — never carrying a `remote:` prefix, which would double it) and the rclone `remote` NAME is
+  per-machine (tier 3). No skill learned a new option; tool choice stays in `stack.yaml`.
+- **`docs/drive-mount.md`** — detect and guide, never ask (the `docs/obsidian.md` precedent):
+  installing Drive for Desktop or the OneDrive client, the CloudStorage mount path per OS, what
+  `mount_root` means and why it is never committed, and the one-line verify. Pointed at from both
+  docstore adapters' `auth:` notes and all three `/setup` surfaces by **GitHub URL**, because
+  `docs/` does not ship in the wheel and a bare `docs/` path resolves to nothing on a pip install.
+
+### Changed
+- **A re-pointed personal remote can no longer redirect a delivery silently.** `_compose_paths()`
+  now composes an unmounted docstore's `base_path` as `{remote}:{remote_path}`, exactly as it
+  already composed `{mount_root}/{drive_folder}`, and routing substitutes the composed destination
+  for any **docstore** target rather than only for `drive_folder`. The tier-3 half therefore lands
+  inside the routed `destination` — so it is covered by the shell-metacharacter refusal **and** by
+  `resolution_fingerprint`, and re-pointing an alias after an approval now refuses (exit 8) instead
+  of delivering somewhere nobody authorized. Chat is deliberately excluded from that substitution:
+  it shares the code path, and a stray `base_path` must never override a channel.
+- **An adapter can no longer make its own destination personal.** The reserved-key rule is now
+  *derived* from each adapter's declared `destination_key:`/`channel_key:` instead of being a fixed
+  list that could only name today's keys, and `remote_path`/`base_path` join the static set. No
+  shipped adapter is affected (every chat adapter declares `user_keys: []`; the mounted docstores
+  declare only `mount_root`).
+- **`source_material_guard` follows the backup verb to its new transport.** The guard existed to
+  stop a folder-wide docstore backup carrying a raw transcript out of the repo, but it matched only
+  `cp`/`rsync` — so an unmounted backup, which contains no `cp` at all, would have walked straight
+  past a gate that shipped one release earlier. `rclone copy`/`copyto`/`sync`/`move`/`moveto` are
+  now in its jurisdiction; read-only rclone verbs (`lsd`, `lsl`, `cat`, `about`, `listremotes`) stay
+  outside it. A new copy path that a shipped privacy gate cannot see is a bypass, not a feature.
+  Detection is no longer regex-only: the guard also **tokenizes** the command with `shlex`, because
+  shell quoting was a one-character bypass of any pattern match — `rclone "copy" …`,
+  `rclone 'copy' …`, `rclone c\opy …`, `'rclone' copy …`, `rclone -vv copy …`,
+  `rclone --config=x.conf copy …`, `env VAR=1 rclone copy …` and `/usr/local/bin/rclone copy …` all
+  execute a recursive copy and all now prompt. The same quoting fix covers `cp`/`rsync`, which had
+  it too. The hook still fails open on an unexpected error, and still asks (never blocks).
+
+- **A flaky selftest assertion is now deterministic.** Section 20's "handoff.sh works with yq absent
+  from PATH" check grepped its output for `yq` as a bare substring, so a random `mktemp` suffix
+  containing those two letters (`tmp.6FV8DYqer5`) failed the run at random. Word-bounded, it still
+  catches a real `yq` dependency. Found while landing this change, unrelated to it.
+
+### Honest limits
+- `rclone link` **creates a public link**: rclone documents it as minting a URL with "no expiry, no
+  password protection, accessible without account". It is authorized like the upload, never run
+  implicitly, and `--expire`/`--unlink` are documented by rclone as unsupported on some backends,
+  so neither is offered as a guaranteed mitigation. Where a backend cannot mint a link, the verb
+  returns a manual fallback rather than a fabricated URL.
+- `rclone copy` is **non-deleting, not non-destructive**: it never removes destination-only files,
+  and it does overwrite a same-name file whose size or modtime differs — which is what re-running a
+  backup after editing a deliverable is supposed to do. `rclone sync` is banned outright.
+- Reachability is not identity. `rclone about` is not supported on every backend (S3 has no
+  `About`) and `rclone lsd` can succeed against a *different* account holding the same path — on an
+  object store an absent prefix lists empty and exits 0. The shipped `verify` therefore compares a
+  team-pinned sentinel's exact contents (`target_sentinel`), not merely that a path lists.
+- `sharing_scope` remains **declared, never inspected**, and rclone widens the blast radius: an S3
+  bucket can be world-readable. The kit checks that a destination is the team's, never its ACL.
 - **Meetings are an intake channel** — `project.intake` accepts `meetings` alongside `tracker`,
   `email`, and `chat`. No new tool slot and no provider connection: the transport is the one that
   already existed, a person exporting notes into the ticket's `source_materials/`. The convention

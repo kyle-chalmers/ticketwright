@@ -75,7 +75,7 @@ done
 
 hdr "3 · no tool names leak into skill/command orchestration"
 # Two intentional matches are allowed: the CLI *detector* and the self-test *instruction* line.
-leaks="$(grep -REn -i 'acli|\bsnow \b|snow sql|mcp__slack|slack_send|\bgh pr\b|\bgh auth\b|ACCOUNT_USAGE|SHOW VIEWS' \
+leaks="$(grep -REn -i 'acli|\bsnow \b|snow sql|mcp__slack|slack_send|\bgh pr\b|\bgh auth\b|ACCOUNT_USAGE|SHOW VIEWS|rclone (copy|sync|link|lsd|purge)' \
           .claude/skills .claude/commands 2>/dev/null \
           | grep -v 'for c in snow acli gh' \
           | grep -v 'grep -REn "acli|snow ' || true)"
@@ -1998,7 +1998,10 @@ if ( PATH="$NOYQ"; command -v yq >/dev/null 2>&1 ); then
 else
   o="$(CLAUDE_PROJECT_DIR="$VP" TICKETWRIGHT_NO_OPEN=1 PATH="$NOYQ" bash bin/handoff.sh \
         --dry-run "$VP/tickets/q.sql" 2>&1)"; rc=$?
-  { [ "$rc" -eq 0 ] && grep -q 'would run' <<<"$o" && ! grep -qi 'yq' <<<"$o"; } \
+  # Word-bound the yq check: mktemp suffixes are random, and one containing "yq"
+  # (e.g. tmp.6FV8DYqer5) made this assertion fail at random on an unrelated change.
+  { [ "$rc" -eq 0 ] && grep -q 'would run' <<<"$o" \
+      && ! grep -qiE '(^|[^A-Za-z0-9])yq([^A-Za-z0-9]|$)' <<<"$o"; } \
     && ok "handoff.sh resolves routes with yq absent from PATH entirely" \
     || bad "handoff.sh still depends on yq" "$o rc=$rc"
   o="$(PATH="$NOYQ" CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh \
@@ -3864,7 +3867,7 @@ done
 # LITERAL SUBSTRING in TWO separate greps — the tool-name leak grep AND the warehouse-product
 # grep (the probe also says `databricks`). Rewording, reordering or line-splitting the probe
 # breaks both, with failure messages that never say "you edited the probe".
-grep -q 'for c in snow acli gh glab bq databricks yq jq git' "$SK38" \
+grep -q 'for c in snow acli gh glab bq databricks yq jq git rclone' "$SK38" \
   && ok "the CLI-detection probe line survives verbatim in setup/SKILL.md" \
   || bad "the CLI probe line was reworded/split — section 3's two exemptions no longer match it"
 nex38="$(grep -c "grep -v 'for c in snow acli gh'" bin/selftest.sh)"
@@ -6306,6 +6309,513 @@ grep -q '"permission": "ask"' <<<"$sg48" \
   && ok "the combined shell_guards hook surfaces a source-material verdict (not just SQL)" \
   || bad "shell_guards does not reach the source-material guard" "$sg48"
 
+
+hdr "50 · docstore without a mount: the rclone adapter + drive-mount guidance"
+# A docstore that needs a desktop sync agent is unavailable to anyone who cannot run one (Linux has
+# no Drive for Desktop client at all). rclone fills the slot with no mount — which moves the tier-3
+# hole from "where is it mounted" to "which ACCOUNT does this alias reach", a redirect that ships a
+# client deliverable somewhere nobody approved. Everything here is the existing machinery inherited
+# by one new adapter: the destination is still composed from a team half + a machine half, still
+# metachar-refused, still fingerprinted.
+RC="adapters/docstore/rclone.md"
+
+# --- (A) frontmatter: the tier split is declared, not implied ------------------------------------
+rc_fm="$(python3 - <<'PY'
+import sys
+sys.path.insert(0, "bin")
+import _yamlite
+f = "adapters/docstore/rclone.md"
+try:
+    fm, _ = _yamlite.parse_frontmatter(open(f, encoding="utf-8").read(), f)
+except Exception as exc:
+    print(f"unparseable: {exc}"); raise SystemExit
+bad = []
+if fm.get("seam") != "docstore": bad.append("seam")
+if fm.get("tool") != "rclone": bad.append("tool")
+if fm.get("destination_key") != "remote_path": bad.append("destination_key")
+if fm.get("user_keys") != ["remote"]: bad.append(f"user_keys={fm.get('user_keys')!r}")
+for k in ("remote_path", "target_sentinel"):
+    if k not in (fm.get("requires") or []): bad.append(f"requires:{k}")
+print(" ".join(bad))
+PY
+)"
+[ -z "$rc_fm" ] \
+  && ok "rclone.md declares destination_key: remote_path (team) + user_keys: [remote] (machine)" \
+  || bad "rclone.md frontmatter wrong — the tier split is what keeps a destination reviewable" "$rc_fm"
+
+# --- (B) both docstore verbs BY NAME, across every docstore adapter ------------------------------
+# Section 2 proves each adapter has the right NUMBER of verb headings, not the right ONES — two
+# typo'd verbs count two and pass. (the chat-seam precedent, section 46A)
+for v in backup link_for; do
+  dvmiss=""
+  for f in adapters/docstore/*.md; do
+    grep -qE "^## verb: $v( |$)" "$f" || dvmiss="$dvmiss $(basename "$f")"
+  done
+  [ -z "$dvmiss" ] && ok "every docstore adapter names verb $v exactly" \
+    || bad "docstore adapter(s) miss or misspell verb $v" "$dvmiss"
+done
+
+# --- (C) copy never deletes, and every destination comes from {base_path} ----------------------
+# Asserted on TOKENIZED runnable commands, not on prose and not on the raw string. Three traps this
+# avoids: grepping the whole verb section lets the PROSE that bans `sync` satisfy the check that
+# bans it; a line-anchored match misses `rclone --progress sync`; and shell quoting (`rclone
+# "sync"`) or an escape (`s\ync`) slips past any bare pattern. So parse the fences and shlex them.
+rc_verbs="$(python3 - <<'PYC'
+import json, re, shlex
+t = open("adapters/docstore/rclone.md", encoding="utf-8").read()
+DESTRUCTIVE = {"sync", "move", "moveto", "delete", "deletefile", "rmdir", "rmdirs", "purge"}
+rep = {"cmds": [], "destructive": [], "delete_flags": [], "dest_missing": [], "handbuilt": []}
+for verb in ("backup", "link_for"):
+    if f"## verb: {verb}" not in t:
+        rep["dest_missing"].append(f"{verb}:section-missing"); continue
+    body = re.split(r"^## ", t.split(f"## verb: {verb}", 1)[1], flags=re.M)[0]
+    mine = []
+    # fenced blocks: ``` or ~~~, tolerating up to 3 leading spaces and a blockquote marker
+    for i, chunk in enumerate(re.split(r"^[ ]{0,3}>?[ ]*(?:```|~~~).*$", body, flags=re.M)):
+        if i % 2 == 0:
+            continue
+        for raw in chunk.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            mine.append(line); rep["cmds"].append(f"{verb}: {line}")
+            try:
+                toks = shlex.split(line)          # resolves quotes AND backslash escapes
+            except ValueError:
+                toks = line.split()
+            for j, tok in enumerate(toks):
+                if tok.rsplit("/", 1)[-1] != "rclone":
+                    continue
+                rest = [x for x in toks[j+1:] if not x.startswith("-")]
+                if rest and rest[0] in DESTRUCTIVE:
+                    rep["destructive"].append(f"{verb}: {line}")
+            for tok in toks:
+                if re.match(r"^--delete(-during|-before|-after|-excluded)?(=.*)?$", tok):
+                    rep["delete_flags"].append(f"{verb}: {tok}")
+            if "{remote}:{remote_path}" in line:
+                rep["handbuilt"].append(f"{verb}: {line}")
+    if "{base_path}" not in " ".join(mine):
+        rep["dest_missing"].append(verb)
+print(json.dumps(rep))
+PYC
+)"
+rcq() { printf '%s' "$rc_verbs" | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin)[sys.argv[1]]))" "$1"; }
+grep -q '"backup: rclone' <<<"$rc_verbs" && grep -q 'copy' <<<"$rc_verbs" \
+  && ok "the backup verb's runnable command is \`rclone copy\`" \
+  || bad "no runnable \`rclone copy\` in the backup verb" "$(rcq cmds)"
+[ "$(rcq destructive)" = "[]" ] \
+  && ok "no destructive rclone verb (sync/move/delete/rmdir/purge) is runnable in EITHER verb" \
+  || bad "a runnable command can delete remote content that predates the backup" "$(rcq destructive)"
+[ "$(rcq delete_flags)" = "[]" ] \
+  && ok "…and no --delete* flag appears, in space or = form" \
+  || bad "a delete-capable flag is runnable in a verb" "$(rcq delete_flags)"
+grep -q 'dry-run' <<<"$rc_verbs" \
+  && ok "backup dry-runs first, as a real command (the plan shows its output)" \
+  || bad "the backup verb has no runnable --dry-run preview" "$(rcq cmds)"
+# EVERY destination-bearing verb reads the composed value: that identity is what keeps the executed
+# target equal to the fingerprinted one, including when a team pins base_path literally.
+[ "$(rcq dest_missing)" = "[]" ] \
+  && ok "both backup and link_for take their destination from {base_path}" \
+  || bad "a verb builds its own destination instead of the composed {base_path}" "$(rcq dest_missing)"
+[ "$(rcq handbuilt)" = "[]" ] \
+  && ok "…and no runnable command hand-builds {remote}:{remote_path}, which would bypass the fingerprint" \
+  || bad "a runnable command hand-builds the remote prefix" "$(rcq handbuilt)"
+grep -qi 'non-deleting, not non-destructive' "$RC" \
+  && ok "rclone.md states copy is non-deleting, NOT non-destructive (it overwrites same-name files)" \
+  || bad "rclone.md overclaims copy's safety — it must say same-name files are overwritten"
+
+# --- (D) a poisoned tier-3 remote is refused AT VERIFY -------------------------------------------
+# `remote` is the one value a gitignored file supplies, so it is the injection surface. It reaches
+# the verify template, so unsafe_tokens must refuse it and verify_stack must run nothing.
+RCP50="$TMP/rclone-poison"; mkdir -p "$RCP50/.claude/config" "$RCP50/tk"
+cat > "$RCP50/.claude/config/stack.yaml" <<'YAML'
+schema_version: 1
+project:
+  key_prefix: ENG
+seams:
+  docstore:
+    default: archive
+    targets:
+      archive:
+        classification: internal_archive
+        sharing_scope: team
+        tool: rclone
+        adapter: adapters/docstore/rclone.md
+        transport: cli
+        remote_path: "eng-archive"
+        target_sentinel: "eng-sentinel-01"
+        verify: "test \"$(rclone cat \"{base_path}/.ticketwright-target\")\" = \"{target_sentinel}\""
+YAML
+printf 'schema_version: 1\nclassification: internal_archive\n' > "$RCP50/tk/delivery-plan.yaml"
+# Tie the fixture to the SHIPPED adapter: its auth block documents the verify command, and if that
+# drifts from what these tests exercise, the tests stop proving anything about the real adapter.
+# Compare the WHOLE command on both sides, parsed rather than grep-fragmented: a substring match
+# would stay green while text before or after the fragment drifted.
+vfy_cmp="$(python3 - "$RCP50/.claude/config/stack.yaml" <<'PYV'
+import re, sys
+sys.path.insert(0, "bin")
+import _yamlite
+fm, _ = _yamlite.parse_frontmatter(open("adapters/docstore/rclone.md", encoding="utf-8").read(),
+                                   "rclone.md")
+m = re.search(r"^\s*Verify:\s*`(.+?)`\.?\s*$", fm.get("auth") or "", re.M)
+documented = m.group(1).strip() if m else ""
+cfg = _yamlite.parse_file(sys.argv[1])
+node = cfg["seams"]["docstore"]
+node = node["targets"][sorted(node["targets"])[0]] if "targets" in node else node
+fixture = (node.get("verify") or "").strip()
+print("MATCH" if documented and documented == fixture
+      else f"DRIFT documented=[{documented}] fixture=[{fixture}]")
+PYV
+)"
+[ "$vfy_cmp" = "MATCH" ] \
+  && ok "the fixture's verify is the COMPLETE command rclone.md documents (no test/ship drift)" \
+  || bad "the rclone fixture and the adapter's documented verify have diverged" "$vfy_cmp"
+rc_local() { printf 'person: alice\nseams:\n  docstore:\n    targets:\n      archive:\n        remote: %s\n' "$1" \
+               > "$RCP50/.claude/config/connections.local.yaml"; }
+PWNED="$TMP/RCLONE_PWNED"
+rc_local "\"x; touch $PWNED\""
+rcv="$(CLAUDE_PLUGIN_ROOT="$KIT" python3 "$KIT/bin/effective_config.py" --root "$RCP50" --seam docstore 2>/dev/null)"
+{ printf '%s' "$rcv" | python3 -c 'import json,sys; d=json.load(sys.stdin); u=d.get("unsafe") or []; raise SystemExit(0 if d.get("verify") is None and ("remote" in u or "base_path" in u) else 1)'; } \
+  && ok "a tier-3 remote carrying shell metacharacters is refused at verify (verify nulled, flagged unsafe)" \
+  || bad "a poisoned tier-3 remote survived verify resolution" "$rcv"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash "$KIT/bin/verify_stack.sh" "$RCP50/.claude/config/stack.yaml" --dry-run 2>&1)"
+grep -q 'refusing to run' <<<"$o" \
+  && ok "verify_stack refuses to execute the poisoned rclone verify" \
+  || bad "verify_stack did not refuse the poisoned rclone verify" "$o"
+[ ! -e "$PWNED" ] && ok "…and nothing executed: the injection artifact was never created" \
+  || bad "INJECTION EXECUTED — the poisoned remote ran a command"
+
+# --- (E) …and the same value cannot reach a ROUTED backup ---------------------------------------
+DP50="$KIT/bin/delivery_plan.py"
+r50="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; rc50=$?
+{ [ "$rc50" -eq 4 ] \
+  && printf '%s' "$r50" | python3 -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("resolution_fingerprint") is None and d.get("destination") is None and d.get("unsafe") else 1)'; } \
+  && ok "a poisoned remote is unroutable too: exit 4, no destination, no fingerprint" \
+  || bad "a poisoned remote reached routing" "rc=$rc50 $r50"
+
+# --- (F) a tier-3 REDIRECT moves the fingerprint ------------------------------------------------
+# The whole point. A remote name is a personal alias, so re-pointing it after an approval is a
+# silent redirect UNLESS the resolved destination (which carries the remote) is fingerprinted.
+fp50() {
+  rc_local "$1"
+  python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("resolution_fingerprint"),d.get("destination"))'
+}
+f_team="$(fp50 teamdrive)"; f_other="$(fp50 attacker-drive)"
+{ [ -n "${f_team%% *}" ] && [ "$f_team" != "$f_other" ]; } \
+  && ok "re-pointing the tier-3 remote changes the routed destination AND the fingerprint" \
+  || bad "a tier-3 remote swap left the fingerprint unchanged — a redirect would go undetected" \
+         "team=$f_team other=$f_other"
+grep -q 'teamdrive:eng-archive' <<<"$f_team" \
+  && ok "the routed destination is the composed \`{remote}:{remote_path}\`, not the bare path" \
+  || bad "the routed rclone destination does not carry the remote" "$f_team"
+rc_local teamdrive
+approved="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null \
+             | python3 -c 'import json,sys; print(json.load(sys.stdin)["resolution_fingerprint"])')"
+rc_local attacker-drive
+python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore \
+        --expect-fingerprint "$approved" --quiet >/dev/null 2>&1
+[ "$?" -eq 8 ] && ok "--expect-fingerprint REFUSES after the remote is re-pointed (exit 8)" \
+  || bad "--expect-fingerprint accepted a redirected remote"
+
+# --- (F2) what is fingerprinted is what EXECUTES ------------------------------------------------
+# The hole this pins: `_compose_paths` skips when `base_path` is set literally in team config. If
+# the adapter's commands built `{remote}:{remote_path}` by hand, routing would fingerprint the
+# static base_path while the upload went to the tier-3 remote — so re-pointing the alias after an
+# approval would pass `--expect-fingerprint`. The adapter interpolating {base_path} everywhere is
+# what closes it, and block C pins that; this asserts the config-level consequence.
+LITP="$TMP/rclone-literal"; mkdir -p "$LITP/.claude/config" "$LITP/tk"
+sed 's|remote_path: "eng-archive"|remote_path: "eng-archive"\n        base_path: "pinned:by-team"|' \
+  "$RCP50/.claude/config/stack.yaml" > "$LITP/.claude/config/stack.yaml"
+cp "$RCP50/tk/delivery-plan.yaml" "$LITP/tk/delivery-plan.yaml"
+litfp() {
+  printf 'person: alice\nseams:\n  docstore:\n    targets:\n      archive:\n        remote: %s\n' "$1" \
+    > "$LITP/.claude/config/connections.local.yaml"
+  python3 "$DP50" --root "$LITP" --plan "$LITP/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("destination"))'
+}
+# A team-committed base_path is a TEAM decision and reviewable in git, so it legitimately wins the
+# destination. What must hold is that the adapter cannot then execute somewhere else: every runnable
+# command reads {base_path}, so the executed target and the fingerprinted one are the same string.
+[ "$(litfp teamdrive)" = "pinned:by-team" ] && [ "$(litfp attacker-drive)" = "pinned:by-team" ] \
+  && ok "a team-pinned base_path is the destination for BOTH aliases — and the commands execute it, not the alias" \
+  || bad "a literal base_path and the executed destination disagree" "$(litfp teamdrive) / $(litfp attacker-drive)"
+# …and the tier split is not silently lost: the lint says so (block J2 proves the message).
+python3 "$KIT/bin/effective_config.py" --root "$LITP" --lint 2>&1 | grep -q 'mixes a team decision' \
+  && ok "…and hardcoding base_path is LINTED, so the lost tier split is visible rather than silent" \
+  || bad "a hardcoded base_path silently replaced the tier split with no warning"
+
+# --- (G) reachability is not identity: the sentinel is the proof --------------------------------
+# `rclone lsd` succeeds against any account holding the same path, and on an object store an absent
+# prefix lists empty and exits 0. So the shipped verify compares a team-pinned token's CONTENTS.
+grep -q 'Expected-target evidence' "$RC" \
+  && ok "rclone.md carries an Expected-target evidence section (the databricks/snowflake precedent)" \
+  || bad "rclone.md has no Expected-target evidence section"
+grep -q 'rclone cat' "$RC" && grep -q 'target_sentinel' "$RC" \
+  && ok "…and the proof is a team-pinned sentinel read back by \`rclone cat\`" \
+  || bad "rclone.md's expected-target check is not a sentinel comparison"
+grep -qi 'lsd' "$RC" && grep -qiE 'not identity|exits 0|different account' "$RC" \
+  && ok "…and rclone.md says plainly that lsd/about prove reachability, not identity" \
+  || bad "rclone.md presents a reachability probe as identity proof"
+# Prove the check with a stubbed rclone: right token passes, wrong token fails. No network, no creds.
+RCBIN="$TMP/rc-bin"; mkdir -p "$RCBIN"
+for c in bash sh env printf awk sed grep tr cut basename dirname realpath python3 mktemp rm cat \
+         head tail sort uniq wc xargs cp mv mkdir touch chmod ln date id git test; do
+  src="$(command -v "$c" 2>/dev/null)" && ln -sf "$src" "$RCBIN/$c"
+done
+cat > "$RCBIN/rclone" <<'STUB'
+#!/bin/sh
+# Fixture stub. Serves ONE purpose: `rclone cat <remote>:<path>/.ticketwright-target` echoes the
+# token recorded for that remote in $RC_STUB_DIR. Offline, read-only, no credentials.
+if [ "$1" = "cat" ]; then
+  remote="${2%%:*}"
+  [ -f "$RC_STUB_DIR/$remote.token" ] && cat "$RC_STUB_DIR/$remote.token"
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$RCBIN/rclone"
+if ! ( PATH="$RCBIN"; command -v rclone >/dev/null 2>&1 ) \
+   || [ "$( PATH="$RCBIN"; command -v rclone )" != "$RCBIN/rclone" ]; then
+  bad "rclone stub setup is broken: the stub does not resolve on PATH, so this branch never ran"
+else
+  ok "rclone stub resolves on the fixture PATH (precondition asserted, not assumed)"
+  export RC_STUB_DIR="$TMP/rc-stub"; mkdir -p "$RC_STUB_DIR"
+  printf 'eng-sentinel-01' > "$RC_STUB_DIR/teamdrive.token"      # the team's real destination
+  printf 'someone-elses-bucket' > "$RC_STUB_DIR/attacker-drive.token"
+  rc_local teamdrive
+  o="$(PATH="$RCBIN" RC_STUB_DIR="$RC_STUB_DIR" CLAUDE_PLUGIN_ROOT="$KIT" \
+        bash "$KIT/bin/verify_stack.sh" "$RCP50/.claude/config/stack.yaml" 2>&1)"
+  grep -q 'All seams OK' <<<"$o" \
+    && ok "a remote whose sentinel matches the team token VERIFIES (no mount anywhere in the path)" \
+    || bad "the correct rclone remote failed verification" "$o"
+  rc_local attacker-drive
+  o="$(PATH="$RCBIN" RC_STUB_DIR="$RC_STUB_DIR" CLAUDE_PLUGIN_ROOT="$KIT" \
+        bash "$KIT/bin/verify_stack.sh" "$RCP50/.claude/config/stack.yaml" 2>&1)"; rc=$?
+  { [ "$rc" -ne 0 ] && grep -q 'UNREACHABLE' <<<"$o"; } \
+    && ok "…and a remote pointed at a DIFFERENT account fails it — the redirect lsd would have missed" \
+    || bad "the sentinel check passed a redirected remote" "$o rc=$rc"
+  rc_local teamdrive
+fi
+
+# --- (G2) the sharing warning PRECEDES the runnable link command -------------------------------
+# Ordering is the whole mitigation here. `rclone link` mints an accountless public URL and has no
+# read-only form, so a caveat printed below the command is a caveat read after the link exists.
+python3 - <<'PYL' && ok "link_for's public-sharing warning appears BEFORE its runnable command" \
+  || bad "the link_for command is printed before its sharing warning — the caveat arrives too late"
+import sys
+t = open("adapters/docstore/rclone.md", encoding="utf-8").read()
+body = t.split("## verb: link_for", 1)[1].split("## gotchas", 1)[0]
+warn = min((i for i in (body.find("READ BEFORE RUNNING"), body.find("⛔")) if i >= 0), default=-1)
+fence = body.find("```")
+sys.exit(0 if 0 <= warn < fence else 1)
+PYL
+
+# --- (H) the guide ships and is reachable from all five sites ------------------------------------
+# docs/ is NOT in the wheel, so anything installed code PRINTS must be the GitHub URL (the
+# obsidian.md precedent, section 38G); README links stay relative.
+[ -f docs/drive-mount.md ] && ok "docs/drive-mount.md ships" || bad "docs/drive-mount.md missing"
+sed -n '/^## The lifecycle is the map/,/^## /p' README.md | grep -q 'docs/drive-mount.md' \
+  && ok "README's lifecycle section links docs/drive-mount.md" \
+  || bad "docs/drive-mount.md not linked from README's lifecycle section"
+sed -n '/^## Learn more/,/^## /p' README.md | grep -q 'docs/drive-mount.md' \
+  && ok "README's further-reading list links docs/drive-mount.md" \
+  || bad "docs/drive-mount.md not linked from README's Learn more list"
+DMURL='github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md'
+dmiss50=""
+for f in adapters/docstore/gdrive.md adapters/docstore/sharepoint.md \
+         .claude/skills/setup/SKILL.md .claude/skills/setup/teammate.md \
+         .claude/skills/setup/interview.md; do
+  grep -q "$DMURL" "$f" || dmiss50="$dmiss50 $f"
+done
+[ -z "$dmiss50" ] \
+  && ok "the mount guide is pointed at by both adapters' auth notes and all three setup surfaces, by GitHub URL" \
+  || bad "a missing-mount failure would name a docs/ path a pip install does not have" "$dmiss50"
+# The operative line lives in SKILL.md, not only a sub-file: emit_runtime.py globs */SKILL.md, so
+# guidance parked in teammate.md/interview.md never reaches codex-cli or antigravity (issue #55).
+grep -q "$DMURL" .claude/skills/setup/SKILL.md \
+  && ok "…including setup/SKILL.md, which is the file the runtime installers actually emit" \
+  || bad "the guide is only in un-emitted sub-files, so two runtimes would never print it"
+
+# --- (I) an adapter can never make its OWN destination personal ---------------------------------
+# Derived, not listed: the static reserved set can only name today's destination keys. A future
+# adapter declaring `destination_key: x` and then `user_keys: [x]` would leave its destination
+# tier-3 overridable, which is the redirect this whole section is about.
+RCA50="$TMP/rc-adapter"; mkdir -p "$RCA50/adapters/docstore" "$RCA50/.claude/config"
+cat > "$RCA50/adapters/docstore/selfdest.md" <<'YAML'
+---
+seam: docstore
+tool: selfdest
+transport: cli
+requires: [box_path]
+destination_key: box_path
+user_keys: [box_path]
+---
+## verb: backup
+## verb: link_for
+YAML
+cat > "$RCA50/.claude/config/stack.yaml" <<'YAML'
+schema_version: 1
+seams:
+  docstore:
+    tool: selfdest
+    adapter: adapters/docstore/selfdest.md
+    transport: cli
+    box_path: "team-archive"
+YAML
+printf 'person: alice\nseams:\n  docstore:\n    box_path: "somewhere-else"\n' \
+  > "$RCA50/.claude/config/connections.local.yaml"
+o="$(python3 "$KIT/bin/effective_config.py" --root "$RCA50" 2>&1)"; rc=$?
+{ [ "$rc" -eq 6 ] || grep -q 'prohibited_override' <<<"$o"; } \
+  && ok "an adapter declaring its OWN destination_key in user_keys is rejected, not honored" \
+  || bad "an adapter left its destination tier-3 overridable" "rc=$rc $o"
+grep -q 'somewhere-else' <<<"$o" \
+  && bad "the rejected tier-3 destination override still landed in the resolved config" \
+  || ok "…and the rejected override never reaches the resolved destination"
+
+# --- (J) copy semantics, BOTH halves -------------------------------------------------------------
+# The safe half alone is a misleading test: assert what survives AND what is meant to change.
+python3 - <<'PY' && ok "copy semantics documented both ways: destination-only files survive, same-name files update" \
+  || bad "rclone.md documents only half of copy's behavior"
+import re, sys
+t = open("adapters/docstore/rclone.md", encoding="utf-8").read()
+body = t.split("## verb: backup", 1)[1].split("## verb: link_for", 1)[0]
+survives = re.search(r"[Dd]oesn't delete files from the destination|never.*deleting destination-only|losing destination-only", body)
+updates = re.search(r"overwrites a same-name file|should\*\* update it|overwrites same-name", body)
+sys.exit(0 if survives and updates else 1)
+PY
+
+# --- (J2) the tier-split lint knows BOTH machine halves -----------------------------------------
+# The lint that catches a hardcoded `base_path` named only `mount_root`, so an rclone slot could
+# commit a machine path and lose the tier split without a word — a silent honesty gap, not a crash.
+LINT50="$TMP/lint50"; mkdir -p "$LINT50/.claude/config"
+lint50() {  # lint50 <tool> <adapter> <team-half-key> <team-half-value>
+  cat > "$LINT50/.claude/config/stack.yaml" <<YAML
+schema_version: 1
+seams:
+  docstore:
+    tool: $1
+    adapter: $2
+    transport: cli
+    $3: "$4"
+    base_path: "/machine/specific/path"
+    verify: "test -d \"{base_path}\""
+YAML
+  python3 "$KIT/bin/effective_config.py" --root "$LINT50" --lint 2>&1
+}
+o="$(lint50 rclone adapters/docstore/rclone.md remote_path eng-archive)"
+{ grep -q 'mixes a team decision' <<<"$o" && grep -q 'remote_path' <<<"$o" && grep -q 'connections.local.yaml' <<<"$o"; } \
+  && ok "a hardcoded base_path on an UNMOUNTED docstore is linted, naming remote_path + remote" \
+  || bad "the tier-split lint is silent for rclone — a committed machine path would pass unnoticed" "$o"
+o="$(lint50 gdrive adapters/docstore/gdrive.md drive_folder "Shared drives/Tickets")"
+{ grep -q 'mixes a team decision' <<<"$o" && grep -q 'drive_folder' <<<"$o" && grep -q 'mount_root' <<<"$o"; } \
+  && ok "…and the mounted case still names drive_folder + mount_root (no regression)" \
+  || bad "generalizing the lint broke the mounted docstore message" "$o"
+
+# --- (K) credential hygiene: the obvious command is the unsafe one ------------------------------
+# `rclone config show` prints the DECRYPTED config. A probe that pretty-prints it is one paste away
+# from publishing a token, which is why the adapter names it as forbidden rather than staying silent.
+# "Invoked" means it appears in a RUNNABLE fenced block, not in the prose that BANS it — a
+# line-oriented grep cannot tell those apart, and the ban wraps across lines and matched itself.
+ch50="$(python3 - <<'PY50'
+import pathlib, re
+# `config dump` prints the whole config too, and a runnable line can hide in a ~~~ fence or a
+# 4-space indented block as easily as in a ``` one. Cover all three, or the check is decorative.
+hits = []
+pat = re.compile(r"rclone(?:\s+-{1,2}\S+)*\s+config\s+(?:show|dump)"
+                 r"|rclone(?:\s+-{1,2}\S+)*\s+listremotes[^\n`]*--json"
+                 r"|rclone\.conf")
+for root in ("adapters", ".claude"):
+    for f in pathlib.Path(root).rglob("*.md"):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        runnable = []
+        # even-indexed chunks are outside fences, odd-indexed are inside one (``` or ~~~)
+        # tolerate up to 3 leading spaces and a blockquote marker before the fence
+        for i, chunk in enumerate(re.split(r"^[ ]{0,3}>?[ ]*(?:```|~~~).*$", text, flags=re.M)):
+            if i % 2 == 1:
+                runnable.append(chunk)
+        # an indented line inside a list is still a command someone can paste — four spaces OR
+        # MORE, any tab depth, optionally behind a blockquote marker
+        runnable += ["\n".join(re.findall(r"^(?:>[ ]*)?(?: {4,}|\t+)\S.*$", text, flags=re.M))]
+        for chunk in runnable:
+            m = pat.search(chunk)
+            if m:
+                hits.append(f"{f}: {m.group(0)}")
+print(" ".join(hits))
+PY50
+)"
+[ -z "$ch50" ] \
+  && ok "no runnable block invokes \`rclone config show\`/\`listremotes --json\` or reads rclone.conf" \
+  || bad "a credential-bearing rclone command is invoked rather than warned about" "$ch50"
+grep -q 'rclone listremotes' "$RC" && grep -qi 'decrypted' "$RC" \
+  && ok "rclone.md enumerates remotes by NAME only and says why config show is banned" \
+  || bad "rclone.md does not state the names-only enumeration rule"
+
+# --- (L2) the unmounted backup is inside the source-material guard's jurisdiction ---------------
+# A new copy verb that the privacy guard cannot see is a BYPASS of a shipped gate, not a new
+# feature: `rclone copy` carries a ticket folder out of the repo with no `cp` anywhere in the
+# command. Safety gates get more visible, never more convenient.
+SMG50=".claude/hooks/source_material_guard.py"
+# Assert the REGEX's behavior, not that the file contains the string "rclone": a static word
+# match would stay green against a pattern that no real command form hits.
+smgcov="$(python3 - <<'PYS'
+import re, sys
+src = open(".claude/hooks/source_material_guard.py", encoding="utf-8").read()
+def grab(name):
+    seg = src[src.index(name):]; depth = 0; out = []
+    for ch in seg:
+        out.append(ch)
+        if ch == "(": depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0: break
+    return "".join(out)
+ns = {"re": re}
+exec(grab("_COPY_RE = "), ns); exec(grab("_COPY_RECURSIVE_RE = "), ns)
+cov = lambda c: bool(ns["_COPY_RE"].search(c)) and bool(ns["_COPY_RECURSIVE_RE"].search(c))
+# Each of these bypassed an earlier draft of the pattern. They are the regression list.
+must = ["rclone copy tk remote:p", "rclone -vv copy tk remote:p",
+        "rclone --config /p/rclone.conf copy tk remote:p",
+        "rclone --config=/p/rclone.conf copy tk remote:p",
+        "rclone --progress sync tk remote:p", "rclone --checkers 4 --transfers 8 copy tk remote:p",
+        "/usr/local/bin/rclone copy tk remote:p", "env RCLONE_CONFIG=/x.conf rclone copy tk remote:p",
+        "'rclone' copy tk remote:p", '"rclone" copy tk remote:p',
+        "rclone copy -- tk remote:p", "cp -r tk /d", "'cp' -r tk /d", "rsync -a tk /d"]
+must_not = ["rclone lsd remote:p --max-depth 1", "rclone cat remote:p/.ticketwright-target",
+            "rclone about remote:", "rclone listremotes", "cp tk /d"]
+bad = [c for c in must if not cov(c)] + [f"FP:{c}" for c in must_not if cov(c)]
+print(" | ".join(bad))
+PYS
+)"
+[ -z "$smgcov" ] \
+  && ok "the guard's copy detection covers every rclone directory form (flags, absolute path) and no read-only one" \
+  || bad "rclone copy escapes the source-material guard — the unmounted backup would bypass it" "$smgcov"
+SMG_T="$TMP/smg-rclone"; mkdir -p "$SMG_T/.claude/config" "$SMG_T/tickets/alice/ENG-1/source_materials"
+cp "$KIT/.claude/config/stack.yaml" "$SMG_T/.claude/config/stack.yaml"
+{ i=1; while [ "$i" -le 90 ]; do printf '[00:%02d:00] Speaker 1: line %d\n' "$i" "$i"; i=$((i+1)); done; } \
+  > "$SMG_T/tickets/alice/ENG-1/source_materials/transcript-full.txt"
+smg50() { printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"%s"}}' "$SMG_T" "$1" \
+            | python3 "$KIT/$SMG50" 2>/dev/null; }
+o="$(smg50 'rclone copy tickets/alice/ENG-1 teamdrive:archive/ENG-1')"
+grep -q '"permissionDecision": "ask"' <<<"$o" \
+  && ok "…and an rclone backup of a ticket holding raw transcript material ASKS first" \
+  || bad "an unmounted backup carried raw transcript material out with no prompt" "$o"
+o="$(smg50 'rclone lsd teamdrive:archive --max-depth 1')"
+[ -z "$o" ] \
+  && ok "…while read-only rclone verbs stay outside the guard entirely (no prompt fatigue)" \
+  || bad "a read-only rclone command triggered the privacy guard" "$o"
+
+# --- (L) the new tool is DETECTED, never chosen by a skill ---------------------------------------
+# Adding a tool must not teach a skill that tool's name beyond the sanctioned detection probe.
+grep -q 'for c in snow acli gh glab bq databricks yq jq git rclone' .claude/skills/setup/SKILL.md \
+  && ok "rclone joined the CLI-detection probe (appended, so section 3's exemptions still match)" \
+  || bad "the CLI probe does not detect rclone"
+rcleak50="$(grep -rn 'rclone' .claude/skills .claude/commands .claude/agents 2>/dev/null \
+           | grep -v 'for c in snow acli gh' | grep -v 'drive-mount.md' \
+           | grep -v 'adapter fills this slot' || true)"
+[ -z "$rcleak50" ] \
+  && ok "no skill INVOKES rclone — tool choice stays in stack.yaml + the adapter" \
+  || bad "rclone leaked into skill orchestration (the golden rule)" "$rcleak50"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

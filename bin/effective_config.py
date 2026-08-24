@@ -108,6 +108,11 @@ RESERVED_SEAM_KEYS = {
     # gitignored, unreviewed per-machine file must never be able to move a message to another
     # audience or a client file to another store — the same reasoning that reserves `cli`.
     "audience", "classification", "sharing_scope", "channel", "drive_folder",
+    # `remote_path` is drive_folder's twin for the rclone docstore (the team-owned half of
+    # "{remote}:{remote_path}"), and `base_path` is the COMPOSED destination both docstore shapes
+    # route and fingerprint on. Neither may come from a gitignored file: a tier-3 override of
+    # either silently re-points a delivery, which is the same hole `drive_folder` closes.
+    "remote_path", "base_path",
 }
 # Whole blocks no overlay may contribute, at any tier.
 RESERVED_BLOCKS = {"policies", "project"}
@@ -257,6 +262,14 @@ def _adapter_user_keys(adapter_rel: str | None, root: Path,
             elif isinstance(raw, str) and raw.strip():
                 keys = {raw.strip()}
             bad = keys & RESERVED_SEAM_KEYS
+            # An adapter's OWN destination is reserved too, derived rather than listed. The static
+            # set above can only name the destination keys that exist TODAY; a new adapter that
+            # declares `destination_key: x` and then lists `x` in user_keys would leave its
+            # destination tier-3 overridable, which is the redirect hole `drive_folder` was added
+            # to close. Deriving it means the rule holds for adapters nobody has written yet.
+            own_dest = {k for k in (adapter_key(adapter_rel, root, "destination_key"),
+                                    adapter_key(adapter_rel, root, "channel_key")) if k}
+            bad |= keys & own_dest
             if bad:
                 errors.append(ConfigError(
                     "prohibited_override", f"adapter:{adapter_rel}",
@@ -553,25 +566,37 @@ class Resolution:
 
 
 def _compose_paths(res: Resolution) -> None:
-    """`base_path` = `{mount_root}/{drive_folder}` when it is not set literally.
+    """`base_path` = the docstore's full destination, composed from its team half + its machine half.
 
-    The docstore's destination is a TEAM decision (`drive_folder`, tier 1); only the local mount
-    prefix is per-user (`mount_root`, tier 3). Composing here means adapter verb bodies and verify
-    strings keep interpolating `{base_path}` unchanged.
+    Two shapes, one rule. A MOUNTED docstore composes `{mount_root}/{drive_folder}`: the destination
+    is a TEAM decision (`drive_folder`, tier 1) and only the local mount prefix is per-user
+    (`mount_root`, tier 3). An UNMOUNTED one (rclone) composes `{remote}:{remote_path}` the same way
+    — `remote_path` is the team's destination, `remote` is this machine's alias for the account that
+    reaches it. Composing here means adapter verb bodies and verify strings keep interpolating
+    `{base_path}` unchanged, and — because routing fingerprints the composed value — a tier-3 edit to
+    either machine half moves the delivery plan's fingerprint instead of silently redirecting.
     """
     for unit in res.units():
         vals = unit["values"]
-        if vals.get("base_path") or not vals.get("drive_folder"):
+        if vals.get("base_path"):
             continue
-        mount = vals.get("mount_root")
-        if not mount:
+        if vals.get("drive_folder"):
+            machine, composed_fmt = vals.get("mount_root"), "{m}/{t}"
+            team = vals["drive_folder"]
+        elif vals.get("remote_path"):
+            machine, composed_fmt = vals.get("remote"), "{m}:{t}"
+            team = vals["remote_path"]
+        else:
             continue
-        composed = str(mount).rstrip("/") + "/" + str(vals["drive_folder"]).lstrip("/")
+        if not machine:
+            continue
+        composed = composed_fmt.format(m=str(machine).rstrip("/"), t=str(team).lstrip("/"))
         seam = res.seams[unit["seam"]]
         target = seam["targets"][unit["target"]] if unit["target"] else seam
         target["base_path"] = composed
         key = f"seams.{unit['seam']}" + (f".targets.{unit['target']}" if unit["target"] else "")
-        res.provenance[f"{key}.base_path"] = {"tier": TIER_INHERITED, "source": "composed from mount_root + drive_folder"}
+        src = ("mount_root + drive_folder" if vals.get("drive_folder") else "remote + remote_path")
+        res.provenance[f"{key}.base_path"] = {"tier": TIER_INHERITED, "source": f"composed from {src}"}
 
 
 def resolve(root: str | Path, person: str | None = None,
@@ -828,10 +853,16 @@ def lint(res: "Resolution") -> list[tuple[str, str]]:
                     else:
                         continue
                     break
-        if team.get("base_path") and "mount_root" in declared:
+        # Which key holds the machine half depends on the adapter: a mounted docstore says
+        # `mount_root`, the unmounted one says `remote`. Naming only the first let an rclone slot
+        # hardcode `base_path` in committed config and lose the tier split without a word.
+        machine_half = next((k for k in ("mount_root", "remote") if k in declared), None)
+        if team.get("base_path") and machine_half:
             out.append((unit["label"],
                         "`base_path` mixes a team decision with a machine path — split it into "
-                        "`drive_folder` (stack.yaml) + `mount_root` (connections.local.yaml)"))
+                        + ("`drive_folder` (stack.yaml) + `mount_root` (connections.local.yaml)"
+                           if machine_half == "mount_root" else
+                           "`remote_path` (stack.yaml) + `remote` (connections.local.yaml)")))
     return out
 
 

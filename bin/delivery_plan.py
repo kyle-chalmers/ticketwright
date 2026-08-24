@@ -573,11 +573,18 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                                 f"target never delivers to an inherited destination")
         return _fail(out, err)
     base_path = vals.get("base_path")
-    if dkey == "drive_folder" and isinstance(base_path, str) and base_path.strip():
-        # Display the mounted path once tier 3 supplies the root — but only a non-empty STRING may
-        # replace the already-type-checked drive_folder; a junk-typed base_path keeps the checked
-        # value rather than smuggling an unchecked one past the gate. (_unsafe below still runs on
-        # whichever value ends up here.)
+    if seam_name == "docstore" and isinstance(base_path, str) and base_path.strip():
+        # Show the RESOLVED destination once the machine half is known — the mounted path for
+        # gdrive/sharepoint (`{mount_root}/{drive_folder}`), the prefixed remote for rclone
+        # (`{remote}:{remote_path}`). Both are composed by effective_config._compose_paths, and
+        # routing the composed value is what puts the tier-3 half inside `resolution_fingerprint`
+        # and inside the `_unsafe` check below: re-pointing a personal alias after an approval then
+        # refuses instead of silently redirecting a delivery.
+        # Scoped to `docstore` on purpose, NOT "any seam with a base_path": chat shares this code
+        # path, and a stray `base_path` there must never be able to override a channel.
+        # Only a non-empty STRING may replace the already-type-checked destination key; a
+        # junk-typed base_path keeps the checked value rather than smuggling an unchecked one past
+        # the gate. (_unsafe below still runs on whichever value ends up here.)
         dest = base_path
     if _unsafe(dest):
         out["unsafe"] = [dkey or "destination"]

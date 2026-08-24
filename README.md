@@ -80,6 +80,11 @@ exist to serve the phases, and one slot can serve more than one phase:
 | 4 · Deliver | vcs + docstore |
 | 5 · Announce and share | tracker + chat |
 
+Phase 4 is the one slot with a machine-local prerequisite: the `gdrive` and `sharepoint`
+adapters write into a desktop sync mount. [docs/drive-mount.md](docs/drive-mount.md) covers
+installing that mount per OS, which half of the path is a team decision and which is yours - or
+how to skip the mount entirely with the `rclone` adapter, which needs only the binary.
+
 "More tools" means named targets inside a slot - two warehouses, a team chat and a client chat -
 never more slots. And phase 3 is worth a second look: quality checking has no tool slot of its
 own. Every other phase has a dedicated external system available to it (available, not always
@@ -99,13 +104,14 @@ It works with **your** tools, through one config file:
 | Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues · etc. — or **none at all** |
 | Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse · Supabase · DuckDB · etc. — or **none at all** |
 | Chat | Slack · Teams · email (Gmail · Outlook) · etc. |
-| Docs | Google Drive · SharePoint · Dropbox · etc. |
+| Docs | Google Drive · SharePoint · Dropbox · S3 · Box · etc. — mounted, or mountless via rclone |
 | Git | GitHub · GitLab · Azure Repos · Bitbucket · etc. |
 
 - **The lists are examples, not a whitelist** — any tool that fills a slot works. The first six
   trackers, six warehouses, and the Slack/Teams/Gmail/Outlook/Drive/SharePoint/GitHub/GitLab/Azure-Repos
-  set ship as adapters today; wiring up another (Supabase, DuckDB, Bitbucket, Dropbox, …) is
-  [a single adapter file](adapters/README.md) — the skills never change.
+  set ship as adapters today; wiring up another (Supabase, DuckDB, Bitbucket, …) is
+  [a single adapter file](adapters/README.md) — the skills never change. For document stores the
+  shipped `rclone` adapter already covers Dropbox, S3 and Box without a desktop sync mount.
 - **More than one warehouse is fine** — name the targets.
 - **No warehouse is fine too** — a team whose deliverables are documents, models, or reports just
   omits the tool slot ([worked example](.claude/config/stack.example.no-warehouse.yaml)).
@@ -462,6 +468,8 @@ shipped — don't read this section as "Ticketwright runs anywhere today."
 - [docs/ticket-index.md](docs/ticket-index.md) — the ticket catalog + recall engine in depth.
 - [docs/obsidian.md](docs/obsidian.md) — browse your tickets as a graph: install Obsidian, open
   the repo as a vault, the two node types, and the opt-outs.
+- [docs/drive-mount.md](docs/drive-mount.md) — backing up to a cloud drive: install the Drive
+  or OneDrive mount per OS, the `mount_root` tier split, or go mountless with rclone.
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 
 CI runs the full self-test on every push; PyPI publishing is OIDC Trusted Publishing (no stored

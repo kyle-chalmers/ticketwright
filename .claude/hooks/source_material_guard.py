@@ -11,6 +11,8 @@ two paths bypassed the skills entirely:
   git add -f / git commit   run directly, with no skill involved
   cp -r <ticket dir> <dest> the docstore `backup` verb — ALSO reached from the productized-skill
                             template, which backs up and commits without ever calling /ship
+  rclone copy <ticket dir>  the same verb on an UNMOUNTED docstore, where the destination is a
+                            cloud remote rather than a path, so no `cp` appears at all
 
 Both are Bash, so one PreToolUse/Bash presenter covers both, at the COMMAND layer rather than the
 workflow layer. That is the whole reason this file exists instead of another paragraph in a skill.
@@ -37,7 +39,8 @@ WHAT IT ASKS ABOUT, and why the two paths differ:
                          The shipped patterns and this guard are belt and braces, not a division
                          of labour — the patterns keep self-declaring names out of the index by
                          default, and the guard covers the ones no pattern can see.
-  cp -r / rsync          `.gitignore` has NO bearing on `cp -r`, so ignore state is irrelevant
+  cp -r / rsync /        `.gitignore` has NO bearing on a copy, so ignore state is irrelevant
+  rclone copy
                          here and every raw_suspect under the copied path is asked about. A
                          transcript moved into `source_materials/private/` is safe from git and
                          still rides a folder-wide docstore backup — remedies are not
@@ -117,10 +120,55 @@ def _git_staging_segments(command: str) -> bool:
             break                         # the subcommand is something else
         continue
     return False
-# `cp -r` / `rsync` reach a docstore (both docstore adapters back up with `cp -r`).
-_COPY_RE = re.compile(r"\b(?:cp|rsync)\b")
-_COPY_RECURSIVE_RE = re.compile(r"\b(?:cp\s+(?:-\S*[raR]\S*|--recursive|--archive)|rsync)\b")
+# `cp -r` / `rsync` / `rclone` reach a docstore. The mounted docstore adapters back up with
+# `cp -r`, but a docstore does not have to be a filesystem: the `rclone` adapter uploads straight
+# to a cloud remote with no mount in the path, so matching only `cp`/`rsync` would let the
+# unmounted backup verb carry raw transcripts out of the repo without ever meeting this guard —
+# the same escape the productized-skill template opened for `cp -r`. rclone's directory verbs are
+# recursive by definition (they transfer a directory's CONTENTS), so they need no `-r` to qualify.
+_COPY_RE = re.compile(r"\b(?:cp|rsync|rclone)\b")
+# rclone accepts global flags BEFORE the subcommand (`rclone -vv copy …`,
+# `rclone --config x.conf copy …`), and is often invoked by absolute path. Requiring the subcommand
+# to sit immediately after the binary name let every one of those forms copy a ticket directory
+# without meeting this guard — a gate with a documented syntax bypass is not a gate.
+# A trailing `['"]?` covers a quoted binary name (`'rclone' copy …`, `"cp" -r …`) — quoting the
+# command is a one-character bypass of an unquoted match, and this guard only ever ADDS a prompt,
+# so erring toward matching costs nothing.
+_COPY_RECURSIVE_RE = re.compile(
+    r"\b(?:cp['\"]?\s+(?:-\S*[raR]\S*|--recursive|--archive)|rsync"
+    r"|rclone['\"]?(?:\s+-{1,2}[^\s]*(?:[= ][^\s-][^\s]*)?)*\s+(?:copy|copyto|sync|move|moveto))\b")
 _FORCE_RE = re.compile(r"(?:^|\s)(?:-[a-zA-Z]*f[a-zA-Z]*|--force)(?:\s|$)")
+
+
+def _tokenized_copy(command: str) -> bool:
+    """True when the command TOKENIZES to a recursive copy, whatever the quoting.
+
+    The regexes above read the raw string, so `rclone "copy" x r:p`, `rclone 'copy' …` and
+    `rclone c\\opy …` all execute a recursive copy while matching nothing — shell quoting is a
+    one-character bypass of a pattern match. shlex resolves quotes and escapes the way the shell
+    does, so this covers those forms without a regex arms race. Best-effort by design: an
+    unparseable command falls back to the regexes rather than raising.
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    rclone_verbs = {"copy", "copyto", "sync", "move", "moveto"}
+    for i, tok in enumerate(tokens):
+        base = tok.rsplit("/", 1)[-1]
+        rest = [t for t in tokens[i + 1:] if not t.startswith("-")]
+        if base == "rclone":
+            if rest and rest[0] in rclone_verbs:
+                return True
+        elif base in ("cp", "rsync"):
+            flags = [t for t in tokens[i + 1:] if t.startswith("-")]
+            if base == "rsync":
+                return True
+            if any(f in ("--recursive", "--archive") or
+                   (f.startswith("-") and not f.startswith("--")
+                    and any(c in f for c in "raR")) for f in flags):
+                return True
+    return False
 
 
 def emit(decision: str | None = None, reason: str = "", system_message: str = "") -> None:
@@ -147,7 +195,8 @@ def _command_paths(command: str, cwd: Path) -> list[Path]:
     for token in tokens[1:]:
         if token.startswith("-"):
             continue
-        if token in ("git", "cp", "rsync", "add", "stage", "commit", "&&", "||", ";"):
+        if token in ("git", "cp", "rsync", "rclone", "copy", "copyto", "sync", "move", "moveto",
+                     "add", "stage", "commit", "&&", "||", ";"):
             continue
         # An env assignment (`FOO=bar`) or a commit message is not a path; the exists() check
         # below drops both without needing to recognize them.
@@ -185,7 +234,8 @@ def run() -> int:
         return 0
 
     staging = _git_staging_segments(command)
-    copying = bool(_COPY_RE.search(command)) and bool(_COPY_RECURSIVE_RE.search(command))
+    copying = (bool(_COPY_RE.search(command)) and bool(_COPY_RECURSIVE_RE.search(command))) \
+        or _tokenized_copy(command)
     if not (staging or copying):
         return 0  # outside this guard's jurisdiction entirely
 
@@ -233,8 +283,8 @@ def run() -> int:
 
     cwd = Path(cwd_raw) if cwd_raw else repo
     if copying:
-        # .gitignore has NO bearing on cp -r, so ignore state is irrelevant: every raw_suspect
-        # under a copied path counts. When the paths cannot be parsed, fall back to the whole
+        # .gitignore has NO bearing on any copy verb (cp -r, rsync, rclone copy), so ignore
+        # state is irrelevant: every raw_suspect under a copied path counts. When the paths cannot be parsed, fall back to the whole
         # repo — gating more, visibly, rather than guessing that nothing is in scope.
         # Narrow by the copied path ONLY when a parsed path actually lands inside this repo.
         # Otherwise fall back to every flagged file — gating more, visibly. Without that fallback
@@ -245,7 +295,8 @@ def run() -> int:
         relevant = [r for r in flagged if not paths or _under(Path(r["file"]).resolve(), paths)]
         verb, why = "backed up", (
             "A folder-wide docstore backup copies everything in the ticket directory, and "
-            "`.gitignore` does not apply to `cp -r` — so moving a file under "
+            "`.gitignore` does not apply to a docstore copy (`cp -r`, `rsync` or "
+            "`rclone copy`) — so moving a file under "
             "`source_materials/private/` protects git and does NOT protect this copy. Remove the "
             "file from the folder, or approve this copy explicitly."
         )

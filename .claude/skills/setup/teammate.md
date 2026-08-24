@@ -88,7 +88,9 @@ result mean something:
   mid-verify is a NORMAL outcome. Narrate it ("your tool is asking you to sign in — finish that
   and we'll re-run"), never report it as a failure.
 Walk any ✗/⚠ with the relevant adapter's auth notes until green (MCP-only tool slots: confirm the
-server is connected this session). Mention the `db_write_guard` hook so they know destructive
+server is connected this session). A docstore mount check that fails (`✗ UNREACHABLE` on a
+`test -d`) has its own guide — install steps per OS, the `mount_root` tier split, and the mountless
+`rclone` route: <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>. Mention the `db_write_guard` hook so they know destructive
 warehouse statements prompt for confirmation **by design**.
 
 Then run `/setup viewer` with them. The repo's `human_review_handoff` policy already decides *when*

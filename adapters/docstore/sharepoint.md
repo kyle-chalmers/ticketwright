@@ -8,6 +8,8 @@ user_keys: [mount_root]   # tier-3 overridable: the local sync-folder prefix. `d
 auth: |
   OneDrive/SharePoint sync mounted at base_path, OR a Graph API token (Files.ReadWrite.All).
   Verify (synced): `test -d "{base_path}"`.
+  OneDrive client not installed, or no mount available? Install steps per OS and the `mount_root`
+  tier split: <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>.
 ---
 
 # SharePoint / OneDrive adapter
