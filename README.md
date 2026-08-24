@@ -117,21 +117,55 @@ It works with **your** tools, through one config file:
   omits the tool slot ([worked example](.claude/config/stack.example.no-warehouse.yaml)).
 - **No ticketing system is fine too** — set `id_mode: slug` and a folder you name becomes the ticket.
 
-## Quickstart (5 minutes)
+## Getting started
 
-From inside the repo you want to work tickets in:
+Two tracks — pick yours and follow it end to end. **Track 1** is for the first person bringing
+Ticketwright into a repo; **Track 2** is for everyone who clones that repo afterwards. Every step
+carries its own one-line check, so a stall is diagnosable instead of mysterious.
+
+### Track 1 — Setting up a repo
+
+**1 · Install the plugin at project scope**, from inside the repo you want to work tickets in:
 
 ```bash
 claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project
 claude plugin install ticketwright@ticketwright --scope project
 ```
 
-That writes the repo's own `.claude/settings.json`. Add one more key by hand to its `"ticketwright"`
-marketplace entry — no CLI flag sets this one — so teammates pick up tagged releases:
+*Check:* `claude plugin list` shows `ticketwright@ticketwright … enabled`.
+
+That writes the repo's own `.claude/settings.json`. Both commands default to `--scope user`, so
+**omit `--scope project` only if you want Ticketwright for yourself across every repo** rather
+than for this repo's team.
+
+**2 · Fully restart Claude Code** — quit and relaunch, not just a new prompt. Plugin skills load
+at session start, so installing and running `/setup` in the same session silently fails: the
+command simply doesn't exist yet.
+
+*Check:* `/ticketwright:setup` shows up in the new session's command list.
+
+**3 · Run setup:**
+
+```
+/ticketwright:setup          # detects your tools, interviews you in rounds, writes the config — once per repo
+/ticketwright:ticket ENG-123 # start working
+```
+
+`setup` also handles repos that **already have** ticket history — it maps onto your existing
+layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
+[Adopting an existing repo](#adopting-an-existing-repo)).
+
+*Check:* `.claude/config/stack.yaml` exists, and `bash bin/verify_stack.sh` names each tool slot.
+
+**4 · Turn on release pick-up.** Add one key by hand to the `"ticketwright"` marketplace entry in
+`.claude/settings.json` — no CLI flag sets this one — so teammates pick up tagged releases:
 
 ```json
 "autoUpdate": true
 ```
+
+`/ticketwright:setup` adds that key for you if you'd rather not hand-edit; see
+[Project-scoped by default](#project-scoped-by-default) for the finished file.
 
 One honest caveat while the gap reported in
 [claude-code#61854](https://github.com/anthropics/claude-code/issues/61854) persists (verified live
@@ -149,21 +183,70 @@ claude plugin uninstall ticketwright@ticketwright --scope project && claude plug
 (It may reorder keys in `.claude/settings.json`; the content is identical - `git checkout` the file
 if you want zero diff.)
 
-Then **commit the file**, and Ticketwright travels with the repo. `/ticketwright:setup` adds that key for
-you if you'd rather not hand-edit; see [Project-scoped by default](#project-scoped-by-default) for the
-finished file. Both commands default to `--scope user`, so **omit `--scope project` only if you want
-Ticketwright for yourself across every repo** rather than for this repo's team.
+**5 · Commit the scaffold** (`/setup` offers to), and Ticketwright travels with the repo.
 
-Now, in that repo:
+*Check:* the committed files include `.claude/settings.json`, `.claude/config/stack.yaml`, and
+`AGENTS.md`.
+
+**What teammates will then see:** opening (and trusting) the repo registers the marketplace from
+the committed `.claude/settings.json` and primes the session banner — and then they follow
+Track 2, because registration is not installation (the fact Track 2 opens with).
+
+### Track 2 — Joining a configured repo
+
+Someone already ran Track 1 and committed the result; you just cloned. One fact up front, because
+it is the step people lose an afternoon to: the repo's committed `.claude/settings.json`
+(`enabledPlugins` + `extraKnownMarketplaces`) **registers and clones the marketplace on session
+start, but does NOT install the plugin.** Verified live: a teammate's `installed_plugins.json`
+stayed `{}` across restarts until the manual install in step 2. Skip step 2 and
+`/ticketwright:setup` is not a command that exists.
+
+**1 · Clone the repo and open it in Claude Code** (trust the workspace when prompted).
+
+*Check:* `.claude/config/stack.yaml` exists — that's the team config Track 1 committed.
+
+**2 · Install the plugin explicitly:**
+
+```bash
+claude plugin install ticketwright@ticketwright
+```
+
+*Check:* `claude plugin list` shows `ticketwright@ticketwright … enabled`.
+
+**3 · Fully restart Claude Code** — quit and relaunch, not just a new prompt. Plugin skills load
+at session start; installing and running `/setup` in the same session silently fails.
+
+*Check:* `/ticketwright:setup` shows up in the new session's command list.
+
+**4 · Onboard yourself:**
 
 ```
-/ticketwright:setup          # detects your tools, interviews you in rounds, writes the config — once per repo
-/ticketwright:ticket ENG-123 # start working
+/ticketwright:setup --teammate
 ```
 
-That's it. `setup` also handles repos that **already have** ticket history — it maps onto your
-existing layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
-[Adopting an existing repo](#adopting-an-existing-repo)).
+It walks you through your `people/<id>.yaml`, your machine-local
+`.claude/config/connections.local.yaml`, and auth for each tool the team's config actually uses.
+
+*Check:* `bash bin/verify_stack.sh` — every configured tool slot reports reachable (an
+unreachable one prints its auth fix; finishing onboarding first and authing later is fine).
+
+#### What you need installed (derived from the stack, not a fixed list)
+
+The CLIs a teammate needs depend on which tool slots the team's `stack.yaml` fills — there is no
+universal list. `snow` matters only if the warehouse is Snowflake, `gh` only if vcs is GitHub, and
+so on. `bash bin/verify_stack.sh` names anything missing, and each tool's install and auth notes
+live in its adapter (`adapters/<seam>/<tool>.md`). On macOS the common ones are a Homebrew line
+each:
+
+```bash
+brew install yq jq          # every stack: the kit's own tooling
+brew install gh             # only if vcs is GitHub
+brew install glab           # only if vcs is GitLab
+brew install snowflake-cli  # only if the warehouse is Snowflake (the `snow` CLI)
+```
+
+Windows equivalents exist (`winget install …` covers most of these), but Windows onboarding is
+untested — expect to translate paths and shell syntax yourself rather than assume parity.
 
 ### What `setup` actually does
 
@@ -234,8 +317,8 @@ means later ticket PRs reference rules that aren't in the repo's history.
 A plugin can't set its own install scope — the **repo** does. `--scope project` writes the enablement
 into the repo's `.claude/settings.json`, so it travels *with the repo*: every teammate who opens (and
 trusts) it is prompted to install Ticketwright (no marketplace to add, no config to write), and it keeps
-working after the person who set it up moves on. Commit the file. This is what the two Quickstart
-commands produce, plus the one key they don't write:
+working after the person who set it up moves on. Commit the file. This is what the two Track 1
+install commands produce, plus the one key they don't write:
 
 ```json
 {
@@ -258,10 +341,10 @@ Three details in that block are deliberate:
   URL — that `source` object is copied from the CLI's own output rather than hand-authored. (`git` and
   `url` are *different* marketplace source types; don't swap one for the other.)
 - **`autoUpdate` is scoped to formal releases.** The version only moves in a tagged release commit —
-  so day-to-day commits to `main` never put teammates onto un-released work. Neither Quickstart command
+  so day-to-day commits to `main` never put teammates onto un-released work. Neither install command
   writes this key (no flag sets it); `/ticketwright:setup` adds it, or add it by hand. What it does
   today: it refreshes the marketplace *catalog*; Claude Code does not yet swap the installed
-  project-scoped plugin to the new version (the Quickstart caveat above has the pick-up command pair,
+  project-scoped plugin to the new version (the release pick-up caveat in Track 1 has the command pair,
   and `claude plugin marketplace update ticketwright` refreshes the catalog by hand).
 
 Installing without `--scope project` puts Ticketwright in your own `~/.claude/settings.json` instead —
@@ -270,7 +353,12 @@ want the whole team on it.
 
 ## How work flows
 
-Four steps — **plan → build → check → ship** — and one command to remember:
+Four steps — **plan → build → check → ship** — and one command to remember. Skills are shown by
+their short names here and below; **on a plugin install, use the namespaced form**
+(`/ticketwright:ticket`, `/ticketwright:review`, …). The short names work when the kit's skill
+files live in the repo itself — vendored, or installed via pip (`ticketwright init` copies
+`.claude/skills/` into the repo). A plugin install exposes only the namespaced form, however
+fully the repo is configured — `/setup` writes config, never skill folders.
 
 ```
 /ticket <id>        opens or resumes the ticket, auto-loads its context + closest prior work,
@@ -289,9 +377,8 @@ Three supporting skills you'll reach for occasionally:
 | `/refresh` | Rebuild the ticket catalog (`index`) or the domain knowledge pack (`context`) — day-to-day, hooks keep these fresh automatically |
 | `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
-Plugin skills are namespaced (`/ticketwright:ticket`); inside a configured repo the short names
-work too. (The v1 command names — `/start-ticket`, `/qc-review`, … — were retired in v3; see the
-rename map in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
+(The v1 command names — `/start-ticket`, `/qc-review`, … — were retired in v3; see the rename map
+in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
 
 ## See it as a graph (Obsidian)
 
