@@ -25,8 +25,9 @@ notes (CLI login, `config.toml`, MCP server connect). For a personalized walk-th
 
 ## The ticket index looks stale or wrong
 
-- `python3 bin/build_ticket_index.py --check` — tells you if `INDEX.md`/`OBJECTS.md` drift from a
-  fresh render. Fix: run it without `--check` (or let the PostToolUse hook do it on the next edit).
+- `python3 bin/build_ticket_index.py --check` — tells you if `INDEX.md`/`OBJECTS.md`, or the graph
+  nodes under `tickets/graph/` + `tickets/objects/`, drift from a fresh render. Fix: run it without
+  `--check` (or let the PostToolUse hook do it on the next edit).
 - A row marked `▱` is un-enriched (deterministic title only) — `/refresh index <id>` curates it.
 - A row marked `⚠` means the README changed after enrichment — re-enrich the same way.
 - **Never hand-edit `INDEX.md` or `OBJECTS.md`** — they're generated; edits are overwritten.

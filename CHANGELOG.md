@@ -4,6 +4,46 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [3.6.1] — 2026-08-23
+
+### Fixed
+- **`/ship` stages the graph layer, not just the catalog.** The Obsidian nodes
+  (`tickets/graph/`, `tickets/objects/`) come out of the same render pass as `INDEX.md`, nothing
+  gitignores them, and `build_ticket_index.py --check` has always gated them — but step 8's staging
+  list named only the three catalog files, so the person-facing rendering of the corpus never rode
+  along with the ticket. It stayed dirty in the shipper's clone until someone noticed, and the next
+  contributor's `--check` was the thing that noticed. Step 8 now stages `tickets/graph/` +
+  `tickets/objects/` too, when `project.graph_notes` is on (the default). 3.6.0 documented this as
+  an asymmetry to live with; it was a gap to close.
+- **The same under-count in three more places**, all of which told a reader to commit "all three"
+  index files: `/refresh`'s index mode (`SKILL.md` + `index.md`) and `docs/ticket-index.md`, the
+  last of which describes itself as wired into the ship skill and so has to agree with it.
+- **`--check`'s clean line named only what it used to compare.** It printed
+  `tickets/INDEX.md + OBJECTS.md are up to date.` after comparing the graph nodes as well; it now
+  names the graph layer when the layer is on, and still doesn't when `graph_notes` is off. The four
+  other places that described the gate — the CLI docstring, the `--check` argparse help,
+  `docs/troubleshooting.md`, and `docs/ticket-index.md`'s maintenance block — were widened the same
+  way, and now draw the line the code actually draws: the gate covers the **rendered** files
+  (`INDEX.md`, `OBJECTS.md`, the graph nodes), while `index_data.json` is the curated **input** to
+  the render and is not gated. The old "all three, or `--check` flags drift" phrasing in `/ship`
+  implied otherwise.
+
+### Changed
+- `README.md` ("See it as a graph") and `docs/architecture.md` ("One relationship model, two
+  renderings") drop the stated-asymmetry paragraph for the symmetric statement: both renderings are
+  staged together, and a node left out is CI drift rather than a graph only one clone can see.
+  `.claude/skills/setup/scaffold.md` and `templates/gitignore.tmpl` needed no edit — they already
+  described the graph layer as committed alongside the catalog, which is now true.
+- **`/ship` step 8 now says the render is repo-wide.** Staging a whole rendered directory can carry
+  a row or node that moved for *another* ticket, so the step asks for a look at the index diff and
+  for the carried change to be named in the commit message instead of bundled in silently. This was
+  already true of `INDEX.md` and `OBJECTS.md`; naming it is the honest half of widening the list.
+- New selftest section 48 pins it from both ends: mechanically, that `--check` really does fail on a
+  missing graph node, that its clean line tracks the `graph_notes` flag, and that no instruction
+  claims the curated store is gated; and as prose wiring, that all four index-commit instructions
+  name the graph paths, that none still says "all three", and that the retired asymmetry does not
+  creep back into the two docs.
+
 ## [3.6.0] — 2026-08-22
 
 ### Added

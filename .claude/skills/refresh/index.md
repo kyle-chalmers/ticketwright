@@ -57,7 +57,8 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 
 ## Phase 3 — Verify
 7. `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py --check` must
-   pass (INDEX.md + OBJECTS.md == fresh render).
+   pass (INDEX.md + OBJECTS.md + the graph layer == fresh render).
 8. Report: total tickets, status breakdown, any still un-enriched. Commit `tickets/INDEX.md` +
-   `tickets/OBJECTS.md` + `tickets/index_data.json` (all three — `--check` gates the two generated
-   files).
+   `tickets/OBJECTS.md` + `tickets/index_data.json`, plus `tickets/graph/` + `tickets/objects/` when
+   `project.graph_notes` is on (the default) — `--check` gates every *rendered* file, so one left
+   behind is drift in CI (the curated store is an input, not a rendering).
