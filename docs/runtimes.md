@@ -391,7 +391,10 @@ table, because none of these is a like-for-like replacement:
 **The priming banner has no home on Antigravity or OpenCode.** Antigravity's CLI has no session-start
 event at all (`PreInvocation` is per-turn), and OpenCode can observe `session.created` but has no
 documented way to inject context. On both, the banner's content belongs in the always-loaded rules
-file. Codex, Cursor and Devin all have a genuine `SessionStart` with context injection.
+file. Codex, Cursor and Devin all have a genuine `SessionStart` with context injection. The banner's
+update notice — the one line saying a newer release is sitting in the marketplace catalog unused —
+is a separate CLI for exactly this reason, so a runtime with no session-start hook can still surface
+it on demand: `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" update_notice.py --root .`
 
 **`qc-reviewer` cannot be a user-defined subagent on Cline**, and context isolation is unestablished
 on OpenCode and Codex. Where an independent second context cannot be guaranteed, the review says so

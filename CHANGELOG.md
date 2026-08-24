@@ -4,6 +4,34 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Added
+- **A visible "release available" notice.** `autoUpdate: true` refreshes the marketplace *catalog*
+  but does not re-install a project-scoped plugin from it
+  ([claude-code#61854](https://github.com/anthropics/claude-code/issues/61854)), so a release has
+  been reaching machines without being picked up and nothing said so. **`bin/update_notice.py`** is
+  a stdlib-only CLI that reads three local files — the repo's `.claude/settings.json`, the installed
+  plugin manifest, and the cached marketplace — and prints **one line** when the catalog is strictly
+  newer, naming both versions and the uninstall+install pair. Everything else is silence: equal or
+  older versions, a non-integer version segment, an explicit `autoUpdate: false` or disabled plugin,
+  a missing or malformed file, and **any ambiguity** (two eligible plugins, two matching install
+  records) — it never guesses a version. It never prints a filesystem path, because the manifest
+  lists other repos' paths. The plugin and marketplace names are read from the repo's own settings
+  (so forks and renames work) and must be ordinary identifiers — they are spliced into a command a
+  person is invited to paste, so a name carrying shell metacharacters or a newline silences the
+  notice instead — and since the marketplace name is a path component, `.` and `..` are refused
+  outright. An install record only counts as this repo when it names the canonical path exactly or
+  resolves to it strictly (absolute paths only, no lexical `..` collapsing), so a record naming a
+  path that does not exist cannot be mistaken for one that does. Reads are bounded and judged on the open descriptor (`O_NONBLOCK` + `fstat`, not a
+  stat of the path), so a file that grows — or a path that becomes a FIFO — mid-read can neither
+  block nor make this child do unbounded work inside the session-start budget. It exits 0 always, and **does not swap the install**: a kit that
+  silently replaces its own running code is worse than a stale one. When upstream closes the gap the
+  versions match and the notice retires itself. `session_context.py` appends the line to the
+  SessionStart banner and **fails open** — a broken, chatty or hanging CLI leaves the banner
+  byte-identical. Other runtimes reach it through the launcher:
+  `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" update_notice.py --root .`
+
 ## [3.7.0] — 2026-08-24
 
 ### Added

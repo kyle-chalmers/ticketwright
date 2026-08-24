@@ -137,8 +137,10 @@ One honest caveat while the gap reported in
 [claude-code#61854](https://github.com/anthropics/claude-code/issues/61854) persists (verified live
 2026-08-23): `autoUpdate` refreshes the marketplace CATALOG on session start, but Claude Code does not
 yet re-install a project-scoped plugin from it - so a new release reaches every teammate's machine
-without being swapped in. Until that lands upstream, picking up a release is one command pair, run
-from the repo:
+without being swapped in. Sessions announce it rather than leaving it silent: when the catalog is
+ahead of what this repo is running, the session-start banner ends with one line naming both versions
+and the command pair below. Until the gap lands upstream, picking up a release is that one command
+pair, run from the repo:
 
 ```bash
 claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project

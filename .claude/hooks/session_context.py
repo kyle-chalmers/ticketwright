@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -244,6 +245,57 @@ def viewer_tool(root: Path, stack_text: str) -> str | None:
     return tools[0] if tools else None
 
 
+def update_notice_line(root: Path) -> list[str]:
+    """The "a newer release is available" line from bin/update_notice.py, or nothing.
+
+    PRESENTATION ONLY — the decision (is a release pending, which versions, which command pair)
+    lives in the harness-neutral CLI so every runtime can ask the same question. This hook is the
+    Claude-Code way of showing the answer.
+
+    FAILS OPEN, and the shape of the check is the point: the line is appended ONLY when the CLI
+    exits cleanly having printed exactly one non-empty line. A timeout, a nonzero exit, an
+    unreadable script, multi-line output or anything on stderr all yield NOTHING — the banner must
+    be byte-identical to a run where this feature does not exist. (Do not read this as the house
+    rule for every hook: db_write_guard deliberately fails SAFE, asking MORE when its scanner is
+    unavailable. A notice and a guard degrade in opposite directions on purpose.)
+
+    THE TIMEOUT IS A BUDGET, NOT A GUESS. This hook already resolves the config resolver, the viewer
+    plan and the identity map from the kit before reaching here, so the child's share of the 10s
+    SessionStart budget declared in plugin.json is not the whole 10s. 3s is several times what the
+    CLI needs (it reads three small local files, no network) and leaves the parent room to finish;
+    selftest section 51 pins the WHOLE hook under the 10s budget with the CLI deliberately hung.
+    """
+    try:
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        script = bindir / "update_notice.py"
+        if not script.is_file():
+            return []
+        proc = subprocess.run(
+            [sys.executable or "python3", str(script), "--root", str(root)],
+            capture_output=True, text=True, timeout=3,
+        )
+    except Exception:  # noqa: BLE001 — including TimeoutExpired; a hook must fail open
+        return []
+    if proc.returncode != 0 or proc.stderr:
+        return []                       # ANY stderr, not just non-whitespace: a child that writes
+                                        # a bare newline there is misbehaving, and a misbehaving
+                                        # child does not get to put a line in the banner
+    # Validate the RAW stdout, then strip — not the other way round. str.strip() removes U+2028 and
+    # collapses a doubled trailing newline, so stripping FIRST would quietly admit output that was
+    # never one line and call the gate exact. The only normalization allowed before the check is the
+    # single trailing newline a well-behaved print() produces.
+    raw = proc.stdout[:-1] if proc.stdout.endswith("\n") else proc.stdout
+    if not raw.strip():
+        return []                       # empty, or whitespace-only ("   " once slipped through)
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in raw):
+        return []                       # a C0 control or DEL — CR could redraw the lines above
+    if raw.splitlines() != [raw]:
+        return []                       # U+2028/U+2029, \x0b, \x0c, U+0085 — none contain "\n",
+                                        # and every one of them renders as a second line somewhere
+    return [raw.strip()]
+
+
 def whoami_lines(root: Path) -> list[str]:
     """The one-line identity display (plus the conflict warning), so a wrong resolution is caught
     the moment a session starts — before work lands in a colleague's folder.
@@ -314,6 +366,9 @@ def main() -> int:
     lines.append(f"Policies enforced: {db_rule}; external posts require approval "
                  "(db_write_guard hook + skill hard-halts); chat defaults to draft; "
                  "outputs deterministic. See AGENTS.md.")
+    # Last, so it reads as a footer rather than interrupting the stack summary — and appended from a
+    # list that is empty on every failure, which is what keeps the rest byte-identical.
+    lines.extend(update_notice_line(root))
     print("\n".join(lines))
     return 0
 
