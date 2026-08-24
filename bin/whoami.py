@@ -43,10 +43,13 @@ fixes this machine. On concurrent edits the file is re-read immediately before w
 identity is appended rather than the file rewritten; a valid append is never rolled back for an
 unrelated later failure, because discarding the person's own answer would be worse.
 
-PRIVACY: when the identity to bind is email-shaped and the repo's `origin` remote is on a public
-code host, `--bind` warns once per run and the offer is real — a DERIVED email is never written
-(pin only, with instructions to re-run using `--identity <handle-or-$USER>`, or `--identity
-<email>` to commit it deliberately); an explicit `--identity` email is honored, still warned.
+PRIVACY: when the identity to bind is email-shaped and the repo's `origin` remote sits on a
+public code host (a heuristic — actual visibility cannot be verified offline, so the warning is
+phrased conditionally), `--bind` warns once per run and the offer is real — a DERIVED email is
+never written (pin only, with instructions to re-run using `--identity $USER` or another value
+that matches a local identity, or `--identity <email>` to commit it deliberately); an explicit
+`--identity` email is honored, still warned. A bare code-host handle matching no local identity
+would bind but never resolve here, so the advice names $USER concretely.
 
 Stdlib only. Offline: reads local git config and the environment — no network, no credentials.
 `--root <repo>` is the only location input; no Claude environment variable is required
@@ -376,11 +379,17 @@ def _pin_person(path: Path, pid: str) -> str:
     return "created"
 
 
-def _public_remote(root: Path) -> bool:
+def _public_remote(root: Path) -> str:
+    """The origin host when it is a known public code host, else "".
+
+    Offline heuristic only: github.com and friends host plenty of private repos, and visibility
+    cannot be verified without a network call — so callers must phrase any warning conditionally
+    ("if this repo is public"), never as fact.
+    """
     url = _git_config("remote.origin.url", root)
     m = re.search(r"(?:@|://(?:[^/@]+@)?)([A-Za-z0-9.-]+)", url)
     host = m.group(1).lower() if m else ""
-    return host in PUBLIC_HOSTS
+    return host if host in PUBLIC_HOSTS else ""
 
 
 def bind(root: Path, pid: str, identity: str | None, confirm: bool) -> int:
@@ -420,19 +429,34 @@ def bind(root: Path, pid: str, identity: str | None, confirm: bool) -> int:
                   f"enumerated by {', '.join(sorted(owners - {pid}))}. Pinning person: {pid} "
                   f"for this machine instead.", file=sys.stderr)
             ident = ""
-        elif "@" in ident and _public_remote(root):
+        elif "@" in ident and (host := _public_remote(root)):
             # Once per run, BEFORE any write. And the offer is real: a DERIVED email is never
             # written — the pin alone fixes this machine with zero disclosure — while an email the
-            # person passed via --identity is a deliberate choice and is honored.
-            print(f"whoami: this repo's origin remote is on a public code host, and "
-                  f"'{ident}' looks like an email. people/{pid}.yaml is committed — prefer a "
-                  f"handle or $USER (--identity <value>).", file=sys.stderr)
+            # person passed via --identity is a deliberate choice and is honored. The host is a
+            # HEURISTIC: visibility cannot be verified offline, so the wording is conditional.
+            print(f"whoami: this repo's origin is on {host} — a public code host, though this "
+                  f"repo's visibility can't be verified offline — and '{ident}' looks like an "
+                  f"email. people/{pid}.yaml is committed: if this repo is public, prefer "
+                  f"--identity $USER (or another value that matches a local identity — git "
+                  f"email/name or $USER; a bare handle that matches none of those will not "
+                  f"resolve).", file=sys.stderr)
             if not explicit:
                 print(f"whoami: pinning person: {pid} for this machine WITHOUT writing the "
                       f"email. To make other machines resolve too, re-run with "
-                      f"--identity <handle> — or --identity {ident} to commit the email "
-                      f"deliberately.", file=sys.stderr)
+                      f"--identity $USER (or a value matching git email/name there) — or "
+                      f"--identity {ident} to commit the email deliberately.", file=sys.stderr)
                 ident = ""
+
+    if ident and ident.lower() not in {c.lower() for c in local_identities(root)}:
+        # Still exit 0, still write: binding an identity for ANOTHER machine is legitimate. But a
+        # bind that silently records a value the identity map can never match here (a teammate
+        # bound a code-host handle on this tool's own advice, and it was inert) must say so —
+        # to stderr, so a scripted caller's stdout stays the clean machine-readable result.
+        print(f"whoami: note — '{ident}' matches no local identity candidate on THIS machine "
+              f"(git email, git name, $USER), so resolution here will not use it; this machine "
+              f"resolves via the person: pin only. If that is not what you meant, re-run with "
+              f"--identity $USER or a value matching this machine's git email/name.",
+              file=sys.stderr)
 
     try:
         # Tier 3 first: the gitignored, zero-disclosure write that fixes THIS machine. The tracked

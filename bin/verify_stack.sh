@@ -18,7 +18,9 @@
 #   bin/verify_stack.sh [STACK_YAML]            # default: .claude/config/stack.yaml
 #   bin/verify_stack.sh [STACK_YAML] --dry-run  # don't run verify cmds; just resolve + show them
 #
-# Exit: 0 if all seams reachable (or dry-run), 1 if any seam unreachable or misconfigured.
+# Exit: 0 if no seam failed (or dry-run), 1 if any seam unreachable or misconfigured. A seam that
+# could not be checked at all (MCP-only with no verify command, or an unresolved {token}) is a
+# WARNING: it keeps exit 0, but the summary counts it as unverified instead of claiming it OK.
 set -uo pipefail
 
 stack="${1:-.claude/config/stack.yaml}"
@@ -44,6 +46,17 @@ resolver="$kit_root/bin/effective_config.py"
 echo "verify_stack: $stack  $([[ $dry -eq 1 ]] && echo '(dry-run)')"
 echo "─────────────────────────────────────────────────────────"
 fail=0
+
+# Three states per seam, COUNTED, so the summary line carries the truth. "All seams OK." used to
+# print whenever nothing failed — including when a seam was never checked at all (MCP-only with no
+# verify command, or an unresolved {token} skip), which put a completely unauthenticated seam
+# under an all-green banner. Warnings still exit 0; they just stop masquerading as verified.
+ok_count=0
+warn_count=0; warn_list=""
+fail_count=0; fail_list=""
+count_ok()   { ok_count=$((ok_count + 1)); }
+count_warn() { warn_count=$((warn_count + 1)); warn_list="$warn_list${warn_list:+, }$1"; }
+count_fail() { fail_count=$((fail_count + 1)); fail_list="$fail_list${fail_list:+, }$1"; fail=1; }
 
 PLAN="$(mktemp)"; LINT="$(mktemp)"; trap 'rm -f "$PLAN" "$LINT"' EXIT
 python3 "$resolver" --stack "$stack" --verify-plan > "$PLAN" 2>"$LINT"; rc=$?
@@ -83,7 +96,7 @@ while IFS= read -r line; do
   [ -n "$line" ] || continue
   IFS="$SEP" read -r kind label tool adapter verify message unresolved unsafe missing <<<"$(fields "$line")"
   case "$kind" in
-    seam_error) echo "  ✗ $message"; fail=1; continue ;;
+    seam_error) echo "  ✗ $message"; count_fail "${label:-config}"; continue ;;
     seam_warn)  echo "  ⚠ $message"; continue ;;
   esac
 
@@ -96,7 +109,7 @@ while IFS= read -r line; do
     [[ -z "$adapter_path" && -f "$proj_root/$adapter" ]] && adapter_path="$proj_root/$adapter"
   fi
   if [[ -z "$adapter_path" ]]; then
-    echo "  ✗ adapter missing ($adapter)"; fail=1; continue
+    echo "  ✗ adapter missing ($adapter)"; count_fail "$label"; continue
   fi
 
   # 2) are the adapter's required keys actually set? A verify command only exercises the keys its
@@ -110,28 +123,39 @@ while IFS= read -r line; do
 
   # 3) verify reachable?
   if [[ -z "$verify" ]]; then
-    echo "  ⚠ no verify command (skills will warn)"; continue
+    # Unverifiable is not verified. Say WHY, and say it differently for the case a person can fix
+    # from the shell (write a verify) vs the case nobody can (MCP transport has no shell surface —
+    # the agent must probe the server in-session). Transport comes from the adapter frontmatter;
+    # the plan rows don't carry it, and the wording is the only thing that hangs on it.
+    transport="$(sed -n '2,/^---$/p' "$adapter_path" 2>/dev/null \
+                 | sed -n 's/^transport:[[:space:]]*\([A-Za-z]*\).*/\1/p' | head -n 1)"
+    if [[ "$transport" == "mcp" ]]; then
+      echo "  ⚠ MCP-only: not checkable from the shell — the agent must probe the MCP server in-session"
+    else
+      echo "  ⚠ no verify command — NOT verified (skills will warn)"
+    fi
+    count_warn "$label"; continue
   fi
   # An UNRESOLVED {token} must never be executed. The shell interpolation this replaced left a
   # missing token literal, so a tokenized verify ran `databricks --profile {profile} …` verbatim on
   # any machine without a tier-3 file — a confusing failure that looks like broken auth.
   if [[ -n "$unresolved" ]]; then
     echo "  ⚠ skipped: unresolved {$unresolved} — set it in .claude/config/connections.local.yaml"
-    continue
+    count_warn "$label"; continue
   fi
   # A verify is executed with `eval`, and a {token} value can come from a gitignored local file, so
   # a value carrying shell syntax is REFUSED rather than run. Quoting is not an option: the token is
   # often already inside quotes in the template, so quoting again would corrupt legitimate paths.
   if [[ -n "$unsafe" ]]; then
-    echo "  ✗ refusing to run: value for {$unsafe} contains shell metacharacters"; fail=1; continue
+    echo "  ✗ refusing to run: value for {$unsafe} contains shell metacharacters"; count_fail "$label"; continue
   fi
   if [[ $dry -eq 1 ]]; then
-    echo "  → would run: $verify"; continue
+    echo "  → would run: $verify"; count_ok; continue
   fi
   if eval "$verify" >/dev/null 2>&1; then
-    echo "  ✓ reachable"
+    echo "  ✓ reachable"; count_ok
   else
-    echo "  ✗ UNREACHABLE → $verify"; fail=1
+    echo "  ✗ UNREACHABLE → $verify"; count_fail "$label"
   fi
 done < "$PLAN"
 
@@ -182,5 +206,19 @@ if [[ -n "$leaks" ]]; then
 fi
 
 echo "─────────────────────────────────────────────────────────"
-if [[ $fail -eq 0 ]]; then echo "All seams OK."; else echo "One or more seams need attention (auth/install)."; fi
+# The summary tells the truth about all three states. "All seams OK." is reserved for the run where
+# every seam actually verified (or, in dry-run, resolved to a runnable verify) — an unverifiable
+# seam is named, not absorbed into the green line. Exit codes are unchanged: failures exit 1,
+# warnings alone still exit 0.
+if [[ $fail -ne 0 ]]; then
+  summary="$ok_count OK"
+  [[ $warn_count -gt 0 ]] && summary="$summary, $warn_count unverified ($warn_list)"
+  [[ $fail_count -gt 0 ]] && summary="$summary, $fail_count failing ($fail_list)"
+  echo "$summary."
+  echo "One or more seams need attention (auth/install)."
+elif [[ $warn_count -gt 0 ]]; then
+  echo "$ok_count OK, $warn_count unverified ($warn_list)."
+else
+  echo "All seams OK."
+fi
 exit $fail

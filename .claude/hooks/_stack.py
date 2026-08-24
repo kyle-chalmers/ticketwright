@@ -1,4 +1,8 @@
-"""Shared stack.yaml resolution + reading for the hooks. Stdlib only, no yaml dep.
+r"""Shared stack.yaml resolution + reading for the hooks. Stdlib only, no yaml dep.
+
+(Raw docstring on purpose: it quotes regexes like `^\s*policies:\s*$`, and a plain string turns
+those into invalid escape sequences — a SyntaxWarning printed to stderr on every hook call under
+Python 3.12+/3.14. Keep the r prefix if you add more regex examples.)
 
 The four hooks each grew their own root-resolution and their own mini-YAML scanner,
 three mutually inconsistent ways. This module is the seam they should converge on;

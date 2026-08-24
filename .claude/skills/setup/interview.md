@@ -104,6 +104,11 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
     A team that cannot run a desktop sync agent is not stuck: the `rclone` adapter fills this slot
     with no mount at all (`remote_path` tier 1, the remote NAME tier 3). Mount install steps and the
     mountless route both live at <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>.
+    The same offer applies when the stack is *already* configured but `mount_root` cannot be
+    resolved on this machine — the sync agent isn't installed, or (increasingly common) it needs
+    an IT device approval that hasn't landed yet. Don't dead-end there: offer the mountless route
+    on the spot — the `rclone` adapter fills this slot with no mount, same tier split as above —
+    and note they can switch back to the mounted slot once the approval comes through.
 13. **Chat** (or *none*), then its destination — **per-adapter**: read the chosen adapter's
     frontmatter for the key its verbs interpolate as the default destination (adapters differ on
     the key name; one generic question writes the wrong key for one of them). Then
