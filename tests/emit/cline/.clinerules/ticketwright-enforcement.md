@@ -1,4 +1,4 @@
-<!-- emitted by ticketwright install v3.6.1 — do not hand-edit; re-run `ticketwright install --runtime cline` to update. -->
+<!-- emitted by ticketwright install v3.7.0 — do not hand-edit; re-run `ticketwright install --runtime cline` to update. -->
 
 # Ticketwright enforcement — what is mechanical here
 
