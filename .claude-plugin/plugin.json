@@ -32,6 +32,11 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/db_write_guard.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/source_material_guard.py\"",
+            "timeout": 10
           }
         ]
       }

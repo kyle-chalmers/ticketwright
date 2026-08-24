@@ -3753,7 +3753,7 @@ project:
   ticket_path: "tickets/{assignee}/{id}"
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
-  intake: [tracker, email]
+  intake: [tracker, email, meetings]
   role: analyst
   domain: data analysis
   analysis_tools: [notebooks, spreadsheets]
@@ -4831,11 +4831,21 @@ rm -f "$TOK"
 # --- (5) emitted wiring artifacts + the install report's collapse statements -----------------------
 E43="$TMP/e43"; mkdir -p "$E43/adapters" "$E43/templates" "$E43/bin" "$E43/.claude"
 cp bin/kit_paths.py "$E43/bin/"; cp -R .claude/skills "$E43/.claude/skills"
+# The emitted PreToolUse wiring is `--hook shell_guards` — ONE entry covering both shell guards
+# (db_write + source_material). It is deliberately not two array entries: whether a runtime
+# executes every element of a hook array is undocumented, and a WIRED cell resting on that
+# assumption would be an overclaim (see the enforcement table's vocabulary).
 grep -q '"failClosed": true' tests/emit/cursor/.cursor/hooks.json \
-  && grep -q 'hook_shim.py --runtime cursor --hook db_write_guard' tests/emit/cursor/.cursor/hooks.json \
+  && grep -q 'hook_shim.py --runtime cursor --hook shell_guards' tests/emit/cursor/.cursor/hooks.json \
   && ok "the emitted cursor hook config contains \"failClosed\": true wired to the guard shim (required configuration, set by the installer)" \
   || bad "the cursor hooks.json lost failClosed or the shim command"
+[ "$(grep -c 'beforeShellExecution' tests/emit/cursor/.cursor/hooks.json)" -eq 1 ] \
+  && [ "$(grep -c '\-\-hook' tests/emit/cursor/.cursor/hooks.json)" -eq 1 ] \
+  && ok "cursor's shell wiring is ONE entry (no dependence on array-execution order)" \
+  || bad "cursor's hooks.json emits more than one shell hook entry"
 grep -q '"PreToolUse"' tests/emit/antigravity/.agents/hooks.json \
+  && grep -q 'shell_guards' tests/emit/antigravity/.agents/hooks.json \
+  && [ "$(grep -c 'PreToolUse' tests/emit/antigravity/.agents/hooks.json)" -eq 1 ] \
   && grep -q '"PostToolUse"' tests/emit/antigravity/.agents/hooks.json \
   && grep -q 'regenerate_ticket_index' tests/emit/antigravity/.agents/hooks.json \
   && ok "the emitted antigravity hooks.json wires PreToolUse (guard) and PostToolUse (index regen) — its five-event surface, used where it maps" \
@@ -4911,20 +4921,20 @@ WANT = ["Claude Code", "Codex CLI", "Cursor", "Antigravity", "OpenCode", "Devin"
 bad = [f"missing row: {r}" for r in WANT if r not in rows]
 for name in WANT:
     cells = rows.get(name, [])
-    if len(cells) != 5:
-        bad.append(f"{name}: {len(cells)} cells, want 5 (4 hooks + malformed-input)")
+    if len(cells) != 6:
+        bad.append(f"{name}: {len(cells)} cells, want 6 (5 hooks + malformed-input)")
         continue
-    for i, c in enumerate(cells[:4]):
+    for i, c in enumerate(cells[:5]):
         if not c:
             bad.append(f"{name}: empty hook cell {i}")
         elif not re.match(r"^(ENFORCEMENT|WIRED|GUIDANCE|UNKNOWN)\b", c):
             bad.append(f"{name}: hook cell {i} outside the closed vocabulary: {c[:40]!r}")
-    if not cells[4]:
+    if not cells[5]:
         bad.append(f"{name}: empty malformed-input cell")
 # the malformed-input column must carry each runtime's DECLARED decision
 for name, frag in [("Codex CLI", "denies"), ("OpenCode", "denies"), ("Devin", "denies"),
                    ("Cursor", "ask"), ("Antigravity", "ask"), ("Cline", "UNKNOWN")]:
-    if name in rows and frag not in rows[name][4]:
+    if name in rows and frag not in rows[name][5]:
         bad.append(f"{name}: malformed-input cell does not state '{frag}'")
 # ENFORCEMENT is reserved for mechanisms proven in THIS repo's test contract (Claude Code);
 # an emitted-but-live-unverified mechanism is WIRED, and a live confirmation on the punch list
@@ -4932,28 +4942,36 @@ for name, frag in [("Codex CLI", "denies"), ("OpenCode", "denies"), ("Devin", "d
 # tiebreaker 6 forbids.
 for name in WANT:
     if name != "Claude Code":
-        for i, c in enumerate(rows.get(name, [])[:4]):
+        for i, c in enumerate(rows.get(name, [])[:5]):
             if c.startswith("ENFORCEMENT"):
                 bad.append(f"{name}: cell {i} claims ENFORCEMENT — only a live confirmation may promote WIRED")
-if "Claude Code" in rows and not all(c.startswith("ENFORCEMENT") for c in rows["Claude Code"][:4]):
-    bad.append("Claude Code: all four hook cells must be ENFORCEMENT (the proven native wiring)")
+if "Claude Code" in rows and not all(c.startswith("ENFORCEMENT") for c in rows["Claude Code"][:5]):
+    bad.append("Claude Code: all five hook cells must be ENFORCEMENT (the proven native wiring)")
 for name, wired in [("Cursor", ".cursor/hooks.json"), ("Antigravity", ".agents/hooks.json"),
                     ("OpenCode", ".opencode/plugins/")]:
     if name in rows and (not rows[name][0].startswith("WIRED") or wired not in rows[name][0]):
         bad.append(f"{name}: guard cell must be WIRED naming {wired}")
-if "Antigravity" in rows and not rows["Antigravity"][3].startswith("WIRED"):
+if "Antigravity" in rows and not rows["Antigravity"][4].startswith("WIRED"):
     bad.append("Antigravity: the regenerate cell must be WIRED (emitted PostToolUse entry)")
+# The source-material guard column follows the SAME wired/unwired sets as the db-write guard:
+# both are PreToolUse shell guards, so a runtime that wires one and not the other ships a gate
+# with a hole in it while the table reads as protection.
+for name, level in [("Cursor", "WIRED"), ("Antigravity", "WIRED"), ("OpenCode", "WIRED"),
+                    ("Codex CLI", "GUIDANCE"), ("Devin", "GUIDANCE")]:
+    if name in rows and not rows[name][1].startswith(level):
+        bad.append(f"{name}: the source_material_guard cell must be {level} — a runtime that "
+                   f"wires one shell guard and not the other has a gate with a hole in it")
 for name in ["Codex CLI", "Devin"]:
     if name in rows and not rows[name][0].startswith("GUIDANCE"):
         bad.append(f"{name}: guard cell must be GUIDANCE (config location unresearched — never claim wiring that does not exist)")
-if "Cline" in rows and not all(c.startswith("UNKNOWN") for c in rows["Cline"][:4]):
-    bad.append("Cline: all four hook cells must be UNKNOWN (the stated case)")
+if "Cline" in rows and not all(c.startswith("UNKNOWN") for c in rows["Cline"][:5]):
+    bad.append("Cline: all five hook cells must be UNKNOWN (the stated case)")
 if "**WIRED**" not in block:
     bad.append("the legend does not define WIRED")
 print("\n".join(bad))
 PY
 )"
-[ -z "$tbl_bad" ] && ok "the rendered enforcement table: 7 runtimes x (4 hooks + malformed-input), closed vocabulary, no empty cell, wired/unwired sets pinned" \
+[ -z "$tbl_bad" ] && ok "the rendered enforcement table: 7 runtimes x (5 hooks + malformed-input), closed vocabulary, no empty cell, wired/unwired sets pinned" \
   || bad "the enforcement table broke its contract" "$tbl_bad"
 for frag in 'trusted by hash' 'failClosed: true' 'fails open by documented design' 'deny-with-escape' 'model-judged'; do
   grep -q "$frag" "$TMP/agents-rendered.md" || bad "the rendered AGENTS.md lost the caveat: $frag"
@@ -5985,6 +6003,309 @@ a48="$(grep -niE 'staging asymmetry|asymmetry to know' README.md docs/architectu
 { grep -q 'tickets/graph/' README.md && grep -q 'tickets/graph/' docs/architecture.md; } \
   && ok "both docs still name the graph paths (the asymmetry was fixed, not deleted)" \
   || bad "the graph paths vanished from README or docs/architecture.md"
+hdr "49 · meetings intake + the source-material guard (PROMPT: meetings-intake)"
+# The pre-existing intake assertion (section 38 I) greps that files MENTION the words. That is not
+# the bar here: this section drives real binaries against fixture trees, because the policy it
+# covers — raw meeting transcripts stay out of git and out of a docstore backup — is worth exactly
+# what its mechanism is worth. Cases A-E are behavioral; F-H are labeled structural pins and are
+# not dressed up as more than that.
+S48="$TMP/s48"; mkdir -p "$S48"
+SCAN="bin/scan_source_materials.py"
+FIX="tests/source_materials/fixtures"
+
+# --- (A) the gitignore policy, executed by git itself ------------------------------------------
+# Same harness as section 19: real `git init`, real patterns, real matching semantics. The three
+# outcomes below are the whole policy — self-declaring names out, private/ out, curated form IN.
+GI48="$S48/gitignore"; mkdir -p "$GI48/tickets/a/ENG-1/source_materials/private"
+cp templates/gitignore.tmpl "$GI48/.gitignore"
+( cd "$GI48" && git init -q . ) 2>/dev/null
+for f in weekly-sync-transcript.md 2026-08-20-pricing-review-meeting.md notes.md; do
+  : > "$GI48/tickets/a/ENG-1/source_materials/$f"
+done
+: > "$GI48/tickets/a/ENG-1/source_materials/private/raw.md"
+gi_raw=0;  git -C "$GI48" check-ignore -q tickets/a/ENG-1/source_materials/weekly-sync-transcript.md && gi_raw=1
+gi_priv=0; git -C "$GI48" check-ignore -q tickets/a/ENG-1/source_materials/private/raw.md && gi_priv=1
+gi_cur=0;  git -C "$GI48" check-ignore -q tickets/a/ENG-1/source_materials/2026-08-20-pricing-review-meeting.md && gi_cur=1
+{ [ "$gi_raw" -eq 1 ] && [ "$gi_priv" -eq 1 ] && [ "$gi_cur" -eq 0 ]; } \
+  && ok "gitignore: *transcript* and private/ are ignored, the curated *-meeting.md commits" \
+  || bad "the source-material gitignore policy is wrong" \
+         "transcript=$gi_raw private=$gi_priv curated_ignored=$gi_cur"
+# The shape-only transcript is deliberately NOT covered by any pattern — that gap is the whole
+# reason the guard exists, and asserting it keeps the two mechanisms honest about their division.
+gi_shape=0; git -C "$GI48" check-ignore -q tickets/a/ENG-1/source_materials/notes.md && gi_shape=1
+[ "$gi_shape" -eq 0 ] \
+  && ok "a shape-only transcript (notes.md) is NOT gitignored — the guard's job, not a pattern's" \
+  || bad "notes.md is gitignored, so the guard's stated reason for existing is wrong"
+
+# --- (B) classification against the golden corpus ----------------------------------------------
+# The corpus carries the two cases that decide whether the heuristic is real: a curated-NAMED file
+# whose body is a transcript (content must beat filename) and ordinary timestamped notes (must not
+# trip). tests/source_materials/README.md explains each fixture.
+c48="$(python3 - <<'EOF' 2>&1
+import json, sys
+sys.path.insert(0, "bin")
+import scan_source_materials as s
+golden = json.load(open("tests/source_materials/golden.json"))
+from pathlib import Path
+bad = []
+for name, want in golden.items():
+    got = s.classify_path(Path("tests/source_materials/fixtures") / name)
+    if got["kind"] != want["kind"]:
+        bad.append(f"{name}: want {want['kind']}, got {got['kind']}")
+print("; ".join(bad))
+EOF
+)"
+[ -z "$c48" ] && ok "classifier matches the golden corpus on every fixture" \
+  || bad "classifier drifted from tests/source_materials/golden.json" "$c48"
+k48() { python3 -c "
+import sys; sys.path.insert(0,'bin')
+import scan_source_materials as s
+from pathlib import Path
+print(s.classify_path(Path('$FIX/$1'))['kind'])"; }
+[ "$(k48 2026-08-20-roadmap-sync-meeting.md)" = "raw_suspect" ] \
+  && ok "COLLISION: a curated-NAMED full transcript is raw_suspect (content beats filename)" \
+  || bad "a transcript defeats the gate by adopting the curated filename"
+[ "$(k48 notes.md)" = "raw_suspect" ] \
+  && ok "SHAPE: a transcript with an innocuous filename is caught by content" \
+  || bad "a transcript named notes.md passes — the gate is filename-only"
+# The caption formats. VTT is what the major meeting platforms export by default, and its
+# timestamp and speaker sit on DIFFERENT lines — every same-line speaker pattern misses it. Both
+# spellings are pinned: named .vtt (extension rule) and stripped-and-renamed (cue-count rule).
+[ "$(k48 weekly-sync.vtt)" = "raw_suspect" ] \
+  && ok "CAPTION: a .vtt export is raw_suspect (the platforms' default download)" \
+  || bad "a WebVTT transcript passes the gate"
+[ "$(k48 recording-export.txt)" = "raw_suspect" ] \
+  && ok "CAPTION: a headerless VTT renamed .txt is caught by cue-line count alone" \
+  || bad "a renamed caption file passes — the cue rule is not working"
+[ "$(k48 standup-notes.md)" = "other" ] \
+  && ok "FALSE POSITIVE: ordinary timestamped meeting notes are NOT flagged" \
+  || bad "ordinary meeting notes trip the shape test — the gate cries wolf"
+[ "$(k48 2026-08-20-pricing-review-meeting.md)" = "curated" ] \
+  && ok "a curated summary that QUOTES a transcript briefly stays curated" \
+  || bad "a curated excerpt is flagged — the policy's committed form would be blocked"
+
+# --- (C) the exit-code contract (what /ship branches on) ---------------------------------------
+EX48="$S48/exit/source_materials"; mkdir -p "$EX48"
+cp "$FIX/standup-notes.md" "$EX48/"
+python3 "$SCAN" --root "$S48/exit" >/dev/null 2>&1 \
+  && ok "clean source material exits 0" || bad "a clean ticket exits non-zero"
+cp "$FIX/notes.md" "$EX48/"
+python3 "$SCAN" --root "$S48/exit" >/dev/null 2>&1 \
+  && bad "a raw_suspect present and the scanner still exits 0 — nothing can gate on it" \
+  || ok "a raw_suspect exits non-zero (the signal /ship halts on)"
+python3 "$SCAN" --root "$S48/exit" --intake >/dev/null 2>&1 \
+  && ok "--intake REPORTS rather than gates (exit 0 even with a raw_suspect present)" \
+  || bad "--intake gates, so priming could be failed by material it merely declined to read"
+
+# --- (D) the priming path, end to end ----------------------------------------------------------
+# The prompt requires this one by name: drive a fixture ticket carrying a *-meeting.md through the
+# priming path and prove the file is picked up. `--intake` is that path's executable consumer, so
+# the naming convention is enforced by code rather than approximated from prose.
+PR48="$S48/prime/tickets/alice/ENG-7/source_materials"; mkdir -p "$PR48"
+cp "$FIX/2026-08-20-pricing-review-meeting.md" "$FIX/notes.md" "$FIX/forwarded-thread.md" "$PR48/"
+pj="$(python3 "$SCAN" --root "$S48/prime" --ticket tickets/alice/ENG-7 --intake --json)"
+grep -q '2026-08-20-pricing-review-meeting.md' <<<"$pj" \
+  && ok "priming picks up the curated *-meeting.md from a fixture ticket's source_materials/" \
+  || bad "the required behavioral priming case fails: the meeting file is not enumerated" "$pj"
+grep -q 'forwarded-thread.md' <<<"$pj" \
+  && ok "priming still picks up non-meeting intake (the email/chat channels keep working)" \
+  || bad "widening intake to meetings dropped the other channels"
+python3 -c "
+import json,sys
+d = json.load(open('$S48/prime.json')) if False else json.loads(sys.stdin.read())
+names = [f['name'] for f in d['files']]
+sys.exit(0 if 'notes.md' not in names else 1)" <<<"$pj" \
+  && ok "priming OMITS a raw transcript — a full transcript never enters context by default" \
+  || bad "priming would read a raw transcript into context"
+# The consumer must actually be wired into the skill, or the CLI is a test-only artifact.
+{ grep -q 'scan_source_materials.py' .claude/skills/ticket/priming.md \
+  && grep -q 'meetings' .claude/skills/ticket/priming.md; } \
+  && ok "priming.md calls the enumerator and names the meetings channel" \
+  || bad "priming.md does not consume the meetings intake channel"
+
+# --- (E) the guard, via its real stdin -> stdout protocol --------------------------------------
+# This is the case that proves the gate is a gate rather than a paragraph. A configured fixture
+# repo, real payloads, and the two bypasses the design exists to close.
+GD48="$S48/guard"; mkdir -p "$GD48/.claude/config" "$GD48/tickets/a/ENG-1/source_materials"
+printf 'project:\n  key_prefix: ENG\npolicies:\n  db_write_requires_approval: high_risk\n' \
+  > "$GD48/.claude/config/stack.yaml"
+( cd "$GD48" && git init -q . ) 2>/dev/null
+cp "$FIX/notes.md" "$GD48/tickets/a/ENG-1/source_materials/"
+guard48() { printf '%s' "$1" | python3 .claude/hooks/source_material_guard.py 2>/dev/null; }
+g_add="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$GD48\"}")"
+grep -q '"permissionDecision": "ask"' <<<"$g_add" \
+  && ok 'guard ASKS on a git add when a shape-only transcript is staged (bypass 1 closed)' \
+  || bad "git add of a raw transcript is not gated" "$g_add"
+g_cp="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -r $GD48/tickets/a/ENG-1 /d/x\"},\"cwd\":\"$GD48\"}")"
+grep -q '"permissionDecision": "ask"' <<<"$g_cp" \
+  && ok 'guard ASKS on the docstore cp -r (bypass 2 — the productized path — closed)' \
+  || bad "a folder-wide docstore backup of a raw transcript is not gated" "$g_cp"
+# Path narrowing must never turn into a silent pass: when the parsed paths land OUTSIDE the repo
+# (an unexpanded ~, a variable, a glob, with a destination that happens to exist), the guard falls
+# back to every flagged file rather than filtering them all away.
+g_cpv="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -r \$TICKET $TMP\"},\"cwd\":\"$GD48\"}")"
+grep -q '"permissionDecision": "ask"' <<<"$g_cpv" \
+  && ok "an unparsed copy source with an existing destination still gates (no silent pass)" \
+  || bad "path narrowing filtered every finding away — a copy passes in silence" "$g_cpv"
+grep -q 'private/' <<<"$g_cp" && grep -qi 'does not apply to' <<<"$g_cp" \
+  && ok "the copy prompt says private/ does NOT protect a cp -r (the remedies are not the same)" \
+  || bad "the copy prompt offers the git remedy for a docstore exposure"
+# The guard must NOT assume the repo's .gitignore matches the kit's shipped template: an install
+# predating those patterns would stage a self-declaring transcript in silence. A plain `git add`
+# (no -f) over a *transcript*-named file must still ask.
+cp "$FIX/weekly-sync-transcript.md" "$GD48/tickets/a/ENG-1/source_materials/"
+g_ign="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$GD48\"}")"
+grep -q 'weekly-sync-transcript.md' <<<"$g_ign" \
+  && ok "a *transcript* file is asked about on a PLAIN git add (no shipped-gitignore assumption)" \
+  || bad "the guard assumes the repo's gitignore — a migrating install stages it silently" "$g_ign"
+rm "$GD48/tickets/a/ENG-1/source_materials/weekly-sync-transcript.md"
+# Jurisdiction evasion: a flags-only alternation missed `git -C <path> add` and `git stage`,
+# both of which stage exactly the same way. Each spelling is pinned, because the failure mode of
+# a too-narrow pattern is a SILENT pass — the transcript goes in and nothing says so.
+for spell in "git -C $GD48 add -A" "git stage ." "git -C $GD48 commit -am x" "git commit -a -m x"; do
+  g_ev="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$spell\"},\"cwd\":\"$GD48\"}")"
+  grep -q '"permissionDecision": "ask"' <<<"$g_ev" \
+    && ok "guard catches the staging spelling: $spell" \
+    || bad "a staging spelling evades the guard: $spell" "$g_ev"
+done
+# ...and read-only git commands are still none of its business — INCLUDING ones whose option
+# VALUES contain a staging word. A broad substring match fires on all four of these, and on a
+# deny-only runtime that turns `git log` into a blocked command. The subcommand is parsed, so the
+# only thing that counts is the subcommand.
+for ro in "git log --oneline" "git log --grep=commit" "git show --format=commit HEAD" \
+          "git config --get user.commit" "git diff HEAD -- add.py" "git status"; do
+  g_ro="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$ro\"},\"cwd\":\"$GD48\"}")"
+  [ -z "$g_ro" ] && ok "guard ignores a read-only git command: $ro" \
+    || bad "guard fires on a read-only git command: $ro" "$g_ro"
+done
+rm "$GD48/tickets/a/ENG-1/source_materials/notes.md"
+cp "$FIX/standup-notes.md" "$GD48/tickets/a/ENG-1/source_materials/"
+g_clean="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$GD48\"}")"
+[ -z "$g_clean" ] && ok "guard is SILENT on a clean ticket (no false prompt)" \
+  || bad "guard prompts on ordinary meeting notes" "$g_clean"
+g_ls="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls -la\"},\"cwd\":\"$GD48\"}")"
+[ -z "$g_ls" ] && ok "guard is silent outside its jurisdiction (a non-staging, non-copy command)" \
+  || bad "guard fires on an unrelated command" "$g_ls"
+g_out="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$TMP\"}")"
+[ -z "$g_out" ] && ok "guard is repo-gated: no output outside a configured repo" \
+  || bad "guard fires outside a ticketwright repo" "$g_out"
+printf 'not json' | python3 .claude/hooks/source_material_guard.py >"$S48/mal.out" 2>/dev/null
+mal_rc=$?
+{ [ "$mal_rc" -eq 0 ] && [ ! -s "$S48/mal.out" ]; } \
+  && ok "guard FAILS OPEN on malformed input (exit 0, no output — never blocks a session)" \
+  || bad "guard does not fail open" "rc=$mal_rc out=$(cat "$S48/mal.out")"
+# `off` is an explicit operator instruction and must be readable without the classifier.
+printf 'project:\n  key_prefix: ENG\npolicies:\n  source_material_guard: off\n' \
+  > "$GD48/.claude/config/stack.yaml"
+cp "$FIX/notes.md" "$GD48/tickets/a/ENG-1/source_materials/"
+g_off="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$GD48\"}")"
+[ -z "$g_off" ] && ok "policies.source_material_guard: off silences the guard" \
+  || bad "the off switch does not work" "$g_off"
+# ...but an UNPARSEABLE value must gate MORE, never less (the db_write_requires_approval asymmetry).
+printf 'project:\n  key_prefix: ENG\npolicies:\n  source_material_guard: banana\n' \
+  > "$GD48/.claude/config/stack.yaml"
+g_junk="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$GD48\"}")"
+grep -q '"permissionDecision": "ask"' <<<"$g_junk" \
+  && ok "an unrecognized policy value resolves to ON — parse failure gates MORE" \
+  || bad "an unparseable policy value silences the guard (the asymmetry runs the wrong way)"
+
+# --- (E2) an INCOMPLETE scan gates: coverage that ran out never reads as clean -----------------
+# The bound exists for the hook budget, but a truncated scan that reports `other` is
+# indistinguishable from a clean one — the exact silent pass this guard exists to prevent. A tree
+# larger than the cap must gate on its OWN account, with no raw_suspect present at all.
+LIM48="$TMP/s48-limit"; LS48="$LIM48/tickets/a/ENG-1/source_materials/deep"
+mkdir -p "$LIM48/.claude/config" "$LS48"
+printf 'project:\n  key_prefix: ENG\n' > "$LIM48/.claude/config/stack.yaml"
+python3 -c "
+from pathlib import Path
+import sys
+sys.path.insert(0, 'bin')
+import scan_source_materials as s
+d = Path('$LS48')
+for i in range(s.MAX_FILES + 100):
+    (d / f'pad-{i:05d}.txt').write_text('x')
+"
+lim_out="$(python3 "$SCAN" --root "$LIM48" 2>&1)"
+grep -q '^incomplete' <<<"$lim_out" \
+  && ok "a tree past the scan cap reports INCOMPLETE (not silently 'other')" \
+  || bad "an over-cap scan does not report incomplete coverage"
+[ "$(grep -c 'raw_suspect' <<<"$lim_out")" -eq 0 ] \
+  && ok "the limit fixture holds no raw_suspect — incomplete gates on its own account" \
+  || bad "the limit fixture is contaminated; it cannot prove incomplete gates alone"
+python3 "$SCAN" --root "$LIM48" >/dev/null 2>&1 \
+  && bad "an INCOMPLETE scan exits 0 — /ship would treat 'not looked at' as 'nothing there'" \
+  || ok "an INCOMPLETE scan exits non-zero (it does not certify the tree)"
+g_lim="$(printf '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"%s\"}' "$LIM48" \
+  | python3 .claude/hooks/source_material_guard.py 2>/dev/null)"
+grep -q '\"permissionDecision\": \"ask\"' <<<"$g_lim" && grep -qi 'did NOT cover' <<<"$g_lim" \
+  && ok "the guard ASKS on incomplete coverage, naming it as coverage rather than a finding" \
+  || bad "incomplete coverage passes the guard silently" "$g_lim"
+
+# --- (F) structural pin: the callers exist where the hook cannot reach --------------------------
+{ grep -q 'scan_source_materials.py' .claude/skills/ship/SKILL.md \
+  && grep -q 'scan_source_materials.py' templates/productized-skill/SKILL.md.tmpl; } \
+  && ok "pin: /ship and the productized template both call the scanner" \
+  || bad "a workflow that backs up + commits does not call the scanner"
+ship48="$(grep -c 'scan_source_materials.py' .claude/skills/ship/SKILL.md || true)"
+[ "${ship48:-0}" -ge 2 ] \
+  && ok "pin: /ship scans at BOTH risk points (before the backup and before staging)" \
+  || bad "/ship scans at only one risk point (found $ship48)"
+
+# --- (G) structural pin: one intake question, not two ------------------------------------------
+IV48=".claude/skills/setup/interview.md"
+{ grep -q 'meetings' "$IV48" && grep -qi 'never a new one' "$IV48"; } \
+  && ok "pin: the meetings option rides round 4's existing intake question" \
+  || bad "the meetings option is not stated as an addition to the existing question"
+[ "$(grep -c '^14\. \*\*Email' "$IV48")" -eq 1 ] \
+  && ok "pin: round 4 still has exactly one intake/delivery question" \
+  || bad "round 4's single intake question was split"
+
+# --- (H) structural pin: the enforcement table carries the new column ---------------------------
+enf48=""
+for r in "Claude Code" "Codex CLI" "Cursor" "Antigravity" "OpenCode" "Devin" "Cline"; do
+  line="$(grep "^| $r |" templates/AGENTS.md.tmpl || true)"
+  [ "$(awk -F'|' '{print NF}' <<<"$line")" -eq 9 ] || enf48="$enf48 ${r// /_}"
+done
+[ -z "$enf48" ] \
+  && ok "pin: every runtime row carries a source_material_guard cell" \
+  || bad "a runtime row is missing the new enforcement column" "$enf48"
+# Read the block as one flowed string: the honesty sentence wraps across lines, and a
+# line-oriented grep would pass or fail on where the author happened to break it.
+enf_flat="$(tr '\n' ' ' < templates/AGENTS.md.tmpl)"
+{ # A runtime whose wiring must be done BY HAND still has to be told to wire both guards; an
+# instruction naming only db_write_guard leaves source-material staging silent for that user.
+mw48="$(grep -n 'hook_shim.py --runtime .* --hook db_write_guard' templates/AGENTS.md.tmpl || true)"
+[ -z "$mw48" ] \
+  && ok "the manual-wiring lines name --hook shell_guards (both guards), not just the DB guard" \
+  || bad "a manual-wiring instruction wires only db_write_guard" "$mw48"
+grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
+  && grep -qi 'it sees \*\*Bash\*\*' <<<"$enf_flat" \
+  && grep -qi 'document shape, never *\*\*meaning\*\*' <<<"$enf_flat"; } \
+  && ok "pin: the table states the guard's jurisdiction limit (Bash; shape, not meaning)" \
+  || bad "the enforcement table omits the guard or its honest limits"
+# Both shell guards must be wired wherever ONE of them is — a runtime with half the gate is worse
+# than one with none, because the table would read as protection.
+# The emitters must wire ONE entry covering both guards (`--hook shell_guards`), never two array
+# entries. Whether a runtime executes every element of a hook array is undocumented, and a WIRED
+# cell resting on that assumption would be an overclaim — one entry removes the assumption.
+for f in bin/emit_runtime.py bin/opencode_tool_gate.js; do
+  grep -q 'shell_guards' "$f" \
+    && ok "$f wires both shell guards through one hook entry (no array-ordering assumption)" \
+    || bad "$f does not use the combined shell_guards hook"
+  grep -q '"source_material_guard", tool' "$f" \
+    && bad "$f still emits a SECOND array entry — the WIRED cells would rest on an assumption" \
+    || ok "$f emits no separate source_material_guard array entry"
+done
+# Set this check's OWN state rather than inheriting whatever the policy tests above left behind.
+SG48="$TMP/s48-combined"; mkdir -p "$SG48/.claude/config" "$SG48/tickets/a/ENG-1/source_materials"
+printf 'project:\n  key_prefix: ENG\n' > "$SG48/.claude/config/stack.yaml"
+cp "$FIX/notes.md" "$SG48/tickets/a/ENG-1/source_materials/"
+sg48="$(printf '{"tool_name":"Bash","tool_input":{"command":"git add -A"},"cwd":"%s"}' "$SG48" \
+  | python3 bin/hook_shim.py --runtime cursor --hook shell_guards 2>/dev/null || true)"
+grep -q '"permission": "ask"' <<<"$sg48" \
+  && ok "the combined shell_guards hook surfaces a source-material verdict (not just SQL)" \
+  || bad "shell_guards does not reach the source-material guard" "$sg48"
+
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

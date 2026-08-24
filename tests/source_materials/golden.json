@@ -1,0 +1,38 @@
+{
+  "2026-08-20-pricing-review-meeting.md": {
+    "kind": "curated",
+    "intake": true
+  },
+  "2026-08-20-roadmap-sync-meeting.md": {
+    "kind": "raw_suspect",
+    "intake": false
+  },
+  "export.bin": {
+    "kind": "binary",
+    "intake": false
+  },
+  "forwarded-thread.md": {
+    "kind": "other",
+    "intake": true
+  },
+  "notes.md": {
+    "kind": "raw_suspect",
+    "intake": false
+  },
+  "recording-export.txt": {
+    "kind": "raw_suspect",
+    "intake": false
+  },
+  "standup-notes.md": {
+    "kind": "other",
+    "intake": true
+  },
+  "weekly-sync-transcript.md": {
+    "kind": "raw_suspect",
+    "intake": false
+  },
+  "weekly-sync.vtt": {
+    "kind": "raw_suspect",
+    "intake": false
+  }
+}

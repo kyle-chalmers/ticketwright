@@ -181,13 +181,22 @@ holds the per-machine ones and is gitignored. `bin/effective_config.py` merges t
 the raw file. The machine tier can supply credentials and local paths; it can never change which data
 gets read, and never a policy.
 
+**Work that arrives from a meeting.** `project.intake` names where work comes from — `tracker`,
+`email`, `chat`, `meetings`. Meeting notes arrive as a file in the ticket's `source_materials/`,
+named `YYYY-MM-DD-<slug>-meeting.md`: the **committed, curated form**, trimmed to decisions and
+action items. Raw full transcripts are a different matter — they are the most PII-dense thing a
+ticket folder holds, so they stay out of git by default, and a guard asks before one is committed
+or copied into a docstore backup. It reads filenames and document shape, **not meaning**, so it
+catches the bulk artifact and does not pretend to be a confidentiality review.
+
 **What it then asks — in rounds, detected answers pre-selected.** Four rounds always run: **who**
 (you, confirmed from identity resolution, and who else is on the team), **where work comes from**
 (tracker or *none*, key prefix, the tracker's "done" state, how catalog rows link back), **where
 the data lives** (warehouse or *none*, its required keys, a dev target), and **where work goes**
-(git host confirmed from `origin`, docstore, chat and its stakeholder include-list, and one email
-question covering intake and delivery). Two more are individually skippable, each skip labeled
-with its cost — **how you work** (role, domain, analysis tools) and **house rules** (the two
+(git host confirmed from `origin`, docstore, chat and its stakeholder include-list, and one
+question covering email intake and delivery plus whether an AI notetaker carries work in). Two
+more are individually skippable, each skip labeled with its cost — **how you work** (role,
+domain, analysis tools) and **house rules** (the two
 policies whose defaults most often differ by team). A skipped round becomes a `# TODO` in the
 config plus a punch-list entry naming the command that finishes it later (`/setup role`,
 `/setup policies`). The other eight policies ship as commented defaults you can edit any time.

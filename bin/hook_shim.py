@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Adapt the kit's hooks to each non-Claude runtime's hook protocol (PROMPT 7 / U3).
 
-  hook_shim.py --runtime <name> --hook <db_write_guard | session_context |
-               ticket_index_context | regenerate_ticket_index> [--root <path>]
+  hook_shim.py --runtime <name> --hook <db_write_guard | source_material_guard |
+               session_context | ticket_index_context | regenerate_ticket_index>
+               [--root <path>]
 
 One deterministic engine, many presenters: the Claude hook (.claude/hooks/db_write_guard.py)
 presents bin/sql_scan.py's verdicts in Claude's PreToolUse protocol; this shim presents the same
@@ -64,8 +65,11 @@ TICKETWRIGHT_SHIM_FAULT=raise is a selftest-only fault injector proving that map
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 import time
@@ -79,8 +83,53 @@ APPROVE_TOKEN_REL = "approve.once"          # lives next to stack.yaml: .claude/
 APPROVE_TOKEN_MAX_AGE = 15 * 60             # seconds; a stale token DENIES and says so
 
 GUARD = "db_write_guard"
+SM_GUARD = "source_material_guard"
+SHELL_GUARDS = "shell_guards"   # both of the above, in one invocation
 SESSION_HOOKS = ("session_context", "ticket_index_context")
 REGEN = "regenerate_ticket_index"
+
+# Jurisdiction, mirrored from .claude/hooks/source_material_guard.py (that file is where the
+# reasoning lives). `git add`/`git commit` reach the index; `cp -r`/`rsync` reach a docstore.
+# Git's subcommand is found by PARSING, not by matching anywhere in the string. A broad
+# alternation was tried and is wrong in both directions: `\bgit\b[^;&|]*?\b(add|stage|commit)\b`
+# fires on `git log --grep=commit` and `git config --get user.commit` (read-only commands that a
+# deny-only runtime would then BLOCK), while a flags-only alternation misses `git -C <path> add`
+# because it cannot span a flag's value. So: split the line into command segments, then walk each
+# segment's tokens skipping global flags and the values of the ones that take a value, and read
+# the first bare token. That is the subcommand, and nothing else is.
+SM_GIT_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+                    "--config-env"}
+SM_GIT_SUBCOMMANDS = {"add", "stage", "commit"}
+SM_SEGMENT_SPLIT_RE = re.compile(r"(?:\|\||&&|[;|&\n])")
+
+
+def sm_git_staging(command: str) -> bool:
+    """True when any command segment invokes a git subcommand that writes to the index."""
+    for segment in SM_SEGMENT_SPLIT_RE.split(command):
+        try:
+            tokens = shlex.split(segment)
+        except ValueError:
+            tokens = segment.split()
+        while tokens and ("=" in tokens[0] and not tokens[0].startswith("-")):
+            tokens = tokens[1:]          # leading VAR=value assignments
+        if not tokens or Path(tokens[0]).name != "git":
+            continue
+        i = 1
+        while i < len(tokens):
+            token = tokens[i]
+            if token in SM_GIT_VALUE_FLAGS:
+                i += 2                    # the flag and its separate value
+                continue
+            if token.startswith("-"):
+                i += 1                    # a flag, or --flag=value
+                continue
+            if token in SM_GIT_SUBCOMMANDS:
+                return True
+            break                         # the subcommand is something else
+        continue
+    return False
+SM_COPY_RE = re.compile(r"\b(?:cp|rsync)\b")
+SM_COPY_RECURSIVE_RE = re.compile(r"\b(?:cp\s+(?:-\S*[raR]\S*|--recursive|--archive)|rsync)\b")
 
 _SHELLISH = ("bash", "shell", "terminal", "exec", "cmd", "run_command", "run_terminal_cmd",
              "execute_command")
@@ -267,6 +316,119 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
     return present_gate(protocol, msg, policy)
 
 
+def run_shell_guards(protocol: str, root_arg: str | None) -> int:
+    """Both PreToolUse shell guards, in ONE invocation, from ONE read of stdin.
+
+    Why this exists: a runtime's hooks config takes an ARRAY of entries, and whether every entry
+    in that array is executed — or only the first — is undocumented for the runtimes the kit
+    emits for. Emitting two entries would make each WIRED cell depend on that unverified
+    assumption, which is precisely the overclaim the ENFORCEMENT/WIRED/GUIDANCE vocabulary exists
+    to prevent. One entry that runs both guards removes the assumption instead of documenting it.
+
+    The DB guard runs first (it gates the more immediately destructive action). If it EMITS a
+    decision, that decision is the answer and the second guard does not run — a single hook
+    invocation returns a single verdict, and the human resolves one thing at a time. A DB guard
+    that merely notes a one-shot approval on stderr has emitted nothing, so the source-material
+    guard still runs: approving a destructive statement is not approval to ship a transcript.
+    """
+    raw = sys.stdin.read()
+
+    def with_stdin(fn):
+        buf = io.StringIO()
+        stdin, stdout = sys.stdin, sys.stdout
+        sys.stdin, sys.stdout = io.StringIO(raw), buf
+        try:
+            rc = fn(protocol, root_arg)
+        finally:
+            sys.stdin, sys.stdout = stdin, stdout
+        return rc, buf.getvalue()
+
+    rc, out = with_stdin(run_guard)
+    if out.strip() or rc != 0:
+        sys.stdout.write(out)
+        return rc
+    rc, out = with_stdin(run_source_material_guard)
+    sys.stdout.write(out)
+    return rc
+
+
+def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
+    """The source-material guard, presented in `protocol`.
+
+    Same shape as run_guard: the classification is bin/scan_source_materials.py's, this only
+    presents it. The Claude presenter is .claude/hooks/source_material_guard.py — read its
+    docstring for the jurisdiction and the git-vs-copy asymmetry, which are decided there and
+    mirrored here rather than re-derived.
+    """
+    hooks_dir = Path(__file__).resolve().parent.parent / ".claude" / "hooks"
+    sys.path.insert(0, str(hooks_dir))
+    import _stack  # noqa: E402  — the ONE policy reader, in-process, fail-safe to `on`
+    import scan_source_materials as scan  # noqa: E402
+
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("payload is not an object")
+    except ValueError:
+        payload = {}
+
+    command = (find_string(payload, ("command", "cmd", "script"), depth=3) or "").strip()
+    if not command:
+        return present_pass()
+
+    staging = sm_git_staging(command)
+    copying = bool(SM_COPY_RE.search(command)) and bool(SM_COPY_RECURSIVE_RE.search(command))
+    if not (staging or copying):
+        return present_pass()          # outside this guard's jurisdiction entirely
+
+    cwd = (find_string(payload, ("cwd",), depth=1) or root_arg or os.getcwd())
+    stack = _stack.find_stack(cwd)
+    if stack is None:
+        return present_pass()          # repo-gated
+    if _stack.source_material_mode(stack) == _stack.SM_OFF:
+        return present_pass()          # explicit operator instruction
+
+    repo = stack.parent.parent.parent
+    records = scan.scan(repo)
+    flagged = scan.flagged(records)
+    partial = scan.incomplete(records)
+    if partial and not flagged:
+        return present_gate(protocol, (
+            f"ticketwright source_material_guard: the source-material scan did NOT cover the whole "
+            f"tree ({partial[0]['reason']}), so it cannot certify that no raw transcript is "
+            f"present. Gating rather than assuming clean."), "high_risk")
+    if not flagged:
+        return present_pass()
+
+    if copying:
+        why = ("A folder-wide docstore backup copies everything in the ticket directory, and "
+               "`.gitignore` does not apply to `cp -r`. Remove the file from the folder, or "
+               "approve this copy explicitly.")
+    else:
+        # Mirrors .claude/hooks/source_material_guard.py: every raw_suspect is asked about. The
+        # guard does not predict git's ignore decision from the kit's SHIPPED template — an
+        # install predating those patterns would stage a transcript in silence.
+        why = ("Trim it to decisions and action items and rename it to the curated form "
+               "`YYYY-MM-DD-<slug>-meeting.md`, move it under `source_materials/private/`, or "
+               "approve this staging explicitly.")
+
+    listing = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in flagged[:4])
+    if len(flagged) > 4:
+        listing += f"; and {len(flagged) - 4} more"
+    msg = (f"ticketwright source_material_guard: raw transcript material may be about to leave "
+           f"the repo — {listing}. {why} (The classifier matches filenames and document shape, "
+           f"never meaning — a gate against the bulk artifact, not a confidentiality review.)")
+
+    if ask_capable(protocol):
+        return present_gate(protocol, msg, "high_risk")
+    # No ask tier: DENY, and say so. The remedy here is a file change the person makes once,
+    # not a re-run, so there is deliberately no one-shot escape token as the DB guard has.
+    return present_gate(protocol, msg + " This runtime has no ask tier, so the command is "
+                                        "DENIED instead; make the change above and re-run.",
+                        "high_risk")
+
+
 def run_session(hook: str, root_arg: str | None) -> int:
     """SessionStart banners: run the Claude hook as a child, wrap its stdout in the
     hookSpecificOutput.additionalContext shape Codex CLI and Devin document. Always exit 0."""
@@ -337,7 +499,7 @@ def main(argv=None) -> int:
         description="Adapt a kit hook's stdin/stdout to a runtime's hook protocol.")
     ap.add_argument("--runtime", required=True)
     ap.add_argument("--hook", required=True,
-                    choices=[GUARD, *SESSION_HOOKS, REGEN])
+                    choices=[GUARD, SM_GUARD, SHELL_GUARDS, *SESSION_HOOKS, REGEN])
     ap.add_argument("--root", help="project repo (default: the payload's cwd, then $PWD)")
     args = ap.parse_args(argv)
 
@@ -369,6 +531,23 @@ def main(argv=None) -> int:
         return run_session(args.hook, args.root)
     if args.hook == REGEN:
         return run_regen(args.root)
+    if args.hook in (SM_GUARD, SHELL_GUARDS):
+        try:
+            runner = run_shell_guards if args.hook == SHELL_GUARDS else run_source_material_guard
+            return runner(protocol, args.root)
+        except Exception as e:  # noqa: BLE001 — same discipline as the DB guard below
+            msg = (f"ticketwright's source-material guard hit an internal error "
+                   f"({e.__class__.__name__}: {e}) and refuses to guess allow. Fix the kit "
+                   f"install (bin/scan_source_materials.py + .claude/hooks/), or set "
+                   f"`policies.source_material_guard: off` to disable it explicitly.")
+            try:
+                if ask_capable(protocol):
+                    return present_gate(protocol, msg, "high_risk")
+                print(msg, file=sys.stderr)
+                print(msg)
+                return 2
+            except Exception:  # noqa: BLE001 — even the presenter failed; the contract holds
+                return 2
 
     # The guard. Failure discipline (evidence-of-done): the ONLY exits are 0 and a deliberate 2 —
     # on Devin any other nonzero is logged and does NOT block, i.e. a crash would fail open.

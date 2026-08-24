@@ -40,14 +40,19 @@ export const TicketwrightDbWriteGuard = async ({ directory }) => {
         tool_input: command === null ? {} : { command },
         cwd: root,
       })
+      // `shell_guards` runs BOTH PreToolUse guards in one invocation: db_write_guard for
+      // destructive warehouse SQL, source_material_guard for a raw meeting transcript about to
+      // be committed or copied into a docstore backup. One call, one verdict — the same shape
+      // the emitted cursor/antigravity configs use, so no runtime depends on whether it
+      // executes every entry of a hook array.
       const res = spawnSync("bash", ["bin/tw", "hook_shim.py", "--runtime", "opencode",
-        "--hook", "db_write_guard"], { input: payload, cwd: root, encoding: "utf8", timeout: 20000 })
+        "--hook", "shell_guards"], { input: payload, cwd: root, encoding: "utf8", timeout: 20000 })
       if (!res.error && res.status === 0) return // pass: OpenCode's own permission flow proceeds
       const detail = (((res.stdout || "") + "\n" + (res.stderr || "")).trim())
       throw new Error(detail ||
-        "ticketwright db_write_guard: denied — the guard shim could not run (is the kit vendored? " +
-        "bin/tw + bin/hook_shim.py). A guard that cannot run never guesses allow; set " +
-        "policies.db_write_requires_approval: off in .claude/config/stack.yaml to disable it explicitly.")
+        "ticketwright shell_guards: denied — the guard shim could not run (is the kit vendored? " +
+        "bin/tw + bin/hook_shim.py). A guard that cannot run never guesses allow; set the " +
+        "matching policy in .claude/config/stack.yaml to disable it explicitly.")
     },
   }
 }

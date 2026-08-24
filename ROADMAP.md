@@ -186,6 +186,41 @@ ai-data-security); apply here first since ticketwright is the design ancestor:
 - **autoUpdate hook caveat** to carry in every release note: bundled hook changes do not reach
   installed copies via autoUpdate (claude-code #52218) — reinstall + relaunch.
 
+## Considered: a `meetings` tool slot — not yet
+
+Meeting intake **shipped** as vocabulary: `project.intake` accepts `meetings`, meeting notes arrive
+as `source_materials/YYYY-MM-DD-<slug>-meeting.md`, and `source_material_guard` keeps raw
+transcripts out of a commit or a docstore backup. What did **not** ship is a sixth tool slot with a
+live provider connection, because the case for a new slot KIND is not yet made.
+
+The bar a new slot must clear: a stable tool-independent verb contract, a distinct lifecycle
+responsibility, its own auth/verification semantics, and enough common use that it is not just an
+option on an existing slot. Against that bar, as of v3.6:
+
+- **Verb contract — fails as drafted.** `fetch_transcript` and `search_meetings` are fine: each maps
+  to a provider command with a defined return shape. `extract_actions` is not. For a tool with no
+  native action-item export it is model reasoning, and an adapter is a command translation, not a
+  place to hide that. `rank_projects_by_activity` is not a precedent — it is tracker-*native*, and
+  its `unsupported` means the tool has no rankable containers. **To flip it:** split into a
+  provider-native `fetch_action_items` (optional, `unsupported` when absent) plus a skill-side
+  extraction step, and write the contract that way.
+- **Distinct lifecycle responsibility — not established.** Not refuted either: `docs/architecture.md`
+  says plainly that one slot can serve more than one phase, so the phase table lists what a phase
+  *can* use rather than an exclusive assignment. But nothing yet argues the responsibility is
+  distinct. **To flip it:** a positive argument that reconciles with that map, rather than an appeal
+  to being "upstream".
+- **Own auth/verification semantics — not established.** Read-only is a safety property, not an auth
+  boundary; every slot already has a read-only `verify` preflight. **To flip it:** evidence that
+  reading meetings is independently authorized rather than riding a collaboration suite's existing
+  credentials.
+- **Not an option on an existing slot — holds, half.** A target must implement its slot's whole verb
+  contract, and a transcript provider satisfies neither `chat` (`draft`/`send`/…) nor `docstore`
+  (`backup`/`link_for`) — so it genuinely would not be a target on either. The *commonness* half is
+  unevidenced. **To flip it:** adoption evidence across vendors.
+
+Three of four legs unproven is a "not yet", not a "no". The file-backed path works today and carries
+no provider dependency; whoever picks this up should start from the four items above.
+
 ## Deliberately out of scope
 
 Embeddings / vector retrieval (lexical rank→read-top-K scales to ~500 tickets), weight auto-tuning

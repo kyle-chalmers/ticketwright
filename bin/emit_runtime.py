@@ -277,9 +277,10 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
         else:
             print(f"  hooks     shim-ready but NOT wired: {tool} documents its hook protocol, but "
                   f"the hooks-config file location is not in the kit's research — wire the guard "
-                  f"yourself: `{hook_command('db_write_guard', tool)} || exit 2` (the suffix keeps "
+                  f"yourself: `{hook_command('shell_guards', tool)} || exit 2` (the suffix keeps "
                   f"a bin/tw launcher failure inside the documented deny exit; the shim itself "
-                  f"already exits only 0 or 2), plus the session banners via "
+                  f"already exits only 0 or 2) — that one hook covers BOTH shell guards, plus "
+                  f"the session banners via "
                   f"--hook session_context / ticket_index_context; live verification will "
                   f"establish the config path.")
         if caveat:
@@ -291,16 +292,20 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
                             "file's full schema is live-unverified — see the enforcement table "
                             "in AGENTS.md.",
         }
+        # ONE entry running BOTH shell guards (`--hook shell_guards`), never two entries. Whether
+        # a runtime executes every element of a hook array or stops at the first is undocumented
+        # for every runtime here, and a WIRED cell resting on that assumption would be an
+        # overclaim. One entry removes the assumption rather than documenting it.
         if protocol == "cursor-json":
             cfg["hooks"] = {"beforeShellExecution": [
-                {"command": hook_command("db_write_guard", tool), "failClosed": True}]}
+                {"command": hook_command("shell_guards", tool), "failClosed": True}]}
             note = "failClosed: true is required configuration on a fail-open-by-default runtime"
         elif protocol == "agy-json":
             cfg["hooks"] = {
-                "PreToolUse": [{"command": hook_command("db_write_guard", tool)}],
+                "PreToolUse": [{"command": hook_command("shell_guards", tool)}],
                 "PostToolUse": [{"command": hook_command("regenerate_ticket_index", tool)}],
             }
-            note = "PreToolUse guard (ask/force_ask) + PostToolUse index regeneration"
+            note = "PreToolUse shell guards (ask/force_ask) + PostToolUse index regeneration"
         else:
             print(f"emit_runtime: the {tool} adapter declares hook_wiring {wiring!r} with "
                   f"hook_protocol {protocol!r}, which this emitter has no config shape for — fix "

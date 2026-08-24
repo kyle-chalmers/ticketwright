@@ -162,3 +162,30 @@ def db_write_mode(stack: Path | None) -> str:
     if raw is None:
         return MODE_ALL
     return _ALIASES.get(raw.strip().lower(), MODE_ALL)
+
+
+# ---- the source_material_guard policy ------------------------------------------
+
+SM_ON = "on"
+SM_OFF = "off"
+
+SM_POLICY_KEY = "source_material_guard"
+
+# Only an explicit, recognized "off" silences the guard. A missing, malformed, or unrecognized
+# value resolves to `on` — the same asymmetry as db_write_requires_approval, for the same reason:
+# unparseable config must never quietly widen what leaves the repo unprompted. The key is OPTIONAL
+# with this default, so every stack.yaml already in the wild keeps working unchanged.
+_SM_ALIASES = {
+    "off": SM_OFF, "false": SM_OFF, "no": SM_OFF, "none": SM_OFF, "null": SM_OFF,
+    "on": SM_ON, "true": SM_ON, "yes": SM_ON, "all": SM_ON, "strict": SM_ON,
+}
+
+
+def source_material_mode(stack: Path | None) -> str:
+    text = read_text(stack)
+    if not text:
+        return SM_ON
+    raw = _scalar(_block_lines(text, "policies"), SM_POLICY_KEY)
+    if raw is None:
+        return SM_ON
+    return _SM_ALIASES.get(raw.strip().lower(), SM_ON)

@@ -59,6 +59,9 @@ this before?", "which tickets touched VW_X?").
 6. **Scaffold** `project.ticket_path` with `project.ticket_subdirs` (create the subdirs empty —
    **no `.gitkeep` placeholders**; they fill with real files during build and git picks them up
    then); tracker adapter `download_attachments` → `source_materials/` (silent if none);
+   when `project.intake` lists `email`/`chat`/`meetings`, that folder also carries what a human
+   dropped in — meeting notes arrive as `YYYY-MM-DD-<slug>-meeting.md`, and priming enumerates
+   them with `scan_source_materials.py --intake` rather than guessing at names;
    resolve the kit once with `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then render
    `"$KIT"/templates/ticket-README.md.tmpl` → the ticket dir —
    **only if that README doesn't already exist**. Where the tracker *is* the ticket folder, step 3's

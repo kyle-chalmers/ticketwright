@@ -16,20 +16,27 @@ documented, and a live confirmation on the kit's punch list
 (<https://github.com/kyle-chalmers/ticketwright/blob/main/docs/live-verification.md>) is what
 upgrades a WIRED cell to ENFORCEMENT.
 
-| Runtime | `db_write_guard` | `session_context` | `ticket_index_context` | `regenerate_ticket_index` | Unreadable hook input |
-|---|---|---|---|---|---|
-| Claude Code | ENFORCEMENT (native `PreToolUse` hook, `ask` tier) | ENFORCEMENT (native) | ENFORCEMENT (native) | ENFORCEMENT (native) | fails open by design (exit 0); an unreadable *policy* value still gates more (`all`) |
-| Codex CLI | GUIDANCE (shim ready — wire manually, see caveat) | GUIDANCE (shim ready — wire manually) | GUIDANCE (shim ready — wire manually) | GUIDANCE (fallback below) | denies, with the escape |
-| Cursor | WIRED (emitted `.cursor/hooks.json`, `failClosed: true`) | GUIDANCE (fallback below) | GUIDANCE (fallback below) | GUIDANCE (fallback below) | escalates to `ask` |
-| Antigravity | WIRED (emitted `.agents/hooks.json`: `ask` / `force_ask`) | GUIDANCE (fallback below; static-not-fresh) | GUIDANCE (fallback below; static-not-fresh) | WIRED (emitted `PostToolUse` entry) | escalates to `ask` |
-| OpenCode | WIRED (emitted `.opencode/plugins/` throw-to-deny wrapper) | GUIDANCE (fallback below; static-not-fresh) | GUIDANCE (fallback below; static-not-fresh) | GUIDANCE (fallback below) | denies, with the escape |
-| Devin | GUIDANCE (shim ready — wire manually, see caveat) | GUIDANCE (shim ready — wire manually) | GUIDANCE (shim ready — wire manually) | GUIDANCE (fallback below) | denies, with the escape |
-| Cline | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (nothing is wired) |
+| Runtime | `db_write_guard` | `source_material_guard` | `session_context` | `ticket_index_context` | `regenerate_ticket_index` | Unreadable hook input |
+|---|---|---|---|---|---|---|
+| Claude Code | ENFORCEMENT (native `PreToolUse` hook, `ask` tier) | ENFORCEMENT (native `PreToolUse` hook, `ask` tier) | ENFORCEMENT (native) | ENFORCEMENT (native) | ENFORCEMENT (native) | fails open by design (exit 0); an unreadable *policy* value still gates more (`all`) |
+| Codex CLI | GUIDANCE (shim ready — wire manually, see caveat) | GUIDANCE (shim ready — wire manually) | GUIDANCE (shim ready — wire manually) | GUIDANCE (shim ready — wire manually) | GUIDANCE (fallback below) | denies, with the escape |
+| Cursor | WIRED (emitted `.cursor/hooks.json`, `failClosed: true`) | WIRED (emitted, same file + `failClosed`) | GUIDANCE (fallback below) | GUIDANCE (fallback below) | GUIDANCE (fallback below) | escalates to `ask` |
+| Antigravity | WIRED (emitted `.agents/hooks.json`: `ask` / `force_ask`) | WIRED (emitted `.agents/hooks.json`: `ask`) | GUIDANCE (fallback below; static-not-fresh) | GUIDANCE (fallback below; static-not-fresh) | WIRED (emitted `PostToolUse` entry) | escalates to `ask` |
+| OpenCode | WIRED (emitted `.opencode/plugins/` throw-to-deny wrapper) | WIRED (same wrapper runs both guards) | GUIDANCE (fallback below; static-not-fresh) | GUIDANCE (fallback below; static-not-fresh) | GUIDANCE (fallback below) | denies, with the escape |
+| Devin | GUIDANCE (shim ready — wire manually, see caveat) | GUIDANCE (shim ready — wire manually) | GUIDANCE (shim ready — wire manually) | GUIDANCE (shim ready — wire manually) | GUIDANCE (fallback below) | denies, with the escape |
+| Cline | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (hooks unverified upstream) | UNKNOWN (nothing is wired) |
 
 The unreadable-input column applies within the guard's jurisdiction — a shell-like tool call —
 and only while the policy is on: a payload naming a clearly non-shell tool passes untouched, and
 `policies.db_write_requires_approval: off` silences the guard entirely (an explicit operator
 instruction, readable without classifying anything).
+
+`source_material_guard` has a jurisdiction limit that no runtime row captures, so state it here:
+it sees **Bash**. A file written through a non-Bash tool, copied in a file manager, or uploaded by
+a browser never reaches it. And its classifier matches filenames and document shape, never
+**meaning** — a curated summary that quotes confidential material verbatim passes. It is a gate
+against the bulk artifact, not a confidentiality review, and nothing in it replaces a person
+reading the file.
 
 Per-runtime caveats — the part that keeps the table honest:
 
@@ -42,7 +49,8 @@ Per-runtime caveats — the part that keeps the table honest:
   `TICKETWRIGHT_APPROVE=once` command prefix, or the `.claude/config/approve.once` token —
   consumed on use, expires in 15 minutes); additive statements pass untouched. The shim speaks the
   documented deny protocol — wire it as
-  `bash bin/tw hook_shim.py --runtime codex-cli --hook db_write_guard || exit 2` (the suffix keeps
+  `bash bin/tw hook_shim.py --runtime codex-cli --hook shell_guards || exit 2` (one hook covering
+  BOTH shell guards — db-write and source-material; the suffix keeps
   a `bin/tw` launcher failure inside the documented deny exit; the shim itself exits only 0 or 2)
   — but the hooks-config file location is not in the kit's research, so wiring it is manual until
   verified live. Even once wired: hooks must be **trusted by hash** (installed is not armed; an
@@ -64,7 +72,8 @@ Per-runtime caveats — the part that keeps the table honest:
   **fails open by documented design** (exit 0 continues, exit 2 blocks, any other nonzero is
   logged and ignored) — so the shim maps every internal error to a deliberate exit 2, never a
   stray crash. The hooks-config file location is not in the kit's research; wiring
-  (`bash bin/tw hook_shim.py --runtime devin --hook db_write_guard || exit 2` — the suffix keeps
+  (`bash bin/tw hook_shim.py --runtime devin --hook shell_guards || exit 2` — one hook covering
+  BOTH shell guards; the suffix keeps
   even a `bin/tw` launcher failure inside the one exit code Devin honors as a block) is manual
   until verified live.
 - **Cline** — the policy degrades to **guidance** here, stated plainly: the hooks doc is a stub,

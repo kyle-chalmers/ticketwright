@@ -4,6 +4,48 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Added
+- **Meetings are an intake channel** — `project.intake` accepts `meetings` alongside `tracker`,
+  `email`, and `chat`. No new tool slot and no provider connection: the transport is the one that
+  already existed, a person exporting notes into the ticket's `source_materials/`. The convention
+  is `YYYY-MM-DD-<slug>-meeting.md`, the **committed, curated form** — trimmed to decisions and
+  action items. `/setup`'s round 4 gains **one option on its existing intake question**, not a new
+  question. A `meetings` tool slot was judged against the new-slot bar and **deferred**; the four
+  legs and what would flip each are recorded in `ROADMAP.md`.
+- **`bin/scan_source_materials.py`** — a deterministic, stdlib classifier for a ticket's
+  `source_materials/`: `curated` / `raw_suspect` / `other`. Two jobs, one implementation:
+  `/ticket` priming calls `--intake` to enumerate what to read (and it omits raw transcripts, so a
+  full transcript never enters context by default), and `/ship` calls it to gate. **Content beats
+  filename** — a file carrying the curated name whose body is a transcript is still `raw_suspect`,
+  because a convention that a rename could satisfy would not be a gate.
+  `tests/source_materials/golden.json` pins the classification, including the two cases that decide
+  whether the heuristic is real: a curated-named full transcript, and ordinary timestamped meeting
+  notes that must **not** trip.
+- **`source_material_guard`** — a PreToolUse hook (new optional policy, default `on`) that asks
+  before a raw meeting transcript is **staged for commit** or **copied into a docstore backup**.
+  It intercepts at the command layer, so it also covers the productized-skill path, which backs up
+  and commits without ever calling `/ship`. Wired for every runtime the kit can wire: native on
+  Claude Code, emitted for Cursor / Antigravity / OpenCode, shim-ready elsewhere — the enforcement
+  table carries the new column per runtime.
+
+### Changed
+- **`templates/gitignore.tmpl` now ACTIVELY ignores raw transcripts** —
+  `**/source_materials/*transcript*` and `**/source_materials/private/`, uncommented. The existing
+  CSV-family patterns never covered markdown, which is what notetakers export. `git add -f` plus an
+  explicit approval remains the opt-in.
+- **`/ship` inspects `source_materials/`, not just `final_deliverables/`**, at both risk points —
+  before the docstore backup and before staging. The two remedies are **not** interchangeable, and
+  the skill now says so: `private/` protects git and does nothing against the adapter's `cp -r`.
+
+### Honest limits
+- The classifier matches **filenames and document shape, never meaning**. A curated summary that
+  quotes confidential material verbatim classifies as `other` and passes. This is a gate against the
+  bulk artifact, not a confidentiality review, and it does not replace a person reading what gets
+  committed. The guard's jurisdiction is **Bash**: a file written by a non-Bash tool, copied in a
+  file manager, or uploaded by a browser never reaches it.
+
 ## [3.6.1] — 2026-08-23
 
 ### Fixed

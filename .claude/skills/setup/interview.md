@@ -113,8 +113,17 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
     *out* to stakeholders, both, or neither?" Never split intake and delivery into separate
     rounds — that reads as being asked about email twice.
     - **In (or both):** add `email` to `project.intake`. The consumer is `/ticket`'s priming
-      step, which sweeps `source_materials/` for forwarded threads — intake beyond the tracker
-      arrives as files a human drops in, not API calls.
+      step, which reads `source_materials/` for material a human dropped in — intake beyond the
+      tracker arrives as files, not API calls.
+    - **Add one more option to this same question, never a new one:** "…and does an AI notetaker
+      (meeting notes or transcripts) carry work in?" The anti-split rule above is why it rides
+      here — a separate meetings round reads as being asked about intake twice. A yes adds
+      `meetings` to `project.intake`. Say what the convention is while you have their attention:
+      export the notes or a curated excerpt to the ticket's `source_materials/` as
+      `YYYY-MM-DD-<slug>-meeting.md`, trimmed to decisions and action items. Raw full transcripts
+      stay out of git by default and are gated before any commit or docstore copy — mention that
+      the gate reads filenames and document shape, **not meaning**, so it is not a substitute for
+      reading what gets committed.
     - **Out (or both):** the email adapters ship (`adapters/chat/gmail.md` /
       `adapters/chat/outlook.md`), but activating email delivery means converting the chat slot
       to `targets:` form with a declared audience on EVERY target — a deliberate config change,
@@ -179,7 +188,7 @@ project:
   ticket_path: "tickets/{assignee}/{id}"
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
-  intake: [tracker, email]            # round 4: email carries work in
+  intake: [tracker, email, meetings]  # round 4: email + an AI notetaker carry work in
   role: analyst                       # round 5
   domain: data analysis
   analysis_tools: [notebooks, spreadsheets]

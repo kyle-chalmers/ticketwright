@@ -10,10 +10,16 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
   status, links). If the tracker seam is down, fall back to the local `README.md`.
 - **Read the ticket folder** at the rendered `project.ticket_path` if it exists: `README.md` +
   a listing of `final_deliverables/` — summarize prior progress (resume, don't restart).
-- **When `project.intake` lists `email` or `chat`**, also sweep `source_materials/` for forwarded
-  threads (an email or chat export a human dropped in) and read them as ticket inputs — work that
-  arrives outside the tracker arrives as files, not API calls, so this sweep is the intake
-  channel's entire consumer.
+- **When `project.intake` lists `email`, `chat`, or `meetings`**, also read `source_materials/`
+  for material a human dropped in (a forwarded thread, a chat export, meeting notes from an AI
+  notetaker) — work arriving outside the tracker arrives as files, not API calls, so this is the
+  intake channel's entire consumer. Enumerate it rather than guessing at names:
+  ```
+  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" scan_source_materials.py --ticket <ticket-dir> --intake
+  ```
+  It lists exactly the files to read and **omits raw transcripts on purpose** — a full transcript
+  belongs in the ticket folder, not in your context. Meeting notes arrive as
+  `YYYY-MM-DD-<slug>-meeting.md`, the committed curated form.
 - Note the ticket's key nouns (objects, stakeholders, report names) — they drive the other slices.
 
 ## 2 · Recall (prior art — never rebuild what's built)
