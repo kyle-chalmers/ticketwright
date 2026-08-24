@@ -3,7 +3,7 @@ name: setup
 description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
 ---
 
-<!-- emitted by ticketwright install v3.6.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v3.6.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 > **User-invocable only — not enforced on antigravity.** The canonical source of this skill
 > declares `disable-model-invocation: true`: a person invokes it deliberately; the model

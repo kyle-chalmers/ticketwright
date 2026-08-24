@@ -155,7 +155,7 @@ graph looks right for the whole team; per-user `.obsidian/workspace.json` is git
 
 ```bash
 python3 bin/build_ticket_index.py             # (re)render INDEX.md + OBJECTS.md from the store + folders
-python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if either file != a fresh render
+python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if any rendered file (both catalog files, plus the graph nodes when that layer is on) != a fresh render
 python3 bin/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects
 python3 bin/build_ticket_index.py --recurring --min-tickets 8   # objects touched by many tickets → productize candidates
 ```
@@ -182,8 +182,9 @@ python3 bin/enrich_ticket.py alice/ENG-123   # the owner/id locator, when two ow
 
 A bare id under multiple owners is a hard stop (exit 3) naming them — pass `owner/id` to pick one.
 
-Then commit `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json` with the ticket
-(all three — `--check` gates the two generated files). An agent closing the
+Then commit `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json` with the ticket,
+plus `tickets/graph/` + `tickets/objects/` when `project.graph_notes` is on (`--check` gates the
+rendered files, graph nodes included; the curated store is an input, so it isn't gated). An agent closing the
 ticket already has full context and may instead write the record itself and pipe it to
 `bin/ingest_index_records.py --from-json -`; `enrich_ticket.py` is the hands-off path that also works
 for a human at the terminal. This is wired into the `ship` skill.

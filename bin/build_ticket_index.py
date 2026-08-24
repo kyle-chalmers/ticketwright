@@ -19,7 +19,9 @@ What counts as a "ticket" depends on `project.id_mode` in `.claude/config/stack.
 
 Usage:
   build_ticket_index.py            # (re)write tickets/INDEX.md
-  build_ticket_index.py --check    # exit 1 if INDEX.md is stale vs a fresh render (gate)
+  build_ticket_index.py --check    # exit 1 if any RENDERED file is stale vs a fresh render (gate):
+                                   # INDEX.md, OBJECTS.md, and the graph nodes when enabled. The
+                                   # curated store (index_data.json) is an input, so it isn't gated.
   build_ticket_index.py --stats    # print coverage: enriched / un-enriched / stale / orphans; exit 0
   build_ticket_index.py --prune    # drop orphan curated records (no folder on disk) from the store
 
@@ -967,7 +969,7 @@ def write_obsidian_graph(root: Path) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render tickets/INDEX.md + OBJECTS.md")
-    ap.add_argument("--check", action="store_true", help="exit 1 if INDEX.md/OBJECTS.md are stale vs a fresh render")
+    ap.add_argument("--check", action="store_true", help="exit 1 if INDEX.md/OBJECTS.md — or the graph nodes, when the layer is on — are stale vs a fresh render")
     ap.add_argument("--stats", action="store_true", help="print coverage + health stats and exit 0")
     ap.add_argument("--recurring", action="store_true",
                     help="list objects touched by many tickets over a long span (productize candidates)")
@@ -1079,7 +1081,10 @@ def main() -> int:
         if stale:
             print(f"stale: {', '.join(stale)} — run: python3 bin/build_ticket_index.py", file=sys.stderr)
             return 1
-        print("tickets/INDEX.md + OBJECTS.md are up to date.")
+        # Name the graph layer when it was part of the comparison — /ship stages what this gates.
+        print("tickets/INDEX.md + OBJECTS.md"
+              + (" + the graph layer" if cfg.get("graph_notes", True) else "")
+              + " are up to date.")
         return 0
 
     if not tickets_dir.is_dir():

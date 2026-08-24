@@ -30,8 +30,9 @@ summary at close. Invoke `/refresh` to:
 ## Mode: `index`
 Follow [index.md](index.md): render deterministically (`bin/build_ticket_index.py` — stdlib, no
 model), enrich the un-enriched/stale set (the model writes one curated record per ticket, ingested
-via `bin/ingest_index_records.py`), re-render, then verify with `--check` and commit all three
-index files together (`INDEX.md`, `OBJECTS.md`, `index_data.json`).
+via `bin/ingest_index_records.py`), re-render, then verify with `--check` and commit the whole index
+together — `INDEX.md`, `OBJECTS.md`, `index_data.json`, and the graph layer (`tickets/graph/` +
+`tickets/objects/`) when `project.graph_notes` is on (the default).
 
 ## Mode: `context`
 Follow [context-pack.md](context-pack.md): verify each configured warehouse target, introspect via its adapter

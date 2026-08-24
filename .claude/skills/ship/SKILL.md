@@ -166,8 +166,13 @@ execute — nothing the steps don't do may appear in it:
    commit); `.claude/settings.local.json` +
    `.claude/worktrees/` are gitignored, leave them. Then stage this ticket's paths (deliverable files
    included: they're committed by default so results live with the ticket and show in the PR) **plus
-   `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json`** (all three, or `--check`
-   flags drift in CI; semantic message + Co-Authored-By). **Before staging, list the
+   the whole index — `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json`, and
+   `tickets/graph/` + `tickets/objects/` when `project.graph_notes` is on (the default)** (`--check`
+   gates the *rendered* ones — the two catalog files and the graph nodes, not the curated store — so
+   a rendered path left out is drift in CI; semantic message + Co-Authored-By). The render is
+   repo-wide, so review the index diff before committing: a row or node that moved for **another**
+   ticket is the renderer catching up, and belongs in the commit message rather than bundled in
+   silently. **Before staging, list the
    `final_deliverables/` files that will be committed and confirm none carry PII/customer data that
    shouldn't be in git** — if any do, have the user rename them `*.private.csv` (etc.) or move them
    under a `private/` subfolder (both gitignored) first. Then **vcs.open_pr** (semantic title; body =

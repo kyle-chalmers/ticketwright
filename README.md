@@ -296,10 +296,10 @@ across many tickets, where the orphans are. Generated together, they cannot drif
 - **Your tweaks survive.** Forces, zoom, and custom filters/groups are never clobbered.
 - **Plain markdown** — no plugins, no wikilinks. It renders on GitHub too.
 
-One asymmetry to know: `/ship`'s staging step names the catalog - `tickets/INDEX.md`,
-`tickets/OBJECTS.md`, `tickets/index_data.json` - and not `tickets/graph/` or `tickets/objects/`.
-The nodes are committed by default (nothing ignores them, and the same `--check` gate covers
-them), so stage them with the ticket when you want the graph browsable beyond your own clone.
+`/ship` stages the graph layer with the catalog — `tickets/graph/` and `tickets/objects/` alongside
+`tickets/INDEX.md`, `tickets/OBJECTS.md` and `tickets/index_data.json` — so the graph a teammate
+opens is the graph you see. Nothing ignores the nodes, and the same `--check` gate covers them, so
+a node left out surfaces as index drift in CI instead of a graph only your clone has.
 
 On by default. Set `project.graph_notes: false` to turn off the whole layer, or
 `project.graph_config: false` to keep the nodes but stop managing `.obsidian/graph.json`.

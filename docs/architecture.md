@@ -299,11 +299,11 @@ result twice, each rendering tuned to its reader:
   the orphans are.
 
 Both come out of the same render pass, so they cannot drift apart (`project.graph_notes: false`
-turns the graph layer off). One staging asymmetry, stated rather than assumed away: `/ship`'s
-staging step names the catalog files - `tickets/INDEX.md`, `tickets/OBJECTS.md`,
-`tickets/index_data.json` - and not `tickets/graph/` or `tickets/objects/`. The nodes are
-committed by default (nothing ignores them, and `build_ticket_index.py --check` covers them), so
-stage them with the ticket when the graph should be shared.
+turns the graph layer off). They are also staged together: `/ship`'s staging step names the catalog
+files - `tickets/INDEX.md`, `tickets/OBJECTS.md`, `tickets/index_data.json` - and `tickets/graph/` +
+`tickets/objects/` when the layer is on. The nodes are committed by default (nothing ignores them,
+and `build_ticket_index.py --check` gates them beside the catalog), so a node left unstaged is a CI
+staleness failure rather than a graph only one clone can see.
 
 A genuine future enhancement, recorded in [ROADMAP.md](../ROADMAP.md): the graph's link structure
 is the only artifact that supports multi-hop traversal - "what connects these two analyses, two

@@ -3,7 +3,7 @@ name: ticket
 description: The front door — open or resume a ticket, auto-load its context and prior art, and route to the next step (spec, build, review, or ship). Start every ticket here.
 ---
 
-<!-- emitted by ticketwright install v3.6.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v3.6.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /ticket
 
@@ -67,7 +67,8 @@ this before?", "which tickets touched VW_X?").
 6b. **Refresh the catalog** so the new ticket shows up immediately — it won't otherwise, because the
    PostToolUse index hook only fires on `Write`/`Edit` and scaffolding happens via Bash:
    `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py` (writes this
-   project's `tickets/INDEX.md` + `OBJECTS.md`; the new row shows `▱` until `/ship` curates it).
+   project's `tickets/INDEX.md` + `OBJECTS.md`, and the graph layer when it's on; the new row shows
+   `▱` until `/ship` curates it).
 
 ## Phase 3 — Prime context automatically (the part you never have to ask for)
 7. Follow [priming.md](priming.md), in order:

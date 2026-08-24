@@ -44,7 +44,7 @@ These are not decoration. Cite them in review. When a change to this kit is ambi
 
 ```bash
 bash bin/selftest.sh                       # THE gate — kit integrity + hook/engine unit tests. Run before and after any change.
-python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md must be in sync (CI enforces)
+python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
 bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
 claude plugin validate . --strict          # plugin + marketplace manifest validation (CI runs this)
 python3 -m build                           # build the sdist + wheel (needs the `dev` extra: pip install -e ".[dev]")
