@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [3.7.0] — 2026-08-24
 
 ### Added
 - **A docstore without a desktop mount: the `rclone` adapter.** The two shipped document stores

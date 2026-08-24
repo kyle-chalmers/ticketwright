@@ -3,7 +3,7 @@ name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
 ---
 
-<!-- emitted by ticketwright install v3.6.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v3.7.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 > **User-invocable only — not enforced on codex-cli.** The canonical source of this skill
 > declares `disable-model-invocation: true`: a person invokes it deliberately; the model

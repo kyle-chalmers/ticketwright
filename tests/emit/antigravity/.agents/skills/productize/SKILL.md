@@ -3,7 +3,7 @@ name: productize
 description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
 ---
 
-<!-- emitted by ticketwright install v3.6.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v3.7.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 > **User-invocable only — not enforced on antigravity.** The canonical source of this skill
 > declares `disable-model-invocation: true`: a person invokes it deliberately; the model
