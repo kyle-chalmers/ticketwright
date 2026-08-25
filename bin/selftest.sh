@@ -7503,9 +7503,9 @@ for f in adapters/*/*.md; do
       ;;
   esac
 done
-[ "$p51_count" -eq 10 ] \
-  && ok "exactly 10 adapters declare transport mcp/both (the posture contract's whole scope)" \
-  || bad "the mcp/both adapter census moved (found $p51_count, expected 10) — extend the posture contract with it" "$p51_count"
+[ "$p51_count" -eq 14 ] \
+  && ok "exactly 14 adapters declare transport mcp/both (the posture contract's whole scope — incl. the 4 MCP-path meetings adapters)" \
+  || bad "the mcp/both adapter census moved (found $p51_count, expected 14) — extend the posture contract with it" "$p51_count"
 [ -z "$p51_miss" ] \
   && ok "every mcp/both adapter carries '## Permission posture (MCP)' + all three '###' parts" \
   || bad "an MCP-capable adapter misses the posture section (or one of its three parts)" "$p51_miss"
@@ -7551,6 +7551,13 @@ for f in adapters/*/*.md; do
     adapters/warehouse/*)
       { grep -Eiq 'CURRENT_ROLE|CURRENT_AVAILABLE_ROLES|current[-_]user' <<<"$fence" \
         && grep -Eiq 'SHOW GRANTS|information_schema' <<<"$fence"; } || p51_anchor="$p51_anchor $f" ;;
+    # The meetings seam is read-only by contract; each probe is the read call the adapter's own
+    # auth: verify names. Listed BEFORE the generic */teams.md pattern so the meetings teams
+    # adapter anchors on its own probe, not chat's.
+    adapters/meetings/zoom.md)      grep -Eq 'users/me|list_meetings' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    adapters/meetings/fireflies.md) grep -Eq 'user \{ email \}' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    adapters/meetings/teams.md)     grep -q 'onlineMeetings' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    adapters/meetings/notion.md)    grep -Eq 'query-meeting-notes|list-recent-pages' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
     */slack.md)   grep -q 'slack_search_channels' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
     */teams.md)   grep -Eq 'list-channels|list-teams' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
     */gmail.md)   grep -q 'search_threads' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;

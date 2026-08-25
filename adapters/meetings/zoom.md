@@ -80,6 +80,37 @@ curl -s -H "Authorization: Bearer $ZOOM_TOKEN" \
 - Summary exists, `next_steps[]` empty → `{status: empty, items: []}` — report "no action items
   recorded"; the provider's answer is authoritative, no extraction fallback.
 
+## Permission posture (MCP)
+
+On the MCP path the kit's shell hooks cannot see this adapter's traffic, so the permission control
+lives in Zoom's own app scopes — and this seam is READ-ONLY by contract, which keeps the posture
+simple: the connection should hold read scopes only.
+
+### Native control
+The Zoom app's granular scopes, across all three connection shapes: official connector — its app
+settings page; CLI-configured MCP server — the OAuth app it wraps; homegrown server — its owner
+(this posture becomes a suggestion to forward). Meeting-content reads are their own scopes (the
+meeting-summary read scope; the cloud-recording read scope); nothing in this seam needs a write
+scope.
+
+### Recommended setting (by policy)
+- `db_write_requires_approval` — not in this seam's reach: the meetings contract has no write verb
+  and no warehouse traffic flows here; nothing to set.
+- `chat_default_draft` / `hard_halt_before_external_posts` — keep the Zoom connection free of any
+  posting or meeting-management scope, so this slot cannot become an unreviewed outbound path even
+  by misconfiguration.
+
+A grant set here cannot be introspected in-session, so a posture record caps at `unverified`
+(GUIDANCE in the rendered table) — a human confirms the scopes on the app's settings page.
+
+### Read-only probe
+```
+GET https://api.zoom.us/v2/users/me                       # the auth: verify — a plain read
+# MCP transport: mcp__{mcp}__list_meetings(type=previous_meetings, page_size=1)
+```
+The probe proves reachability and read access; it cannot enumerate the token's scopes, so the
+comparison outcome is `unverified` by construction.
+
 ## gotchas
 
 - The summary exists only when AI Companion was ON for that meeting; a 404 on the summary route

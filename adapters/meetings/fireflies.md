@@ -59,6 +59,34 @@ mcp__{mcp}__query(query='{ live_action_items(meeting_id: "{id}") { items { text 
 - Query succeeds with zero items → `{status: empty, items: []}` — report "no action items
   recorded"; the provider's answer is authoritative, no extraction fallback.
 
+## Permission posture (MCP)
+
+The shell hooks cannot see MCP traffic, so the permission control lives with the Fireflies API key
+itself — and this seam is READ-ONLY by contract.
+
+### Native control
+The Fireflies API key the MCP server carries (official connector: the workspace's API settings;
+CLI-configured server: its config file; homegrown: its owner — this posture becomes a suggestion
+to forward). Fireflies keys are workspace-scoped: the key sees the meetings its workspace holds,
+and there is no narrower read-only grant to select — which is itself the posture fact to know.
+
+### Recommended setting (by policy)
+- `db_write_requires_approval` — not in this seam's reach (no write verb, no warehouse traffic);
+  nothing to set.
+- `chat_default_draft` / `hard_halt_before_external_posts` — the GraphQL API's mutation surface is
+  reachable with the same key, so the MCP server should expose only the read queries this adapter
+  names; a server exposing mutations turns a read-only slot into a write path.
+
+A key's effective surface cannot be introspected in-session, so a posture record caps at
+`unverified` (GUIDANCE in the rendered table) — a human confirms in the workspace's API settings.
+
+### Read-only probe
+```
+query { user { email } }        # the auth: verify — an API-key read, no arguments
+```
+The probe proves the key reaches the workspace; it cannot enumerate the key's surface, so the
+comparison outcome is `unverified` by construction.
+
 ## gotchas
 
 - The MCP surface is one `query` operation; the GraphQL string is the real interface — confirm the

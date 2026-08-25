@@ -63,6 +63,37 @@ mcp__{mcp}__graph_get(path="/copilot/users/<userId>/onlineMeetings/<joinWebUrl>/
 - A licensing refusal from the provider is an ERROR to surface with the `auth:` note (the Copilot
   dependency), not a `no_native_export` — the capability exists; this user's license doesn't.
 
+## Permission posture (MCP)
+
+The shell hooks cannot see MCP traffic, so the permission control lives in the Graph app
+registration's permission grants — and this seam is READ-ONLY by contract.
+
+### Native control
+The Graph application/delegated permissions on the connection (official connector: its Azure app
+registration and admin-consent grants; CLI-configured server: the app registration its config
+names; homegrown: its owner — this posture becomes a suggestion to forward). Transcript reads are
+their own permission family (OnlineMeetingTranscript.Read); the AI-insights read additionally
+requires the user's Microsoft 365 Copilot license — a licensing gate no permission grant
+substitutes for.
+
+### Recommended setting (by policy)
+- `db_write_requires_approval` — not in this seam's reach (no write verb, no warehouse traffic);
+  nothing to set.
+- `chat_default_draft` / `hard_halt_before_external_posts` — grant this connection ONLY the
+  meeting/transcript read permissions; a Graph connection that also carries chat-send or
+  channel-message permissions turns a read-only slot into an unreviewed outbound path.
+
+A connector's grant set cannot be introspected in-session, so a posture record caps at
+`unverified` (GUIDANCE in the rendered table) — a human confirms in the app registration's API
+permissions blade.
+
+### Read-only probe
+```
+mcp__{mcp}__graph_get(path="/me/onlineMeetings?$top=1")   # list my online meetings — a plain read
+```
+The probe proves reachability and meeting read access; it cannot enumerate the app's grants, so
+the comparison outcome is `unverified` by construction.
+
 ## gotchas
 
 - The insights route addresses the meeting by `joinWebUrl`, not the meeting id — resolve it from

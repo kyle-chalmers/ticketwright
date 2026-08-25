@@ -9,7 +9,8 @@ All notable changes to this project are documented here. Format loosely follows
 ### Added
 - **MCP permission posture — advisory enforcement for the transport the hooks cannot see.** On the
   MCP path enforcement does not disappear; it moves into the tool's own permission controls, and
-  the kit now says so everywhere it matters. Every `transport: mcp`/`both` adapter (all 10) carries
+  the kit now says so everywhere it matters. Every `transport: mcp`/`both` adapter (all 14,
+  counting the meetings slot's four MCP-path adapters that ship alongside) carries
   a `## Permission posture (MCP)` section — where the native control lives (role / token scope /
   OAuth grant, across official-connector / CLI-configured / homegrown shapes), the recommended
   setting per policy, and a read-only probe. The two warehouse adapters get a written comparison
