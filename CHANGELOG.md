@@ -13,8 +13,11 @@ All notable changes to this project are documented here. Format loosely follows
   a `## Permission posture (MCP)` section — where the native control lives (role / token scope /
   OAuth grant, across official-connector / CLI-configured / homegrown shapes), the recommended
   setting per policy, and a read-only probe. The two warehouse adapters get a written comparison
-  rule (`matches` / `exceeds-policy` / `unverified`); chat/tracker connectors state plainly that a
-  grant set cannot be introspected in-session and cap at `unverified`.
+  rule (`matches` / `exceeds-policy` / `unverified`) — Databricks' rule is cap-biased: Unity
+  Catalog privileges inherit and group grants apply while the direct-grant surfaces cannot show
+  that, so `matches` needs an effective-permission surface and unobservable effective privileges
+  yield `unverified`. Chat/tracker connectors state plainly that a grant set cannot be
+  introspected in-session and cap at `unverified`.
 - **`verify_stack.sh` posture advisories.** Each seam whose *resolved* transport includes mcp
   (configured value first, adapter frontmatter as fallback) gains a
   `▸ posture[<slot>]` pointer line under its status — advisory only: counters, summary wording,

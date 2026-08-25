@@ -7637,13 +7637,44 @@ grep -q 'posture.local.yaml' .claude/skills/setup/SKILL.md \
   && grep -q 'unverified' adapters/README.md; } \
   && ok "adapters/README.md documents the posture contract (3-part section, probe, NATIVE needs a comparison rule)" \
   || bad "the posture contract is not documented for adapter authors"
-p51_rule=""
-for f in adapters/warehouse/snowflake.md adapters/warehouse/databricks.md; do
-  grep -q 'exceeds-policy' "$f" || p51_rule="$p51_rule $f"
-done
-[ -z "$p51_rule" ] \
-  && ok "both warehouse adapters carry their comparison rule (grep: exceeds-policy)" \
-  || bad "a warehouse adapter claims probe-ability without a written comparison rule" "$p51_rule"
+# The FULL rule vocabulary, pinned per adapter — the read-class allowlist, the write-class
+# trigger, AND the `unverified` fallback. A comparison rule missing any of the three legs can
+# claim `matches` on partial visibility, which is exactly the false-NATIVE this feature forbids.
+SF51="adapters/warehouse/snowflake.md"; sf51_flat="$(tr '\n' ' ' < "$SF51")"
+{ grep -q 'USAGE, SELECT, REFERENCES, MONITOR, READ' <<<"$sf51_flat" \
+  && grep -q 'OWNERSHIP' <<<"$sf51_flat" && grep -q '`status: exceeds-policy`' <<<"$sf51_flat" \
+  && grep -q '`status: unverified`' <<<"$sf51_flat" && grep -q '`status: matches`' <<<"$sf51_flat"; } \
+  && ok "snowflake rule carries all three legs (read-class allowlist, write-class trigger, unverified fallback)" \
+  || bad "snowflake's comparison rule lost a leg — partial visibility could claim matches"
+DB51="adapters/warehouse/databricks.md"; db51_flat="$(tr '\n' ' ' < "$DB51")"
+# Databricks is CAP-BIASED by design: Unity Catalog privileges inherit and group grants apply,
+# while SHOW GRANTS / information_schema list DIRECT grants only — so `matches` is writable ONLY
+# from an effective-permission surface, and unobservable effective privileges yield `unverified`.
+{ grep -q 'USE CATALOG, USE SCHEMA, BROWSE' <<<"$db51_flat" \
+  && grep -q 'ALL PRIVILEGES' <<<"$db51_flat" && grep -q '`status: exceeds-policy`' <<<"$db51_flat" \
+  && grep -q '`status: unverified`' <<<"$db51_flat" \
+  && grep -qi 'inherit' <<<"$db51_flat" && grep -q 'EFFECTIVE-permission' <<<"$db51_flat" \
+  && grep -Eq 'direct.grant listing can never prove' <<<"$db51_flat"; } \
+  && ok "databricks rule is cap-biased: matches needs an effective-permission surface; direct grants alone cap at unverified" \
+  || bad "databricks' comparison rule could claim matches from direct-grant views under UC inheritance"
+# The record is DISPLAY-ONLY — never resolver-merged, never read by verify_stack beyond naming its
+# path. Prove it: resolution (the verify plan) and verify_stack output are byte-identical with and
+# without a populated record file in the fixture repo.
+ISO51="$TMP/posture-iso"; mkdir -p "$ISO51/.claude/config"
+cp .claude/config/stack.yaml "$ISO51/.claude/config/stack.yaml"
+python3 bin/effective_config.py --stack "$ISO51/.claude/config/stack.yaml" --verify-plan \
+  > "$TMP/iso51-res.a" 2>&1
+CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$ISO51/.claude/config/stack.yaml" --dry-run \
+  > "$TMP/iso51-vs.a" 2>&1
+printf 'schema_version: 1\nchecked:\n  warehouse:\n    control: role discovered via the MCP connection\n    status: exceeds-policy\n    checked: 2026-08-25\n' \
+  > "$ISO51/.claude/config/posture.local.yaml"
+python3 bin/effective_config.py --stack "$ISO51/.claude/config/stack.yaml" --verify-plan \
+  > "$TMP/iso51-res.b" 2>&1
+CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$ISO51/.claude/config/stack.yaml" --dry-run \
+  > "$TMP/iso51-vs.b" 2>&1
+{ cmp -s "$TMP/iso51-res.a" "$TMP/iso51-res.b" && cmp -s "$TMP/iso51-vs.a" "$TMP/iso51-vs.b"; } \
+  && ok "a populated posture.local.yaml is INERT: resolver plan + verify_stack output byte-identical" \
+  || bad "posture.local.yaml leaked into resolution or verify output — it must stay display-only"
 # The record is per-machine display state — it must be gitignored by the pattern the scaffold ships.
 GIP51="$TMP/gi51"; mkdir -p "$GIP51/.claude/config"
 git -C "$GIP51" init -q 2>/dev/null
@@ -7658,9 +7689,15 @@ hdr "51c · the posture advisory is BEHAVIORAL — verify_stack terminal states 
 # The advisory keys off the CONFIGURED unit's resolved transport (config wins, adapter frontmatter
 # is the fallback), prints AFTER the row's terminal status (the unit line opens with a no-newline
 # printf, so an early echo would splice into it), and never touches a counter or an exit code.
+# ADJACENCY is the contract, not co-presence: the advisory must be the very next line after its
+# row's terminal status — two independent greps would pass even if flush spliced into an open row.
+p51adj() {  # in file $1, the line immediately after the one containing $2 must contain $3
+  awk -v t="$2" -v n="$3" 'p { if (index($0, n)) ok=1; p=0 } index($0, t) { p=1 } END { exit ok?0:1 }' "$1"
+}
 
 # --- (A) dry-run over a both/mcp/cli mix: prod yes, tracker yes, chat yes, lake NO ----------------
 mw51="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
+printf '%s\n' "$mw51" > "$TMP/mw51.out"
 { grep -qF 'posture[warehouse[prod]*]: transport=both' <<<"$mw51" \
   && grep -qF 'adapters/warehouse/snowflake.md § Permission posture (MCP)' <<<"$mw51" \
   && grep -qF 'posture[tracker]: transport=both' <<<"$mw51" \
@@ -7674,6 +7711,10 @@ grep -qF 'posture[warehouse[lake]]' <<<"$mw51" \
 grep -qF 'skipped: unresolved {profile}' <<<"$mw51" \
   && ok "…and [lake]'s unresolved-{profile} terminal branch coexists untouched in the same run" \
   || bad "the unresolved-token branch changed shape" "$mw51"
+{ p51adj "$TMP/mw51.out" '→ would run: snow connection test' 'posture[warehouse[prod]*]: transport=both' \
+  && p51adj "$TMP/mw51.out" '→ would run: acli jira workitem search' 'posture[tracker]: transport=both'; } \
+  && ok "ADJACENT: each dry-run advisory is the very next line after its row's terminal status" \
+  || bad "an advisory is not adjacent to its terminal status — flush spliced or drifted" "$mw51"
 
 # --- (B) mcp-only seams both advise -----------------------------------------------------------------
 ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
@@ -7687,11 +7728,15 @@ ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dr
 
 # --- (C) the null-verify branch + the byte-exact §1 summary pin -----------------------------------
 rs51="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; rs51rc=$?
+printf '%s\n' "$rs51" > "$TMP/rs51.out"
 { [ "$rs51rc" -eq 0 ] \
   && grep -qF 'posture[chat]: transport=mcp' <<<"$rs51" \
   && grep -q 'MCP-only: not checkable from the shell' <<<"$rs51"; } \
   && ok "root stack: the chat advisory coexists with the null-verify MCP-only warning (both print, in order)" \
   || bad "the chat posture advisory broke the null-verify terminal branch" "rc=$rs51rc $(tail -5 <<<"$rs51")"
+p51adj "$TMP/rs51.out" 'MCP-only: not checkable from the shell' 'posture[chat]: transport=mcp' \
+  && ok "ADJACENT: the chat advisory is the very next line after the null-verify warning" \
+  || bad "the chat advisory drifted from its null-verify terminal status" "$rs51"
 { grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qF 'posture[docstore]' <<<"$rs51"; } \
   && ok "the cli docstore row keeps its unresolved warning and gains NO posture line" \
   || bad "the docstore row changed" "$rs51"
@@ -7703,10 +7748,29 @@ grep -qF '3 OK, 2 unverified (chat, docstore).' <<<"$rs51" \
 FV51="$TMP/fv51"; mkdir -p "$FV51"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    transport: both\n    cli: snow\n    verify: "false"\n' > "$FV51/stack.yaml"
 fv51="$(bash bin/verify_stack.sh "$FV51/stack.yaml" 2>&1)"; fv51rc=$?
+printf '%s\n' "$fv51" > "$TMP/fv51.out"
 { [ "$fv51rc" -eq 1 ] && grep -q 'UNREACHABLE' <<<"$fv51" \
   && grep -qF 'posture[warehouse]: transport=both' <<<"$fv51"; } \
   && ok "an UNREACHABLE seam still gets its posture advisory, and the run still exits 1" \
   || bad "the advisory is lost (or the exit code moved) on the failed-verify branch" "rc=$fv51rc $fv51"
+p51adj "$TMP/fv51.out" '✗ UNREACHABLE → false' 'posture[warehouse]: transport=both' \
+  && ok "ADJACENT: the advisory is the very next line after ✗ UNREACHABLE" \
+  || bad "the advisory drifted from the UNREACHABLE terminal status" "$fv51"
+
+# --- (D2) the unsafe-token terminal branch: refused value, advisory still adjacent, exit 1 --------
+UV51="$TMP/uv51"; mkdir -p "$UV51/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    transport: both\n    warehouse_id: X\n    catalog: c\n    schema: s\n    verify: "databricks --profile {profile} current-user me"\n' > "$UV51/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    profile: "x; touch %s/PWNED51"\n' "$TMP" > "$UV51/.claude/config/connections.local.yaml"
+rm -f "$TMP/PWNED51"
+uv51="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$UV51/.claude/config/stack.yaml" 2>&1)"; uv51rc=$?
+printf '%s\n' "$uv51" > "$TMP/uv51.out"
+{ [ "$uv51rc" -eq 1 ] && grep -q 'refusing to run' <<<"$uv51" && [ ! -f "$TMP/PWNED51" ] \
+  && grep -qF 'posture[warehouse]: transport=both' <<<"$uv51"; } \
+  && ok "a metachar-refused token still gets its posture advisory (refused, never executed, exit 1)" \
+  || bad "the unsafe-token terminal branch lost its advisory (or executed the value)" "rc=$uv51rc $uv51"
+p51adj "$TMP/uv51.out" 'refusing to run: value for {profile}' 'posture[warehouse]: transport=both' \
+  && ok "ADJACENT: the advisory is the very next line after the refusal" \
+  || bad "the advisory drifted from the unsafe-token terminal status" "$uv51"
 
 # --- (E) cli-only stacks are advisory-free ---------------------------------------------------------
 nw51="$(bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml --dry-run 2>&1)"

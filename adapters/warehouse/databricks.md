@@ -60,19 +60,30 @@ forward the suggestion to them.
 Run in-session over the MCP connection (read-only introspection; enumerate names only — never
 paste a full grant listing into a report, summary, or committed file):
 ```sql
-SELECT current_user();                       -- the session principal the MCP connection runs as
-SHOW GRANTS ON SCHEMA {catalog}.{schema};    -- read its grant set, filtered to that principal
--- no SHOW GRANTS visibility? the information_schema privilege views carry the same rows:
---   SELECT privilege_type FROM {catalog}.information_schema.schema_privileges
---   WHERE grantee = current_user();
+SELECT current_user();                    -- the session principal the MCP connection runs as
+SHOW GRANTS ON SCHEMA {catalog}.{schema}; -- DIRECT grants on the schema (all principals listed)
+SHOW GRANTS ON CATALOG {catalog};         -- DIRECT grants at catalog level (privileges inherit downward)
+-- the information_schema *_privileges views carry the same DIRECT-grant rows:
+--   SELECT grantee, privilege_type FROM {catalog}.information_schema.schema_privileges;
 ```
-**The comparison rule.** Restricted to the team's configured objects (`{catalog}`, `{schema}`,
-`dev_target`): `status: matches` iff the principal's entries there are read-class only (SELECT,
-USE CATALOG, USE SCHEMA, BROWSE). MODIFY, CREATE, ALL PRIVILEGES, or ownership ⇒
-`status: exceeds-policy`. Anything un-probe-able (probe failure, no visibility into the grant
-views) ⇒ `status: unverified`. Only a recorded `matches` supports the enforcement table's NATIVE
-(tool-side) cell. Record the outcome in gitignored `.claude/config/posture.local.yaml` — advisory,
-never blocking.
+**The comparison rule — cap-biased, because inheritance is real.** Unity Catalog privileges
+inherit downward (catalog → schema → table) and group grants apply to every member, while every
+surface above lists **direct** grants only — so a clean direct-grant listing can never prove the
+session principal is read-only. Restricted to the team's configured objects (`{catalog}`,
+`{schema}`, `dev_target`):
+- ANY write-class entry visible for the session principal (or a group it is known to belong to) —
+  MODIFY, CREATE, ALL PRIVILEGES, ownership — at catalog or schema level ⇒
+  `status: exceeds-policy`. A violation the probe CAN see is always reportable.
+- `status: matches` is writable ONLY from an EFFECTIVE-permission surface — one that resolves
+  inherited and group grants down to the session principal (Unity Catalog's effective-permissions
+  introspection, where the connection can read it) — showing read-class privileges only
+  (SELECT, USE CATALOG, USE SCHEMA, BROWSE). Name the surface that answered in the record's
+  `control:` line.
+- Everything else ⇒ `status: unverified` — including the common case where the direct-grant
+  listings look clean but effective privileges are unobservable from this session. Record that
+  cap and why; never upgrade partial visibility to `matches`.
+Only a recorded `matches` supports the enforcement table's NATIVE (tool-side) cell. Record the
+outcome in gitignored `.claude/config/posture.local.yaml` — advisory, never blocking.
 
 ## verb: query
 ```bash
