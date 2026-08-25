@@ -4,6 +4,37 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Added
+- **MCP permission posture — advisory enforcement for the transport the hooks cannot see.** On the
+  MCP path enforcement does not disappear; it moves into the tool's own permission controls, and
+  the kit now says so everywhere it matters. Every `transport: mcp`/`both` adapter (all 10) carries
+  a `## Permission posture (MCP)` section — where the native control lives (role / token scope /
+  OAuth grant, across official-connector / CLI-configured / homegrown shapes), the recommended
+  setting per policy, and a read-only probe. The two warehouse adapters get a written comparison
+  rule (`matches` / `exceeds-policy` / `unverified`); chat/tracker connectors state plainly that a
+  grant set cannot be introspected in-session and cap at `unverified`.
+- **`verify_stack.sh` posture advisories.** Each seam whose *resolved* transport includes mcp
+  (configured value first, adapter frontmatter as fallback) gains a
+  `▸ posture[<slot>]` pointer line under its status — advisory only: counters, summary wording,
+  and exit codes are unchanged.
+- **Setup probes and records.** `/setup` (tool rounds) and `/setup --teammate` follow each posture
+  pointer, run the adapter's read-only probe in-session, apply its comparison rule, and record the
+  outcome in the report and in gitignored, display-only `.claude/config/posture.local.yaml` (never
+  resolver-merged; covered by the existing `*.local.yaml` gitignore pattern).
+- **The rendered AGENTS.md gains NATIVE (tool-side).** A per-policy posture table (Bash path vs
+  MCP path) sits below the runtime enforcement table, between its own markers; NATIVE is claimable
+  only where a read-only privilege introspection plus a written comparison rule exist (the
+  warehouse slot), and only with a recorded `matches`. `bin/emit_runtime.py` appends the table to
+  the `.clinerules/` honesty artifact; fixtures regenerated for cline, codex-cli, antigravity.
+- **Session banner names both paths.** When a warehouse is configured and the DB-write policy is
+  on, the SessionStart banner adds one line: hook-gated on Bash, advisory on a provable MCP path —
+  an unknown transport never claims MCP.
+- Selftest §51b (posture structure, fence-scoped probe hygiene, table honesty pins) and §51c
+  (advisory behavior through every verify_stack terminal state + the banner matrix).
+
+
 ## [3.7.1] — 2026-08-25
 
 ### Fixed
