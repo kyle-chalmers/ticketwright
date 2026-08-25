@@ -7934,20 +7934,24 @@ e5="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t5 --json 2>&1)"; e5rc
 # E5c a ref OUTSIDE the canonical *-meeting.md stub is refused (misplaced-ref), never honored OR
 # silently ignored — including in a nested directory and a non-.md file ("any other filename is
 # refused" is the schema's contract). Body-prose mentions of the key must NOT trip the sweep.
-mkdir -p "$S51D/t7/source_materials/archive"
+mkdir -p "$S51D/t7/source_materials/archive/private" "$S51D/t7/source_materials/private"
 cp "$MRFIX/misplaced-ref-notes.md" "$S51D/t7/source_materials/"
 cp "$MRFIX/misplaced-ref-notes.md" "$S51D/t7/source_materials/archive/nested-notes.md"
+cp "$MRFIX/misplaced-ref-notes.md" "$S51D/t7/source_materials/archive/private/deep-notes.md"
+cp "$MRFIX/misplaced-ref-notes.md" "$S51D/t7/source_materials/private/raw-notes.md"
 printf -- '---\nmeeting_ref: acmemeet:mtg-77\n---\nbody\n' > "$S51D/t7/source_materials/export.txt"
 printf 'prose mentioning meeting_ref: syntax in the BODY only\n' > "$S51D/t7/source_materials/2026-08-19-clean-meeting.md"
 e5c="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t7 --json 2>&1)"; e5crc=$?
-{ [ "$e5crc" -eq 4 ] && [ "$(grep -c '"reason": "misplaced-ref"' <<<"$e5c")" -eq 3 ] \
+{ [ "$e5crc" -eq 4 ] && [ "$(grep -c '"reason": "misplaced-ref"' <<<"$e5c")" -eq 4 ] \
   && grep -q 'misplaced-ref-notes.md' <<<"$e5c" \
   && grep -q 'archive/nested-notes.md' <<<"$e5c" \
+  && grep -q 'archive/private/deep-notes.md' <<<"$e5c" \
   && grep -q 'export.txt' <<<"$e5c" \
+  && ! grep -q 'private/raw-notes.md' <<<"$e5c" \
   && ! grep -q '2026-08-19-clean-meeting.md' <<<"$e5c" \
   && grep -q '"refs": \[\]' <<<"$e5c"; } \
-  && ok "E5c: misplaced refs are refused by name (top-level .md, nested .md, non-.md) — body prose is not swept" \
-  || bad "E5c: a misplaced meeting_ref was honored, dropped silently, or prose false-tripped" "rc=$e5crc $e5c"
+  && ok "E5c: misplaced refs refused by name (top-level/nested/non-.md/nested-private); ONLY top-level private/ is exempt; prose is not swept" \
+  || bad "E5c: a misplaced meeting_ref was honored, dropped silently, or an exemption is over-broad" "rc=$e5crc $e5c"
 # E5b a YAML list is invalid — one meeting per stub is the contract.
 mkdir -p "$S51D/t6/source_materials"
 cp "$MRFIX/2026-08-23-list-refs-meeting.md" "$S51D/t6/source_materials/"

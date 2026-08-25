@@ -178,7 +178,11 @@ def main(argv: list[str] | None = None) -> int:
         # schema's contract is "any other filename is refused", not "quietly skipped".
         for path in sorted(p for p in src.rglob("*") if p.is_file()):
             rel = path.relative_to(ticket).as_posix()
-            if "private" in path.relative_to(src).parts[:-1]:
+            inner = path.relative_to(src).parts
+            # Only the TOP-LEVEL private/ is the documented raw opt-in area (matching the
+            # gitignore scope, source_materials/private/) — a deeper directory that happens to be
+            # named private/ earns no exemption from the misplaced sweep.
+            if len(inner) > 1 and inner[0] == "private":
                 continue
             if path.parent == src and path.suffix == ".md":
                 rec = parse_stub(path, rel, errors)
