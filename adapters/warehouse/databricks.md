@@ -48,6 +48,10 @@ databricks --profile {profile} api post /api/2.0/sql/statements \
   --json '{"warehouse_id":"{warehouse_id}","statement":"<SQL>","wait_timeout":"30s"}'
 # Or route through the Databricks SQL MCP for interactive exploration.
 ```
+- **Write routing:** WRITES go through the CLI/API forms above; the MCP transport is for
+  read/exploration. The `db_write_guard` hook inspects Bash-issued CLI commands only and cannot
+  see MCP-issued SQL, so a mutation routed through the MCP would bypass the mechanical gate — on
+  that path the `db_write_requires_approval` policy is guidance, not enforcement.
 - Deterministic exports: explicit `ORDER BY` (Spark result order is not guaranteed).
 - Reference objects three-part: `{catalog}.{schema}.<object>`.
 - The Statement API is async beyond `wait_timeout`: poll `GET /api/2.0/sql/statements/<id>` until

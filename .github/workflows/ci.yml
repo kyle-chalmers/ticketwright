@@ -29,6 +29,30 @@ jobs:
       - name: Ticket index is in sync (staleness gate)
         run: python3 bin/build_ticket_index.py --check
 
+  # ubuntu-latest ships a modern bash, so the job above cannot see a bash-3.2 regression — which is
+  # exactly how selftest shipped unparseable on every stock Mac (heredocs inside $() desync 3.2's
+  # scanner). macOS runners still ship 3.2.57 as /bin/bash: parse first for a crisp error, then run
+  # the full suite under it, so the "bash 3.2-safe" promise in AGENTS.md is enforced, not asserted.
+  selftest-macos-bash32:
+    name: Kit self-test under stock macOS bash 3.2
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure yq
+        run: |
+          command -v yq >/dev/null 2>&1 || brew install yq
+          yq --version
+
+      - name: /bin/bash is really 3.2
+        run: /bin/bash -c 'echo "$BASH_VERSION"; [ "${BASH_VERSINFO[0]}" -eq 3 ]'
+
+      - name: Parse gate (bash 3.2)
+        run: /bin/bash -n bin/selftest.sh
+
+      - name: Full self-test (bash 3.2)
+        run: /bin/bash bin/selftest.sh
+
   plugin-validate:
     runs-on: ubuntu-latest
     steps:

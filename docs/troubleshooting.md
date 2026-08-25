@@ -12,6 +12,57 @@ Just re-run it. Every skill is resume-safe by design:
 - **`/ship`** Phase A is idempotent (re-verify, tidy, drafts); Phase B halts before every external
   post, so a crash can't leave you half-posted — re-run and re-authorize.
 
+## The slash commands are missing (`/ticketwright:setup` → unknown command)
+
+Four distinct causes, in the order to check them:
+
+**1 · The committed config registers the marketplace but does not install the plugin.** The repo's
+committed `.claude/settings.json` (`enabledPlugins` + `extraKnownMarketplaces`) registers and
+clones the marketplace on session start — installing the plugin is a separate, manual step, and
+skipping it leaves `~/.claude/plugins/installed_plugins.json` at `{}` no matter how many times you
+restart. Fix:
+
+```bash
+claude plugin install ticketwright@ticketwright
+claude plugin list        # should show ticketwright@ticketwright … enabled
+```
+
+then **fully restart Claude Code** — plugin skills load at session start, so installing and
+running `/setup` in the same session silently fails.
+
+**2 · An older Claude Code rejects the marketplace manifest — silently.** Schema errors in
+`marketplace.json` are swallowed on session start; they surface only on an explicit
+`claude plugin marketplace add`. Fix: upgrade Claude Code — or run the explicit pair, which at
+least shows you the real error instead of silence:
+
+```bash
+claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git
+claude plugin install ticketwright@ticketwright
+```
+
+**3 · Install reported success, but the recorded installPath was never created** — likely a
+Claude Code bug. Symptoms: `ls ~/.claude/plugins/cache/` has no ticketwright entry, and
+`claude plugin uninstall` answers "not found" even though the install said it succeeded.
+Recovery: copy the already-cloned marketplace into the cache path the install recorded:
+
+```bash
+SRC=~/.claude/plugins/marketplaces/ticketwright
+DST=~/.claude/plugins/cache/ticketwright/ticketwright/<version>
+mkdir -p "$(dirname "$DST")" && cp -R "$SRC" "$DST"
+```
+
+(`<version>` is what `claude plugin list` reports, e.g. `3.7.0`.)
+
+**4 · Your local fix keeps vanishing.** The committed `extraKnownMarketplaces` re-resolves the
+marketplace name to the git URL on every session start, overwriting user-scope registrations — a
+marketplace you re-pointed at user scope is silently reverted next session. The durable local
+override is the gitignored `.claude/settings.local.json`, which takes precedence over the
+committed project settings: repoint the marketplace there.
+
+One interaction worth knowing: the update-notice banner (`bin/update_notice.py`) names an
+uninstall + install pair to pick up a release. If case 3 has struck, that uninstall fails with
+"not found" — follow recovery 3 first, then run the pair.
+
 ## "Tool slot unreachable" / auth errors
 
 `bin/verify_stack.sh` (run by `/setup`, and by skills at preflight) names the failing tool slot.

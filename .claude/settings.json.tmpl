@@ -28,7 +28,7 @@
     ]
   },
   "permissions": {
-    "_README": "Read-only baseline that is safe in any stack. setup appends the chosen warehouse/tracker/vcs read verbs (e.g. Bash(snow sql:*)) here; the db_write_guard hook still gates destructive statements even when the CLI is allowed.",
+    "_README": "Read-only baseline that is safe in any stack. setup appends the chosen warehouse/tracker/vcs read verbs (e.g. Bash(snow sql:*)) here; the db_write_guard hook still gates destructive statements even when the CLI is allowed. The kit-script entries match how the skills ACTUALLY invoke kit scripts — via the `bin/tw` launcher (day-to-day skills) or the `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}` form (/setup, the bootstrapper that installs the launcher). Bare `python3 bin/...` / `bash bin/...` patterns can never match in a rendered repo (it has no bin/), so they only produce permission prompts for scripts meant to be pre-approved. No `yq` entry: nothing in a rendered repo runs yq as a top-level command (the kit's selftest.sh uses it internally, under its own bash entry).",
     "allow": [
       "Bash(git status:*)",
       "Bash(git diff:*)",
@@ -42,15 +42,14 @@
       "Bash(fd:*)",
       "Bash(find:*)",
       "Bash(jq:*)",
-      "Bash(yq:*)",
-      "Bash(python3 bin/build_ticket_index.py:*)",
-      "Bash(python3 bin/ingest_index_records.py:*)",
-      "Bash(python3 bin/recall.py:*)",
-      "Bash(python3 bin/enrich_ticket.py:*)",
-      "Bash(bash bin/verify_stack.sh:*)",
-      "Bash(bash bin/render.sh:*)",
-      "Bash(bash bin/selftest.sh:*)",
-      "Bash(bash bin/handoff.sh:*)"
+      "Bash(bash \"${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw\":*)",
+      "Bash(python3 \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/whoami.py\":*)",
+      "Bash(python3 \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/effective_config.py\":*)",
+      "Bash(python3 \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py\":*)",
+      "Bash(bash \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh\":*)",
+      "Bash(bash \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/render.sh\":*)",
+      "Bash(bash \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh\":*)",
+      "Bash(bash \"${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/handoff.sh\":*)"
     ],
     "deny": []
   },

@@ -51,6 +51,11 @@ python3 -m build                           # build the sdist + wheel (needs the 
 ```
 
 `selftest.sh` is authoritative and self-contained: read-only, no network, no credentials, bash 3.2-safe.
+"3.2-safe" is enforced, not aspirational: stock macOS `/bin/bash` (3.2.57) mis-parses a heredoc nested
+inside `$( )` — the whole file dies at parse time while earlier sections' ✓ output scrolls past — so
+capture heredoc output via a temp file (`python3 - <<'PY' >"$TMP/x.out"` … then `var="$(cat …)"`),
+never `var="$(python3 - <<'PY' …)"`. Section 52 lints the file for the forbidden shape and CI runs the
+full suite under `/bin/bash` on macOS (this shipped broken three releases in a row before the guard).
 It needs `yq` and `python3` only. It is organized into ~23 numbered sections (config resolution, adapter
 verb coverage, tool-name isolation, every hook, the index/recall engines, the render gate, the Obsidian
 graph layer, version sync, …). **When you change behavior, add or update the matching numbered section** —

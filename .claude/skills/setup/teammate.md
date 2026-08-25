@@ -21,17 +21,28 @@ Every question below is prose the person answers in chat, never a structured too
 - `resolved` → show the one-line "Working as …" display and continue.
 - `miss` → ask, in prose: "I don't recognize `<identity>`. Who are you?" — offering every id under
   `people/` as a candidate plus "someone new" (the roster of placeholders exists for exactly this
-  moment). Then `whoami.py --bind <id>`: it pins this machine and appends their identity to their
+  moment). **Before binding, run step 0.5** — on a fresh machine the git identity may be entirely
+  unset, and binding first records a weaker identity than the one they are about to configure.
+  Then `whoami.py --bind <id>`: it pins this machine and appends their identity to their
   own `people/<id>.yaml`, creating the file when they are new. The person's own answer is
   authority — never guess from a folder name or git config.
 - `ambiguous` → offer exactly the candidates whoami names, then bind the answer.
 - `conflict` → read whoami's warning aloud: the machine pin and this repo's git identity disagree.
   Fix whichever side is stale (re-bind, or correct the git config) before continuing.
 
+## 0.5 · Git identity — set it before binding
+`!git config user.email; git config user.name` — on a fresh machine both can be unset, which
+leaves `$USER` as the only identity candidate (this happened live) and, separately, breaks the
+commits `/ship` makes. If either is unset, have the person set them now — repo-local is fine:
+`git config user.email "<their email>"` and `git config user.name "<their name>"`. Then bind (or
+re-run step 0): the identity recorded is now one this machine actually resolves by.
+
 ## 1 · Install prerequisites
 Check what's present: `for c in <the CLIs named by the configured tool slots> yq jq git; do
 command -v $c >/dev/null && echo "✓ $c" || echo "✗ $c (install)"; done`. For each missing tool give
-the install command (Homebrew / winget / apt as appropriate).
+the install command (Homebrew / winget / apt as appropriate). Scope note: `yq` is needed only by
+the kit's own `selftest.sh` (step 5 runs it once, as a kit-integrity check) — no skill in a
+configured repo invokes it day to day, so a missing `yq` blocks that one check, nothing else.
 
 ## 2 · Authenticate each configured tool
 For every configured tool slot, open its adapter's `auth:` notes and walk the person through
@@ -75,7 +86,7 @@ must report no errors, with each override attributed to the machine tier.
 
 ## 5 · Verify connectivity — bound to the expected target
 Run `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` first (the kit itself),
-then `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh"`. Two rules make the
+then `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh"`. Three rules make the
 result mean something:
 - **Bind the check to the target.** "The CLI responded" is not proof the person reached the right
   place — a personal profile can point at an entirely different account or workspace. Use the
@@ -87,8 +98,13 @@ result mean something:
   because of a cached session; this person has none, so an interactive sign-in or MFA prompt
   mid-verify is a NORMAL outcome. Narrate it ("your tool is asking you to sign in — finish that
   and we'll re-run"), never report it as a failure.
-Walk any ✗/⚠ with the relevant adapter's auth notes until green (MCP-only tool slots: confirm the
-server is connected this session). A docstore mount check that fails (`✗ UNREACHABLE` on a
+- **Probe MCP-only tool slots in-session — verify_stack.sh cannot.** A seam with `transport: mcp`
+  and `verify: null` has no shell surface, so the script reports it as *unverified*, not OK. For
+  each such slot: call ONE read-only tool from that MCP server in this session (the adapter's
+  `auth:` notes name a suitable probe), and record the outcome — reachable or unreachable — next
+  to that slot in the checklist. An unverified MCP slot is not done until this probe has run.
+Walk any ✗/⚠ with the relevant adapter's auth notes until green. A docstore mount check that
+fails (`✗ UNREACHABLE` on a
 `test -d`) has its own guide — install steps per OS, the `mount_root` tier split, and the mountless
 `rclone` route: <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>. Mention the `db_write_guard` hook so they know destructive
 warehouse statements prompt for confirmation **by design**.
