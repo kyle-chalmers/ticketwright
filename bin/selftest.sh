@@ -7937,6 +7937,7 @@ mkdir -p "$S51D/t7/source_materials"
 cp "$MRFIX/misplaced-ref-notes.md" "$S51D/t7/source_materials/"
 e5c="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t7 --json 2>&1)"; e5crc=$?
 { [ "$e5crc" -eq 4 ] && grep -q '"reason": "misplaced-ref"' <<<"$e5c" \
+  && grep -q 'misplaced-ref-notes.md' <<<"$e5c" \
   && grep -q '"refs": \[\]' <<<"$e5c"; } \
   && ok "E5c: a ref outside the canonical stub is refused (misplaced-ref) — never quietly honored" \
   || bad "E5c: a misplaced meeting_ref was honored or dropped silently" "rc=$e5crc $e5c"
@@ -7978,7 +7979,9 @@ done
 # sentence naming the mechanical gates' limit (shape, never meaning). Prose pins, labeled as such.
 pv51=""
 for f in adapters/meetings/*.md; do
-  sec="$(sed -n '/^## verb: fetch_transcript$/,/^## /p' "$f")"
+  # Flatten the section (the section-49 enf_flat convention): the verbatim sentence wraps across
+  # lines, and a line-oriented grep would pass or fail on where the author happened to break it.
+  sec="$(sed -n '/^## verb: fetch_transcript$/,/^## /p' "$f" | tr '\n' ' ')"
   grep -qF 'Curated excerpts and action items are committed; raw full transcripts are not, by default.' <<<"$sec" \
     || pv51="$pv51 $(basename "$f"):rule"
   grep -q 'filenames and document shape, never meaning' <<<"$sec" \
