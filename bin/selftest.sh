@@ -7943,11 +7943,12 @@ python3 bin/meeting_refs.py --root "$S51D" --ticket does-not-exist >/dev/null 2>
 [ "$e5urc" -eq 2 ] && ok "usage errors exit 2 (missing ticket dir)" \
   || bad "usage error should exit 2, got $e5urc"
 # Config-free by design: matching the ref's provider against seams.meetings.tool is skill-side.
-grep -q 'stack.yaml' bin/meeting_refs.py && ! grep -q 'effective_config' bin/meeting_refs.py \
-  && ok "meeting_refs.py is config-free (never reads stack.yaml; provider match is skill-side)" \
-  || { grep -q 'effective_config' bin/meeting_refs.py \
-       && bad "meeting_refs.py reads config — it must stay purely syntactic" \
-       || ok "meeting_refs.py is config-free (never reads stack.yaml; provider match is skill-side)"; }
+# (The docstring may NAME stack.yaml/effective_config while stating it never reads them, so this
+# pins the imports, not the prose.)
+mrcfg="$(grep -nE '^(import|from)[[:space:]].*(_yamlite|effective_config)' bin/meeting_refs.py || true)"
+[ -z "$mrcfg" ] \
+  && ok "meeting_refs.py is config-free (no config-reader import; provider match is skill-side)" \
+  || bad "meeting_refs.py imports a config reader — it must stay purely syntactic" "$mrcfg"
 env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
   python3 bin/meeting_refs.py --root "$S51D" --ticket t1 --json >/dev/null 2>&1 \
   && ok "meeting_refs.py needs no Claude environment variable (harness-neutral)" \
