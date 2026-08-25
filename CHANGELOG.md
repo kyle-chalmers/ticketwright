@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [3.7.1] — 2026-08-25
 
 ### Fixed
 - **The plugin installs again on Claude Code 2.0.x–2.1.x.** `marketplace.json` declared
