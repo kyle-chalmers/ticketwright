@@ -212,7 +212,7 @@ time).
 | Policy | Bash/CLI path | MCP path |
 |---|---|---|
 | `db_write_requires_approval` | ENFORCEMENT/WIRED/GUIDANCE per the runtime table above | NATIVE (tool-side) once the warehouse adapter's posture probe has verified a read-only grant set under its comparison rule (recorded in `.claude/config/posture.local.yaml`); GUIDANCE until then |
-| `chat_default_draft` | GUIDANCE (skills draft by default) | GUIDANCE — the draft tools are the path; a connector's grant set cannot be introspected read-only from inside a session, so the posture record caps at `unverified` and no cell here may claim NATIVE |
+| `chat_default_draft` | GUIDANCE (skills draft by default) | GUIDANCE — the draft tools are the path; a connector's grant set cannot be introspected read-only from inside a session, so the posture record caps at `unverified` and the tool-side claim is never available on this row |
 | `hard_halt_before_external_posts` | GUIDANCE (skill hard-halt) | GUIDANCE (skill hard-halt); the tracker/chat adapter's posture section names the grants that matter and where a human confirms them |
 
 The asymmetry between the rows is the honest design, not a gap: NATIVE exists only where a
