@@ -501,6 +501,35 @@ tool-neutrality rule for skills — is unchanged.
 5. Run `bash bin/verify_stack.sh` — it confirms each seam's adapter file exists and runs the seam's
    read-only `verify` to check reachability. (`bash bin/selftest.sh` checks verb coverage vs. this contract.)
 
+### `## Permission posture (MCP)` — required when `transport:` is `mcp` or `both`
+
+On the MCP transport the kit's shell hooks cannot see the traffic, so a policy's enforcement moves
+into the tool's own permission controls — and the adapter is where the kit says so. Every adapter
+whose frontmatter declares `transport: mcp` or `both` carries a `## Permission posture (MCP)`
+section with exactly three `###` parts (selftest section 51b pins the structure and lints the
+probe):
+
+1. **`### Native control`** — where the control lives for the MCP path (the connection's role, the
+   token's scope, the connector's OAuth grants, the server's own config), covering all three
+   connection shapes: official connector (its app settings), CLI-configured server (its config
+   file), homegrown (its owner — the posture becomes a suggestion to forward).
+2. **`### Recommended setting (by policy)`** — written against the policy names
+   (`db_write_requires_approval`, `chat_default_draft`, `hard_halt_before_external_posts`), never
+   restated rules.
+3. **`### Read-only probe`** — a fenced code block holding read-only introspection or a read call
+   (never a mutation, never a bare enumeration that prints secrets — the names-only precedent).
+   The fence is linted against the SQL mutation denylist; explanatory prose around it may name
+   write-class grants freely.
+
+**NATIVE (tool-side) needs a comparison rule.** The rendered AGENTS.md posture table may claim
+NATIVE for a policy only where the probe is a genuine read-only privilege *introspection* AND the
+adapter states the comparison rule that turns a probe result into `matches` / `exceeds-policy` /
+`unverified` (today: the warehouse adapters). Seams whose grant sets cannot be introspected from
+inside a session — chat and tracker connectors — cap at `unverified`, stay GUIDANCE in the table,
+and their posture sections must say so plainly, pointing at the settings surface where a human
+confirms the grant. Setup records every outcome in gitignored
+`.claude/config/posture.local.yaml` (display-only; never resolver-merged).
+
 ### `user_keys:` — which of this tool's keys are PERSONAL
 
 `stack.yaml` is committed and shared, so a value that is true only on one machine must not live

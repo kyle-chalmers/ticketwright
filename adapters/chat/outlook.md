@@ -63,6 +63,33 @@ ticket's `delivery-plan.yaml` `audience:` declaration (`bin/delivery_plan.py`); 
 inferred from prose, an address's domain, or a list's name, and a routing failure never falls back
 to another chat target.
 
+## Permission posture (MCP)
+
+### Native control
+The connector's **Graph mail permission grant** (`Mail.Read` vs `Mail.ReadWrite` vs `Mail.Send` /
+`Mail.Send.Shared`) and **which tools the server exposes**. Outlook drafts are native mailbox
+objects, so the draft tool (`create_draft`) is the path that expresses `default_mode: draft` +
+`chat_default_draft`, and the send tool (`send_mail`) is the thing being gated. An official
+connector's grant lives in its OAuth/admin consent; a CLI-configured server in its config file; a
+homegrown server with its owner (forward the suggestion).
+
+### Recommended setting (by policy)
+Prefer a grant that **excludes `Mail.Send`** where the connector offers one — `Mail.ReadWrite`
+alone can stage drafts in `{identity}`'s Drafts folder but cannot send, so `chat_default_draft`
+holds by construction. Treat every send as final (recall fails silently outside one Exchange org),
+so this is the seam where the narrower grant matters most.
+
+### Read-only probe
+The read call the auth block already names — it proves reachability and which tools exist:
+```
+mcp__{mcp}__list_mail_folders()   # read-only
+```
+**What it cannot prove, stated plainly:** the connector's grant set is NOT introspectable
+read-only from inside the session, so the posture record caps at `status: unverified` and the
+draft/send policies remain GUIDANCE on this path. Confirm the actual grant in the connector's own
+settings surface (the OAuth/admin consent / server config / its owner) — record the outcome in
+gitignored `.claude/config/posture.local.yaml`.
+
 ## verb: draft   (the default — policy chat_default_draft, and `default_mode: draft` set explicitly)
 ```
 mcp__{mcp}__create_draft(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[ENG-123] summary>, body=<HTML body>)
