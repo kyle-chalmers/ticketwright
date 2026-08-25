@@ -65,7 +65,8 @@ as a structured tool-call payload.
 ## Mode: `--teammate` — the per-person flow (person-scoped)
 Follow [teammate.md](teammate.md): resolve WHO this is (`whoami`, binding on a miss) → install
 checklist → per-tool auth walk-through → detect *their* machine and write their machine file →
-verify, bound to the team's expected target → read-the-map → guided first-ticket dry run. Requires
+verify, bound to the team's expected target (each MCP-transport slot also gets its permission
+posture probed, compared, and recorded) → read-the-map → guided first-ticket dry run. Requires
 an existing `stack.yaml`. Entered automatically when the repo is configured but the person is
 unrecognized (Phase 1 routing below); `--teammate` stays the explicit re-run. Offer the `--voice`
 step at the end so the new person's comms sound like them from their first ship.
@@ -222,6 +223,16 @@ Everything the interview does not ask ships as a **commented default** the user 
      — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
      adapter's auth notes as the fix.
+   - **…and the posture pointers that check prints (advisory, never blocking):** verify_stack
+     emits a `▸ posture[<slot>]` line for every tool slot whose resolved transport includes MCP,
+     naming that adapter's "Permission posture (MCP)" section. For each pointer: run the section's
+     read-only probe in-session, apply the adapter's comparison rule, and record the outcome in
+     the report AND in the gitignored record file `.claude/config/posture.local.yaml`
+     ([teammate.md](teammate.md) step 5 defines the three outcome words and the record shape;
+     `matches` is writable only when the adapter's comparison rule held). Chat/tracker slots
+     always record the introspection cap — a connector's grant set cannot be read from inside a
+     session — with a pointer to where a human confirms the grant. A posture the policy does not
+     expect is reported and recorded, not a stop.
 8. **Report:** name which check is which (selftest = kit integrity; verify_stack = *your* tool slots), then
    the chosen stack, files written, and any `# TODO` keys. Include, when they apply:
    - **The punch list** — one entry per skipped round, each naming its re-entry command

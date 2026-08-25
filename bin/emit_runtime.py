@@ -216,19 +216,32 @@ def hook_command(hook: str, tool: str) -> str:
 
 _ENF_BEGIN = "<!-- ticketwright:enforcement:begin -->"
 _ENF_END = "<!-- ticketwright:enforcement:end -->"
+_POSTURE_BEGIN = "<!-- ticketwright:posture:begin -->"
+_POSTURE_END = "<!-- ticketwright:posture:end -->"
+
+
+def _marker_block(kit: Path, begin: str, end: str) -> str | None:
+    try:
+        text = (kit / "templates" / "AGENTS.md.tmpl").read_text(encoding="utf-8")
+        start = text.index(begin) + len(begin)
+        stop = text.index(end)
+    except (OSError, ValueError):
+        return None
+    return text[start:stop].strip() + "\n"
 
 
 def enforcement_block(kit: Path) -> str | None:
     """The enforcement table, extracted verbatim from the AGENTS.md template between its markers —
     ONE authoring point, two surfaces (the rendered AGENTS.md, and the rules-root copy for a
     runtime whose users never read AGENTS.md)."""
-    try:
-        text = (kit / "templates" / "AGENTS.md.tmpl").read_text(encoding="utf-8")
-        start = text.index(_ENF_BEGIN) + len(_ENF_BEGIN)
-        end = text.index(_ENF_END)
-    except (OSError, ValueError):
-        return None
-    return text[start:end].strip() + "\n"
+    return _marker_block(kit, _ENF_BEGIN, _ENF_END)
+
+
+def posture_block(kit: Path) -> str | None:
+    """The permission-posture table (Bash path vs MCP path, per policy), same one-authoring-point
+    rule as the enforcement table: the rules-root artifact carries it too, because a runtime whose
+    users never read AGENTS.md must still see when NATIVE (tool-side) is claimable."""
+    return _marker_block(kit, _POSTURE_BEGIN, _POSTURE_END)
 
 
 def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
@@ -362,8 +375,13 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
             print("emit_runtime: templates/AGENTS.md.tmpl has no enforcement-table markers — "
                   "cannot emit the rules artifact.", file=sys.stderr)
             return 2
+        posture = posture_block(kit)
+        if posture is None:
+            print("emit_runtime: templates/AGENTS.md.tmpl has no posture-table markers — "
+                  "cannot emit the rules artifact.", file=sys.stderr)
+            return 2
         content = (f"<!-- {prov} -->\n\n# Ticketwright enforcement — what is mechanical here\n\n"
-                   + block)
+                   + block + "\n" + posture)
         out = project / rules_root / "ticketwright-enforcement.md"
         if write_emitted(out, content, foreign):
             print(f"  emitted   {out} (the enforcement table, emitted where {tool} users "
