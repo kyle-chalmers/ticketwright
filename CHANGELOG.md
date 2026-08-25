@@ -37,6 +37,24 @@ All notable changes to this project are documented here. Format loosely follows
 - Selftest §51b (posture structure, fence-scoped probe hygiene, table honesty pins) and §51c
   (advisory behavior through every verify_stack terminal state + the banner matrix).
 
+- **The `meetings` tool slot** — the sixth verb-contract slot, shipped after the new-slot bar was
+  re-judged YES on all four legs (written judgment, codex-adjudicated; the record lives in
+  `ROADMAP.md`). Optional, read-only, single-tool: a ticket references a meeting with a
+  `meeting_ref: <provider>:<id>` frontmatter key in a `source_materials/` stub, and `/ticket`'s
+  priming fetches the transcript **to context, never to disk**. Three verbs
+  (`fetch_transcript` with `content_kind: transcript|notes`, `search_meetings`,
+  `fetch_action_items` with a typed `ok|empty|no_native_export` result and per-status caller
+  behavior); five launch adapters (`zoom`, `fireflies`, `granola` — local cache,
+  credential-free — `teams`, `notion`), each carrying the transcript-privacy rule verbatim.
+  New `bin/meeting_refs.py` makes the reference contract mechanical (exit family 0 ok · 2 usage ·
+  4 malformed-or-refused; credential-bearing values refused at parse time with
+  `reason: refused-credential`; no reference ⇒ `{"refs": []}` and silence — never a speculative
+  fetch). `seams.meetings` is optional like docstore (worked example in
+  `stack.example.multi-audience.yaml`); `/setup tool meetings` adds it later; the session banner
+  always prints the slot (`meetings=—` when absent). Selftest section 51d covers the parser,
+  resolver, banner, render, and the labeled structural pins. Privacy mechanics are unchanged
+  from the intake stage: the gitignore patterns, scanner, and guard remain the mechanical layer,
+  and they read filenames and document shape, never meaning.
 
 ## [3.7.1] — 2026-08-25
 
