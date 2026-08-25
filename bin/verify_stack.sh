@@ -69,7 +69,7 @@ if [[ $rc -ne 0 ]]; then
   #   4 malformed · 6 prohibited override → fail    5 stale → warn
   case "$rc" in
     5) echo "  ⚠ machine config is stale — re-run the per-person setup" ;;
-    *) fail=1 ;;
+    *) count_fail "config" ;;
   esac
   [[ -s "$PLAN" ]] || { echo "─────────────────────────────────────────────────────────";
                         echo "One or more seams need attention (auth/install)."; exit 1; }
@@ -97,7 +97,7 @@ while IFS= read -r line; do
   IFS="$SEP" read -r kind label tool adapter verify message unresolved unsafe missing <<<"$(fields "$line")"
   case "$kind" in
     seam_error) echo "  ✗ $message"; count_fail "${label:-config}"; continue ;;
-    seam_warn)  echo "  ⚠ $message"; continue ;;
+    seam_warn)  echo "  ⚠ $message"; count_warn "${label:-config}"; continue ;;
   esac
 
   printf "▸ %-10s tool=%-10s" "$label" "${tool:-?}"
@@ -116,9 +116,11 @@ while IFS= read -r line; do
   #    command string happens to name, so an unset key the verify never mentions used to report
   #    "reachable", and a `verify: null` seam checked nothing at all. Warn — /setup deliberately
   #    leaves keys as a `# TODO` and promises verify will point at them.
+  seam_warned=0
   if [[ -n "$missing" ]]; then
     echo "  ⚠ required key(s) not set: ${missing//,/ } → see $adapter"
     printf "▸ %-10s tool=%-10s" "$label" "${tool:-?}"
+    seam_warned=1
   fi
 
   # 3) verify reachable?
@@ -150,10 +152,13 @@ while IFS= read -r line; do
     echo "  ✗ refusing to run: value for {$unsafe} contains shell metacharacters"; count_fail "$label"; continue
   fi
   if [[ $dry -eq 1 ]]; then
-    echo "  → would run: $verify"; count_ok; continue
+    echo "  → would run: $verify"
+    if [[ $seam_warned -eq 1 ]]; then count_warn "$label"; else count_ok; fi
+    continue
   fi
   if eval "$verify" >/dev/null 2>&1; then
-    echo "  ✓ reachable"; count_ok
+    echo "  ✓ reachable"
+    if [[ $seam_warned -eq 1 ]]; then count_warn "$label"; else count_ok; fi
   else
     echo "  ✗ UNREACHABLE → $verify"; count_fail "$label"
   fi
@@ -182,7 +187,7 @@ if [[ -f "$router" ]]; then
       if [[ "$level" == "error" ]]; then echo "  ✗ $message"; else echo "  ⚠ $message"; fi
     done <<<"$ROUTE"
   fi
-  [[ $rrc -ne 0 ]] && fail=1
+  [[ $rrc -ne 0 ]] && count_fail "delivery"
 elif grep -Eq '"seam": "(chat|docstore)", "target": "' "$PLAN"; then
   # The config declares chat/docstore targets but the router that ENFORCES their rules is gone.
   # A silent skip here would report "All seams OK" on exactly the config class whose rules exist
@@ -190,7 +195,7 @@ elif grep -Eq '"seam": "(chat|docstore)", "target": "' "$PLAN"; then
   # only on those (a repo with no such targets loses nothing when the router is absent).
   echo "─────────────────────────────────────────────────────────"
   echo "  ✗ this stack declares chat/docstore targets, but the delivery-routing checker is missing: $router"
-  fail=1
+  count_fail "delivery"
 fi
 
 # ── the leak lint ────────────────────────────────────────────────────────────────────────────

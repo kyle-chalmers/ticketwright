@@ -155,7 +155,9 @@ command simply doesn't exist yet.
 layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
 [Adopting an existing repo](#adopting-an-existing-repo)).
 
-*Check:* `.claude/config/stack.yaml` exists, and `bash bin/verify_stack.sh` names each tool slot.
+*Check:* `.claude/config/stack.yaml` exists, and the tool-slot verifier names each slot — ask your
+agent to "run verify_stack" (on a plugin install the script lives in the plugin, and the skills
+resolve it; in a vendored or pip repo you can run `bash bin/verify_stack.sh` directly).
 
 **4 · Turn on release pick-up.** Add one key by hand to the `"ticketwright"` marketplace entry in
 `.claude/settings.json` — no CLI flag sets this one — so teammates pick up tagged releases:
@@ -227,14 +229,16 @@ at session start; installing and running `/setup` in the same session silently f
 It walks you through your `people/<id>.yaml`, your machine-local
 `.claude/config/connections.local.yaml`, and auth for each tool the team's config actually uses.
 
-*Check:* `bash bin/verify_stack.sh` — every configured tool slot reports reachable (an
-unreachable one prints its auth fix; finishing onboarding first and authing later is fine).
+*Check:* ask your agent to "run verify_stack". Slots with a shell verify should report reachable
+(an unreachable one prints its auth fix; finishing onboarding first and authing later is fine).
+MCP-only slots — a chat tool connected through a desktop connector, say — cannot be checked from
+the shell and show as unverified; `/ticketwright:setup --teammate` probes those in-session instead.
 
 #### What you need installed (derived from the stack, not a fixed list)
 
 The CLIs a teammate needs depend on which tool slots the team's `stack.yaml` fills — there is no
 universal list. `snow` matters only if the warehouse is Snowflake, `gh` only if vcs is GitHub, and
-so on. `bash bin/verify_stack.sh` names anything missing, and each tool's install and auth notes
+so on. The verifier run above names anything missing, and each tool's install and auth notes
 live in its adapter (`adapters/<seam>/<tool>.md`). On macOS the common ones are a Homebrew line
 each:
 

@@ -741,7 +741,7 @@ ok = p.get('source','').startswith('./') and 'description' not in d and bool(d.g
 sys.exit(0 if ok else 1)
 MKPY
 [ $? -eq 0 ] && ok 'marketplace source starts "./" and description lives under metadata (installable on CC 2.0.x-2.1.x)' \
-  || bad 'marketplace.json regressed to a shape older Claude Code rejects (source "." or root description)' 
+  || bad 'marketplace.json regressed to a shape older Claude Code rejects (source "." or root description)'
 # auto-discovery symlinks must resolve into .claude/* (loader rejected custom .claude paths in the manifest)
 { [ -L commands ] && [ -L skills ] && [ -L agents ] && [ -d commands ] && [ -d skills ] && [ -d agents ]; } \
   && ok "component symlinks resolve (commands/skills/agents → .claude/*)" || bad "plugin component symlinks broken"
@@ -2214,10 +2214,13 @@ grep -q 'required key(s) not set: site' <<<"$rqo" \
   && ok "verify_stack names an unset required key its verify never references (jira site)" \
   || bad "an unset required key went unreported" "$rqo"
 # ...and it WARNS rather than failing: an unfilled key is a setup-time TODO, not an unreachable tool,
-# and failing would reject every config written before this check existed.
-grep -q 'All seams OK' <<<"$rqo" \
-  && ok "an unset required key warns, never fails (pre-existing configs keep working)" \
-  || bad "unset required key turned into a failure" "$rqo"
+# and failing would reject every config written before this check existed. The seam is counted
+# UNVERIFIED, not OK — "reachable" with an unset key is exactly the state the warning surfaces,
+# so the summary must name it rather than absorb it into a green line.
+{ ! grep -q 'need attention' <<<"$rqo" && ! grep -Eq '[0-9]+ failing \(' <<<"$rqo" \
+  && grep -Eq '0 OK, 1 unverified \(tracker\)' <<<"$rqo"; } \
+  && ok "an unset required key warns and counts the seam unverified, never fails" \
+  || bad "unset required key failed the run, or the summary hid it" "$rqo"
 
 # (B) A seam with verify: null checked nothing at all before.
 printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
@@ -7458,8 +7461,11 @@ hdr "52 · selftest itself parses under stock macOS bash 3.2 (self-lint)"
 #   python3 - <<'TAG' >"$TMP/out"  …  TAG   then   var="$(cat "$TMP/out")"
 # This lint keeps the forbidden shape out of the file on EVERY platform, so a Linux CI run or a
 # Homebrew-bash Mac still catches what only a stock Mac would hit at runtime.
-hd52="$(grep -nE '="\$\(.* <<-?['"'"'\"]' bin/selftest.sh | grep -v '52 ·' | grep -v 'hd52=' || true)"
-[ -z "$hd52" ] && ok "no heredoc nested inside \$( ) anywhere in selftest (bash 3.2-parseable by construction)" \
+# The regex is best-effort static coverage (same-line `$(` + `<<`, comments excluded); the
+# AUTHORITATIVE enforcement is the /bin/bash -n proof below plus CI's macOS job running the full
+# suite under 3.2 — a multi-line `$( )` split across lines can only be caught by a real parser.
+hd52="$(grep -nE '\$\(.*<<-?['"'"'\"]?[A-Za-z]' bin/selftest.sh | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v '52 ·' | grep -v 'hd52=' || true)"
+[ -z "$hd52" ] && ok "no same-line heredoc inside \$( ) in selftest (static lint; the -n proof below is authoritative)" \
   || bad "a heredoc inside \$( ) crept back in — stock macOS bash 3.2 cannot parse it; capture via a temp file instead" "$hd52"
 # And when a bash 3.2 actually exists on this machine, prove the promise directly.
 if [ -x /bin/bash ] && /bin/bash -c '[ "${BASH_VERSINFO[0]}" -eq 3 ]' 2>/dev/null; then
