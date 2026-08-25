@@ -131,6 +131,20 @@ seams:
         drive_folder: "Acme Client Portal/Deliverables"
         verify: "test -d \"{base_path}\""
 
+  # ── OPTIONAL meetings slot: the spoken record, by reference ────────────────────────────────────
+  # Read-only, single-tool (never target-routed): a ticket names a meeting with a
+  # `meeting_ref: zoom:<id>` frontmatter key in a source_materials/ stub (grammar in
+  # stack.schema.md; bin/meeting_refs.py validates it), and /ticket's priming fetches the
+  # transcript TO CONTEXT for curation — raw transcripts never land on disk by default.
+  # Omit this slot entirely when the team has no meeting provider; the file-backed intake
+  # path (a human export into source_materials/) keeps working unchanged.
+  meetings:
+    tool: zoom
+    adapter: adapters/meetings/zoom.md
+    transport: mcp
+    mcp: zoom
+    verify: null                       # MCP-only: reachability is checked via an MCP call
+
   vcs:
     tool: github
     adapter: adapters/vcs/github.md

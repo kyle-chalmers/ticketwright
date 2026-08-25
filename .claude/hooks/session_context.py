@@ -183,7 +183,7 @@ def scan_stack_resolved(root: Path) -> dict | None:
         elif isinstance(plural, str):
             prefix = plural
     out["key_prefix"] = str(prefix) if prefix else None
-    for seam in ("tracker", "warehouse", "chat", "docstore", "vcs"):
+    for seam in ("tracker", "warehouse", "chat", "docstore", "vcs", "meetings"):
         node = res.seams.get(seam)
         if not isinstance(node, dict):
             out[seam] = "—"
@@ -236,7 +236,7 @@ def scan_stack(stack: Path) -> dict:
         m = re.search(r"^\s*key_prefixes:\s*\[\s*[\"']?([A-Za-z0-9_-]+)", text, re.MULTILINE) \
             or re.search(r"^\s*key_prefixes:\s*\n\s*-\s*[\"']?([A-Za-z0-9_-]+)", text, re.MULTILINE)
     out["key_prefix"] = m.group(1) if m else None
-    for seam in ("tracker", "warehouse", "chat", "docstore", "vcs"):
+    for seam in ("tracker", "warehouse", "chat", "docstore", "vcs", "meetings"):
         tools = seam_tools(text, seam)
         # A multi-target seam renders as "a+b" (default first) so no target is hidden.
         out[seam] = "+".join(tools) if tools else "—"
@@ -415,7 +415,8 @@ def main() -> int:
         "## Ticketwright — session context",
         f"Stack ({s['key_prefix'] + '-tickets' if s['key_prefix'] else root.name}): "
         f"tracker={s['tracker']} · warehouse={s['warehouse']} · "
-        f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']}{viewer_note}.",
+        f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']} · "
+        f"meetings={s['meetings']}{viewer_note}.",
         "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",
     ]
     lines[2:2] = whoami_lines(root)

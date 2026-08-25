@@ -441,7 +441,7 @@ verb contract for their seam:
 - **tracker:** `jira`, `azure-devops` (Azure Boards), `linear`, `asana`, `monday`, `github-issues`,
   `local` (**no tracker at all** — the ticket folder itself; pair with `project.id_mode: slug`)
 - **warehouse:** `snowflake`, `bigquery`, `databricks`, `postgres`, `redshift`, `synapse` (also Azure SQL / SQL Server / Fabric)
-- **chat:** `slack`, `teams`, `gmail`, `outlook` (email is a chat **target**, not a sixth seam —
+- **chat:** `slack`, `teams`, `gmail`, `outlook` (email is a chat **target**, not a seam of its own —
   same four verbs, destination key `to`, `always_include` rendered as visible Cc, draft-first;
   each adapter's frontmatter states the mapping's rough edges honestly)
 - **docstore:** `gdrive`, `sharepoint`, `rclone` (mountless — Drive/OneDrive/Dropbox/S3/Box via the rclone CLI)
@@ -470,7 +470,7 @@ the claim those configs exist to keep honest.
 
 ## Runtime adapters — the directory that has no verbs
 
-`adapters/runtime/` is the seventh adapter directory and the second that is **not** a `stack.yaml`
+`adapters/runtime/` is the eighth adapter directory and the second that is **not** a `stack.yaml`
 seam. It answers a different question from every other directory here: not "which tool fills this
 slot for the project", but "which agent is running right now, and what can it actually do".
 

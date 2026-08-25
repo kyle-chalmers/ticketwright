@@ -151,8 +151,9 @@ prefers privacy can gitignore their `voices/<id>.md`. Build/refine them with `/s
 
 ## `seams`
 
-Each entry under `seams:` fills one **tool slot**. Five slots carry a verb contract skills call
-through (see `adapters/README.md`): `tracker`, `warehouse`, `chat`, `docstore`, `vcs`. They are not
+Each entry under `seams:` fills one **tool slot**. Six slots carry a verb contract skills call
+through (see `adapters/README.md`): `tracker`, `warehouse`, `chat`, `docstore`, `meetings`, `vcs`.
+They are not
 an exclusive list: an optional `viewer:` entry may also sit here, for a team that standardizes
 viewers (see "`viewer` — per-user config" below) — it has a real two-verb contract but is
 deliberately per-user config rather than team config. Runtime adapters (`adapters/runtime/`) are
@@ -177,7 +178,35 @@ targets". Fields of a single mapping:
 The `warehouse` slot may be `null`/omitted for non-data repos — `review`, `spec-and-build`, and
 `refresh context` degrade gracefully (skip warehouse steps) when it is. `chat` and `docstore` may
 likewise be omitted: `/ship` skips those artifacts and names the `/setup` command that would enable
-them rather than blocking. `stack.example.solo.yaml` omits both.
+them rather than blocking. `stack.example.solo.yaml` omits both. `meetings` is optional the same
+way (add it later with `/setup tool meetings`): when it is omitted, the file-backed intake path —
+a human export into `source_materials/` per `project.intake`'s `meetings` convention — keeps
+working unchanged, and `/ticket` fetches nothing.
+
+### The `meetings` slot and the meeting-reference contract
+
+`seams.meetings` is a read-only slot: three verbs (`fetch_transcript`, `search_meetings`,
+`fetch_action_items` — contract in `adapters/README.md`), a read-only `verify:`, worked example in
+`stack.example.multi-audience.yaml`. What a ticket writes to name a meeting is defined here, and
+`bin/meeting_refs.py` enforces it at parse time (exit family: 0 ok · 2 usage · 4
+malformed-or-refused):
+
+- **One canonical placement:** the YAML frontmatter of a
+  `source_materials/YYYY-MM-DD-<slug>-meeting.md` stub, key `meeting_ref:`.
+- **Grammar:** `meeting_ref: <provider>:<id>` — `<provider>` is `[a-z0-9-]+` and must equal the
+  configured `seams.meetings.tool` (checked by the calling skill via `bin/effective_config.py`,
+  not the parser); `<id>` is the provider's opaque id, charset `[A-Za-z0-9._~/=+-]+`. An id
+  needing YAML quoting may be double-quoted; the same charset applies after unquoting.
+  Whitespace and shell metacharacters are **refused** — the value interpolates into adapter
+  commands (the tier-3 injection-refusal precedent).
+- **Optional `meeting_date: YYYY-MM-DD`** as a separate key.
+- **Exactly one `meeting_ref:` per stub** (a list is invalid — one meeting per curated note);
+  multiple stubs are returned ordered by filename, so the date prefix gives chronology.
+- **No reference ⇒ silence:** `{"refs": []}`, exit 0 — the slot never fetches speculatively.
+- **Invalid reference ⇒ a named error, never silence** (exit 4, offending file + reason).
+- **Credential prohibition:** a value carrying `://`, a `?` query string, or a credential-shaped
+  token (`token=`, `access_token`, `key=`, `Bearer `) is refused at parse time with
+  `"reason": "refused-credential"` — committed refs never carry URLs or secrets.
 
 ### Named targets (more than one tool in a slot)
 
@@ -221,8 +250,9 @@ Rules:
   `db_write_guard` cross-check), and now **chat** and **docstore** (the delivery plan below).
   **tracker** and **vcs** are deferred — a multi-tracker repo needs target-owned id prefixes and
   per-target URL templates before an id can name its own tracker, and PR routing must be bound to a
-  specific remote first. A `targets:` block on either validates, but no skill routes between them,
-  and `/ship` halts rather than pretending otherwise.
+  specific remote first. **meetings** is likewise not target-routed: a `meeting_ref:`'s provider
+  must equal the slot's single configured `tool`. A `targets:` block on any of these validates,
+  but no skill routes between them, and `/ship` halts rather than pretending otherwise.
 
 ### Delivery routing for `chat` and `docstore` — declared, never inferred
 
@@ -259,7 +289,7 @@ never case-folded, never fuzzy — against the value each target declares:
 | `sharing_scope` | docstore target | `team` \| `org` \| `external` — the **declared** scope of the destination, printed at the `/ship` approval. |
 | *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter (Slack `default_channel`, Teams `channel`, the Gmail/Outlook email adapters `to`). Each target must set its own. |
 
-**Email is a chat target, not a sixth slot.** The `gmail`/`outlook` adapters fill a chat target
+**Email is a chat target, not a slot of its own.** The `gmail`/`outlook` adapters fill a chat target
 whose destination key is `to` — ONE address string (a person or a distribution list); extra
 recipients belong in that target's `always_include`, rendered as visible Cc. Give an email target
 its own `audience:` and its own non-empty `always_include:` like any other, plus an `identity:` —
