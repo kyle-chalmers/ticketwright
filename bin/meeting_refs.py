@@ -171,13 +171,31 @@ def main(argv: list[str] | None = None) -> int:
     errors: list[dict] = []
     src = ticket / "source_materials"
     if src.is_dir():
-        # Top level only, ordered by filename (the YYYY-MM-DD prefix gives chronology).
-        # private/ is the raw opt-in area and is never a reference source.
-        for path in sorted(p for p in src.iterdir() if p.is_file() and p.suffix == ".md"):
-            rel = f"source_materials/{path.name}"
-            rec = parse_stub(path, rel, errors)
-            if rec:
-                refs.append(rec)
+        # Canonical stubs live at the TOP level, ordered by filename (the YYYY-MM-DD prefix gives
+        # chronology). private/ is the raw opt-in area and is never a reference source. Everything
+        # else under source_materials/ is still SWEPT for a frontmatter meeting_ref key — a ref in
+        # a nested or non-.md file is refused (misplaced-ref), never silently ignored, because the
+        # schema's contract is "any other filename is refused", not "quietly skipped".
+        for path in sorted(p for p in src.rglob("*") if p.is_file()):
+            rel = path.relative_to(ticket).as_posix()
+            if "private" in path.relative_to(src).parts[:-1]:
+                continue
+            if path.parent == src and path.suffix == ".md":
+                rec = parse_stub(path, rel, errors)
+                if rec:
+                    refs.append(rec)
+                continue
+            # The misplaced sweep reads only the head of each file (bounded, binary-safe) and only
+            # its frontmatter — a meeting_ref mentioned in body prose never trips it.
+            try:
+                head = path.open(encoding="utf-8", errors="replace").read(8192)
+            except OSError:
+                continue
+            fm = frontmatter_lines(head)
+            if any(re.match(r"^meeting_ref\s*:", ln) for ln in fm):
+                errors.append({"file": rel, "reason": "misplaced-ref",
+                               "detail": "meeting_ref belongs in a top-level "
+                                         "YYYY-MM-DD-<slug>-meeting.md stub; move it there"})
 
     out = {"schema": 1, "refs": refs, "errors": errors}
     if args.json:
