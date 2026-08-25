@@ -195,7 +195,9 @@ unproven. It has now been re-judged against the same bar — a stable tool-indep
 contract, a distinct lifecycle responsibility, its own auth/verification semantics, and enough
 common use that it is not just an option on an existing slot — with a written judgment,
 adversarially adjudicated by an external model (codex; final adjudication YES on all four legs,
-after three earlier rounds whose findings were fixed, not argued past). The record, per leg:
+after three earlier rounds whose findings were fixed, not argued past). The full argument and
+the verbatim adjudication rounds: [docs/meetings-bar-judgment.md](docs/meetings-bar-judgment.md).
+The record, per leg:
 
 - **Verb contract — YES, as re-drafted.** The v3.6 objection was `extract_actions` (model
   reasoning is not a command translation); its prescribed fix is what shipped: three read-only
