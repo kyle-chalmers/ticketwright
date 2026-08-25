@@ -8,9 +8,10 @@ Stub files exercising the meeting-reference contract (grammar in
 |---|---|
 | `2026-08-18-kickoff-meeting.md` | valid ref + optional `meeting_date` → JSON, exit 0 |
 | `2026-08-20-pricing-review-meeting.md` | quoted opaque id using the full charset; no date |
-| `invalid-grammar-meeting.md` | invalid grammar → exit 4, named error (never silence) |
-| `credential-url-meeting.md` | URL/token value → exit 4, `"reason": "refused-credential"` |
+| `2026-08-21-invalid-grammar-meeting.md` | invalid grammar → exit 4, named error (never silence) |
+| `2026-08-22-credential-url-meeting.md` | URL/token value → exit 4, `"reason": "refused-credential"` |
+| `2026-08-23-list-refs-meeting.md` | a YAML list → exit 4 (`list-not-allowed`) — one ref per stub |
 | `no-ref-notes.md` | frontmatter without the key → zero refs, exit 0 (silence, mechanically) |
-| `list-refs-meeting.md` | a YAML list → exit 4 (`list-not-allowed`) — one ref per stub |
+| `misplaced-ref-notes.md` | a ref outside the canonical `*-meeting.md` stub → exit 4 (`misplaced-ref`) |
 
 All identifiers are fixtures (`acmemeet`, `DEMO-`/`SAMPLE-`); this is a public repo.

@@ -4,7 +4,8 @@
 The reference contract (documented in .claude/config/stack.schema.md):
 
 - ONE canonical placement: the YAML frontmatter of a `source_materials/YYYY-MM-DD-<slug>-meeting.md`
-  stub, key `meeting_ref:`.
+  stub, key `meeting_ref:`. A `meeting_ref:` in any other filename is refused (`misplaced-ref`),
+  never quietly honored or dropped.
 - Grammar: `meeting_ref: <provider>:<id>` — `<provider>` is `[a-z0-9-]+`; `<id>` is the provider's
   opaque id, charset `[A-Za-z0-9._~/=+-]+`. An id needing YAML quoting may be double-quoted; the
   same charset applies after unquoting. Whitespace and shell metacharacters are REFUSED (the
@@ -41,6 +42,9 @@ EXIT_OK, EXIT_USAGE, EXIT_MALFORMED = 0, 2, 4
 PROVIDER_RE = re.compile(r"^[a-z0-9-]+$")
 ID_RE = re.compile(r"^[A-Za-z0-9._~/=+-]+$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# The ONE canonical placement: a YYYY-MM-DD-<slug>-meeting.md stub. A meeting_ref anywhere else
+# is refused (misplaced-ref) — the placement is part of the contract, enforced at parse time.
+STUB_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-.+-meeting\.md$")
 # Credential shapes refused at parse time (checked case-insensitively — stricter, never looser).
 CREDENTIAL_MARKS = ("://", "?", "token=", "access_token", "key=", "bearer ")
 
@@ -79,6 +83,13 @@ def parse_stub(path: Path, rel: str, errors: list[dict]) -> dict | None:
     if len(ref_lines) > 1:
         errors.append({"file": rel, "reason": "multiple-refs",
                        "detail": f"{len(ref_lines)} meeting_ref keys; exactly one per stub"})
+        return None
+    if not STUB_NAME_RE.match(path.name):
+        # A key present in a non-canonical file is refused, never quietly honored or dropped:
+        # the contract's one placement is a YYYY-MM-DD-<slug>-meeting.md stub.
+        errors.append({"file": rel, "reason": "misplaced-ref",
+                       "detail": "meeting_ref belongs in a YYYY-MM-DD-<slug>-meeting.md stub; "
+                                 f"rename {path.name!r} to the canonical form"})
         return None
     raw = ref_lines[0].split(":", 1)[1].strip()
     # A YAML list is invalid: inline `[...]` or a bare key whose items follow as `- ` lines.

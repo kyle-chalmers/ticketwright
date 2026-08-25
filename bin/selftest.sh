@@ -7911,7 +7911,7 @@ e2first="$(grep -o '"file": "[^"]*"' <<<"$e2" | head -1)"
   || bad "E2: ordering or quoted-id handling wrong" "rc=$e2rc $e2first"
 # E3 invalid grammar → exit 4 with the offending file NAMED (never silence).
 mkdir -p "$S51D/t3/source_materials"
-cp "$MRFIX/invalid-grammar-meeting.md" "$S51D/t3/source_materials/"
+cp "$MRFIX/2026-08-21-invalid-grammar-meeting.md" "$S51D/t3/source_materials/"
 e3="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t3 --json 2>&1)"; e3rc=$?
 { [ "$e3rc" -eq 4 ] && grep -q 'invalid-grammar-meeting.md' <<<"$e3" \
   && grep -q '"reason": "invalid-grammar"' <<<"$e3"; } \
@@ -7926,14 +7926,23 @@ e4="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t4 --json 2>&1)"; e4rc
   || bad "E4: the no-ref case is not silent-with-exit-0" "rc=$e4rc $e4"
 # E5 credential-bearing value → exit 4, reason refused-credential (distinct from grammar errors).
 mkdir -p "$S51D/t5/source_materials"
-cp "$MRFIX/credential-url-meeting.md" "$S51D/t5/source_materials/"
+cp "$MRFIX/2026-08-22-credential-url-meeting.md" "$S51D/t5/source_materials/"
 e5="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t5 --json 2>&1)"; e5rc=$?
 { [ "$e5rc" -eq 4 ] && grep -q '"reason": "refused-credential"' <<<"$e5"; } \
   && ok "E5: a credential-bearing ref is refused at parse time (exit 4, reason refused-credential)" \
   || bad "E5: credential refusal missing or mislabeled" "rc=$e5rc $e5"
+# E5c a ref OUTSIDE the canonical *-meeting.md stub is refused (misplaced-ref), never honored:
+# the placement is part of the contract, and a raw notes.md carrying a ref must not drive fetches.
+mkdir -p "$S51D/t7/source_materials"
+cp "$MRFIX/misplaced-ref-notes.md" "$S51D/t7/source_materials/"
+e5c="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t7 --json 2>&1)"; e5crc=$?
+{ [ "$e5crc" -eq 4 ] && grep -q '"reason": "misplaced-ref"' <<<"$e5c" \
+  && grep -q '"refs": \[\]' <<<"$e5c"; } \
+  && ok "E5c: a ref outside the canonical stub is refused (misplaced-ref) — never quietly honored" \
+  || bad "E5c: a misplaced meeting_ref was honored or dropped silently" "rc=$e5crc $e5c"
 # E5b a YAML list is invalid — one meeting per stub is the contract.
 mkdir -p "$S51D/t6/source_materials"
-cp "$MRFIX/list-refs-meeting.md" "$S51D/t6/source_materials/"
+cp "$MRFIX/2026-08-23-list-refs-meeting.md" "$S51D/t6/source_materials/"
 python3 bin/meeting_refs.py --root "$S51D" --ticket t6 --json >"$S51D/e5b.out" 2>&1; e5brc=$?
 { [ "$e5brc" -eq 4 ] && grep -q '"reason": "list-not-allowed"' "$S51D/e5b.out"; } \
   && ok "E5b: a meeting_ref list is invalid (exactly one ref per stub)" \

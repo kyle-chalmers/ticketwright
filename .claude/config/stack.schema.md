@@ -192,7 +192,9 @@ working unchanged, and `/ticket` fetches nothing.
 malformed-or-refused):
 
 - **One canonical placement:** the YAML frontmatter of a
-  `source_materials/YYYY-MM-DD-<slug>-meeting.md` stub, key `meeting_ref:`.
+  `source_materials/YYYY-MM-DD-<slug>-meeting.md` stub, key `meeting_ref:`. A `meeting_ref:` in
+  any other filename is refused at parse time (`misplaced-ref`) — never quietly honored or
+  dropped.
 - **Grammar:** `meeting_ref: <provider>:<id>` — `<provider>` is `[a-z0-9-]+` and must equal the
   configured `seams.meetings.tool` (checked by the calling skill via `bin/effective_config.py`,
   not the parser); `<id>` is the provider's opaque id, charset `[A-Za-z0-9._~/=+-]+`. An id
