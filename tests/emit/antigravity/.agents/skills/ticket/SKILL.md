@@ -81,6 +81,21 @@ this before?", "which tickets touched VW_X?").
    - **Warehouse slice** — schemas/samples/lineage for the specific objects in play (skip cleanly
      if no warehouse is configured).
    Keep the whole brief tight (≤ ~300 words) — slices, not the whole knowledge base.
+7b. **Meeting references** — the complete rule, stated here because emitted runtimes carry this
+   file without priming.md. When `seams.meetings` is configured, enumerate the ticket's meeting
+   references:
+   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" meeting_refs.py --ticket <ticket-dir> --json`.
+   Zero refs ⇒ do nothing — never fetch speculatively. An invalid ref (exit 4) is a NAMED error to
+   surface, never silence; `"reason": "refused-credential"` means a URL or token was committed —
+   ask for the bare `<provider>:<id>` instead. For each ref whose provider matches the configured
+   tool (check via the config resolver, `--seam meetings`), call the adapter's `fetch_transcript`,
+   and `fetch_action_items` handling its typed result: `ok` → use the items; `empty` → report
+   "no action items recorded" (the provider's answer is authoritative — no extraction fallback);
+   `no_native_export` → extract action items in-context from the transcript text. Curate
+   in-context into the committed `YYYY-MM-DD-<slug>-meeting.md` (decisions + action items,
+   honoring the word limits). Never write the raw transcript to disk — the only opt-in raw
+   location is `source_materials/private/`, which stays out of git but flags every `/ship` scan
+   and copy-guard prompt by design. [priming.md](priming.md) §1 carries the expanded detail.
 
 ## Phase 4 — Route
 8. Report the context brief (including the reuse brief) and the recommended next step — always

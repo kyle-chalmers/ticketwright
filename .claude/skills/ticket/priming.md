@@ -20,6 +20,25 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
   It lists exactly the files to read and **omits raw transcripts on purpose** — a full transcript
   belongs in the ticket folder, not in your context. Meeting notes arrive as
   `YYYY-MM-DD-<slug>-meeting.md`, the committed curated form.
+- **When `seams.meetings` is configured**, the ticket can also *reference* a meeting instead of
+  (or before) carrying an export: a `meeting_ref: <provider>:<id>` frontmatter key in a
+  `source_materials/YYYY-MM-DD-<slug>-meeting.md` stub (grammar in `stack.schema.md`). Enumerate
+  them mechanically — never by guessing at frontmatter:
+  ```
+  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" meeting_refs.py --ticket <ticket-dir> --json
+  ```
+  Exit family: 0 ok · 2 usage · 4 malformed-or-refused. Zero refs ⇒ do nothing (never fetch
+  speculatively). Exit 4 ⇒ surface the named error — `refused-credential` means a URL/token was
+  committed; ask for the bare id. For each ref whose provider matches the configured tool
+  (resolve via the config resolver, `--seam meetings` — a mismatch is an error to surface, not a
+  silent skip), call the adapter's `fetch_transcript` — the text comes **to context, never to
+  disk** — and `fetch_action_items`, handling the typed result per the adapter contract: `ok` →
+  use the items; `empty` → report "no action items recorded" and do NOT extract (the provider's
+  answer is authoritative); `no_native_export` → extract action items in-context from the
+  transcript text. Then curate into the committed stub (decisions + action items). The raw
+  transcript's only opt-in location on disk is `source_materials/private/` — gitignored, and
+  every `/ship` scan and copy-guard prompt flags it by design. Refs come back ordered by
+  filename, so the date prefix gives chronology; process in order.
 - Note the ticket's key nouns (objects, stakeholders, report names) — they drive the other slices.
 
 ## 2 · Recall (prior art — never rebuild what's built)

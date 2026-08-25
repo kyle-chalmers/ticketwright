@@ -147,6 +147,16 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
       stay out of git by default and are gated before any commit or docstore copy — mention that
       the gate reads filenames and document shape, **not meaning**, so it is not a substitute for
       reading what gets committed.
+    - **On that yes only** (never asked otherwise — the anti-split rule again): offer the
+      `meetings` tool slot as the step past hand-exports — "want tickets to *reference* meetings
+      by id (`meeting_ref:` in a source_materials stub) so `/ticket` fetches the transcript to
+      context itself, instead of someone exporting a file each time?" A yes configures
+      `seams.meetings` now: which provider, the adapter path, its adapter-required keys, and a
+      read-only `verify:` (`null` for an MCP-only transport, with the standard warning). A no
+      costs nothing — the file-backed export path just documented keeps working, and
+      `/setup tool meetings` adds the slot later. Either way the slot stays OPTIONAL and
+      read-only, and the transcript-privacy rule is the same: curated excerpts are committed,
+      raw transcripts are not.
     - **Out (or both):** the email adapters ship (`adapters/chat/gmail.md` /
       `adapters/chat/outlook.md`), but activating email delivery means converting the chat slot
       to `targets:` form with a declared audience on EVERY target — a deliberate config change,
@@ -199,7 +209,7 @@ deliverables open for human sign-off at `/review` only."
      re-entry command.
 - **Re-entry commands exist** — a promise with no mechanism is worse than no promise:
   `/setup role` re-runs round 5, `/setup policies` re-runs round 6, `/setup team` re-runs
-  round 1's roster question (new teammates later), and `/setup tool <chat|docstore|warehouse>`
+  round 1's roster question (new teammates later), and `/setup tool <chat|docstore|warehouse|meetings>`
   adds a tool slot that was declined in rounds 3–4.
 
 ## What a completed interview writes (worked shape, fixture values)
