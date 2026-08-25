@@ -135,6 +135,28 @@ def seam_tools(text: str, seam: str) -> list[str]:
     return [t for _, t in pairs]
 
 
+_TRANSPORT_LINE = re.compile(r"^transport:\s*([A-Za-z]+)", re.MULTILINE)
+
+
+def adapter_transport(adapter: object) -> str | None:
+    """The `transport:` an adapter's frontmatter declares, or None when anything fails.
+
+    Kit-relative resolution (CLAUDE_PLUGIN_ROOT, else this hook's own kit checkout) — adapters are
+    KIT assets. None means UNKNOWN, and unknown must never claim an MCP path exists."""
+    try:
+        if not adapter or not isinstance(adapter, str):
+            return None
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        kit_root = Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent
+        text = (kit_root / adapter).read_text(errors="replace")
+        if not text.startswith("---"):
+            return None
+        m = _TRANSPORT_LINE.search(text.split("---", 2)[1])
+        return m.group(1).lower() if m else None
+    except Exception:  # noqa: BLE001 — a hook must fail open
+        return None
+
+
 def scan_stack_resolved(root: Path) -> dict | None:
     """The banner's fields, read through the three-tier resolver.
 
@@ -178,6 +200,28 @@ def scan_stack_resolved(root: Path) -> dict | None:
             out[seam] = "+".join(tools) if tools else "—"
         else:
             out[seam] = str(node.get("tool")) if node.get("tool") else "—"
+    # Does any warehouse unit's RESOLVED transport include mcp? Three-valued on purpose:
+    # True (some unit is mcp/both), False (every unit is provably shell-only), None (unknown —
+    # and unknown never claims MCP). The configured value wins; adapter frontmatter is only the
+    # fallback, mirroring bin/verify_stack.sh's posture advisory.
+    out["warehouse_mcp"] = None
+    wnode = res.seams.get("warehouse")
+    if isinstance(wnode, dict):
+        wtargets = wnode.get("targets")
+        if isinstance(wtargets, dict) and wtargets:
+            inherited = {k: v for k, v in wnode.items() if k not in ("targets", "default")}
+            units = [{**inherited, **t} for t in wtargets.values() if isinstance(t, dict)]
+        else:
+            units = [wnode]
+        flags = []
+        for unit in units:
+            tr = unit.get("transport")
+            tr = str(tr).strip().lower() if tr else adapter_transport(unit.get("adapter"))
+            flags.append(None if tr is None else tr in ("mcp", "both"))
+        if any(f is True for f in flags):
+            out["warehouse_mcp"] = True
+        elif flags and all(f is False for f in flags):
+            out["warehouse_mcp"] = False
     return out
 
 
@@ -320,6 +364,30 @@ def whoami_lines(root: Path) -> list[str]:
     return []
 
 
+def policy_advisory_lines(s: dict, mode: str) -> list[str]:
+    """Per-policy advisory lines under the policy summary — today, one line about DB writes.
+
+    An appender (returns a list) rather than string surgery, so a future always-print line (e.g. a
+    meetings slot) slots in without touching main(). Honesty rules: the line prints only when a
+    warehouse is configured AND the policy is on; the MCP clause appears only when some warehouse
+    unit's resolved transport provably includes mcp (`warehouse_mcp is True`); False or unknown
+    (None — including the regex fallback scan, which never sets the key) states the plain Bash
+    jurisdiction and claims nothing about a path it cannot see. Fail-open string logic — any
+    surprise yields no line, never a crash."""
+    lines: list[str] = []
+    try:
+        if s.get("warehouse") in (None, "—") or mode == MODE_OFF:
+            return lines
+        if s.get("warehouse_mcp") is True:
+            lines.append(f"DB writes: policy {mode} — Bash path hook-gated; MCP path advisory "
+                         "(tool-side controls, posture recorded at setup).")
+        else:
+            lines.append(f"DB writes: policy {mode} — hook-gated (Bash jurisdiction).")
+    except Exception:  # noqa: BLE001 — a hook must fail open
+        return []
+    return lines
+
+
 def main() -> int:
     root = project_root()
     stack = root / ".claude/config/stack.yaml"
@@ -366,6 +434,9 @@ def main() -> int:
     lines.append(f"Policies enforced: {db_rule}; external posts require approval "
                  "(db_write_guard hook + skill hard-halts); chat defaults to draft; "
                  "outputs deterministic. See AGENTS.md.")
+    # Where the DB-write gate actually reaches, per transport — before the footer, appended from a
+    # list that is empty whenever the line would not be true (no warehouse, policy off, failure).
+    lines.extend(policy_advisory_lines(s, mode))
     # Last, so it reads as a footer rather than interrupting the stack summary — and appended from a
     # list that is empty on every failure, which is what keeps the rest byte-identical.
     lines.extend(update_notice_line(root))

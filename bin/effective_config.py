@@ -616,9 +616,12 @@ def resolve(root: str | Path, person: str | None = None,
     team = _load(stack_path, res.errors, "stack.yaml")
     if team is None:
         return res
-    res.project = team.get("project") if isinstance(team.get("project"), dict) else {}
-    res.policies = team.get("policies") if isinstance(team.get("policies"), dict) else {}
-    res.seams = team.get("seams") if isinstance(team.get("seams"), dict) else {}
+    # Bind each lookup once so the isinstance guard provably covers the value that is assigned
+    # (a double `team.get(...)` reads as two chances to disagree, even though it never does).
+    _project, _policies, _seams = team.get("project"), team.get("policies"), team.get("seams")
+    res.project = _project if isinstance(_project, dict) else {}
+    res.policies = _policies if isinstance(_policies, dict) else {}
+    res.seams = _seams if isinstance(_seams, dict) else {}
     for key in ("project", "policies", "seams"):
         for sub in (team.get(key) or {}) if isinstance(team.get(key), dict) else {}:
             res.provenance[f"{key}.{sub}"] = {"tier": TIER_TEAM, "source": str(stack_path)}
@@ -710,7 +713,8 @@ def _disabled(cfg: dict) -> bool:
 
 
 def _compose_routes(person: dict, machine: dict) -> list[dict]:
-    apps = machine.get("apps") if isinstance(machine.get("apps"), dict) else {}
+    _apps = machine.get("apps")
+    apps = _apps if isinstance(_apps, dict) else {}
     routes = []
     for entry in (person.get("categories") or []):
         if not isinstance(entry, dict):
@@ -935,7 +939,12 @@ def _unit_row(res: Resolution, unit: dict) -> dict:
     row = {"kind": "unit", "label": unit["label"], "seam": unit["seam"], "target": unit["target"],
            "is_default": unit["is_default"], "tool": vals.get("tool") or "?",
            "adapter": vals.get("adapter") or "", "verify": None, "unresolved": [], "unsafe": [],
-           "missing_required": missing}
+           "missing_required": missing,
+           # The CONFIGURED transport, as resolved for this unit (a target inherits the seam-level
+           # value; a target's own wins). Consumed by verify_stack.sh's permission-posture
+           # advisory, which falls back to the adapter's frontmatter only when this is empty —
+           # the configured unit is the authority on how the team actually connects.
+           "transport": vals.get("transport") or ""}
     if isinstance(verify, str) and verify.strip():
         tokens = unit_tokens(res, unit)
         cmd, unresolved = interpolate(verify, tokens)
@@ -1042,6 +1051,11 @@ def main(argv: list[str] | None = None) -> int:
     sel_exit: int | None = None
     if args.seam is not None:
         unit, sel_err = select_unit(res.seams, args.seam, args.target)
+        # select_unit's contract is unit XOR sel_err; the explicit `unit is None` arm keeps the
+        # error path loud (never a crash on sel_err[...]) even if that contract is ever broken.
+        if unit is None and not sel_err:
+            sel_err = {"code": "no_such_seam",
+                       "message": f"`{args.seam}` did not resolve to a unit", "configured": []}
         if sel_err:
             print(json.dumps({"schema": SCHEMA_VERSION, "seam": args.seam, "target": args.target,
                               "error": sel_err,

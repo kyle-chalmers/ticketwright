@@ -7453,6 +7453,384 @@ sys.exit(1 if any("claude" in c or "plugin" in c for c in calls) else 0)
 UNPY
 
 
+hdr "51b · MCP permission posture — adapter sections, probe hygiene, the posture table (PROMPT: mcp-permission-posture)"
+# On the MCP transport the shell hooks cannot see the traffic, so a policy's enforcement moves into
+# the TOOL's own permission controls — and the kit's job is to say where that control lives, what
+# to set, and how to CHECK it read-only. This section pins the adapter contract (D1), the
+# template's NATIVE (tool-side) vocabulary (D3), and the honesty asymmetry at the heart of the
+# design: NATIVE is claimable ONLY where a read-only, in-session privilege introspection exists
+# (today: the warehouse seam); chat/tracker connector grants cannot be introspected in-session, so
+# those posture records cap at `unverified` and every surface must say so plainly.
+
+p51_fence() {  # the fenced code-block lines inside a file's "### Read-only probe" subsection
+  awk '
+    /^### Read-only probe$/ {insec=1; next}
+    insec && /^## /  {insec=0}
+    insec && /^### / {insec=0}
+    insec && /^```/  {infence = !infence; next}
+    insec && infence {print}
+  ' "$1"
+}
+p51_transport() {  # frontmatter transport — the same sed shape bin/verify_stack.sh uses
+  sed -n '2,/^---$/p' "$1" 2>/dev/null | sed -n 's/^transport:[[:space:]]*\([A-Za-z]*\).*/\1/p' | head -n 1
+}
+
+# --- (A) structure pin: every mcp/both adapter carries the 3-part section; nothing else does ----
+p51_miss=""; p51_extra=""; p51_count=0
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  case "$(p51_transport "$f")" in
+    mcp|both)
+      p51_count=$((p51_count + 1))
+      { grep -q '^## Permission posture (MCP)$' "$f" \
+        && grep -q '^### Native control$' "$f" \
+        && grep -q '^### Recommended setting (by policy)$' "$f" \
+        && grep -q '^### Read-only probe$' "$f"; } || p51_miss="$p51_miss $f"
+      ;;
+    *)
+      grep -q '^## Permission posture (MCP)$' "$f" && p51_extra="$p51_extra $f"
+      ;;
+  esac
+done
+[ "$p51_count" -eq 10 ] \
+  && ok "exactly 10 adapters declare transport mcp/both (the posture contract's whole scope)" \
+  || bad "the mcp/both adapter census moved (found $p51_count, expected 10) — extend the posture contract with it" "$p51_count"
+[ -z "$p51_miss" ] \
+  && ok "every mcp/both adapter carries '## Permission posture (MCP)' + all three '###' parts" \
+  || bad "an MCP-capable adapter misses the posture section (or one of its three parts)" "$p51_miss"
+[ -z "$p51_extra" ] \
+  && ok "no cli/native adapter carries a posture section (the advisory keys off transport)" \
+  || bad "a non-MCP adapter grew a posture section" "$p51_extra"
+
+# --- (B) probe SYNTAX HYGIENE — fence-scoped, so grant-vocabulary PROSE stays legal --------------
+# The lint reads ONLY the fenced code inside "### Read-only probe": the comparison-rule prose
+# legitimately enumerates write-class privileges (INSERT, UPDATE, DELETE, …) and the tracker
+# sections talk about "create/comment grants" — scoping to the fence exempts all of it by
+# construction. Denylist = bin/sql_scan.py's high-risk vocabulary + non-ADD ALTER +
+# statement-leading INSERT/CREATE. GRANT is statement-anchored (`^\s*GRANT `), NOT a word grep —
+# the warehouse probes legitimately run `SHOW GRANTS …` introspection and must never trip it.
+p51_dirty=""
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  case "$(p51_transport "$f")" in mcp|both) : ;; *) continue ;; esac
+  fence="$(p51_fence "$f")"
+  [ -n "$fence" ] || { p51_dirty="$p51_dirty $f(no-fence)"; continue; }
+  grep -Eiqw 'CREATE[[:space:]]+OR[[:space:]]+REPLACE|DROP|TRUNCATE|DELETE|UPDATE|MERGE|REPLACE[[:space:]]+INTO|INSERT[[:space:]]+OVERWRITE|REVOKE|CALL|EXECUTE[[:space:]]+IMMEDIATE|EXECUTE[[:space:]]+TASK|COPY[[:space:]]+INTO|PUT|REMOVE|UNSET' <<<"$fence" \
+    && p51_dirty="$p51_dirty $f(mutation-verb)"
+  grep -Eiq '^[[:space:]]*GRANT[[:space:]]' <<<"$fence" && p51_dirty="$p51_dirty $f(grant-statement)"
+  alt51="$(grep -Eiw 'ALTER' <<<"$fence" | grep -Eiv 'ALTER[[:space:]]+[A-Za-z_]+[[:space:]]+[^[:space:]]+[[:space:]]+ADD' || true)"
+  [ -z "$alt51" ] || p51_dirty="$p51_dirty $f(non-add-alter)"
+  grep -Eiq '^[[:space:]]*(INSERT|CREATE)([^A-Za-z_]|$)' <<<"$fence" && p51_dirty="$p51_dirty $f(leading-ddl)"
+done
+[ -z "$p51_dirty" ] \
+  && ok "probe fence: syntax hygiene (denylist, not proof of read-only) — SHOW GRANTS introspection passes" \
+  || bad "a posture probe fence carries mutation syntax (or has no fence at all)" "$p51_dirty"
+
+# --- (C) per-adapter probe anchors, fence-scoped --------------------------------------------------
+# Warehouse probes must DISCOVER the connection's actual principal/role (never assert a name —
+# bring-your-own-role stands) and then INTROSPECT its grants; chat/tracker probes must be the read
+# call the adapter's own auth: verify names. The discovery anchor accepts current[-_]user: Spark
+# SQL spells the function current_user(), the CLI spells it current-user — both are the discovery.
+p51_anchor=""
+for f in adapters/*/*.md; do
+  [ "$(basename "$f")" = "README.md" ] && continue
+  case "$(p51_transport "$f")" in mcp|both) : ;; *) continue ;; esac
+  fence="$(p51_fence "$f")"
+  case "$f" in
+    adapters/warehouse/*)
+      { grep -Eiq 'CURRENT_ROLE|CURRENT_AVAILABLE_ROLES|current[-_]user' <<<"$fence" \
+        && grep -Eiq 'SHOW GRANTS|information_schema' <<<"$fence"; } || p51_anchor="$p51_anchor $f" ;;
+    */slack.md)   grep -q 'slack_search_channels' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */teams.md)   grep -Eq 'list-channels|list-teams' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */gmail.md)   grep -q 'search_threads' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */outlook.md) grep -q 'list_mail_folders' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */jira.md)    grep -Eq 'searchJiraIssuesUsingJql|workitem search' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */asana.md)   grep -Eq 'list-workspaces|typeahead' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */linear.md)  grep -Eq 'list-teams|list-issues' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    */monday.md)  grep -q 'list-boards' <<<"$fence" || p51_anchor="$p51_anchor $f" ;;
+    *) p51_anchor="$p51_anchor $f(unmapped — extend this case)" ;;
+  esac
+done
+[ -z "$p51_anchor" ] \
+  && ok "probe anchors: warehouse fences discover-then-introspect; chat/tracker fences use their auth: read call" \
+  || bad "a posture probe fence lost its read anchor" "$p51_anchor"
+
+# --- (D) the posture table: 3 honest rows, NATIVE only where introspection exists ----------------
+python3 - <<'PY' >"$TMP/p51_table.out"
+import re, pathlib, sys
+t = pathlib.Path('templates/AGENTS.md.tmpl').read_text(encoding='utf-8')
+bad = []
+m = re.search(r'<!-- ticketwright:posture:begin -->(.*?)<!-- ticketwright:posture:end -->', t, re.S)
+if not m:
+    print('no posture markers in templates/AGENTS.md.tmpl'); sys.exit()
+rows = []
+for line in m.group(1).splitlines():
+    if not line.startswith('| '):
+        continue
+    cells = [c.strip() for c in line.strip().strip('|').split('|')]
+    if cells[0] in ('Policy',) or set(''.join(cells)) <= set('- '):
+        continue
+    rows.append(cells)
+if len(rows) != 3:
+    bad.append(f'expected 3 policy rows, found {len(rows)}')
+first = [r[0].strip('`') for r in rows]
+for want in ('db_write_requires_approval', 'chat_default_draft', 'hard_halt_before_external_posts'):
+    if want not in first:
+        bad.append(f'missing policy row: {want}')
+for r in rows:
+    name, rest = r[0].strip('`'), ' '.join(r[1:])
+    if 'NATIVE' in rest:
+        if name != 'db_write_requires_approval':
+            bad.append(f'NATIVE claimed on a seam with no introspection: {name}')
+        if not ('once' in rest and 'comparison rule' in rest and 'posture.local.yaml' in rest):
+            bad.append('the NATIVE cell lost its conditional (once … comparison rule … posture.local.yaml)')
+    if name == 'chat_default_draft' and 'unverified' not in rest:
+        bad.append('the chat row lost its `unverified` cap — the asymmetry must stay stated')
+# the ENFORCEMENT block stays a closed world: section 44 parses its rows, so NATIVE never appears in one
+e = re.search(r'<!-- ticketwright:enforcement:begin -->(.*?)<!-- ticketwright:enforcement:end -->', t, re.S)
+if e is None:
+    bad.append('no enforcement markers')
+else:
+    for line in e.group(1).splitlines():
+        if line.startswith('| ') and 'NATIVE' in line:
+            bad.append(f'NATIVE leaked into an enforcement-table row: {line[:70]}')
+print(' ;; '.join(bad))
+PY
+p51_tbl="$(cat "$TMP/p51_table.out")"
+[ -z "$p51_tbl" ] \
+  && ok "posture table: 3 policy rows; NATIVE only on the DB row, conditional stated; chat capped unverified; enforcement rows NATIVE-free" \
+  || bad "the posture table breaks its honesty contract" "$p51_tbl"
+
+# --- (E) template pins (§49H style — flowed, so a rewrap can't fake a failure) --------------------
+p51_flat="$(tr '\n' ' ' < templates/AGENTS.md.tmpl)"
+{ grep -q 'NATIVE (tool-side)' <<<"$p51_flat" \
+  && grep -q 'Permission posture (MCP)' <<<"$p51_flat" \
+  && grep -q 'posture.local.yaml' <<<"$p51_flat" \
+  && grep -q 'claimable only where a read-only privilege introspection exists' <<<"$p51_flat"; } \
+  && ok "legend: NATIVE (tool-side) is defined with the introspection-only qualifier + the record file" \
+  || bad "the template's NATIVE legend is missing or lost its qualifier"
+{ grep -qi 'db_write_guard[^ ]* has the same jurisdiction limit' <<<"$p51_flat" \
+  && grep -qi 'guidance the agent follows, not a gate the runtime enforces' <<<"$p51_flat"; } \
+  && ok "both §49H jurisdiction phrases survive the posture edit verbatim" \
+  || bad "a pinned jurisdiction phrase was reworded — extend around it, never rewrite it"
+{ grep -q 'ticketwright:posture:begin' bin/emit_runtime.py && grep -q 'ticketwright:posture:end' bin/emit_runtime.py; } \
+  && ok "bin/emit_runtime.py extracts the posture block (the cline artifact carries it too)" \
+  || bad "bin/emit_runtime.py does not know the posture markers — cline users would never see the table"
+
+# --- (F) wiring pins: setup surfaces, the record file, the contract doc --------------------------
+p51_wire=""
+for f in .claude/skills/setup/SKILL.md .claude/skills/setup/teammate.md .claude/skills/setup/interview.md; do
+  grep -q 'Permission posture (MCP)' "$f" || p51_wire="$p51_wire $f"
+done
+[ -z "$p51_wire" ] \
+  && ok "all three setup surfaces point at the adapters' posture sections by name" \
+  || bad "a setup surface never surfaces the posture section" "$p51_wire"
+TM51=".claude/skills/setup/teammate.md"
+{ grep -q '`matches`' "$TM51" && grep -q '`exceeds-policy`' "$TM51" && grep -q '`unverified`' "$TM51" \
+  && grep -q 'posture.local.yaml' "$TM51" && grep -qi 'comparison rule' "$TM51"; } \
+  && ok "teammate.md defines the three outcome words + the record file + the comparison-rule reference" \
+  || bad "teammate.md lost the posture-record vocabulary (matches / exceeds-policy / unverified + posture.local.yaml)"
+grep -q 'posture.local.yaml' .claude/skills/setup/SKILL.md \
+  && ok "the record file is named in setup/SKILL.md — the file the runtime installers actually emit" \
+  || bad "the posture record is only in un-emitted sub-files, so two runtimes would never write it"
+{ grep -q 'Permission posture (MCP)' adapters/README.md && grep -qi 'comparison rule' adapters/README.md \
+  && grep -q 'unverified' adapters/README.md; } \
+  && ok "adapters/README.md documents the posture contract (3-part section, probe, NATIVE needs a comparison rule)" \
+  || bad "the posture contract is not documented for adapter authors"
+# The FULL rule vocabulary, pinned per adapter — the read-class allowlist, the write-class
+# trigger, AND the `unverified` fallback. A comparison rule missing any of the three legs can
+# claim `matches` on partial visibility, which is exactly the false-NATIVE this feature forbids.
+SF51="adapters/warehouse/snowflake.md"; sf51_flat="$(tr '\n' ' ' < "$SF51")"
+{ grep -q 'USAGE, SELECT, REFERENCES, MONITOR, READ' <<<"$sf51_flat" \
+  && grep -q 'OWNERSHIP' <<<"$sf51_flat" && grep -q '`status: exceeds-policy`' <<<"$sf51_flat" \
+  && grep -q '`status: unverified`' <<<"$sf51_flat" && grep -q '`status: matches`' <<<"$sf51_flat"; } \
+  && ok "snowflake rule carries all three legs (read-class allowlist, write-class trigger, unverified fallback)" \
+  || bad "snowflake's comparison rule lost a leg — partial visibility could claim matches"
+DB51="adapters/warehouse/databricks.md"; db51_flat="$(tr '\n' ' ' < "$DB51")"
+# Databricks is CAP-BIASED by design: Unity Catalog privileges inherit and group grants apply,
+# while SHOW GRANTS / information_schema list DIRECT grants only — so `matches` is writable ONLY
+# from an effective-permission surface, and unobservable effective privileges yield `unverified`.
+{ grep -q 'USE CATALOG, USE SCHEMA, BROWSE' <<<"$db51_flat" \
+  && grep -q 'ALL PRIVILEGES' <<<"$db51_flat" && grep -q '`status: exceeds-policy`' <<<"$db51_flat" \
+  && grep -q '`status: unverified`' <<<"$db51_flat" \
+  && grep -qi 'inherit' <<<"$db51_flat" && grep -q 'EFFECTIVE-permission' <<<"$db51_flat" \
+  && grep -Eq 'direct.grant listing can never prove' <<<"$db51_flat"; } \
+  && ok "databricks rule is cap-biased: matches needs an effective-permission surface; direct grants alone cap at unverified" \
+  || bad "databricks' comparison rule could claim matches from direct-grant views under UC inheritance"
+# The record is DISPLAY-ONLY — never resolver-merged, never read by verify_stack beyond naming its
+# path. Prove it: resolution (the verify plan) and verify_stack output are byte-identical with and
+# without a populated record file in the fixture repo.
+ISO51="$TMP/posture-iso"; mkdir -p "$ISO51/.claude/config"
+cp .claude/config/stack.yaml "$ISO51/.claude/config/stack.yaml"
+python3 bin/effective_config.py --stack "$ISO51/.claude/config/stack.yaml" --verify-plan \
+  > "$TMP/iso51-res.a" 2>&1
+CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$ISO51/.claude/config/stack.yaml" --dry-run \
+  > "$TMP/iso51-vs.a" 2>&1
+printf 'schema_version: 1\nchecked:\n  warehouse:\n    control: role discovered via the MCP connection\n    status: exceeds-policy\n    checked: 2026-08-25\n' \
+  > "$ISO51/.claude/config/posture.local.yaml"
+python3 bin/effective_config.py --stack "$ISO51/.claude/config/stack.yaml" --verify-plan \
+  > "$TMP/iso51-res.b" 2>&1
+CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$ISO51/.claude/config/stack.yaml" --dry-run \
+  > "$TMP/iso51-vs.b" 2>&1
+{ cmp -s "$TMP/iso51-res.a" "$TMP/iso51-res.b" && cmp -s "$TMP/iso51-vs.a" "$TMP/iso51-vs.b"; } \
+  && ok "a populated posture.local.yaml is INERT: resolver plan + verify_stack output byte-identical" \
+  || bad "posture.local.yaml leaked into resolution or verify output — it must stay display-only"
+# The record is per-machine display state — it must be gitignored by the pattern the scaffold ships.
+GIP51="$TMP/gi51"; mkdir -p "$GIP51/.claude/config"
+git -C "$GIP51" init -q 2>/dev/null
+cp templates/gitignore.tmpl "$GIP51/.gitignore"
+: > "$GIP51/.claude/config/posture.local.yaml"
+git -C "$GIP51" check-ignore -q .claude/config/posture.local.yaml 2>/dev/null \
+  && ok "posture.local.yaml is gitignored by the scaffold (the *.local.yaml pattern)" \
+  || bad "the posture record would be COMMITTED — the scaffold gitignore misses it"
+
+
+hdr "51c · the posture advisory is BEHAVIORAL — verify_stack terminal states + the session banner"
+# The advisory keys off the CONFIGURED unit's resolved transport (config wins, adapter frontmatter
+# is the fallback), prints AFTER the row's terminal status (the unit line opens with a no-newline
+# printf, so an early echo would splice into it), and never touches a counter or an exit code.
+# ADJACENCY is the contract, not co-presence: the advisory must be the very next line after its
+# row's terminal status — two independent greps would pass even if flush spliced into an open row.
+p51adj() {  # in file $1, the line immediately after the one containing $2 must contain $3
+  awk -v t="$2" -v n="$3" 'p { if (index($0, n)) ok=1; p=0 } index($0, t) { p=1 } END { exit ok?0:1 }' "$1"
+}
+
+# --- (A) dry-run over a both/mcp/cli mix: prod yes, tracker yes, chat yes, lake NO ----------------
+mw51="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
+printf '%s\n' "$mw51" > "$TMP/mw51.out"
+{ grep -qF 'posture[warehouse[prod]*]: transport=both' <<<"$mw51" \
+  && grep -qF 'adapters/warehouse/snowflake.md § Permission posture (MCP)' <<<"$mw51" \
+  && grep -qF 'posture[tracker]: transport=both' <<<"$mw51" \
+  && grep -qF 'adapters/tracker/jira.md § Permission posture (MCP)' <<<"$mw51" \
+  && grep -qF 'posture[chat]: transport=mcp' <<<"$mw51"; } \
+  && ok "multi-warehouse dry-run: posture advisories for prod(both) + tracker(both) + chat(mcp), each naming its adapter" \
+  || bad "a resolved-transport advisory is missing from the multi-warehouse dry-run" "$mw51"
+grep -qF 'posture[warehouse[lake]]' <<<"$mw51" \
+  && bad "warehouse[lake] got a posture line — configured transport=cli must beat the adapter's both" \
+  || ok "warehouse[lake] stays silent: configured cli wins over the adapter's both frontmatter"
+grep -qF 'skipped: unresolved {profile}' <<<"$mw51" \
+  && ok "…and [lake]'s unresolved-{profile} terminal branch coexists untouched in the same run" \
+  || bad "the unresolved-token branch changed shape" "$mw51"
+{ p51adj "$TMP/mw51.out" '→ would run: snow connection test' 'posture[warehouse[prod]*]: transport=both' \
+  && p51adj "$TMP/mw51.out" '→ would run: acli jira workitem search' 'posture[tracker]: transport=both'; } \
+  && ok "ADJACENT: each dry-run advisory is the very next line after its row's terminal status" \
+  || bad "an advisory is not adjacent to its terminal status — flush spliced or drifted" "$mw51"
+
+# --- (B) mcp-only seams both advise -----------------------------------------------------------------
+ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
+{ grep -qF 'posture[tracker]: transport=mcp' <<<"$ab51" \
+  && grep -qF 'adapters/tracker/asana.md § Permission posture (MCP)' <<<"$ab51" \
+  && grep -qF 'posture[chat]: transport=mcp' <<<"$ab51" \
+  && grep -qF 'adapters/chat/teams.md § Permission posture (MCP)' <<<"$ab51" \
+  && ! grep -qF 'posture[warehouse]' <<<"$ab51"; } \
+  && ok "asana-bq dry-run: tracker + chat advise (mcp); the cli warehouse stays silent" \
+  || bad "mcp-only advisory wrong on the asana-bq stack" "$ab51"
+
+# --- (C) the null-verify branch + the byte-exact §1 summary pin -----------------------------------
+rs51="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; rs51rc=$?
+printf '%s\n' "$rs51" > "$TMP/rs51.out"
+{ [ "$rs51rc" -eq 0 ] \
+  && grep -qF 'posture[chat]: transport=mcp' <<<"$rs51" \
+  && grep -q 'MCP-only: not checkable from the shell' <<<"$rs51"; } \
+  && ok "root stack: the chat advisory coexists with the null-verify MCP-only warning (both print, in order)" \
+  || bad "the chat posture advisory broke the null-verify terminal branch" "rc=$rs51rc $(tail -5 <<<"$rs51")"
+p51adj "$TMP/rs51.out" 'MCP-only: not checkable from the shell' 'posture[chat]: transport=mcp' \
+  && ok "ADJACENT: the chat advisory is the very next line after the null-verify warning" \
+  || bad "the chat advisory drifted from its null-verify terminal status" "$rs51"
+{ grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qF 'posture[docstore]' <<<"$rs51"; } \
+  && ok "the cli docstore row keeps its unresolved warning and gains NO posture line" \
+  || bad "the docstore row changed" "$rs51"
+grep -qF '3 OK, 2 unverified (chat, docstore).' <<<"$rs51" \
+  && ok "the §1 summary pin holds byte-for-byte — the advisory never touches a counter" \
+  || bad "the advisory changed the summary line" "$(tail -3 <<<"$rs51")"
+
+# --- (D) failed verify: the advisory still prints after ✗ UNREACHABLE, exit stays 1 ---------------
+FV51="$TMP/fv51"; mkdir -p "$FV51"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    transport: both\n    cli: snow\n    verify: "false"\n' > "$FV51/stack.yaml"
+fv51="$(bash bin/verify_stack.sh "$FV51/stack.yaml" 2>&1)"; fv51rc=$?
+printf '%s\n' "$fv51" > "$TMP/fv51.out"
+{ [ "$fv51rc" -eq 1 ] && grep -q 'UNREACHABLE' <<<"$fv51" \
+  && grep -qF 'posture[warehouse]: transport=both' <<<"$fv51"; } \
+  && ok "an UNREACHABLE seam still gets its posture advisory, and the run still exits 1" \
+  || bad "the advisory is lost (or the exit code moved) on the failed-verify branch" "rc=$fv51rc $fv51"
+p51adj "$TMP/fv51.out" '✗ UNREACHABLE → false' 'posture[warehouse]: transport=both' \
+  && ok "ADJACENT: the advisory is the very next line after ✗ UNREACHABLE" \
+  || bad "the advisory drifted from the UNREACHABLE terminal status" "$fv51"
+
+# --- (D2) the unsafe-token terminal branch: refused value, advisory still adjacent, exit 1 --------
+UV51="$TMP/uv51"; mkdir -p "$UV51/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    transport: both\n    warehouse_id: X\n    catalog: c\n    schema: s\n    verify: "databricks --profile {profile} current-user me"\n' > "$UV51/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    profile: "x; touch %s/PWNED51"\n' "$TMP" > "$UV51/.claude/config/connections.local.yaml"
+rm -f "$TMP/PWNED51"
+uv51="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$UV51/.claude/config/stack.yaml" 2>&1)"; uv51rc=$?
+printf '%s\n' "$uv51" > "$TMP/uv51.out"
+{ [ "$uv51rc" -eq 1 ] && grep -q 'refusing to run' <<<"$uv51" && [ ! -f "$TMP/PWNED51" ] \
+  && grep -qF 'posture[warehouse]: transport=both' <<<"$uv51"; } \
+  && ok "a metachar-refused token still gets its posture advisory (refused, never executed, exit 1)" \
+  || bad "the unsafe-token terminal branch lost its advisory (or executed the value)" "rc=$uv51rc $uv51"
+p51adj "$TMP/uv51.out" 'refusing to run: value for {profile}' 'posture[warehouse]: transport=both' \
+  && ok "ADJACENT: the advisory is the very next line after the refusal" \
+  || bad "the advisory drifted from the unsafe-token terminal status" "$uv51"
+
+# --- (E) cli-only stacks are advisory-free ---------------------------------------------------------
+nw51="$(bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml --dry-run 2>&1)"
+grep -qF 'posture[' <<<"$nw51" \
+  && bad "a cli-only stack printed a posture advisory" "$nw51" \
+  || ok "no-warehouse (all-cli) stack prints zero posture advisories"
+az51="$(bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run 2>&1)"
+{ ! grep -qF 'posture[tracker]' <<<"$az51" && ! grep -qF 'posture[warehouse' <<<"$az51" \
+  && ! grep -qF 'posture[docstore]' <<<"$az51" && ! grep -qF 'posture[vcs]' <<<"$az51" \
+  && grep -qF 'posture[chat[internal]*]: transport=mcp' <<<"$az51" \
+  && grep -qF 'posture[chat[email]]: transport=mcp' <<<"$az51"; } \
+  && ok "azure stack: cli seams silent; both mcp chat TARGETS advise under their own unit labels" \
+  || bad "per-target advisory wrong on the azure stack" "$az51"
+
+# --- (F) the session banner: five cases, keyed by resolved warehouse transport + policy mode ------
+b51() {  # $1 = project dir → the SessionStart banner
+  echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$1" \
+    CLAUDE_CONFIG_DIR="$TMP/no-config" python3 .claude/hooks/session_context.py 2>&1
+}
+# (i) the kit's own stack: warehouse transport both + high_risk ⇒ the MCP wording.
+bi51="$(b51 "$KIT")"
+grep -qF 'DB writes: policy high_risk — Bash path hook-gated; MCP path advisory (tool-side controls, posture recorded at setup).' <<<"$bi51" \
+  && ok "banner (kit stack): the DB-writes line names both paths — Bash hook-gated, MCP advisory" \
+  || bad "the MCP-aware DB-writes banner line is missing" "$bi51"
+# (ii) configured cli ⇒ plain jurisdiction wording, and no MCP claim anywhere in that line.
+BP51="$TMP/b51-cli"; mkdir -p "$BP51/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: postgres\n    adapter: adapters/warehouse/postgres.md\n    transport: cli\n    cli: psql\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BP51/.claude/config/stack.yaml"
+bii51="$(b51 "$BP51")"
+if grep -qF 'DB writes: policy high_risk — hook-gated (Bash jurisdiction).' <<<"$bii51"; then
+  if grep 'DB writes: policy' <<<"$bii51" | grep -q 'MCP'; then
+    bad "a cli-only warehouse banner line claims MCP" "$bii51"
+  else
+    ok "banner (cli warehouse): plain jurisdiction wording, no MCP substring in the DB-writes line"
+  fi
+else
+  bad "the cli-warehouse DB-writes banner line is missing" "$bii51"
+fi
+# (iii) unknown transport (no transport key, adapter unreadable) ⇒ NEVER claims MCP.
+BU51="$TMP/b51-unknown"; mkdir -p "$BU51/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: mystery\n    adapter: adapters/warehouse/does-not-exist.md\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BU51/.claude/config/stack.yaml"
+biii51="$(b51 "$BU51")"
+grep -qF 'DB writes: policy high_risk — hook-gated (Bash jurisdiction).' <<<"$biii51" \
+  && ok "banner (unknown transport): falls to the plain wording — unknown never claims MCP" \
+  || bad "an unknown transport produced the wrong DB-writes line" "$biii51"
+# (iv) policy off ⇒ no advisory line at all (the policy summary already says NOT gated).
+BO51="$TMP/b51-off"; mkdir -p "$BO51/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    transport: both\n    cli: snow\npolicies:\n  db_write_requires_approval: off\n' > "$BO51/.claude/config/stack.yaml"
+biv51="$(b51 "$BO51")"
+grep -qF 'DB writes: policy' <<<"$biv51" \
+  && bad "policy off still printed a DB-writes advisory line" "$biv51" \
+  || ok "banner (policy off): no DB-writes advisory line"
+# (v) no warehouse seam ⇒ no line.
+BN51="$TMP/b51-none"; mkdir -p "$BN51/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: local\n    adapter: adapters/tracker/local.md\n    transport: cli\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BN51/.claude/config/stack.yaml"
+bv51="$(b51 "$BN51")"
+grep -qF 'DB writes: policy' <<<"$bv51" \
+  && bad "a warehouse-less repo printed a DB-writes advisory line" "$bv51" \
+  || ok "banner (no warehouse): no DB-writes advisory line"
+
+
 hdr "52 · selftest itself parses under stock macOS bash 3.2 (self-lint)"
 # bash 3.2 — /bin/bash on every Mac — mis-scans a heredoc nested inside $( ): backticks,
 # apostrophes, or parens in the BODY desync the parser, hundreds of sections print ✓, and the run

@@ -33,6 +33,32 @@ The routed target comes from the ticket's `delivery-plan.yaml` `audience:` decla
 (`bin/delivery_plan.py`); it is never inferred from a channel name or from the message text, and a
 routing failure never falls back to another channel.
 
+## Permission posture (MCP)
+
+### Native control
+The connector's **OAuth grant** — which scopes it was authorized with — and, in practice, **which
+tools the server exposes**. The draft tools are the path that expresses `default_mode: draft` +
+`chat_default_draft`: `slack_send_message_draft` is the draft path, and the send tools
+(`slack_send_message`) are the thing being gated. Where the control lives depends on the
+connection shape: an official connector's grant is set in its app settings; a CLI-configured
+server in its config file; a homegrown server with its owner (forward the suggestion).
+
+### Recommended setting (by policy)
+Prefer a grant that **excludes send** where the connector offers one — then `chat_default_draft`
+holds by construction and only a human-clicked send goes out. Where the grant bundles send, the
+draft-first rule above stays the operative control, and the skills' hard-halt stays the gate.
+
+### Read-only probe
+The read call the auth block already names — it proves reachability and which tools exist:
+```
+mcp__{mcp}__slack_search_channels(query=<any channel name>)   # read-only
+```
+**What it cannot prove, stated plainly:** the connector's grant set is NOT introspectable
+read-only from inside the session, so the posture record caps at `status: unverified` and the
+draft/send policies remain GUIDANCE on this path. Confirm the actual grant in the connector's own
+settings surface (app UI / server config / its owner) — record the outcome in gitignored
+`.claude/config/posture.local.yaml`.
+
 ## verb: draft   (the default — policy chat_default_draft)
 ```
 mcp__{mcp}__slack_send_message_draft(channel_id=<id or {default_channel}>, message=<body>, thread_ts=<optional>)

@@ -208,7 +208,14 @@ additive work. Where even the config location is undocumented (codex-cli, devin)
 prints the manual wiring line instead of guessing a path. What each runtime mechanically enforces
 vs. merely reads as guidance is stated per runtime × per hook in the rendered `AGENTS.md`
 enforcement table (and in `.clinerules/` for Cline, whose users don't read AGENTS.md) — a missing
-hook never silently weakens a policy. Whether each runtime *honors* its documented wiring is
+hook never silently weakens a policy. The MCP transport — which no shell hook can see — gets its
+own per-policy posture table right below that one: enforcement moves into the tool's native
+permission controls, every `transport: mcp`/`both` adapter carries a "Permission posture (MCP)"
+section (the control, the recommended setting per policy, a read-only probe), and **NATIVE
+(tool-side)** is claimable only where a read-only privilege introspection plus a written
+comparison rule exist (the warehouse adapters), with outcomes recorded in gitignored
+`.claude/config/posture.local.yaml` at setup time. Connector grants (chat/tracker) cannot be
+introspected in-session, so those cells cap at `unverified` and say so. Whether each runtime *honors* its documented wiring is
 live-verification work, tracked on the punch list ([`docs/live-verification.md`](live-verification.md),
 whose honesty link `bin/selftest.sh` section 44 enforces), and the docs must not imply parity
 before it is paid.

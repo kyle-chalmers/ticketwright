@@ -64,6 +64,11 @@ below has to land **before** anyone types a colleague's work email.
      frontmatter names which config key the chosen container fills. Where the verb reports
      `unsupported` or `unavailable`, **fall back silently to a plain question** — the ranking is a
      convenience, never an error to surface.
+   - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
+     show the chosen adapter's "Permission posture (MCP)" section (the native control + the
+     recommended setting) and carry its read-only probe's outcome into the Phase-4 report next to
+     that slot's verify_stack result. A tracker connector's grant is not introspectable
+     in-session, so the outcome caps at the recorded third state — say where a human confirms it.
 4. **Ticket key prefix** — the chosen container's key is the default. Skipped entirely for the
    `local` tracker, where the folder name is the id.
 5. **`ticket_url_template`** — how every `tickets/INDEX.md` row links back to the tracker. A dead
@@ -82,6 +87,10 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
 
 7. **Warehouse** (detected options first) — or *none*; non-data repos are fine, and the skills
    degrade cleanly.
+   - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
+     show the chosen adapter's "Permission posture (MCP)" section — for a warehouse the probe is a
+     real read-only privilege introspection with a written comparison rule, so its outcome is
+     worth carrying into the Phase-4 report next to that slot's verify_stack result.
 8. **The chosen adapter's required keys** — tier-1 values only: which data the *team* reads.
    Never a named profile, connection, or local path — those are machine-tier values the person
    flow writes into `.claude/config/connections.local.yaml`; if detection surfaced one, display
@@ -117,6 +126,12 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
     - *This chat question is not final.* A later release adds per-target routing (multiple chat
       destinations with declared audiences); write the block as a plain single mapping so adding
       a `targets:` entry later is an extension, not a rewrite.
+    - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
+      show the chosen adapter's "Permission posture (MCP)" section and carry its read-only probe's
+      outcome into the Phase-4 report next to that slot's verify_stack result. A chat connector's
+      grant is not introspectable in-session — the posture record caps at the third state and the
+      draft/send policies stay guidance on that path; the section names the settings surface where
+      a human confirms the grant.
 14. **Email — one question, covering both directions:** "Does email carry work *into* this team,
     *out* to stakeholders, both, or neither?" Never split intake and delivery into separate
     rounds — that reads as being asked about email twice.

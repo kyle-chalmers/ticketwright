@@ -19,6 +19,32 @@ note: |
 
 Maps the `tracker` verb contract to monday.com via its MCP (GraphQL items API).
 
+## Permission posture (MCP)
+
+### Native control
+The connector's **OAuth grant** — which monday scopes it was authorized with. The grants that
+matter are the read-vs-write split: `boards:read` (fetch, search) vs `boards:write` /
+`updates:write` (create item, post an update, change a status column). External posts stay gated
+by `hard_halt_before_external_posts` at the skill layer regardless. An official connector's grant
+lives in its OAuth consent; a CLI-configured server in its config file; a homegrown server with
+its owner (forward the suggestion).
+
+### Recommended setting (by policy)
+Prefer the narrowest connector grant that still covers the verbs the team uses — a read-scoped
+grant cannot post at all; write scope is what the hard-halt is protecting, so know which of the
+two your connector holds.
+
+### Read-only probe
+The read call the auth block already names — it proves reachability and which tools exist:
+```
+mcp__{mcp}__list-boards(limit=1)   # read-only
+```
+**What it cannot prove, stated plainly:** the connector's grant set is NOT introspectable
+read-only from inside the session, so the posture record caps at `status: unverified` and the
+posting policy remains GUIDANCE on this path. Confirm the actual grant in the connector's own
+settings surface (OAuth consent / server config / its owner) — record the outcome in gitignored
+`.claude/config/posture.local.yaml`.
+
 ## verb: fetch_ticket
 **In:** item id. **Out:** name, column values (incl. status), updates, assignee, file-column assets.
 ```

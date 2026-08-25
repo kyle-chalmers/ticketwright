@@ -10,8 +10,12 @@ missing hook must never silently weaken a policy, so this table is the non-silen
 Code hooks); **WIRED** = the documented mechanism is emitted and speaks the documented protocol,
 but that the runtime honors it is live-verification work still owed — a WIRED gate is strong, not
 proven, and never reads as parity with ENFORCEMENT; **GUIDANCE** = a named file or workflow
-carries it and honoring it is on the agent; **UNKNOWN** = the runtime's behavior is undocumented —
-never assume protection. `ticketwright install --runtime <name>` emits the wiring where one is
+carries it and honoring it is on the agent; **NATIVE (tool-side)** = a control outside the harness
+(the tool's own role / token scope / grants) verifiably carries the policy on a path the hooks
+cannot see — claimable only where a read-only privilege introspection exists (today: the warehouse
+tool slot), only after the adapter's "Permission posture (MCP)" probe has run its comparison rule
+with the result recorded in `.claude/config/posture.local.yaml`; **UNKNOWN** = the runtime's
+behavior is undocumented — never assume protection. `ticketwright install --runtime <name>` emits the wiring where one is
 documented, and a live confirmation on the kit's punch list
 (<https://github.com/kyle-chalmers/ticketwright/blob/main/docs/live-verification.md>) is what
 upgrades a WIRED cell to ENFORCEMENT.
@@ -43,7 +47,8 @@ CLI command in a shell payload (including SQL hidden in a `-f` file or a stdin r
 issued through a warehouse MCP server, or any other non-Bash tool, never reaches it; on the MCP
 transport the DB-write policy is guidance the agent follows, not a gate the runtime enforces.
 Route warehouse WRITES through the CLI, where the gate can actually see them, and keep the MCP
-path for read/exploration.
+path for read/exploration. What each policy can carry on the MCP path — and when NATIVE
+(tool-side) may honestly be claimed — is the permission-posture table just below this block.
 
 And a limit that precedes every runtime row: the hooks ship WITH the plugin. Until the plugin is
 installed and the session restarted, every ENFORCEMENT cell above is GUIDANCE — a teammate's very
@@ -105,3 +110,23 @@ Fallbacks, named (the GUIDANCE cells above point here):
 - **Index auto-regen without a PostToolUse hook** — the enrich/ship flow already runs
   `bash bin/tw build_ticket_index.py` when a ticket changes, and its `--check` staleness gate
   fails a stale catalog. Freshness degrades to that pair, never to nothing.
+
+### Permission posture per policy — the Bash path vs the MCP path
+
+The runtime table above answers "who enforces the hooks". This table answers a different question,
+per policy: what carries the policy on each transport. On the MCP path enforcement does not
+disappear — it moves into the tool's own permission controls, and each MCP-capable adapter's
+"Permission posture (MCP)" section says where that control lives, what to set, and the read-only
+probe that checks it (outcome recorded in gitignored `.claude/config/posture.local.yaml` at setup
+time).
+
+| Policy | Bash/CLI path | MCP path |
+|---|---|---|
+| `db_write_requires_approval` | ENFORCEMENT/WIRED/GUIDANCE per the runtime table above | NATIVE (tool-side) once the warehouse adapter's posture probe has verified a read-only grant set under its comparison rule (recorded in `.claude/config/posture.local.yaml`); GUIDANCE until then |
+| `chat_default_draft` | GUIDANCE (skills draft by default) | GUIDANCE — the draft tools are the path; a connector's grant set cannot be introspected read-only from inside a session, so the posture record caps at `unverified` and the tool-side claim is never available on this row |
+| `hard_halt_before_external_posts` | GUIDANCE (skill hard-halt) | GUIDANCE (skill hard-halt); the tracker/chat adapter's posture section names the grants that matter and where a human confirms them |
+
+The asymmetry between the rows is the honest design, not a gap: NATIVE exists only where a
+read-only privilege introspection and a written comparison rule exist (the warehouse adapters);
+connector grants cannot be introspected in-session, so those cells never read stronger than what
+is true.

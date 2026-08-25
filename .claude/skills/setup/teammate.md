@@ -103,6 +103,28 @@ result mean something:
   each such slot: call ONE read-only tool from that MCP server in this session (the adapter's
   `auth:` notes name a suitable probe), and record the outcome — reachable or unreachable — next
   to that slot in the checklist. An unverified MCP slot is not done until this probe has run.
+- **Check each MCP slot's permission posture — discover, compare, record.** For every slot whose
+  resolved transport includes MCP, the verifier printed a `▸ posture[<slot>]` pointer naming that
+  adapter's "Permission posture (MCP)" section. Run the section's read-only probe in-session,
+  apply its comparison rule, and record the outcome per slot — `matches` (the discovered
+  privileges satisfy the rule), `exceeds-policy` (the probe found more than the policy expects),
+  or `unverified` (the probe failed, or the control cannot be introspected in-session — chat and
+  tracker connector grants always cap here). `matches` is writable ONLY when the adapter's
+  comparison rule held — never as a hopeful default. Where the fix lives depends on the connection
+  shape: an official connector → its app settings; a CLI-configured server → its config file; a
+  homegrown server → a suggestion you forward to its owner. Advisory means advisory: the person
+  may own neither the server nor the grant — an unexpected posture is said and recorded in the
+  report as `exceeds-policy`/`unverified`, never a block. Write the record to the gitignored,
+  display-only file (never resolver-merged; never secrets, never listing output — names only):
+  ```yaml
+  # .claude/config/posture.local.yaml — gitignored, display-only, never resolver-merged
+  schema_version: 1
+  checked:
+    <unit label>:
+      control: <what was probed, names only>
+      status: matches | exceeds-policy | unverified
+      checked: YYYY-MM-DD
+  ```
 Walk any ✗/⚠ with the relevant adapter's auth notes until green. A docstore mount check that
 fails (`✗ UNREACHABLE` on a
 `test -d`) has its own guide — install steps per OS, the `mount_root` tier split, and the mountless

@@ -19,6 +19,32 @@ note: |
 Maps the `tracker` verb contract to Asana via its MCP. Demonstrates that swapping Jira→Asana is a
 **config + adapter** change with **zero skill edits** — the skills still call `tracker.fetch_ticket`.
 
+## Permission posture (MCP)
+
+### Native control
+The connector's **OAuth grant** — which Asana scopes it was authorized with. The grants that
+matter are the read-vs-write split: task/project **read** (fetch, search) vs **write** (create
+task, comment, move section). External posts stay gated by `hard_halt_before_external_posts` at
+the skill layer regardless. An official connector's grant lives in its OAuth consent; a
+CLI-configured server in its config file; a homegrown server with its owner (forward the
+suggestion).
+
+### Recommended setting (by policy)
+Prefer the narrowest connector grant that still covers the verbs the team uses — read-scoped
+consent cannot post at all; comment/create consent is what the hard-halt is protecting, so know
+which of the two your connector holds.
+
+### Read-only probe
+The read call the auth block already names — it proves reachability and which tools exist:
+```
+mcp__{mcp}__list-workspaces()   # read-only (the server's typeahead search works the same)
+```
+**What it cannot prove, stated plainly:** the connector's grant set is NOT introspectable
+read-only from inside the session, so the posture record caps at `status: unverified` and the
+posting policy remains GUIDANCE on this path. Confirm the actual grant in the connector's own
+settings surface (OAuth consent / server config / its owner) — record the outcome in gitignored
+`.claude/config/posture.local.yaml`.
+
 ## verb: fetch_ticket
 **In:** task GID. **Out:** name, notes, status (section/custom field), assignee, links, attachments.
 ```

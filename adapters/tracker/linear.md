@@ -18,6 +18,31 @@ note: |
 
 Maps the `tracker` verb contract to Linear via its MCP.
 
+## Permission posture (MCP)
+
+### Native control
+The connector's **OAuth grant** — Linear tokens carry an explicit read vs write scope, and that
+split is the control: issue **read** (fetch, list, search) vs **write** (create issue, comment,
+change state). External posts stay gated by `hard_halt_before_external_posts` at the skill layer
+regardless. An official connector's grant lives in its OAuth consent; a CLI-configured server in
+its config file; a homegrown server with its owner (forward the suggestion).
+
+### Recommended setting (by policy)
+Prefer the narrowest connector grant that still covers the verbs the team uses — a read-scoped
+token cannot post at all; comment/create scope is what the hard-halt is protecting, so know which
+of the two your connector holds.
+
+### Read-only probe
+The read call the auth block already names — it proves reachability and which tools exist:
+```
+mcp__{mcp}__list-teams()   # read-only (a filtered list-issues works the same)
+```
+**What it cannot prove, stated plainly:** the connector's grant set is NOT introspectable
+read-only from inside the session, so the posture record caps at `status: unverified` and the
+posting policy remains GUIDANCE on this path. Confirm the actual grant in the connector's own
+settings surface (OAuth consent / server config / its owner) — record the outcome in gitignored
+`.claude/config/posture.local.yaml`.
+
 ## verb: fetch_ticket
 **In:** issue id (e.g. `ENG-123`). **Out:** title, description (markdown), state, assignee, labels,
 attachments, parent/project.

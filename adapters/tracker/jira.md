@@ -17,6 +17,36 @@ Maps the `tracker` verb contract to Atlassian Jira via the `acli` CLI and the At
 Reads/creates/transitions go through `acli`; **comments go through the MCP** because ADF renders
 clickable smart links and @mentions (acli posts plain text — links don't render).
 
+## Permission posture (MCP)
+
+### Native control
+This adapter is dual-transport, and the two paths have different controls. The CLI path
+authenticates as the person (`acli jira auth` token) — the `hard_halt_before_external_posts`
+policy stays the gate at the skill layer either way. The MCP path's control is the connector's
+**OAuth grant**: which Atlassian scopes it was consented — read (work-item/search) vs write
+(comment/transition). What matters here is the read-vs-comment split, since comments are exactly
+what this adapter routes through the MCP. An official connector's grant lives in its OAuth
+consent; a CLI-configured server in its config file; a homegrown server with its owner (forward
+the suggestion).
+
+### Recommended setting (by policy)
+`hard_halt_before_external_posts` is carried at the skill layer (nothing posts before a human
+go), not by either transport — so prefer the narrowest connector grant that still covers the
+comment verb you actually use, and know which grants matter: read-scoped consent cannot post at
+all; comment/write consent is the thing the hard-halt is protecting.
+
+### Read-only probe
+One read per transport, both already named by the auth block:
+```
+acli jira workitem search --jql "project = {key_prefix}" --limit 1    # CLI path, read-only
+mcp__{mcp}__searchJiraIssuesUsingJql(jql="project = {key_prefix}", maxResults=1)   # MCP path, read-only
+```
+**What the MCP probe cannot prove, stated plainly:** the connector's grant set is NOT
+introspectable read-only from inside the session, so the posture record caps at
+`status: unverified` and the posting policy remains GUIDANCE on this path. Confirm the actual
+grant in the connector's own settings surface (OAuth consent / server config / its owner) —
+record the outcome in gitignored `.claude/config/posture.local.yaml`.
+
 ## verb: fetch_ticket
 **In:** `id` (e.g. `ENG-1234`). **Out:** title, description, status, type, assignee, links.
 ```bash

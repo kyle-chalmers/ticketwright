@@ -30,6 +30,41 @@ and CSV export) and the Snowflake MCP (preferred for interactive exploration + t
 mutation routed through the MCP would bypass the mechanical gate — on that path the
 `db_write_requires_approval` policy is guidance, not enforcement.
 
+## Permission posture (MCP)
+
+### Native control
+The **role the MCP connection sessions as**, wherever that connection is configured: a CLI-backed
+MCP server may reuse the CLI's named connection; a desktop/official connector configures its own
+connection in its app settings; a homegrown server's settings live with its owner — for that shape
+the posture below becomes a suggestion to forward ("pin this connection's role"). There is no
+universal config file to point at, so the probe below **discovers** the connection's actual role
+rather than asserting a role name (bring-your-own-role stands; this adapter never names one).
+
+### Recommended setting (by policy)
+With `db_write_requires_approval` on, the MCP path's discovered privileges should be **read-class
+only on the team's configured objects** — then the policy holds by construction on the path
+`db_write_guard` cannot see. Writes route through the CLI, where the guard can see them (the write
+routing above). If the connection's role exceeds that and you own it, narrow it; if someone else
+owns the server, forward the suggestion to them.
+
+### Read-only probe
+Run in-session over the MCP connection (all read-only introspection; the names-only precedent
+above holds — never paste a full grant listing into a report, summary, or committed file):
+```sql
+SELECT CURRENT_ROLE();
+SHOW GRANTS TO ROLE <the role CURRENT_ROLE() returned>;
+SHOW GRANTS ON SCHEMA <each schema stack.yaml names>;
+```
+**The comparison rule.** Restricted to the team's configured objects (the databases/schemas
+reachable from stack.yaml's warehouse keys — `default_warehouse`, `dev_target`, the schemas the
+team reads): `status: matches` iff the grant set contains only read-class privileges (USAGE,
+SELECT, REFERENCES, MONITOR, READ). ANY write-class privilege there (INSERT, UPDATE, DELETE,
+TRUNCATE, CREATE …, MODIFY, OWNERSHIP, WRITE, ALL) ⇒ `status: exceeds-policy`. A probe failure,
+insufficient visibility to run the introspection, or grants only on objects the stack does not
+name ⇒ `status: unverified`. Only a recorded `matches` supports the enforcement table's NATIVE
+(tool-side) cell. Record the outcome in gitignored `.claude/config/posture.local.yaml` — advisory,
+never blocking.
+
 ## Per-person setup notes (consumed by the onboarding flow; not verbs)
 - **Enumerate connections by NAME only.** Never run bare `snow connection list` during
   onboarding — it masks passwords but still prints account, user, and role into the transcript.

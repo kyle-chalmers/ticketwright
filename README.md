@@ -233,6 +233,10 @@ It walks you through your `people/<id>.yaml`, your machine-local
 (an unreachable one prints its auth fix; finishing onboarding first and authing later is fine).
 MCP-only slots — a chat tool connected through a desktop connector, say — cannot be checked from
 the shell and show as unverified; `/ticketwright:setup --teammate` probes those in-session instead.
+Slots whose transport includes MCP also get a **permission-posture** pointer line: on that path the
+tool's own role / token scope / grant is the control, the adapter's "Permission posture (MCP)"
+section says what to set and how to probe it read-only, and setup records the outcome in
+gitignored `.claude/config/posture.local.yaml`.
 
 #### What you need installed (derived from the stack, not a fixed list)
 
@@ -544,7 +548,12 @@ ticketwright enrich ENG-123              # curated index summary  — needs a mo
   (codex-cli, devin) the installer prints the manual wiring line instead of guessing. What is
   ENFORCEMENT (proven — the native Claude hooks) vs WIRED (emitted, live confirmation owed) vs
   GUIDANCE vs UNKNOWN per runtime × per hook is stated in the rendered
-  `AGENTS.md` enforcement table (and emitted into `.clinerules/` for cline).
+  `AGENTS.md` enforcement table (and emitted into `.clinerules/` for cline). The MCP transport,
+  which no shell hook can see, gets its own per-policy posture table right below that one:
+  enforcement moves into the tool's own permission controls, and **NATIVE (tool-side)** is
+  claimable only after a warehouse adapter's read-only posture probe has verified the grant set
+  under its written comparison rule (outcome recorded in gitignored
+  `.claude/config/posture.local.yaml`).
 
 **`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
 `AGENTS.md` — `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
