@@ -95,6 +95,44 @@ always produces a *default the human confirms*, never an automatic selection.
 | `commit` | paths, message (semantic) | commit sha |
 | `open_pr` | title (semantic), body | PR URL |
 
+### `meetings` — the spoken record, by reference *(optional)*
+| Verb | Inputs | Returns |
+|---|---|---|
+| `fetch_transcript` | a meeting id (from a validated `meeting_ref:` — grammar in `stack.schema.md`; enumerate with `bin/meeting_refs.py`) | transcript text + metadata `{title, date, participants, content_kind}` — **to context, never to disk**. `content_kind` is `transcript` or `notes`: an adapter whose store holds curated notes rather than a verbatim transcript for this meeting says which, never passing one off as the other |
+| `search_meetings` | query and/or date window, limit | list of `{id, title, date, participants}` — `participants: []` is a defined value where the provider's list operation exposes no attendee roster; each adapter's section states what it fills |
+| `fetch_action_items` | a meeting id | the typed result below |
+
+**`fetch_action_items` returns a typed result** — documented the way ranking documents its own
+two failure returns above, because the statuses carry different caller behaviors:
+
+```
+{ status: ok | empty | no_native_export,  items: [...] }
+```
+
+- `status: ok` — the provider returned ≥1 native action items; `items` populated.
+- `status: empty` — the provider HAS native action-item support and returned zero for this
+  meeting; `items: []`. Caller: report "no action items recorded"; do **not** fall back to
+  extraction — the provider's answer is authoritative (empty native results ≠ no capability).
+- `status: no_native_export` — a **static capability fact declared in the adapter's verb
+  section** (never a runtime probe): this provider has no native action-item export; `items`
+  absent. Caller: the documented manual fallback — extract action items in-context from the
+  `fetch_transcript` text.
+
+The three statuses are mutually exclusive by construction. The existing `unsupported` sentinel is
+deliberately NOT reused here: its defined caller behavior is a **silent** skip (see ranking
+above), and the no-capability outcome of this verb demands the opposite — an active, documented
+fallback. `fetch_transcript` and `search_meetings` are mandatory, with no sentinel.
+
+This slot is **read-only and optional** — omitted like `docstore` when the team has no meeting
+provider, and the file-backed intake path (a human export into `source_materials/`) keeps working
+unchanged either way. `extract_actions` is deliberately not a verb: extracting action items from
+free text is model reasoning, and an adapter is a command translation, not a place to hide
+reasoning — the extraction fallback is a documented skill-side step. Every adapter's
+`fetch_transcript` section carries the transcript-privacy rule verbatim; the mechanical gates
+behind that rule (the gitignore patterns, `bin/scan_source_materials.py`, and the
+source-material guard) read filenames and document shape, never meaning — curation stays agent
+guidance, and the adapters say so rather than implying parity.
+
 ### `viewer` — hand an artifact to the human's own application *(optional)*
 | Verb | Inputs | Returns |
 |---|---|---|
@@ -407,6 +445,9 @@ verb contract for their seam:
   same four verbs, destination key `to`, `always_include` rendered as visible Cc, draft-first;
   each adapter's frontmatter states the mapping's rough edges honestly)
 - **docstore:** `gdrive`, `sharepoint`, `rclone` (mountless — Drive/OneDrive/Dropbox/S3/Box via the rclone CLI)
+- **meetings** *(optional)*: `zoom`, `fireflies`, `granola` (local notes cache — credential-free),
+  `teams` (Graph transcripts; AI insights need Copilot licensing — the adapter says so), `notion`
+  (meeting-notes pages via a Notion MCP)
 - **vcs:** `github`, `gitlab`, `azure-repos`
 - **viewer** *(optional)*: `macos-open`, `xdg-open`, `windows-start` — pick the one for your OS
 - **runtime** *(capability declarations, not a tool seam)*: `claude-code`, `codex-cli`, `cursor`,
@@ -422,7 +463,8 @@ audience), a repo with **no warehouse seam** (document/report deliverables), and
 with **no tracker and no chat/docstore**. The same skills run against all seven, unedited — which is
 the claim those configs exist to keep honest.
 
-> **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack, Gmail, Outlook) reference each operation with a
+> **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack, Gmail, Outlook, and the
+> meetings seam's Fireflies / Teams / Notion / Zoom-MCP routes) reference each operation with a
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on
 > your connected MCP server — confirm them once and adjust the adapter (never the skills).
 
@@ -500,6 +542,16 @@ tool-neutrality rule for skills — is unchanged.
 4. Add a `verify` command to your `stack.yaml` seam entry (read-only, exits non-zero when unreachable).
 5. Run `bash bin/verify_stack.sh` — it confirms each seam's adapter file exists and runs the seam's
    read-only `verify` to check reachability. (`bash bin/selftest.sh` checks verb coverage vs. this contract.)
+
+**A new `meetings` adapter** (Otter, Fathom, Gong, …) follows the same five steps with three
+seam-specific rules: implement exactly the three read-only verbs (`fetch_transcript`,
+`search_meetings`, `fetch_action_items` — a provider with no native action-item export declares
+`status: no_native_export` statically in that verb's section, never at runtime); carry the
+transcript-privacy rule verbatim in the `fetch_transcript` section, plus the honesty sentence
+naming the mechanical gates and their shape-not-meaning limit (copy both from any shipped meetings
+adapter); and declare only credentials/local paths in `user_keys:` — a meeting id never appears in
+config, because it arrives per-ticket via `meeting_ref:` (grammar in `stack.schema.md`, validated
+by `bin/meeting_refs.py`). Any other provider is one documented file — no skill edits.
 
 ### `## Permission posture (MCP)` — required when `transport:` is `mcp` or `both`
 

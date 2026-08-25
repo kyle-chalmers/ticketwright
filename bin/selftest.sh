@@ -64,7 +64,7 @@ hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
     tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
-    viewer) echo 2;; *) echo 0;;
+    viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
 for f in adapters/*/*.md; do
@@ -118,6 +118,13 @@ devleaks="$(grep -REn 'dev_db|dev_dataset|dev_catalog|dev_schema' \
              .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
 [ -z "$devleaks" ] && ok "no warehouse-specific dev key named in a skill/command/agent" \
   || bad "a skill names a tool-specific dev key (use the symbolic dev target)" "$devleaks"
+# Meetings-vendor names are the same leak: a skill naming Zoom/Fireflies/Granola/Notion silently
+# scopes the tool-neutral meetings flow to one provider. Vendors live in adapters + stack.yaml only.
+meetleaks="$(grep -REn -i '\bzoom\b|\bfireflies\b|\bgranola\b|\bnotion\b' \
+              .claude/skills .claude/commands .claude/agents 2>/dev/null \
+              | grep -v 'for c in snow acli gh' || true)"
+[ -z "$meetleaks" ] && ok "no meeting-provider name appears in a skill/command/agent" \
+  || bad "a skill names a specific meeting provider (scopes the meetings flow to one vendor)" "$meetleaks"
 
 hdr "4 · frontmatter valid (skills + agents)"
 for f in .claude/skills/*/SKILL.md .claude/agents/*.md; do
@@ -140,6 +147,8 @@ chat_tool=slack
 chat_adapter=`adapters/chat/slack.md`
 docstore_tool=gdrive
 docstore_adapter=`adapters/docstore/gdrive.md`
+meetings_tool=zoom
+meetings_adapter=`adapters/meetings/zoom.md`
 vcs_tool=github
 vcs_adapter=`adapters/vcs/github.md`
 key_prefix=ENG
@@ -3226,15 +3235,15 @@ ecp="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxd
 
 hdr "34 · setup verb split by scope (team vs person) + teammate auto-route"
 # PROMPT 4: /setup's modes divide by WHO the config is about, not committed-vs-local. The canonical
-# team verb is `/setup tool <chat|docstore|warehouse>`; person config lives in the per-person flow.
+# team verb is `/setup tool <chat|docstore|warehouse|meetings>`; person config lives in the per-person flow.
 # These pin the stated invariant, the Phase-1 routing, the tier-3 versioned-document convention the
 # per-person flow WRITES (the resolver understands it: structural keys, stale fingerprint, and the
 # mode:defaults-with-overrides rejection are section 32's), and the honesty claim behind placeholders.
 SK=".claude/skills/setup/SKILL.md"; TM=".claude/skills/setup/teammate.md"
 skflat="$(tr '\n' ' ' < "$SK")"; tmflat="$(tr '\n' ' ' < "$TM")"
 # (A) the canonical verb, the deprecation window, and the retired seam-mode heading.
-grep -q 'Mode: `tool <chat|docstore|warehouse>`' "$SK" \
-  && ok "canonical team verb: /setup tool <chat|docstore|warehouse>" || bad "canonical tool verb missing"
+grep -q 'Mode: `tool <chat|docstore|warehouse|meetings>`' "$SK" \
+  && ok "canonical team verb: /setup tool <chat|docstore|warehouse|meetings>" || bad "canonical tool verb missing"
 { grep -qi 'deprecated spelling' "$SK" && grep -q '/setup tool chat' "$SK" && grep -qi 'one release' "$SK"; } \
   && ok "old /setup <name> spellings keep working one release, with a deprecation line" \
   || bad "deprecation line for the old spelling missing"
@@ -3493,29 +3502,29 @@ oi_other="$(grep -rl 'assignee_dir' .claude/skills/ 2>/dev/null | grep -v 'skill
 hdr "36 · absent tool slots render the enabling command (whole-path adapter tokens)"
 # The template language is a flat substitution pass — no conditionals — so a tool slot the stack
 # omits cannot drop its table row. Instead every adapter cell takes a WHOLE-PATH token (the
-# {{warehouse_adapter}} precedent, extended to all five slots): a configured slot passes the
+# {{warehouse_adapter}} precedent, extended to all six slots): a configured slot passes the
 # adapter path, an absent one passes a note naming the enabling command. Composing
 # adapters/<slot>/<tool>.md around the tool name is the bug this pins down — it rendered broken
 # markdown like `adapters/chat/— *(none; /setup chat)*.md` for an absent chat slot.
 S36="$TMP/s36"; mkdir -p "$S36"
-composed="$(grep -nE 'adapters/(tracker|warehouse|chat|docstore|vcs)/\{\{' templates/AGENTS.md.tmpl || true)"
+composed="$(grep -nE 'adapters/(tracker|warehouse|chat|docstore|meetings|vcs)/\{\{' templates/AGENTS.md.tmpl || true)"
 [ -z "$composed" ] \
   && ok "no stack-table cell composes an adapter path around a tool token" \
   || bad "AGENTS.md.tmpl still composes an adapter path from a tool token" "$composed"
 # scaffold.md is the instruction source: it must name every whole-path token AND the absent case.
 s36doc=""
-for t in tracker_adapter warehouse_adapter chat_adapter docstore_adapter vcs_adapter; do
+for t in tracker_adapter warehouse_adapter chat_adapter docstore_adapter meetings_adapter vcs_adapter; do
   grep -q "$t" .claude/skills/setup/scaffold.md || s36doc="$s36doc $t"
 done
 grep -q 'Absent slot' .claude/skills/setup/scaffold.md || s36doc="$s36doc absent-case"
 [ -z "$s36doc" ] \
-  && ok "scaffold.md documents all five adapter tokens and the absent-slot values" \
+  && ok "scaffold.md documents all six adapter tokens and the absent-slot values" \
   || bad "scaffold.md is missing token guidance" "$s36doc"
 # (a) every slot configured → each adapter path lands in the rendered output, zero leftover tokens.
 cfgout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>"$S36/cfg.err")"
 s36miss=""
 for p in adapters/tracker/jira.md adapters/warehouse/snowflake.md adapters/chat/slack.md \
-         adapters/docstore/gdrive.md adapters/vcs/github.md; do
+         adapters/docstore/gdrive.md adapters/meetings/zoom.md adapters/vcs/github.md; do
   grep -qF "$p" <<<"$cfgout" || s36miss="$s36miss $p"
 done
 [ -z "$s36miss" ] && [ ! -s "$S36/cfg.err" ] \
@@ -3535,6 +3544,8 @@ chat_tool=—
 chat_adapter=*(not configured — run `/setup tool chat` to add one)*
 docstore_tool=—
 docstore_adapter=*(not configured — run `/setup tool docstore` to add one)*
+meetings_tool=—
+meetings_adapter=*(not configured — run `/setup tool meetings` to add one)*
 vcs_tool=github
 vcs_adapter=`adapters/vcs/github.md`
 key_prefix=ENG
@@ -3550,10 +3561,10 @@ analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run /
 EOF
 absout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent.env" 2>"$S36/abs.err")"
 { grep -qF '/setup tool chat' <<<"$absout" && grep -qF '/setup tool warehouse' <<<"$absout" \
-  && grep -qF '/setup tool docstore' <<<"$absout"; } \
+  && grep -qF '/setup tool docstore' <<<"$absout" && grep -qF '/setup tool meetings' <<<"$absout"; } \
   && ok "an absent slot renders its enabling command (/setup tool <slot>)" \
   || bad "an absent slot's enabling command is missing from the rendered AGENTS.md"
-s36broken="$(grep -nE 'adapters/(warehouse|chat|docstore)/' <<<"$absout" || true)"
+s36broken="$(grep -nE 'adapters/(warehouse|chat|docstore|meetings)/' <<<"$absout" || true)"
 [ -z "$s36broken" ] && [ ! -s "$S36/abs.err" ] \
   && ok "no broken adapter path and no leftover token for an absent slot" \
   || bad "an absent slot still renders an adapter path (or left a token)" "$s36broken $(cat "$S36/abs.err")"
@@ -3568,7 +3579,7 @@ sed -e 's|^tracker_tool=.*|tracker_tool=—|' \
     -e 's|^vcs_adapter=.*|vcs_adapter=*(not configured — run `/setup`)*|' \
     "$S36/absent.env" > "$S36/absent-all.env"
 allout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent-all.env" 2>"$S36/all.err")"
-s36tb="$(grep -nE 'adapters/(tracker|warehouse|chat|docstore|vcs)/' <<<"$allout" || true)"
+s36tb="$(grep -nE 'adapters/(tracker|warehouse|chat|docstore|meetings|vcs)/' <<<"$allout" || true)"
 { [ -z "$s36tb" ] && [ ! -s "$S36/all.err" ] && grep -qF 'run `/setup`' <<<"$allout"; } \
   && ok "hand-edited tracker/vcs absence renders the /setup note (no path, no leftover token)" \
   || bad "tracker/vcs absence renders broken output" "$s36tb $(cat "$S36/all.err")"
@@ -7829,6 +7840,158 @@ bv51="$(b51 "$BN51")"
 grep -qF 'DB writes: policy' <<<"$bv51" \
   && bad "a warehouse-less repo printed a DB-writes advisory line" "$bv51" \
   || ok "banner (no warehouse): no DB-writes advisory line"
+hdr "51d · the meetings tool slot (PROMPT: meetings-intake, stage 2)"
+# The sixth tool slot, shipped after the bar judgment recorded in ROADMAP.md. Cases A-E are
+# behavioral and each names what it executes; the pins at the end are labeled structural (the
+# section-49 F-H convention). Regression note: section 49 (meetings INTAKE + the source-material
+# guard) runs unmodified in this same suite — stage 2 adds no new mechanical enforcement there;
+# the one new mechanical piece is bin/meeting_refs.py's parse-time credential refusal. Honest
+# limit: the skill orchestration itself (fetch → curate in-context) is prose no selftest executes.
+S51D="$TMP/s51d"; mkdir -p "$S51D"
+MRFIX="tests/meeting_refs/fixtures"
+
+# --- (A) config resolution — executes: bin/effective_config.py ----------------------------------
+mkdir -p "$S51D/cfg/.claude/config"
+cp .claude/config/stack.example.multi-audience.yaml "$S51D/cfg/.claude/config/stack.yaml"
+a51="$(python3 bin/effective_config.py --root "$S51D/cfg" --seam meetings 2>/dev/null)"; a51rc=$?
+{ [ "$a51rc" -eq 0 ] && grep -q '"tool": "zoom"' <<<"$a51" \
+  && grep -q 'adapters/meetings/zoom.md' <<<"$a51"; } \
+  && ok "effective_config resolves seams.meetings (exit 0, tool + adapter populated)" \
+  || bad "the meetings seam does not resolve through the config resolver" "rc=$a51rc $(head -3 <<<"$a51")"
+mkdir -p "$S51D/solo/.claude/config"
+cp .claude/config/stack.example.solo.yaml "$S51D/solo/.claude/config/stack.yaml"
+python3 bin/effective_config.py --root "$S51D/solo" --seam meetings >/dev/null 2>&1; a51n=$?
+[ "$a51n" -eq 7 ] \
+  && ok "an absent meetings seam exits 7 (no_such_seam — the one code a caller may degrade on)" \
+  || bad "absent meetings seam should exit 7, got $a51n"
+
+# --- (B) seam discovery — executes: bin/verify_stack.sh -----------------------------------------
+b51="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh .claude/config/stack.example.multi-audience.yaml --dry-run 2>&1)"
+{ grep -q 'meetings' <<<"$b51" && ! grep -q 'adapter missing' <<<"$b51"; } \
+  && ok "verify_stack --dry-run resolves the meetings seam to its adapter (seam-generic)" \
+  || bad "verify_stack does not resolve the meetings seam" "$(grep -i 'meetings\|missing' <<<"$b51" | head -3)"
+
+# --- (C) the banner — executes: .claude/hooks/session_context.py --------------------------------
+c51="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$S51D/cfg" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'meetings=zoom' <<<"$c51" \
+  && ok "session banner names the configured meetings tool (meetings=zoom)" \
+  || bad "banner hides a configured meetings slot" "$(grep 'Stack' <<<"$c51")"
+c51n="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$S51D/solo" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'meetings=—' <<<"$c51n" \
+  && ok "session banner ALWAYS prints the meetings slot (meetings=— when absent)" \
+  || bad "banner omits the meetings slot when absent (it must print meetings=—)" "$(grep 'Stack' <<<"$c51n")"
+
+# --- (D) render round-trip — executes: bin/render.sh (the section-36 fixtures carry the
+#         absent-slot half: /setup tool meetings renders when the slot is omitted) ---------------
+d51="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>"$S51D/d.err")"
+{ grep -q 'Meetings' <<<"$d51" && grep -qF 'adapters/meetings/zoom.md' <<<"$d51" \
+  && [ ! -s "$S51D/d.err" ]; } \
+  && ok "the stack table renders a Meetings row from whole-path tokens (zero leftover tokens)" \
+  || bad "the Meetings row is missing or left a token" "$(cat "$S51D/d.err")"
+
+# --- (E) the reference parser — executes: bin/meeting_refs.py ------------------------------------
+# E1 valid ref → JSON exit 0 (with the optional meeting_date carried through).
+mkdir -p "$S51D/t1/source_materials"
+cp "$MRFIX/2026-08-18-kickoff-meeting.md" "$S51D/t1/source_materials/"
+e1="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t1 --json 2>&1)"; e1rc=$?
+{ [ "$e1rc" -eq 0 ] && grep -q '"provider": "acmemeet"' <<<"$e1" \
+  && grep -q '"id": "mtg-0042/rec-7"' <<<"$e1" && grep -q '"meeting_date": "2026-08-18"' <<<"$e1"; } \
+  && ok "E1: a valid meeting_ref parses to JSON, exit 0" \
+  || bad "E1: valid ref failed" "rc=$e1rc $e1"
+# E2 multiple refs, filename-ordered (the date prefix gives chronology); a no-ref stub is skipped.
+mkdir -p "$S51D/t2/source_materials"
+cp "$MRFIX/2026-08-20-pricing-review-meeting.md" "$MRFIX/2026-08-18-kickoff-meeting.md" \
+   "$MRFIX/no-ref-notes.md" "$S51D/t2/source_materials/"
+e2="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t2 --json 2>&1)"; e2rc=$?
+e2first="$(grep -o '"file": "[^"]*"' <<<"$e2" | head -1)"
+{ [ "$e2rc" -eq 0 ] && [ "$(grep -c '"provider"' <<<"$e2")" -eq 2 ] \
+  && grep -q '2026-08-18-kickoff-meeting.md' <<<"$e2first" \
+  && grep -q '"id": "Q3~review=2026+final"' <<<"$e2"; } \
+  && ok "E2: multiple stubs return filename-ordered refs (quoted opaque id unquoted + validated)" \
+  || bad "E2: ordering or quoted-id handling wrong" "rc=$e2rc $e2first"
+# E3 invalid grammar → exit 4 with the offending file NAMED (never silence).
+mkdir -p "$S51D/t3/source_materials"
+cp "$MRFIX/invalid-grammar-meeting.md" "$S51D/t3/source_materials/"
+e3="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t3 --json 2>&1)"; e3rc=$?
+{ [ "$e3rc" -eq 4 ] && grep -q 'invalid-grammar-meeting.md' <<<"$e3" \
+  && grep -q '"reason": "invalid-grammar"' <<<"$e3"; } \
+  && ok "E3: an invalid ref is a NAMED error, exit 4 — never silence" \
+  || bad "E3: invalid grammar not surfaced as a named error" "rc=$e3rc $e3"
+# E4 no ref at all → refs: [] exit 0 — the no-speculative-fetch silence, proven mechanically.
+mkdir -p "$S51D/t4/source_materials"
+cp "$MRFIX/no-ref-notes.md" "$S51D/t4/source_materials/"
+e4="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t4 --json 2>&1)"; e4rc=$?
+{ [ "$e4rc" -eq 0 ] && grep -q '"refs": \[\]' <<<"$e4"; } \
+  && ok "E4: no reference ⇒ refs: [] exit 0 (silence is mechanical, never a guess)" \
+  || bad "E4: the no-ref case is not silent-with-exit-0" "rc=$e4rc $e4"
+# E5 credential-bearing value → exit 4, reason refused-credential (distinct from grammar errors).
+mkdir -p "$S51D/t5/source_materials"
+cp "$MRFIX/credential-url-meeting.md" "$S51D/t5/source_materials/"
+e5="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t5 --json 2>&1)"; e5rc=$?
+{ [ "$e5rc" -eq 4 ] && grep -q '"reason": "refused-credential"' <<<"$e5"; } \
+  && ok "E5: a credential-bearing ref is refused at parse time (exit 4, reason refused-credential)" \
+  || bad "E5: credential refusal missing or mislabeled" "rc=$e5rc $e5"
+# E5b a YAML list is invalid — one meeting per stub is the contract.
+mkdir -p "$S51D/t6/source_materials"
+cp "$MRFIX/list-refs-meeting.md" "$S51D/t6/source_materials/"
+python3 bin/meeting_refs.py --root "$S51D" --ticket t6 --json >"$S51D/e5b.out" 2>&1; e5brc=$?
+{ [ "$e5brc" -eq 4 ] && grep -q '"reason": "list-not-allowed"' "$S51D/e5b.out"; } \
+  && ok "E5b: a meeting_ref list is invalid (exactly one ref per stub)" \
+  || bad "E5b: a list of refs was not refused" "rc=$e5brc"
+# The exit family is the contract callers branch on: 0 ok · 2 usage · 4 malformed-or-refused.
+python3 bin/meeting_refs.py --root "$S51D" --ticket does-not-exist >/dev/null 2>&1; e5urc=$?
+[ "$e5urc" -eq 2 ] && ok "usage errors exit 2 (missing ticket dir)" \
+  || bad "usage error should exit 2, got $e5urc"
+# Config-free by design: matching the ref's provider against seams.meetings.tool is skill-side.
+grep -q 'stack.yaml' bin/meeting_refs.py && ! grep -q 'effective_config' bin/meeting_refs.py \
+  && ok "meeting_refs.py is config-free (never reads stack.yaml; provider match is skill-side)" \
+  || { grep -q 'effective_config' bin/meeting_refs.py \
+       && bad "meeting_refs.py reads config — it must stay purely syntactic" \
+       || ok "meeting_refs.py is config-free (never reads stack.yaml; provider match is skill-side)"; }
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
+  python3 bin/meeting_refs.py --root "$S51D" --ticket t1 --json >/dev/null 2>&1 \
+  && ok "meeting_refs.py needs no Claude environment variable (harness-neutral)" \
+  || bad "meeting_refs.py depends on a CLAUDE_* variable"
+
+# --- structural pins, labeled as such (the section-49 F-H convention) ----------------------------
+# Pin: every meetings adapter carries the exact 3 contract verbs BY NAME (section 2 counts them;
+# this catches a typo'd verb that still counts).
+mv51=""
+for f in adapters/meetings/*.md; do
+  for v in fetch_transcript search_meetings fetch_action_items; do
+    grep -q "^## verb: $v" "$f" || mv51="$mv51 $(basename "$f"):$v"
+  done
+done
+[ -z "$mv51" ] && ok "pin: every meetings adapter names all 3 contract verbs exactly" \
+  || bad "a meetings adapter misses or misspells a contract verb" "$mv51"
+# Pin: the transcript-privacy rule VERBATIM in every fetch_transcript section, with the honesty
+# sentence naming the mechanical gates' limit (shape, never meaning). Prose pins, labeled as such.
+pv51=""
+for f in adapters/meetings/*.md; do
+  sec="$(sed -n '/^## verb: fetch_transcript$/,/^## /p' "$f")"
+  grep -qF 'Curated excerpts and action items are committed; raw full transcripts are not, by default.' <<<"$sec" \
+    || pv51="$pv51 $(basename "$f"):rule"
+  grep -q 'filenames and document shape, never meaning' <<<"$sec" \
+    || pv51="$pv51 $(basename "$f"):honesty"
+done
+[ -z "$pv51" ] && ok "pin: the verbatim privacy rule + honesty sentence sit in every fetch_transcript" \
+  || bad "a meetings adapter's fetch_transcript lacks the verbatim rule or the honesty sentence" "$pv51"
+# Pin: the typed fetch_action_items contract is documented in the contract table, all three statuses.
+{ grep -q 'status: ok | empty | no_native_export' adapters/README.md \
+  && grep -q 'never a runtime probe' adapters/README.md; } \
+  && ok "pin: the typed ok/empty/no_native_export contract is documented (static declaration stated)" \
+  || bad "adapters/README.md lost the typed fetch_action_items contract"
+# Pin: ticket/SKILL.md carries the COMPLETE operative rule (not a pointer): the full portable
+# launcher invocation, the silence rule, and never-write-raw.
+TK51=".claude/skills/ticket/SKILL.md"
+grep -qF 'bin/tw" meeting_refs.py --ticket' "$TK51" \
+  && ok "pin: ticket/SKILL.md enumerates refs via the full portable launcher invocation" \
+  || bad "ticket/SKILL.md lacks the full bin/tw meeting_refs.py invocation"
+tk51flat="$(tr '\n' ' ' < "$TK51")"
+{ grep -qi 'never fetch speculatively' <<<"$tk51flat" && grep -q 'no_native_export' <<<"$tk51flat" \
+  && grep -qi 'never write the raw transcript' <<<"$tk51flat"; } \
+  && ok "pin: the complete rule states silence, the typed statuses, and never-save-raw" \
+  || bad "ticket/SKILL.md's meetings rule is a pointer, not the complete rule"
 
 
 hdr "52 · selftest itself parses under stock macOS bash 3.2 (self-lint)"
