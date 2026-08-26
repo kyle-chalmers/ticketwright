@@ -30,12 +30,15 @@ copy-guard prompt by design. Honesty: curation-in-context and never-save-raw are
 the mechanical gates are the gitignore patterns, the scanner's exit contract, and the
 source-material guard, and those read filenames and document shape, never meaning.
 
-**ID encoding — required before every call below.** `{id}` is opaque and its charset includes `/`,
-and these calls place it in a URL PATH, so percent-encode it as ONE path segment before
-interpolation — an unencoded id changes which path is requested instead of naming a meeting. The
-same rule applies to `<transcriptId>` and to `<joinWebUrl>` in the insights call below (a URL used
-as a path segment must be encoded whole). `bin/meeting_refs.py` validates the charset and never
-encodes; encoding is this adapter's job.
+**ID encoding — for values placed inside a `path=` string, which here is all of them.** `{id}` is
+opaque and its charset includes `/`. Every Graph call in this adapter interpolates it into the
+`path=` argument's URL **path**, so percent-encode it as ONE path segment before interpolating —
+an unencoded id changes which path is requested instead of naming a meeting. The same rule covers
+`<transcriptId>` and `<joinWebUrl>` in the insights call (a URL used as a path segment is encoded
+whole). Note the scope: it is the URL path that needs encoding, not the MCP argument itself — an
+operation taking a bare meeting id as its own argument (rather than a path) would take the
+parser's value verbatim; this adapter has none. `bin/meeting_refs.py` validates the charset and
+never encodes; encoding is this adapter's job.
 
 ```
 mcp__{mcp}__graph_get(path="/me/onlineMeetings/{id}/transcripts")                    # list

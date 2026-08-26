@@ -31,13 +31,22 @@ copy-guard prompt by design. Honesty: curation-in-context and never-save-raw are
 the mechanical gates are the gitignore patterns, the scanner's exit contract, and the
 source-material guard, and those read filenames and document shape, never meaning.
 
-**ID encoding — required before every call below.** `{id}` is opaque and its charset includes `/`
-(a Zoom meeting UUID may begin with `/` or contain `//`), so it is interpolated into a URL path
-only after encoding, never raw: percent-encode it as ONE path segment, and **double-encode** a
-UUID that begins with `/` or contains `//` — Zoom's documented requirement
-(developers.zoom.us/docs/api/meetings, accessed 2026-08-25). An unencoded id changes which path is
-requested instead of naming a meeting. `bin/meeting_refs.py` validates the charset and never
-encodes; encoding is this adapter's job.
+**ID encoding — by transport, because the two are opposite.** `{id}` is opaque and its charset
+includes `/` (a Zoom meeting UUID may begin with `/` or contain `//`), so where it lands decides
+what to do with it:
+
+- **REST calls (every `https://api.zoom.us/...` URL in this adapter — the two below plus the
+  `fetch_action_items` call):** the id is a URL **path parameter**, so encode before
+  interpolating, never raw — percent-encode it as ONE path segment, and **double-encode** a UUID
+  that begins with `/` or contains `//`, Zoom's documented requirement for path parameters
+  (developers.zoom.us/docs/api/meetings, accessed 2026-08-25). An unencoded id changes which path
+  is requested instead of naming a meeting.
+- **MCP calls (`mcp__{mcp}__…(meetingId={id})`):** the id is a call **argument**, not a path
+  segment — pass the parser's value **verbatim, unencoded**. Encoding it here would corrupt the
+  id, because the server does its own URL construction.
+
+`bin/meeting_refs.py` validates the charset and never encodes; encoding is this adapter's job, per
+transport.
 
 Two routes, by what the meeting has:
 

@@ -8005,6 +8005,28 @@ e7="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t10 --json 2>&1)"; e7r
 ! grep -q 'huge-meeting.md' <<<"$e7" \
   && ok "E7b: a huge no-frontmatter file named as a stub is simply not a reference (no error, no ref)" \
   || bad "E7b: the huge stub produced a finding it should not have" "$e7"
+# E7d THE BOUND IS IN BYTES, NOT CHARACTERS. A text-mode read(HEAD_BYTES) counts CHARACTERS, so a
+# multibyte document consumes up to ~4x the documented bound — and a frontmatter block past the
+# byte limit would then CLOSE inside the window and be silently accepted, which is the exact pass
+# this bound exists to prevent. The fixture below closes at ~9 KB / ~3.2 K characters: accepted
+# under a character bound, named under a byte bound.
+mkdir -p "$S51D/t11/source_materials"
+python3 - "$S51D/t11/source_materials" <<'E7DPY'
+import sys, pathlib
+d = pathlib.Path(sys.argv[1])
+body = "---\nmeeting_ref: acmemeet:mtg-1\n" + ("日本語" * 3 + "\n") * 320 + "---\nbody\n"
+assert len(body.encode("utf-8")) > 8192 >= len(body), "fixture must exceed the BYTE bound only"
+(d / "2026-08-27-multibyte-meeting.md").write_text(body, encoding="utf-8")
+E7DPY
+e7d="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t11 --json 2>&1)"; e7drc=$?
+{ [ "$e7drc" -eq 4 ] && grep -q '"reason": "malformed-frontmatter"' <<<"$e7d" \
+  && grep -q 'multibyte-meeting.md' <<<"$e7d" && grep -q '"refs": \[\]' <<<"$e7d"; } \
+  && ok "E7d: the bound is BYTES — a multibyte frontmatter past it is named, never silently accepted" \
+  || bad "E7d: a multibyte block escaped the documented byte bound" "rc=$e7drc $e7d"
+# ...and the reader is binary-mode, which is what makes that true rather than incidental.
+grep -q 'fh.read(HEAD_BYTES).decode' bin/meeting_refs.py \
+  && ok "E7e: read_head reads BYTES then decodes (a character-counting read cannot come back)" \
+  || bad "E7e: read_head no longer reads a bounded byte count"
 # The bound is in the CODE, not just the comment: no unbounded whole-file read may reappear.
 e7src="$(grep -n 'read_text(\|\.read()' bin/meeting_refs.py || true)"
 [ -z "$e7src" ] \
@@ -8085,10 +8107,24 @@ for f in adapters/meetings/*.md; do
 done
 [ -z "$enc51" ] && ok "pin: every meetings adapter states its ID-encoding rule (path segment vs call argument)" \
   || bad "a meetings adapter does not say how it handles a '/' in an opaque id" "$enc51"
-{ grep -qi 'double-encode' adapters/meetings/zoom.md \
-  && grep -qi 'percent-encode it as ONE path segment' adapters/meetings/teams.md; } \
-  && ok "pin: the two URL-path adapters carry their real rules (Zoom double-encoding; Teams single path segment)" \
-  || bad "a URL-path meetings adapter lost its encoding rule"
+# Zoom carries BOTH halves, because its two transports are opposite: encode for the REST path,
+# pass verbatim to the MCP argument. A rule stated for "every call" would corrupt the MCP id.
+zoomenc="$(sed -n '/^\*\*ID encoding/,/^Two routes/p' adapters/meetings/zoom.md | tr '\n' ' ')"
+{ grep -qi 'double-encode' <<<"$zoomenc" && grep -qi 'REST' <<<"$zoomenc" \
+  && grep -qi 'argument' <<<"$zoomenc" && grep -qi 'verbatim, unencoded' <<<"$zoomenc"; } \
+  && ok "pin: zoom's rule is transport-scoped (REST path: encode + double-encode; MCP argument: verbatim)" \
+  || bad "zoom's ID-encoding rule lost a half — it must not demand encoding for the MCP argument" "$zoomenc"
+grep -qi 'percent-encode it as ONE path segment' adapters/meetings/teams.md \
+  && ok "pin: teams encodes each value it places inside a path= URL (all of its calls)" \
+  || bad "teams lost its per-path-segment encoding rule"
+# The three call-argument adapters must keep saying the id is an ARGUMENT, not a path — that is
+# what makes 'no encoding' correct rather than an omission.
+argenc=""
+for f in fireflies granola notion; do
+  grep -qi 'never a URL path segment' "adapters/meetings/$f.md" || argenc="$argenc $f"
+done
+[ -z "$argenc" ] && ok "pin: the call-argument adapters say the id is an argument, never a path (so no encoding applies)" \
+  || bad "a call-argument meetings adapter stopped saying why it does not encode" "$argenc"
 # Pin: every meetings adapter carries the exact 3 contract verbs BY NAME (section 2 counts them;
 # this catches a typo'd verb that still counts).
 mv51=""
