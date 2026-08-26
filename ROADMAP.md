@@ -227,11 +227,10 @@ The record, per leg:
   shipped adapter takes the credential-free local-cache route, so Granola was set aside rather
   than counted.
 - **Commonness — YES, on maintainer attestation (not source-verifiable from this repo).**
-  Attested 2026-08-25: recurring (more-than-monthly) meeting-origin ticket work across two
-  providers — Zoom team-wide (the 3.7.1 fix batch itself originated from three meeting
-  transcripts and two Zoom AI-notes links) and Notion meeting notes on the maintainer's side.
-  Vendor selection was not counted as adoption evidence. If this attestation were withdrawn, the
-  leg would be unproven and the judgment would not stand — the leg rests on attestation, stated
+  Attested 2026-08-25: meeting-origin ticket work recurs at least monthly across two independent
+  providers among the launch set (Zoom and Notion) — the threshold, and no more than that. Vendor
+  selection was not counted as adoption evidence. If this attestation were withdrawn, the leg
+  would be unproven and the judgment would not stand — the leg rests on attestation, stated
   plainly.
 
 What shipped with the judgment: `seams.meetings` as an OPTIONAL, read-only, single-tool slot

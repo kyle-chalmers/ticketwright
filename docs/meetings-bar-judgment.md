@@ -203,25 +203,11 @@ convention and labeled NOT source-verifiable from this repo. Threshold: attested
 (≥monthly) meeting-origin ticket work across ≥2 providers. Vendor selection is explicitly NOT
 adoption evidence.
 
-Attested by the maintainer, 2026-08-25 — and what is attested is meeting-origin TICKET WORK,
-recurring, per provider:
-- **Zoom (team-wide, recurring):** the maintainer's team's onboarding feedback this week arrived
-  through recorded meetings; the maintainer routinely (recurring, more than monthly) feeds Zoom
-  AI notes into ticket work; the kit's own 3.7.1 fix batch originated from three meeting
-  transcripts and two Zoom AI-notes links.
-- **Notion meeting notes (maintainer, recurring):** the maintainer attests recurring
-  meeting-origin ticket work through Notion meeting notes — meetings captured as Notion
-  meeting-notes pages that become the source material for ticket work, on a
-  more-than-monthly cadence. Corroborated (not proven — corroboration only) by an observable
-  fact: the maintainer's own Notion MCP configuration exposes a dedicated meeting-notes query
-  operation (`notion-query-meeting-notes`), a surface that is live in that toolchain because
-  meeting notes are a store worth querying.
-
-That is attested recurring (≥monthly) meeting-origin ticket work across two providers (Zoom
-team-wide, Notion maintainer-side) — the threshold exactly. Vendor selection played no part in
-this leg's evidence. Honest limit, recorded: if the attestation were withdrawn the leg would be
-unproven and the judgment would flip to NO — this leg rests on attestation, and the ROADMAP
-record will say so. **Leg flips: YES.**
+Attested by the maintainer on 2026-08-25: meeting-origin ticket work recurs at least monthly
+across two independent providers among the launch set (Zoom and Notion). That meets the threshold
+exactly — no more is claimed, and vendor selection played no part in the evidence. Honest limit,
+recorded: this leg rests on attestation, so if the attestation were withdrawn the leg would be
+unproven and the judgment would flip to NO — the ROADMAP record says so too. **Leg flips: YES.**
 
 ## Verdict
 
