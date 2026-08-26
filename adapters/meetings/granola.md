@@ -30,6 +30,11 @@ copy-guard prompt by design. Honesty: curation-in-context and never-save-raw are
 the mechanical gates are the gitignore patterns, the scanner's exit contract, and the
 source-material guard, and those read filenames and document shape, never meaning.
 
+**ID encoding — none, and that is a decision, not an omission.** `{id}` is a JSON object KEY in a
+`jq` filter here, never a URL path segment or a shell word of its own, so a `/` in the id is inert;
+pass it verbatim inside the quoted key. (The charset `bin/meeting_refs.py` enforces excludes quotes
+and shell metacharacters, so the value cannot break out of the filter.)
+
 ```
 jq -r '.cache' "{cache_path}" | jq '.state.documents["{id}"]'
 #   → title, created_at, the captured transcript segments (speaker/text entries, present when

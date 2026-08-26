@@ -27,6 +27,11 @@ copy-guard prompt by design. Honesty: curation-in-context and never-save-raw are
 the mechanical gates are the gitignore patterns, the scanner's exit contract, and the
 source-material guard, and those read filenames and document shape, never meaning.
 
+**ID encoding — none, and that is a decision, not an omission.** `{id}` is a GraphQL string
+ARGUMENT here, never a URL path segment, so a `/` in the id is inert; pass it verbatim inside the
+quoted string. (The charset `bin/meeting_refs.py` enforces excludes quotes and shell metacharacters,
+so the value cannot break out of the argument.)
+
 ```
 mcp__{mcp}__query(query='{ transcript(id: "{id}") { title date participants
                             sentences { speaker_name text } } }')

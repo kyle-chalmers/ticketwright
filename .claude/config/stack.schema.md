@@ -200,7 +200,15 @@ malformed-or-refused):
   not the parser); `<id>` is the provider's opaque id, charset `[A-Za-z0-9._~/=+-]+`. An id
   needing YAML quoting may be double-quoted; the same charset applies after unquoting.
   Whitespace and shell metacharacters are **refused** — the value interpolates into adapter
-  commands (the tier-3 injection-refusal precedent).
+  commands (the tier-3 injection-refusal precedent). The charset admits `/`, because real provider
+  ids carry one; an adapter that puts the id in a URL **path** therefore percent-encodes it as one
+  segment first (Zoom double-encodes those UUIDs), and each adapter states its rule under "ID
+  encoding". The parser validates the charset and never encodes — encoding is a per-provider
+  decision the adapter owns.
+- **Bounded reads, and no silent swallow:** the parser reads only the first 8 KB of any file, so a
+  raw transcript misnamed as a stub is never read whole. A frontmatter block that opens and does
+  not close inside that bound is a named error (`malformed-frontmatter`), never a silent "no
+  reference" — silence is reserved for a valid no-ref state.
 - **Optional `meeting_date: YYYY-MM-DD`** as a separate key.
 - **Exactly one `meeting_ref:` per stub** (a list is invalid — one meeting per curated note);
   multiple stubs are returned ordered by filename, so the date prefix gives chronology.

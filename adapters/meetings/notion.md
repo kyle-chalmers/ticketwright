@@ -28,6 +28,9 @@ copy-guard prompt by design. Honesty: curation-in-context and never-save-raw are
 the mechanical gates are the gitignore patterns, the scanner's exit contract, and the
 source-material guard, and those read filenames and document shape, never meaning.
 
+**ID encoding — none, and that is a decision, not an omission.** `{id}` is an MCP call ARGUMENT
+here, never a URL path segment, so a `/` in the id is inert; pass it verbatim.
+
 ```
 mcp__{mcp}__fetch(id={id})
 #   → the meeting-notes page as structured content: title, date, attendees, body — including the

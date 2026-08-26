@@ -7966,6 +7966,50 @@ python3 bin/meeting_refs.py --root "$S51D" --ticket t6 --json >"$S51D/e5b.out" 2
 { [ "$e5brc" -eq 4 ] && grep -q '"reason": "list-not-allowed"' "$S51D/e5b.out"; } \
   && ok "E5b: a meeting_ref list is invalid (exactly one ref per stub)" \
   || bad "E5b: a list of refs was not refused" "rc=$e5brc"
+# E6 MALFORMED FRONTMATTER IS NAMED, NEVER SILENT (independent review, finding 1). An unclosed
+# block can be HIDING a real reference, so reporting "no reference" there would be a claim the
+# parser cannot make — silence is reserved for a valid no-ref state.
+mkdir -p "$S51D/t8/source_materials"
+cp "$MRFIX/2026-08-24-unterminated-meeting.md" "$S51D/t8/source_materials/"
+e6="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t8 --json 2>&1)"; e6rc=$?
+{ [ "$e6rc" -eq 4 ] && grep -q '"reason": "malformed-frontmatter"' <<<"$e6" \
+  && grep -q '2026-08-24-unterminated-meeting.md' <<<"$e6" && grep -q '"refs": \[\]' <<<"$e6"; } \
+  && ok "E6: an unclosed frontmatter block is a NAMED error (exit 4), never a silent no-ref" \
+  || bad "E6: malformed frontmatter was swallowed as 'no reference'" "rc=$e6rc $e6"
+# ...and the same rule in the misplaced sweep: an unreadable block there cannot be certified clean.
+mkdir -p "$S51D/t9/source_materials/archive"
+cp "$MRFIX/2026-08-24-unterminated-meeting.md" "$S51D/t9/source_materials/archive/notes.md"
+e6b="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t9 --json 2>&1)"; e6brc=$?
+{ [ "$e6brc" -eq 4 ] && grep -q '"reason": "malformed-frontmatter"' <<<"$e6b" \
+  && grep -q 'archive/notes.md' <<<"$e6b"; } \
+  && ok "E6b: the misplaced sweep names an unreadable frontmatter block instead of passing it" \
+  || bad "E6b: the sweep certified a block it could not read" "rc=$e6brc $e6b"
+# E7 EVERY READ IS BOUNDED (finding 2): a raw transcript misnamed as a canonical stub must not be
+# read whole, and a frontmatter block larger than the bound is the same named error as E6 — the
+# bound can never turn into a silent pass. Both inputs are generated, never committed.
+mkdir -p "$S51D/t10/source_materials"
+python3 - "$S51D/t10/source_materials" <<'E7PY'
+import sys, pathlib
+d = pathlib.Path(sys.argv[1])
+# (a) frontmatter that opens and runs past the 8 KB bound before closing.
+(d / "2026-08-25-oversized-meeting.md").write_text(
+    "---\nmeeting_ref: acmemeet:mtg-1\n" + ("filler: x\n" * 2000) + "---\nbody\n", encoding="utf-8")
+# (b) a multi-megabyte "transcript" wearing a canonical stub name, with NO frontmatter at all.
+(d / "2026-08-26-huge-meeting.md").write_text("Alice: word word word\n" * 200000, encoding="utf-8")
+E7PY
+e7="$(python3 bin/meeting_refs.py --root "$S51D" --ticket t10 --json 2>&1)"; e7rc=$?
+{ [ "$e7rc" -eq 4 ] && grep -q '"reason": "malformed-frontmatter"' <<<"$e7" \
+  && grep -q 'oversized-meeting.md' <<<"$e7"; } \
+  && ok "E7: a frontmatter block past the read bound is named (the bound never becomes a silent pass)" \
+  || bad "E7: an over-bounded frontmatter block was swallowed" "rc=$e7rc $e7"
+! grep -q 'huge-meeting.md' <<<"$e7" \
+  && ok "E7b: a huge no-frontmatter file named as a stub is simply not a reference (no error, no ref)" \
+  || bad "E7b: the huge stub produced a finding it should not have" "$e7"
+# The bound is in the CODE, not just the comment: no unbounded whole-file read may reappear.
+e7src="$(grep -n 'read_text(\|\.read()' bin/meeting_refs.py || true)"
+[ -z "$e7src" ] \
+  && ok "E7c: meeting_refs.py contains no unbounded read (every read goes through read_head)" \
+  || bad "E7c: an unbounded read crept back into the parser" "$e7src"
 # The exit family is the contract callers branch on: 0 ok · 2 usage · 4 malformed-or-refused.
 python3 bin/meeting_refs.py --root "$S51D" --ticket does-not-exist >/dev/null 2>&1; e5urc=$?
 [ "$e5urc" -eq 2 ] && ok "usage errors exit 2 (missing ticket dir)" \
@@ -7982,7 +8026,69 @@ env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR \
   && ok "meeting_refs.py needs no Claude environment variable (harness-neutral)" \
   || bad "meeting_refs.py depends on a CLAUDE_* variable"
 
+# --- (G) THE PRIVACY CLAIM THIS SLOT MAKES, EXECUTED (independent review, finding 3) -------------
+# ticket/SKILL.md and priming.md tell the agent that source_materials/private/ "flags every /ship
+# scan and copy-guard prompt by design". That claim was FALSE for material the classifier cannot
+# read: a binary export (a .docx/.pdf transcript) classified `binary`, skipped the shape test, and
+# flagged nothing — so a folder-wide docstore backup carried it out with no per-file approval.
+# The declared-raw area is now a DECLARATION (scan_source_materials.classify_path), and this case
+# executes the real scanner and the real guard rather than trusting the prose.
+PV51="$TMP/s51d-priv"; mkdir -p "$PV51/.claude/config" "$PV51/tickets/a/ENG-1/source_materials/private"
+printf 'project:\n  key_prefix: ENG\n' > "$PV51/.claude/config/stack.yaml"
+( cd "$PV51" && git init -q . ) 2>/dev/null
+printf 'PK\003\004\000\000binary export body\000\000' > "$PV51/tickets/a/ENG-1/source_materials/private/board-review.docx"
+printf 'ordinary notes, nothing raw\n' > "$PV51/tickets/a/ENG-1/source_materials/standup.md"
+pv_kind="$(python3 -c "
+import sys; sys.path.insert(0,'bin')
+import scan_source_materials as s
+from pathlib import Path
+print(s.classify_path(Path('$PV51/tickets/a/ENG-1/source_materials/private/board-review.docx'))['kind'])")"
+[ "$pv_kind" = "raw_suspect" ] \
+  && ok "G: a BINARY file under source_materials/private/ is raw_suspect by declaration (the classifier cannot read it — the declaration can)" \
+  || bad "G: a binary export under the declared raw area classifies as '$pv_kind' — it would flag nothing"
+python3 "$SCAN" --root "$PV51" >/dev/null 2>&1 \
+  && bad "G: the scanner exits 0 with declared-raw material present — /ship would back it up" \
+  || ok "G: the scanner exits non-zero on declared-raw material (the signal /ship halts on)"
+pvguard() { printf '%s' "$1" | python3 .claude/hooks/source_material_guard.py 2>/dev/null; }
+pv_cp="$(pvguard "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -r $PV51/tickets/a/ENG-1 /d/x\"},\"cwd\":\"$PV51\"}")"
+{ grep -q '"permissionDecision": "ask"' <<<"$pv_cp" && grep -q 'board-review.docx' <<<"$pv_cp"; } \
+  && ok "G: the copy guard ASKS by name for a binary transcript under private/ (the docstore-backup path)" \
+  || bad "G: a folder-wide backup of declared-raw binary material passes silently" "$pv_cp"
+pv_add="$(pvguard "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$PV51\"}")"
+grep -q '"permissionDecision": "ask"' <<<"$pv_add" \
+  && ok "G: the staging guard ASKS too (a forced add cannot slip declared-raw material into a commit)" \
+  || bad "G: forced staging of declared-raw material passes silently" "$pv_add"
+# ...and the gate stays honest in the other direction: ordinary material outside private/ is quiet.
+rm -rf "$PV51/tickets/a/ENG-1/source_materials/private"
+pv_clean="$(pvguard "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"$PV51\"}")"
+[ -z "$pv_clean" ] && ok "G: no private/ and no raw content ⇒ the guard is silent (it does not cry wolf)" \
+  || bad "G: the declared-raw rule fires on an ordinary ticket" "$pv_clean"
+# The scope is EXACT — the gitignore's `source_materials/private/`, not any directory named private.
+pv_deep="$(python3 -c "
+import sys; sys.path.insert(0,'bin')
+import scan_source_materials as s
+from pathlib import Path
+print(s.classify_path(Path('/x/tickets/a/E-1/source_materials/archive/private/n.md'))['kind'],
+      s.classify_path(Path('/x/tickets/a/E-1/source_materials/private/n.md'))['kind'])")"
+[ "$pv_deep" = "other raw_suspect" ] \
+  && ok "G: the declared-raw scope is exact (source_materials/private/ only, matching the gitignore pattern)" \
+  || bad "G: the declared-raw scope is wrong" "got: $pv_deep"
+
 # --- structural pins, labeled as such (the section-49 F-H convention) ----------------------------
+# Pin: an adapter that interpolates the opaque id into a URL PATH must state its encoding rule —
+# the grammar admits `/` (real Zoom UUIDs carry one), so an unencoded id would change which path
+# is requested (independent review, finding 4). Adapters whose id is a call ARGUMENT say so too,
+# and each says which it is: the parser validates the charset and never encodes.
+enc51=""
+for f in adapters/meetings/*.md; do
+  grep -q '^\*\*ID encoding' "$f" || enc51="$enc51 $(basename "$f")"
+done
+[ -z "$enc51" ] && ok "pin: every meetings adapter states its ID-encoding rule (path segment vs call argument)" \
+  || bad "a meetings adapter does not say how it handles a '/' in an opaque id" "$enc51"
+{ grep -qi 'double-encode' adapters/meetings/zoom.md \
+  && grep -qi 'percent-encode it as ONE path segment' adapters/meetings/teams.md; } \
+  && ok "pin: the two URL-path adapters carry their real rules (Zoom double-encoding; Teams single path segment)" \
+  || bad "a URL-path meetings adapter lost its encoding rule"
 # Pin: every meetings adapter carries the exact 3 contract verbs BY NAME (section 2 counts them;
 # this catches a typo'd verb that still counts).
 mv51=""

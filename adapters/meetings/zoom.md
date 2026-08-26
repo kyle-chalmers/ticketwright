@@ -31,6 +31,14 @@ copy-guard prompt by design. Honesty: curation-in-context and never-save-raw are
 the mechanical gates are the gitignore patterns, the scanner's exit contract, and the
 source-material guard, and those read filenames and document shape, never meaning.
 
+**ID encoding — required before every call below.** `{id}` is opaque and its charset includes `/`
+(a Zoom meeting UUID may begin with `/` or contain `//`), so it is interpolated into a URL path
+only after encoding, never raw: percent-encode it as ONE path segment, and **double-encode** a
+UUID that begins with `/` or contains `//` — Zoom's documented requirement
+(developers.zoom.us/docs/api/meetings, accessed 2026-08-25). An unencoded id changes which path is
+requested instead of naming a meeting. `bin/meeting_refs.py` validates the charset and never
+encodes; encoding is this adapter's job.
+
 Two routes, by what the meeting has:
 
 ```

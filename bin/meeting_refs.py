@@ -13,6 +13,16 @@ The reference contract (documented in .claude/config/stack.schema.md):
 - Optional `meeting_date: YYYY-MM-DD` as a separate key.
 - Exactly one `meeting_ref:` per stub (a YAML list is invalid); many stubs are fine and are
   returned ordered by filename (the date prefix gives chronology).
+- **The id is opaque, and its charset includes `/`** — real provider ids carry one (a Zoom
+  meeting UUID may begin with `/` or contain `//`). It is therefore NOT safe to drop into a URL
+  path unencoded: a consumer that interpolates the id into a request path MUST percent-encode it
+  as a single path segment first (Zoom additionally requires DOUBLE encoding for those UUIDs).
+  Each adapter states its own rule under "ID encoding"; this parser validates the charset and
+  never encodes — encoding is a per-provider decision an adapter owns.
+- Every read is BOUNDED (the first 8 KB): a raw transcript misnamed as a canonical stub is never
+  read into memory whole. A frontmatter block that opens and does not close inside that bound is
+  a NAMED error (`malformed-frontmatter`), never silence — "we could not read it" and "there is
+  no reference" are different claims, and only the second may be silent.
 - No reference => silence, mechanically: `{"refs": []}` and exit 0. The skill then does nothing —
   never a speculative fetch.
 - Invalid reference => a NAMED error, never silence: exit 4 with the offending file and reason.
@@ -49,15 +59,34 @@ STUB_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-.+-meeting\.md$")
 CREDENTIAL_MARKS = ("://", "?", "token=", "access_token", "key=", "bearer ")
 
 
-def frontmatter_lines(text: str) -> list[str]:
-    """The lines between a leading '---' fence and its closing '---', or []."""
+HEAD_BYTES = 8192  # every read is bounded: a stub is frontmatter + prose, never a transcript
+
+
+def read_head(path: Path) -> str:
+    """The first HEAD_BYTES of a file. Bounded for EVERY file this tool touches — a raw transcript
+    misnamed as a canonical stub must not be read into memory whole."""
+    with path.open(encoding="utf-8", errors="replace") as fh:
+        return fh.read(HEAD_BYTES)
+
+
+def frontmatter_lines(text: str) -> tuple[list[str], str]:
+    """(lines between a leading '---' fence and its closing '---', status).
+
+    status is one of:
+      "none"         — no leading fence: not a frontmatter document at all. A VALID no-ref state.
+      "ok"           — the block opened and closed inside the bounded head.
+      "unterminated" — it opened and did NOT close within the bound (malformed, or a frontmatter
+                       block larger than HEAD_BYTES). NEVER silence: the caller names it, because
+                       "we could not read it" and "there is no reference" are different claims and
+                       only the second one may be silent.
+    """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
-        return []
+        return [], "none"
     for i in range(1, len(lines)):
         if lines[i].strip() == "---":
-            return lines[1:i]
-    return []
+            return lines[1:i], "ok"
+    return lines[1:], "unterminated"
 
 
 def unquote(value: str) -> tuple[str, bool]:
@@ -70,11 +99,19 @@ def unquote(value: str) -> tuple[str, bool]:
 def parse_stub(path: Path, rel: str, errors: list[dict]) -> dict | None:
     """Parse one stub's frontmatter. Returns a ref record, or None (no ref / error recorded)."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = read_head(path)
     except OSError as exc:
         errors.append({"file": rel, "reason": "unreadable", "detail": str(exc)})
         return None
-    fm = frontmatter_lines(text)
+    fm, fm_status = frontmatter_lines(text)
+    if fm_status == "unterminated":
+        # Silence is reserved for a VALID no-ref state. An unclosed (or over-bounded) frontmatter
+        # block could be hiding a real reference, so it is named rather than swallowed.
+        errors.append({"file": rel, "reason": "malformed-frontmatter",
+                       "detail": f"frontmatter opened with '---' and did not close within the "
+                                 f"first {HEAD_BYTES} bytes; close the block (a stub is "
+                                 f"frontmatter plus a short curated note, never a transcript)"})
+        return None
     ref_lines = [ln for ln in fm if re.match(r"^meeting_ref\s*:", ln)]
     if not ref_lines:
         # A bare `meeting_ref:` followed by `- item` list lines has no inline value and is caught
@@ -192,11 +229,18 @@ def main(argv: list[str] | None = None) -> int:
             # The misplaced sweep reads only the head of each file (bounded, binary-safe) and only
             # its frontmatter — a meeting_ref mentioned in body prose never trips it.
             try:
-                head = path.open(encoding="utf-8", errors="replace").read(8192)
+                head = read_head(path)
             except OSError:
                 continue
-            fm = frontmatter_lines(head)
-            if any(re.match(r"^meeting_ref\s*:", ln) for ln in fm):
+            fm, fm_status = frontmatter_lines(head)
+            if fm_status == "unterminated":
+                # Same rule as a canonical stub: an unreadable frontmatter block is NAMED, because
+                # it may hide a misplaced reference. Silence would be a claim we cannot make.
+                errors.append({"file": rel, "reason": "malformed-frontmatter",
+                               "detail": f"frontmatter opened with '---' and did not close within "
+                                         f"the first {HEAD_BYTES} bytes — cannot rule out a "
+                                         f"misplaced meeting_ref here"})
+            elif any(re.match(r"^meeting_ref\s*:", ln) for ln in fm):
                 errors.append({"file": rel, "reason": "misplaced-ref",
                                "detail": "meeting_ref belongs in a top-level "
                                          "YYYY-MM-DD-<slug>-meeting.md stub; move it there"})
