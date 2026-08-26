@@ -26,6 +26,34 @@ ok()   { PASS=$((PASS+1)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
 bad()  { FAIL=$((FAIL+1)); printf "  \033[31m✗\033[0m %s\n" "$1"; [ -n "${2:-}" ] && printf "      %s\n" "$2"; return 0; }
 hdr()  { printf "\n\033[1m%s\033[0m\n" "$1"; }
 
+# ── the hermetic PATH ────────────────────────────────────────────────────────────────────────────
+# verify_stack `eval`s each seam's verify: command, so running it WITHOUT --dry-run executes whatever
+# the fixture config names. Pointed at a realistic stack that meant `snow connection test` (a Duo MFA
+# push that blocks forever), `acli jira workitem search` and `gh auth status` firing on the machine of
+# anyone who has those CLIs installed — silently, since no assertion looked at their output. CI never
+# caught it: the runners have no warehouse CLI, so the commands simply failed to resolve.
+#
+# So a real verify_stack run happens on a PATH built from an explicit allowlist. What this guarantees
+# is narrow and worth stating exactly: no tracker/warehouse/vcs tool CLI is reachable. It is NOT a
+# claim that every entry is inert — `git` is here because bin/tw → kit_paths.py shells out to
+# `git rev-parse --show-toplevel` to find the project root.
+SAFEBIN="$TMP/safe-bin"; mkdir -p "$SAFEBIN"
+for c in bash sh env printf awk sed grep tr cut basename dirname realpath readlink python3 mktemp \
+         rm cat head tail sort uniq wc xargs cp mv mkdir touch chmod ln date id git test; do
+  src="$(command -v "$c" 2>/dev/null)" && ln -sf "$src" "$SAFEBIN/$c"
+done
+
+# The ONLY sanctioned way to run verify_stack for real. It runs verify_stack under a hermetic PATH so
+# a bare `snow`/`acli`/`gh` in a fixture's verify: does not resolve. It shadows by NAME: an absolute
+# path, a verify: that resets PATH, or an unlisted CLI would still run, and nothing in the shell
+# forces a caller through this helper — section 53's lint only keeps the obvious raw call out of this
+# file, and a text lint cannot survive indirection. Use it anyway; it is the one place to audit.
+# VS_PATH lets one section substitute its own sandbox (section 50 adds an offline rclone stub)
+# without reopening the default for everyone else.
+# Deliberately a ONE-LINER: section 53's lint exempts this definition by name, and a body on its own
+# line would read as an unrouted raw call and fail the lint against itself.
+safe_verify_stack() { PATH="${VS_PATH:-$SAFEBIN}" CLAUDE_PLUGIN_ROOT="$KIT" bash "$KIT/bin/verify_stack.sh" "$@"; }
+
 hdr "0 · tooling"
 command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
 command -v python3 >/dev/null 2>&1 && ok "python3 present" || bad "python3 missing"
@@ -2059,8 +2087,7 @@ else
       && ! grep -qiE '(^|[^A-Za-z0-9])yq([^A-Za-z0-9]|$)' <<<"$o"; } \
     && ok "handoff.sh resolves routes with yq absent from PATH entirely" \
     || bad "handoff.sh still depends on yq" "$o rc=$rc"
-  o="$(PATH="$NOYQ" CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh \
-        "$KIT/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
+  o="$(VS_PATH="$NOYQ" safe_verify_stack "$KIT/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
   { [ "$rc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$o"; } \
     && ok "verify_stack.sh resolves every seam with yq absent from PATH entirely" \
     || bad "verify_stack.sh still depends on yq (it used to exit 1 without it)" "$o rc=$rc"
@@ -2218,7 +2245,7 @@ RQ="$TMP/requires"; mkdir -p "$RQ/.claude/config"
 
 # (A) A key the verify never mentions: silently green before, named now.
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    cli: acli\n    verify: "true"\n' > "$RQ/.claude/config/stack.yaml"
-rqo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)"
+rqo="$(safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)"
 grep -q 'required key(s) not set: site' <<<"$rqo" \
   && ok "verify_stack names an unset required key its verify never references (jira site)" \
   || bad "an unset required key went unreported" "$rqo"
@@ -2234,7 +2261,7 @@ grep -q 'required key(s) not set: site' <<<"$rqo" \
 # (B) A seam with verify: null checked nothing at all before.
 printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
 grep -q 'required key(s) not set: mcp' \
-  <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)" \
+  <<<"$(safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)" \
   && ok "verify_stack checks required keys even when verify is null" \
   || bad "a verify: null seam still checks nothing"
 
@@ -2243,7 +2270,7 @@ grep -q 'required key(s) not set: mcp' \
 # check reports `always_include: [Ana]` as missing forever — which it did, on two shipped configs.
 printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: teams\n    adapter: adapters/chat/teams.md\n    transport: mcp\n    channel: "D"\n    default_mode: draft\n    always_include: [Ana]\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
 grep -q 'always_include' \
-  <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)" \
+  <<<"$(safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)" \
   && bad "a list-valued required key is misreported as unset (scalar filter leaked into the check)" \
   || ok "a list-valued required key counts as present (always_include)"
 
@@ -2251,7 +2278,7 @@ grep -q 'always_include' \
 # a missing seam key — the token file merges project tokens in, so reading it would mask this.
 printf 'project:\n  key_prefix: ENG\n  site: not-a-seam-key\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    cli: acli\n    verify: "true"\n' > "$RQ/.claude/config/stack.yaml"
 grep -q 'required key(s) not set: site' \
-  <<<"$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RQ/.claude/config/stack.yaml" 2>&1)" \
+  <<<"$(safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)" \
   && ok "a project.* key does not satisfy a missing seam key of the same name" \
   || bad "project token masked a missing seam key"
 
@@ -2896,16 +2923,55 @@ o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stac
 # verify commands run through `eval`, and a {token} value now comes from a gitignored local file.
 # Quoting is not available: the token is usually already inside quotes in the template, so quoting
 # again would corrupt legitimate paths. So a value carrying shell syntax is REFUSED.
+#
+# This runs for REAL (no --dry-run) on purpose: under --dry-run nothing is ever eval'd, so the PWNED
+# check below would pass vacuously and this would shrink to "the refusal message was printed". The
+# fixture is therefore its own, with inert verify commands — it used to borrow the shipped
+# multi-warehouse example, which meant refusing `lake` and then running the OTHER seams' real
+# `snow`/`acli`/`gh` commands. The `after` target writes a marker, and the check below pins that it
+# ran AFTER the refusal — so a clean PWNED result means "refused", not "executed nothing".
+MC="$(ecroot metachar)"
+cat > "$MC/.claude/config/stack.yaml" <<YAML
+project:
+  key_prefix: ENG
+seams:
+  warehouse:
+    default: prod
+    targets:
+      prod:
+        tool: snowflake
+        adapter: adapters/warehouse/snowflake.md
+        verify: "true"
+      lake:
+        tool: databricks
+        adapter: adapters/warehouse/databricks.md
+        warehouse_id: 0a1b2c3d
+        catalog: main
+        schema: analytics
+        verify: "true --profile {profile}"
+      after:
+        tool: snowflake
+        adapter: adapters/warehouse/snowflake.md
+        verify: "touch $TMP/AFTER_REFUSAL"
+YAML
 printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: "x; touch %s/PWNED"\n' "$TMP" \
-  > "$RJ/.claude/config/connections.local.yaml"
-rm -f "$TMP/PWNED"
-o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" 2>&1)"
+  > "$MC/.claude/config/connections.local.yaml"
+rm -f "$TMP/PWNED" "$TMP/AFTER_REFUSAL"
+o="$(safe_verify_stack "$MC/.claude/config/stack.yaml" 2>&1)"
 { grep -q 'refusing to run' <<<"$o" && [ ! -f "$TMP/PWNED" ]; } \
   && ok "a token value with shell metacharacters is refused, not executed" \
   || bad "a tier-3 value reached the shell (command injection)" "$o"
+# Assert the ORDER from the output, not just the marker's existence: "the run continued past the
+# refusal" would otherwise quietly depend on targets being walked in config order, and a marker
+# written by a target that ran BEFORE the refused one proves nothing about continuing.
+mc_ref="$(grep -n 'refusing to run' <<<"$o" | head -1 | cut -d: -f1)"
+mc_aft="$(grep -n 'warehouse\[after\].*reachable' <<<"$o" | head -1 | cut -d: -f1)"
+{ [ -f "$TMP/AFTER_REFUSAL" ] && [ -n "$mc_ref" ] && [ -n "$mc_aft" ] && [ "$mc_aft" -gt "$mc_ref" ]; } \
+  && ok "…and the refusal was per-seam: a LATER seam still reached eval (so the check above is not vacuous)" \
+  || bad "no seam after the refused one executed — the injection check proves nothing" "$o"
 printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        profile: "my profile.2"\n' \
-  > "$RJ/.claude/config/connections.local.yaml"
-o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" --dry-run 2>&1)"
+  > "$MC/.claude/config/connections.local.yaml"
+o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MC/.claude/config/stack.yaml" --dry-run 2>&1)"
 grep -q 'my profile.2' <<<"$o" \
   && ok "…while an ordinary value with spaces and dots still interpolates" \
   || bad "the metacharacter check rejected a legitimate value" "$o"
@@ -6642,11 +6708,12 @@ grep -qi 'lsd' "$RC" && grep -qiE 'not identity|exits 0|different account' "$RC"
   && ok "…and rclone.md says plainly that lsd/about prove reachability, not identity" \
   || bad "rclone.md presents a reachability probe as identity proof"
 # Prove the check with a stubbed rclone: right token passes, wrong token fails. No network, no creds.
+# Seed from the shared hermetic PATH rather than rebuilding the allowlist — one list, one place to
+# audit. Re-symlink instead of `cp -R`: BSD cp preserves symlinks but GNU cp -R dereferences them,
+# so a copy would behave differently on the Linux CI runner than on macOS. The rclone stub is then
+# the ONLY thing this sandbox adds, which is what section 53 asserts.
 RCBIN="$TMP/rc-bin"; mkdir -p "$RCBIN"
-for c in bash sh env printf awk sed grep tr cut basename dirname realpath python3 mktemp rm cat \
-         head tail sort uniq wc xargs cp mv mkdir touch chmod ln date id git test; do
-  src="$(command -v "$c" 2>/dev/null)" && ln -sf "$src" "$RCBIN/$c"
-done
+for f in "$SAFEBIN"/*; do ln -sf "$f" "$RCBIN/$(basename "$f")"; done
 cat > "$RCBIN/rclone" <<'STUB'
 #!/bin/sh
 # Fixture stub. Serves ONE purpose: `rclone cat <remote>:<path>/.ticketwright-target` echoes the
@@ -6668,14 +6735,12 @@ else
   printf 'eng-sentinel-01' > "$RC_STUB_DIR/teamdrive.token"      # the team's real destination
   printf 'someone-elses-bucket' > "$RC_STUB_DIR/attacker-drive.token"
   rc_local teamdrive
-  o="$(PATH="$RCBIN" RC_STUB_DIR="$RC_STUB_DIR" CLAUDE_PLUGIN_ROOT="$KIT" \
-        bash "$KIT/bin/verify_stack.sh" "$RCP50/.claude/config/stack.yaml" 2>&1)"
+  o="$(RC_STUB_DIR="$RC_STUB_DIR" VS_PATH="$RCBIN" safe_verify_stack "$RCP50/.claude/config/stack.yaml" 2>&1)"
   grep -q 'All seams OK' <<<"$o" \
     && ok "a remote whose sentinel matches the team token VERIFIES (no mount anywhere in the path)" \
     || bad "the correct rclone remote failed verification" "$o"
   rc_local attacker-drive
-  o="$(PATH="$RCBIN" RC_STUB_DIR="$RC_STUB_DIR" CLAUDE_PLUGIN_ROOT="$KIT" \
-        bash "$KIT/bin/verify_stack.sh" "$RCP50/.claude/config/stack.yaml" 2>&1)"; rc=$?
+  o="$(RC_STUB_DIR="$RC_STUB_DIR" VS_PATH="$RCBIN" safe_verify_stack "$RCP50/.claude/config/stack.yaml" 2>&1)"; rc=$?
   { [ "$rc" -ne 0 ] && grep -q 'UNREACHABLE' <<<"$o"; } \
     && ok "…and a remote pointed at a DIFFERENT account fails it — the redirect lsd would have missed" \
     || bad "the sentinel check passed a redirected remote" "$o rc=$rc"
@@ -7765,7 +7830,7 @@ grep -qF '3 OK, 2 unverified (chat, docstore).' <<<"$rs51" \
 # --- (D) failed verify: the advisory still prints after ✗ UNREACHABLE, exit stays 1 ---------------
 FV51="$TMP/fv51"; mkdir -p "$FV51"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    transport: both\n    cli: snow\n    verify: "false"\n' > "$FV51/stack.yaml"
-fv51="$(bash bin/verify_stack.sh "$FV51/stack.yaml" 2>&1)"; fv51rc=$?
+fv51="$(safe_verify_stack "$FV51/stack.yaml" 2>&1)"; fv51rc=$?
 printf '%s\n' "$fv51" > "$TMP/fv51.out"
 { [ "$fv51rc" -eq 1 ] && grep -q 'UNREACHABLE' <<<"$fv51" \
   && grep -qF 'posture[warehouse]: transport=both' <<<"$fv51"; } \
@@ -7780,7 +7845,10 @@ UV51="$TMP/uv51"; mkdir -p "$UV51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    transport: both\n    warehouse_id: X\n    catalog: c\n    schema: s\n    verify: "databricks --profile {profile} current-user me"\n' > "$UV51/.claude/config/stack.yaml"
 printf 'person: alice\nseams:\n  warehouse:\n    profile: "x; touch %s/PWNED51"\n' "$TMP" > "$UV51/.claude/config/connections.local.yaml"
 rm -f "$TMP/PWNED51"
-uv51="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$UV51/.claude/config/stack.yaml" 2>&1)"; uv51rc=$?
+# Routed through safe_verify_stack: this fixture's verify names the REAL `databricks` CLI and is
+# inert only because the refusal fires. Were that to regress, this line would run it for real —
+# the exact shape section 53 exists to prevent.
+uv51="$(safe_verify_stack "$UV51/.claude/config/stack.yaml" 2>&1)"; uv51rc=$?
 printf '%s\n' "$uv51" > "$TMP/uv51.out"
 { [ "$uv51rc" -eq 1 ] && grep -q 'refusing to run' <<<"$uv51" && [ ! -f "$TMP/PWNED51" ] \
   && grep -qF 'posture[warehouse]: transport=both' <<<"$uv51"; } \
@@ -8188,6 +8256,75 @@ if [ -x /bin/bash ] && /bin/bash -c '[ "${BASH_VERSINFO[0]}" -eq 3 ]' 2>/dev/nul
     || bad "/bin/bash (3.2) cannot parse selftest" "$(head -2 "$TMP/hd52.err")"
 fi
 
+hdr "53 · the suite itself never reaches a real tool (its own read-only contract)"
+# AGENTS.md and this file's own header promise "read-only, no network, no credentials". That promise
+# was broken for three releases by ONE line: a verify_stack run without --dry-run against a realistic
+# stack, which eval'd `snow connection test` (a Duo MFA push that blocks forever), `acli jira
+# workitem search` and `gh auth status` on any machine with those CLIs. Nothing asserted their output,
+# so the suite stayed green; CI never saw it, having no warehouse CLI installed.
+#
+# safe_verify_stack() at the top of this file is the safe path: it runs verify_stack under a PATH no
+# bare tool CLI resolves on. Two honest limits. (a) It shadows by NAME on PATH — an absolute path, a
+# `verify:` that resets PATH, or a CLI nobody listed still runs. (b) Routing through it is a
+# convention the shell does not enforce; the lint below keeps the obvious raw call out of the file but
+# matches TEXT, so indirection (bash "bin/$var", a call inside eval, a wrapper) slips past. Neither
+# is the guarantee on its own.
+# Three shapes count as an invocation, because verify_stack.sh is executable (-rwxr-xr-x): a `bash`
+# prefix (also covers `env bash`), an `sh` prefix, and the script in COMMAND POSITION with no
+# interpreter at all — `bin/verify_stack.sh "$s"` or `"$KIT/bin/verify_stack.sh" "$s"`. That last one
+# is the shape someone adding a section would most naturally write, and matching only `bash …` missed
+# it completely. Requiring the `bin/` prefix in command position is what keeps this from firing on
+# `cp "$KIT/bin/verify_stack.sh" …`, `grep … bin/verify_stack.sh`, or an ok/bad message that merely
+# names the script.
+# Strip trailing comments BEFORE testing for --dry-run, and require the flag to follow
+# verify_stack.sh on the line: a bare `grep -v -- --dry-run` discarded any line that merely mentioned
+# the flag in a comment, which hid a live raw call. (Codex review caught this false negative.)
+vs53="$(grep -nE 'bash[^|]*verify_stack\.sh|(^|[[:space:]]|[;&|(])sh[[:space:]][^|]*verify_stack\.sh|(^|[;&|(]|\$\()[[:space:]]*"?[^"[:space:]]*bin/verify_stack\.sh' bin/selftest.sh \
+        | grep -vE '^[0-9]+:[[:space:]]*#' \
+        | sed 's/[[:space:]]#.*$//' \
+        | grep -vE 'verify_stack\.sh.*--dry-run' \
+        | grep -v 'safe_verify_stack()' | grep -v 'vs53=' || true)"
+[ -z "$vs53" ] \
+  && ok "no raw non-dry-run verify_stack call in the suite (real runs go through safe_verify_stack)" \
+  || bad "a verify_stack call runs seam commands for real on the ambient PATH — route it through safe_verify_stack" "$vs53"
+
+# The allowlist must not quietly grow a tool CLI. This is the property the hermetic PATH actually
+# guarantees; it does NOT claim every entry is inert (git is there for kit_paths' rev-parse).
+sb53="$(ls "$SAFEBIN" | grep -xE 'snow|snowsql|acli|jira|gh|glab|databricks|dbsqlcli|psql|bq|az|sqlcmd|rclone' || true)"
+[ -z "$sb53" ] && ok "the hermetic PATH holds no tracker/warehouse CLI, and no vcs CLI but git (kit_paths needs rev-parse)" \
+  || bad "a real tool CLI entered the hermetic PATH allowlist" "$sb53"
+
+# Section 50 substitutes its own sandbox via VS_PATH. It may add exactly one thing: the offline
+# rclone stub it asserts on. Anything else would be a second real binary nobody checked.
+# BOTH directions: -23 catches an added binary, -13 a dropped one. Extras-only would let RCBIN
+# silently LOSE an allowlist entry while still reporting "the hermetic PATH plus exactly one stub" —
+# a claim of equality checked in one direction. (Codex review caught this.)
+ls "$RCBIN"   | sort > "$TMP/rc53.a"
+ls "$SAFEBIN" | sort > "$TMP/rc53.b"
+rc53add="$(comm -23 "$TMP/rc53.a" "$TMP/rc53.b" | tr '\n' ' ')"
+rc53del="$(comm -13 "$TMP/rc53.a" "$TMP/rc53.b" | tr '\n' ' ')"
+{ [ "$(printf '%s' "$rc53add" | tr -d ' ')" = "rclone" ] && [ -z "$(printf '%s' "$rc53del" | tr -d ' ')" ]; } \
+  && ok "the rclone sandbox is the hermetic PATH plus exactly one stub (nothing added, nothing dropped)" \
+  || bad "the rclone sandbox PATH is not the hermetic PATH plus the rclone stub" "added: ${rc53add:-none} | dropped: ${rc53del:-none}"
+
+# A name check is not a behavioural one. Where a real warehouse CLI exists on this machine, prove the
+# sandbox actually shadows it — this is the assertion that would have caught the original bug.
+# Say plainly how many were actually testable: with none installed (a CI runner) this proves nothing,
+# and reporting it as a pass without that caveat is the same kind of green-over-nothing that hid the
+# original bug.
+sh53=""; sn53=0
+for c in snow snowsql acli gh glab databricks dbsqlcli psql bq az rclone; do
+  command -v "$c" >/dev/null 2>&1 || continue
+  sn53=$((sn53 + 1))
+  ( PATH="$SAFEBIN"; command -v "$c" >/dev/null 2>&1 ) && sh53="$sh53 $c"
+done
+if [ -n "$sh53" ]; then
+  bad "a tool CLI is still reachable inside the hermetic PATH" "$sh53"
+elif [ "$sn53" -eq 0 ]; then
+  ok "no tool CLI installed here, so the hermetic PATH could not be exercised (vacuous — CI's normal state)"
+else
+  ok "none of the $sn53 tool CLI(s) installed here resolve inside the hermetic PATH"
+fi
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

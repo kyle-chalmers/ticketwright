@@ -56,7 +56,21 @@ inside `$( )` — the whole file dies at parse time while earlier sections' ✓ 
 capture heredoc output via a temp file (`python3 - <<'PY' >"$TMP/x.out"` … then `var="$(cat …)"`),
 never `var="$(python3 - <<'PY' …)"`. Section 52 lints the file for the forbidden shape and CI runs the
 full suite under `/bin/bash` on macOS (this shipped broken three releases in a row before the guard).
-It needs `yq` and `python3` only. It is organized into ~23 numbered sections (config resolution, adapter
+
+"No credentials" is guarded the same way. `verify_stack.sh` `eval`s each seam's `verify:` command,
+so running it without `--dry-run` executes whatever the fixture names — one such site quietly fired
+`snow connection test` (a Duo MFA push that blocks forever), `acli` and `gh` at every contributor with
+those CLIs, invisible to CI, which has none. **Never call `verify_stack.sh` for real directly**: use
+`safe_verify_stack` (`VS_PATH=` to substitute a sandbox), which runs it under a hermetic `PATH` built
+from a small utility allowlist, so a bare `snow`/`acli`/`gh` in a fixture's `verify:` does not resolve.
+Know the limit as well as the guarantee: it shadows CLIs by NAME on `PATH`, so an absolute path, a
+`verify:` that resets `PATH`, or a CLI nobody listed would still run — and routing through the helper
+is a convention the shell cannot enforce. Section 53(a) matches three invocation shapes (a `bash`
+prefix, an `sh` prefix, and the executable in bare command position — `verify_stack.sh` is `+x`, so
+that last one needs no interpreter), but it matches TEXT, so indirection through a variable or `eval`
+slips past it; 53 also pins that the allowlist grows no tracker/warehouse
+CLI (`git` is listed deliberately — `kit_paths` shells out to `rev-parse`).
+`selftest.sh` needs `yq` and `python3` only. It is organized into ~23 numbered sections (config resolution, adapter
 verb coverage, tool-name isolation, every hook, the index/recall engines, the render gate, the Obsidian
 graph layer, version sync, …). **When you change behavior, add or update the matching numbered section** —
 a green selftest is the contract this kit ships on. It must print `0 failed`.
