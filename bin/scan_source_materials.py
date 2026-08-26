@@ -187,10 +187,36 @@ def has_transcript_shape(text: str) -> bool:
     return (hits / nonblank) >= MIN_SPEAKER_RATIO
 
 
+def in_declared_raw_area(path: Path) -> bool:
+    """True for a file under `source_materials/private/` — the documented raw OPT-IN area.
+
+    Scope is exact (a `private/` directory directly inside `source_materials/`), matching the
+    gitignore pattern that area is defined by. A deeper directory that merely happens to be named
+    `private/` earns nothing.
+    """
+    parts = path.parts
+    for i, part in enumerate(parts[:-1]):
+        if part == "source_materials" and i + 1 < len(parts) - 1 and parts[i + 1] == "private":
+            return True
+    return False
+
+
 def classify_path(path: Path) -> dict:
     """Classify one file. Never raises — an unreadable file reports, it does not crash a hook."""
     name = path.name
     result = {"file": str(path), "name": name, "kind": KIND_OTHER, "reason": ""}
+
+    # 1 · DECLARED raw, before any test that depends on reading the file. `source_materials/private/`
+    # is the opt-in area a PERSON puts raw material into: the declaration is the classification, so
+    # coverage here never depends on what the shape test can parse. This closes the case the
+    # classifier provably cannot judge — a binary export (a .docx/.pdf transcript) reports `binary`,
+    # skips the shape test, and would otherwise flag nothing at all, letting a folder-wide docstore
+    # backup carry it out with no per-file approval. Gating more, visibly, is the standing rule.
+    if in_declared_raw_area(path):
+        result.update(kind=KIND_RAW_SUSPECT,
+                      reason="under source_materials/private/ — the declared raw opt-in area "
+                             "(declaration, not a content judgement)")
+        return result
 
     try:
         if path.is_symlink():

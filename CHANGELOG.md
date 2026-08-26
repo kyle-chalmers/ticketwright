@@ -53,9 +53,19 @@ All notable changes to this project are documented here. Format loosely follows
   fetch). `seams.meetings` is optional like docstore (worked example in
   `stack.example.multi-audience.yaml`); `/setup tool meetings` adds it later; the session banner
   always prints the slot (`meetings=—` when absent). Selftest section 51d covers the parser,
-  resolver, banner, render, and the labeled structural pins. Privacy mechanics are unchanged
-  from the intake stage: the gitignore patterns, scanner, and guard remain the mechanical layer,
-  and they read filenames and document shape, never meaning.
+  resolver, banner, render, and the labeled structural pins.
+
+### Fixed
+- **`source_materials/private/` now actually gates what it promised.** The declared raw opt-in
+  area was only ever protected for material the classifier could *read*: a binary export (a
+  `.docx`/`.pdf` transcript) classified `binary`, skipped the shape test, flagged nothing, and a
+  folder-wide docstore backup carried it out with no per-file approval — while the docs said that
+  area "flags every `/ship` scan and copy-guard prompt". A file under `source_materials/private/`
+  is now `raw_suspect` **by declaration** (the person put it there; coverage no longer depends on
+  what the shape test can parse), so the scanner's exit contract and both guard paths gate it.
+  Scope is exact — `source_materials/private/`, matching the gitignore pattern, not any directory
+  named `private/`. Everything else is unchanged, including the honest limit that the classifier
+  matches filenames and document shape, **never meaning**.
 
 ## [3.7.1] — 2026-08-25
 
