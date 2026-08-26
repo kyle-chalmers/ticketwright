@@ -19,7 +19,8 @@ The reference contract (documented in .claude/config/stack.schema.md):
   as a single path segment first (Zoom additionally requires DOUBLE encoding for those UUIDs).
   Each adapter states its own rule under "ID encoding"; this parser validates the charset and
   never encodes — encoding is a per-provider decision an adapter owns.
-- Every read is BOUNDED (the first 8 KB): a raw transcript misnamed as a canonical stub is never
+- Every read is BOUNDED (the first 8 KB — BYTES, not characters, so a multibyte document cannot
+  quietly consume several times the limit): a raw transcript misnamed as a canonical stub is never
   read into memory whole. A frontmatter block that opens and does not close inside that bound is
   a NAMED error (`malformed-frontmatter`), never silence — "we could not read it" and "there is
   no reference" are different claims, and only the second may be silent.
@@ -63,10 +64,17 @@ HEAD_BYTES = 8192  # every read is bounded: a stub is frontmatter + prose, never
 
 
 def read_head(path: Path) -> str:
-    """The first HEAD_BYTES of a file. Bounded for EVERY file this tool touches — a raw transcript
-    misnamed as a canonical stub must not be read into memory whole."""
-    with path.open(encoding="utf-8", errors="replace") as fh:
-        return fh.read(HEAD_BYTES)
+    """The first HEAD_BYTES **bytes** of a file, decoded. Bounded for EVERY file this tool touches —
+    a raw transcript misnamed as a canonical stub must not be read into memory whole.
+
+    The read is BINARY on purpose. A text-mode `read(HEAD_BYTES)` counts CHARACTERS, so a
+    multibyte document would consume up to ~4x the documented bound — and a frontmatter block past
+    the byte limit could then close and be accepted, which is exactly the silent pass this bound
+    exists to prevent. Decoding uses errors="replace", so a multibyte sequence split at the
+    boundary becomes one replacement character instead of raising.
+    """
+    with path.open("rb") as fh:
+        return fh.read(HEAD_BYTES).decode("utf-8", errors="replace")
 
 
 def frontmatter_lines(text: str) -> tuple[list[str], str]:

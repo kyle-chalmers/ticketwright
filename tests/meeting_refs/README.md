@@ -15,8 +15,10 @@ Stub files exercising the meeting-reference contract (grammar in
 | `misplaced-ref-notes.md` | a ref outside the canonical `*-meeting.md` stub → exit 4 (`misplaced-ref`) |
 | `2026-08-24-unterminated-meeting.md` | an unclosed frontmatter block hiding a real ref → exit 4 (`malformed-frontmatter`), never silence |
 
-Section 51d also generates two oversized cases inline (a stub whose frontmatter exceeds the 8 KB
-read bound, and a multi-megabyte file named as a canonical stub) — they are built at test time
-rather than committed, because a fixture that large has no business in a public kit.
+Section 51d also generates three oversized cases inline — a stub whose frontmatter exceeds the
+8 KB read bound, a multi-megabyte file named as a canonical stub, and a multibyte block that
+exceeds the bound in BYTES while staying well under it in characters (the case that separates a
+byte bound from a character bound). They are built at test time rather than committed, because
+fixtures that large have no business in a public kit.
 
 All identifiers are fixtures (`acmemeet`, `DEMO-`/`SAMPLE-`); this is a public repo.

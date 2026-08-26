@@ -205,8 +205,8 @@ malformed-or-refused):
   segment first (Zoom double-encodes those UUIDs), and each adapter states its rule under "ID
   encoding". The parser validates the charset and never encodes — encoding is a per-provider
   decision the adapter owns.
-- **Bounded reads, and no silent swallow:** the parser reads only the first 8 KB of any file, so a
-  raw transcript misnamed as a stub is never read whole. A frontmatter block that opens and does
+- **Bounded reads, and no silent swallow:** the parser reads only the first 8 KB (bytes, not
+  characters) of any file, so a raw transcript misnamed as a stub is never read whole. A frontmatter block that opens and does
   not close inside that bound is a named error (`malformed-frontmatter`), never a silent "no
   reference" — silence is reserved for a valid no-ref state.
 - **Optional `meeting_date: YYYY-MM-DD`** as a separate key.
