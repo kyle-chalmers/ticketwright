@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
+description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse|meetings>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
 ---
 
 <!-- emitted by ticketwright install v3.7.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
@@ -26,8 +26,8 @@ output; leave a commented default when it fails loudly at `verify_stack.sh` or o
 (see [interview.md](interview.md)). Never promise a question count.
 
 Every mode sits on one scope axis. **TEAM-scoped** modes write the team's committed config: the
-default repo-configuration mode, `tool <chat|docstore|warehouse>`, and the round re-runs `role` /
-`team` / `policies`. **PERSON-scoped** modes write
+default repo-configuration mode, `tool <chat|docstore|warehouse|meetings>`, and the round re-runs
+`role` / `team` / `policies`. **PERSON-scoped** modes write
 one person's own config: `--teammate` (the per-person flow), `--voice`, and `viewer`. The axis is
 *who the config is about*, not committed-vs-local — `--voice` is person-scoped yet writes a
 committed file.
@@ -78,10 +78,10 @@ approved exemplars → save. `/ship` then drafts in that voice, within the hard 
 an existing `stack.yaml`. (This is a first-class mode, **not** a tool slot — `voice` is never a
 `seams.*` entry.)
 
-## Mode: `tool <chat|docstore|warehouse>` — add one tool slot to the team config (team-wide)
+## Mode: `tool <chat|docstore|warehouse|meetings>` — add one tool slot to the team config (team-wide)
 E.g. `/setup tool chat`. Detect candidates for just that tool slot, then run only that slot's
 interview round from [interview.md](interview.md) (round 3 for warehouse, round 4 for
-chat/docstore — including the slot's adapter-required keys), add the block to committed
+chat/docstore/meetings — including the slot's adapter-required keys), add the block to committed
 `stack.yaml`, verify it, and re-render `AGENTS.md`. Nothing else changes.
 **Deprecated spellings:** the old `/setup chat` / `/setup docstore` / `/setup warehouse` (without
 `tool`) keep working for one release — accept them, print "Note: `/setup chat` is now
@@ -201,7 +201,7 @@ going — `verify_stack.sh` names any unset required key on every run (a warning
 so a deferred key is reported rather than lost. A skipped round is written down twice — a
 `# TODO(setup)` line in `stack.yaml` and a punch-list entry in the Phase-4 report — each naming
 its re-entry command (`/setup role` for round 5, `/setup policies` for round 6; later,
-`/setup team` adds teammates and `/setup tool <chat|docstore|warehouse>` adds a declined slot).
+`/setup team` adds teammates and `/setup tool <chat|docstore|warehouse|meetings>` adds a declined slot).
 Everything the interview does not ask ships as a **commented default** the user can edit later:
 `default_epic`, word limits, the other eight policies — each with its "when to change this" note.
 

@@ -74,8 +74,8 @@ exist to serve the phases, and one slot can serve more than one phase:
 
 | Phase | Tool slots it can use |
 |---|---|
-| 1 · Open the work | tracker + vcs |
-| 2 · Do the work | warehouse + local tools |
+| 1 · Open the work | tracker + vcs + meetings |
+| 2 · Do the work | warehouse + local tools (+ meetings, for the spec step) |
 | 3 · Quality-check it | no slot of its own - `/review` plus human sign-off |
 | 4 · Deliver | vcs + docstore |
 | 5 · Announce and share | tracker + chat |
@@ -85,8 +85,11 @@ adapters write into a desktop sync mount. [docs/drive-mount.md](docs/drive-mount
 installing that mount per OS, which half of the path is a team decision and which is yours - or
 how to skip the mount entirely with the `rclone` adapter, which needs only the binary.
 
-"More tools" means named targets inside a slot - two warehouses, a team chat and a client chat -
-never more slots. And phase 3 is worth a second look: quality checking has no tool slot of its
+"More tools" almost always means named targets inside a slot - two warehouses, a team chat and a
+client chat - not more slots. A new slot KIND is rare and has to clear a recorded bar (a stable
+tool-independent verb contract, a distinct lifecycle responsibility, its own auth semantics, and
+common use - see [ROADMAP](ROADMAP.md)); the read-only `meetings` slot is the one addition that
+has cleared it. And phase 3 is worth a second look: quality checking has no tool slot of its
 own. Every other phase has a dedicated external system available to it (available, not always
 present - trackerless, warehouse-less and docstore-less setups are all supported), but there is
 no QC service to plug in. `/review` and the `qc-reviewer` agent borrow the warehouse slot to
@@ -105,6 +108,7 @@ It works with **your** tools, through one config file:
 | Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse · Supabase · DuckDB · etc. — or **none at all** |
 | Chat | Slack · Teams · email (Gmail · Outlook) · etc. |
 | Docs | Google Drive · SharePoint · Dropbox · S3 · Box · etc. — mounted, or mountless via rclone |
+| Meetings | Zoom · Fireflies · Granola · Teams · Notion — optional; any provider via a new adapter file |
 | Git | GitHub · GitLab · Azure Repos · Bitbucket · etc. |
 
 - **The lists are examples, not a whitelist** — any tool that fills a slot works. The first six

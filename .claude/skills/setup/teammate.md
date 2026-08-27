@@ -46,7 +46,8 @@ configured repo invokes it day to day, so a missing `yq` blocks that one check, 
 
 ## 2 · Authenticate each configured tool
 For every configured tool slot, open its adapter's `auth:` notes and walk the person through
-signing in — tracker CLI/MCP auth, warehouse connection, chat MCP connect, docstore mount, vcs
+signing in — tracker CLI/MCP auth, warehouse connection, chat MCP connect, docstore mount,
+meetings provider access, vcs
 auth login. Pure instructions — the person runs the auth themselves.
 
 ## 3 · Detect this person's machine — now, not at repo-setup time

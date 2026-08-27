@@ -9,7 +9,8 @@ All notable changes to this project are documented here. Format loosely follows
 ### Added
 - **MCP permission posture — advisory enforcement for the transport the hooks cannot see.** On the
   MCP path enforcement does not disappear; it moves into the tool's own permission controls, and
-  the kit now says so everywhere it matters. Every `transport: mcp`/`both` adapter (all 10) carries
+  the kit now says so everywhere it matters. Every `transport: mcp`/`both` adapter (all 14,
+  counting the meetings slot's four MCP-path adapters that ship alongside) carries
   a `## Permission posture (MCP)` section — where the native control lives (role / token scope /
   OAuth grant, across official-connector / CLI-configured / homegrown shapes), the recommended
   setting per policy, and a read-only probe. The two warehouse adapters get a written comparison
@@ -37,6 +38,34 @@ All notable changes to this project are documented here. Format loosely follows
 - Selftest §51b (posture structure, fence-scoped probe hygiene, table honesty pins) and §51c
   (advisory behavior through every verify_stack terminal state + the banner matrix).
 
+- **The `meetings` tool slot** — the sixth verb-contract slot, shipped after the new-slot bar was
+  re-judged YES on all four legs (written judgment, codex-adjudicated; the record lives in
+  `ROADMAP.md`). Optional, read-only, single-tool: a ticket references a meeting with a
+  `meeting_ref: <provider>:<id>` frontmatter key in a `source_materials/` stub, and `/ticket`'s
+  priming fetches the transcript **to context, never to disk**. Three verbs
+  (`fetch_transcript` with `content_kind: transcript|notes`, `search_meetings`,
+  `fetch_action_items` with a typed `ok|empty|no_native_export` result and per-status caller
+  behavior); five launch adapters (`zoom`, `fireflies`, `granola` — local cache,
+  credential-free — `teams`, `notion`), each carrying the transcript-privacy rule verbatim.
+  New `bin/meeting_refs.py` makes the reference contract mechanical (exit family 0 ok · 2 usage ·
+  4 malformed-or-refused; credential-bearing values refused at parse time with
+  `reason: refused-credential`; no reference ⇒ `{"refs": []}` and silence — never a speculative
+  fetch). `seams.meetings` is optional like docstore (worked example in
+  `stack.example.multi-audience.yaml`); `/setup tool meetings` adds it later; the session banner
+  always prints the slot (`meetings=—` when absent). Selftest section 51d covers the parser,
+  resolver, banner, render, and the labeled structural pins.
+
+### Fixed
+- **`source_materials/private/` now actually gates what it promised.** The declared raw opt-in
+  area was only ever protected for material the classifier could *read*: a binary export (a
+  `.docx`/`.pdf` transcript) classified `binary`, skipped the shape test, flagged nothing, and a
+  folder-wide docstore backup carried it out with no per-file approval — while the docs said that
+  area "flags every `/ship` scan and copy-guard prompt". A file under `source_materials/private/`
+  is now `raw_suspect` **by declaration** (the person put it there; coverage no longer depends on
+  what the shape test can parse), so the scanner's exit contract and both guard paths gate it.
+  Scope is exact — `source_materials/private/`, matching the gitignore pattern, not any directory
+  named `private/`. Everything else is unchanged, including the honest limit that the classifier
+  matches filenames and document shape, **never meaning**.
 
 ## [3.7.1] — 2026-08-25
 

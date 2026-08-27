@@ -35,8 +35,8 @@ slots are secondary - they exist to serve phases, and one slot can serve more th
 
 | Phase | Tool slots it can use |
 |---|---|
-| 1 · Open the work | tracker + vcs |
-| 2 · Do the work | warehouse + local tools |
+| 1 · Open the work | tracker + vcs + meetings |
+| 2 · Do the work | warehouse + local tools (+ meetings, for the spec step) |
 | 3 · Quality-check it | no slot of its own - `/review` plus human sign-off |
 | 4 · Deliver | vcs + docstore |
 | 5 · Announce and share | tracker + chat |
@@ -55,7 +55,8 @@ inventory.
 ## Tool slots, adapters, and the verb contract
 
 A **tool slot** is a capability the kit needs filled: `tracker`, `warehouse`, `chat`, `docstore`,
-`vcs`, and the optional `viewer`. Internally a slot is called a **seam** - the `seams:` config
+`vcs`, and the optional `meetings` (the spoken record, by reference — read-only) and `viewer`.
+Internally a slot is called a **seam** - the `seams:` config
 key, the adapter `seam:` frontmatter and the selftest all keep that name. A slot may name one tool
 or more than one **named target** — routed end to end today for `warehouse`, `chat` and
 `docstore` — and a slot whose tool is absent can still be filled by an adapter over local files,
@@ -99,7 +100,7 @@ an absent or unmatched declaration halts and lists what is configured, because t
 fall through to may be the external one. Each chat target carries its own non-empty `always_include`,
 applied after routing, and `bin/verify_stack.sh` fails a multi-target config that omits one. What the
 kit cannot do is check a destination's real sharing permissions — `sharing_scope` is a declaration,
-not a verification. **Email is a chat target, not a sixth slot**: the `gmail`/`outlook` adapters map
+not a verification. **Email is a chat target, not a slot of its own**: the `gmail`/`outlook` adapters map
 the same four chat verbs (destination key `to`, `always_include` rendered as visible Cc, draft-first
 with `default_mode: draft` set explicitly), and the same routing rules bind — a wrongly-addressed
 email cannot be unsent, which is why nothing about email relaxes them. Worked config:
@@ -231,9 +232,10 @@ before it is paid.
   checklist inline and the verdict records `review_mode: inline-same-context` as the weaker check
   (`unestablished` isolation still fans out, recorded verbatim).
 - **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
-- **33 adapters** (`adapters/`) across 7 directories — full verb coverage each, including a `local`
-  tracker whose "API" is the ticket folder itself and three `viewer` adapters (one per OS). Six of
-  those directories are tool slots; the seventh, `runtime/`, declares what each agent harness can do
+- **38 adapters** (`adapters/`) across 8 directories — full verb coverage each, including a `local`
+  tracker whose "API" is the ticket folder itself, three `viewer` adapters (one per OS), and five
+  read-only `meetings` adapters. Seven of
+  those directories are tool slots; the eighth, `runtime/`, declares what each agent harness can do
   (see [runtimes.md](runtimes.md)) and carries no verbs, because it is not a tool the project calls.
 - **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
   README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via

@@ -14,8 +14,8 @@ The ticket index is **active**, not just browsable, and observable.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
 - **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
-- 33 adapters across 7 seams; 7 worked stacks; **300+-check self-test**; GitHub Actions CI.
-  (Six of those directories are tool seams with verb contracts; the seventh, `runtime/`, declares
+- 38 adapters across 8 seams; 7 worked stacks; **300+-check self-test**; GitHub Actions CI.
+  (Seven of those directories are tool seams with verb contracts; the eighth, `runtime/`, declares
   agent-harness capabilities and is deliberately not a `stack.yaml` seam. The count's wording is
   pinned by a self-test assertion — see `docs/runtimes.md`.)
 
@@ -186,40 +186,62 @@ ai-data-security); apply here first since ticketwright is the design ancestor:
 - **autoUpdate hook caveat** to carry in every release note: bundled hook changes do not reach
   installed copies via autoUpdate (claude-code #52218) — reinstall + relaunch.
 
-## Considered: a `meetings` tool slot — not yet
+## The `meetings` tool slot — judged against the bar: YES (2026-08-25)
 
-Meeting intake **shipped** as vocabulary: `project.intake` accepts `meetings`, meeting notes arrive
-as `source_materials/YYYY-MM-DD-<slug>-meeting.md`, and `source_material_guard` keeps raw
-transcripts out of a commit or a docstore backup. What did **not** ship is a sixth tool slot with a
-live provider connection, because the case for a new slot KIND is not yet made.
+Meeting intake shipped first as vocabulary (`project.intake` accepts `meetings`; notes arrive as
+`source_materials/YYYY-MM-DD-<slug>-meeting.md`; `source_material_guard` keeps raw transcripts out
+of a commit or a docstore backup). The slot itself was deferred at v3.6 with three of four legs
+unproven. It has now been re-judged against the same bar — a stable tool-independent verb
+contract, a distinct lifecycle responsibility, its own auth/verification semantics, and enough
+common use that it is not just an option on an existing slot — with a written judgment,
+adversarially adjudicated by an external model (codex; final adjudication YES on all four legs,
+after three earlier rounds whose findings were fixed, not argued past). The full argument and
+the verbatim adjudication rounds: [docs/meetings-bar-judgment.md](docs/meetings-bar-judgment.md).
+The record, per leg:
 
-The bar a new slot must clear: a stable tool-independent verb contract, a distinct lifecycle
-responsibility, its own auth/verification semantics, and enough common use that it is not just an
-option on an existing slot. Against that bar, as of v3.6:
+- **Verb contract — YES, as re-drafted.** The v3.6 objection was `extract_actions` (model
+  reasoning is not a command translation); its prescribed fix is what shipped: three read-only
+  verbs — `fetch_transcript`, `search_meetings`, and a provider-native `fetch_action_items`
+  returning a typed `{status: ok | empty | no_native_export}` result, with extraction as a
+  documented skill-side fallback only on `no_native_export`. `unsupported` was deliberately not
+  reused (its contract is a *silent* skip; this outcome demands an active documented fallback).
+  All five launch adapters (`zoom`, `fireflies`, `granola`, `teams`, `notion`) map every verb to
+  named provider operations with defined return shapes — `content_kind: transcript|notes` keeps
+  notes from being passed off as a verbatim transcript, and `participants: []` is a defined value
+  where a list API exposes no roster. Contract: `adapters/README.md` § meetings.
+- **Distinct lifecycle responsibility — YES.** The positive argument (not an "upstream" appeal):
+  the slot's responsibility is retrieving the spoken record BY REFERENCE from a provider store no
+  existing slot's verbs can reach — tracker fetches written tickets, chat's verbs are outbound,
+  docstore is `backup`/`link_for`; this file's own v3.6 record already conceded a transcript
+  provider satisfies neither chat's nor docstore's contract. Without the slot, the curated
+  `*-meeting.md` record exists only via a manual human export each time. This reconciles with the
+  phase map (one slot may serve several phases): meetings joins what phases 1–2 *can* use and
+  claims no exclusivity.
+- **Own auth/verification semantics — YES.** Sourced with access dates (2026-08-25): Zoom gates
+  meeting summaries/transcripts behind their own granular scopes (developers.zoom.us/docs/api/meetings);
+  Teams transcripts need a dedicated Graph permission and the AI insights additionally a Copilot
+  license (learn.microsoft.com meeting-transcripts/meeting-insights); Fireflies is its own
+  API-key-gated product (docs.fireflies.ai). Three of four judged providers — the threshold —
+  gate meeting-content reads behind a scope/license/key distinct from a suite's base credential.
+  Honest note: Granola's hosted API is key-gated too (docs.granola.ai/introduction), but the
+  shipped adapter takes the credential-free local-cache route, so Granola was set aside rather
+  than counted.
+- **Commonness — YES, on maintainer attestation (not source-verifiable from this repo).**
+  Attested 2026-08-25: meeting-origin ticket work recurs at least monthly across two independent
+  providers among the launch set (Zoom and Notion) — the threshold, and no more than that. Vendor
+  selection was not counted as adoption evidence. If this attestation were withdrawn, the leg
+  would be unproven and the judgment would not stand — the leg rests on attestation, stated
+  plainly.
 
-- **Verb contract — fails as drafted.** `fetch_transcript` and `search_meetings` are fine: each maps
-  to a provider command with a defined return shape. `extract_actions` is not. For a tool with no
-  native action-item export it is model reasoning, and an adapter is a command translation, not a
-  place to hide that. `rank_projects_by_activity` is not a precedent — it is tracker-*native*, and
-  its `unsupported` means the tool has no rankable containers. **To flip it:** split into a
-  provider-native `fetch_action_items` (optional, `unsupported` when absent) plus a skill-side
-  extraction step, and write the contract that way.
-- **Distinct lifecycle responsibility — not established.** Not refuted either: `docs/architecture.md`
-  says plainly that one slot can serve more than one phase, so the phase table lists what a phase
-  *can* use rather than an exclusive assignment. But nothing yet argues the responsibility is
-  distinct. **To flip it:** a positive argument that reconciles with that map, rather than an appeal
-  to being "upstream".
-- **Own auth/verification semantics — not established.** Read-only is a safety property, not an auth
-  boundary; every slot already has a read-only `verify` preflight. **To flip it:** evidence that
-  reading meetings is independently authorized rather than riding a collaboration suite's existing
-  credentials.
-- **Not an option on an existing slot — holds, half.** A target must implement its slot's whole verb
-  contract, and a transcript provider satisfies neither `chat` (`draft`/`send`/…) nor `docstore`
-  (`backup`/`link_for`) — so it genuinely would not be a target on either. The *commonness* half is
-  unevidenced. **To flip it:** adoption evidence across vendors.
-
-Three of four legs unproven is a "not yet", not a "no". The file-backed path works today and carries
-no provider dependency; whoever picks this up should start from the four items above.
+What shipped with the judgment: `seams.meetings` as an OPTIONAL, read-only, single-tool slot
+(never target-routed); the `meeting_ref: <provider>:<id>` reference contract with
+`bin/meeting_refs.py` as its mechanical parser (0 ok · 2 usage · 4 malformed-or-refused,
+credential-bearing refs refused at parse time as `refused-credential`); five adapters; and every
+formerly-fixed-five-slot surface extended. The transcript-privacy mechanics are unchanged from
+stage 1 — curation-in-context and never-save-raw remain agent guidance; the mechanical gates
+(gitignore patterns, scanner, guard) read filenames and document shape, never meaning. The
+file-backed export path still works with no provider dependency, and the slot stays silent for
+tickets that reference no meeting.
 
 ## Deliberately out of scope
 
