@@ -1,4 +1,4 @@
-# emitted by ticketwright install v3.7.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update.
+# emitted by ticketwright install v3.8.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update.
 #
 # Canonical source: .claude/agents/qc-reviewer.md, which restricts this agent to
 # tools: Read, Bash, Glob, Grep. No documented field of this format carries a tool
