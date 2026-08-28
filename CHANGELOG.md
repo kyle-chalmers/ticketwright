@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Fixed
+- **`bin/selftest.sh` no longer runs a seam's real `verify:` command.** §32's shell-metacharacter
+  test called `verify_stack.sh` *without* `--dry-run` against a copy of the shipped
+  multi-warehouse example. The injection refusal it asserts is per-seam, so refusing the poisoned
+  `{profile}` stopped nothing else: the run went on to `eval` `snow connection test` — which blocks
+  indefinitely behind a Duo MFA push — plus `acli jira workitem search` and `gh auth status`, on the
+  machine of anyone with those CLIs installed. No assertion looked at their output, so the suite
+  stayed green while doing it, and CI never caught it because the runners have no warehouse CLI.
+  This broke the suite's own documented contract ("read-only, no network, no credentials").
+
+  A real `verify_stack` run now goes through `safe_verify_stack()`, which supplies a hermetic `PATH`
+  built from an explicit allowlist of utilities — generalized from the sandbox that §50's rclone
+  tests already used. It shadows tool CLIs by *name*, so fixture `verify:` commands still `eval`
+  (deliberately — they name `true`, `touch`, and an offline stub), and an absolute path or a
+  `PATH`-resetting `verify:` would still escape; the guarantee is that a bare `snow`/`acli`/`gh`
+  cannot resolve. §32 gets its own fixture with inert `verify:` commands and stays non-dry-run on
+  purpose, because `--dry-run` never reaches `eval` and would make its command-injection tripwire
+  pass vacuously; a trailing seam now writes a marker to prove `eval` was live in that same run.
+  New §53 asserts the property directly: no raw non-dry-run invocation in the file — matching a
+  `bash` prefix, an `sh` prefix, and the executable in bare command position, since `verify_stack.sh`
+  is `+x` and that last shape needs no interpreter at all — no tool CLI in
+  the hermetic `PATH`, the rclone sandbox is that `PATH` plus exactly one stub, and — where a real
+  CLI exists on the machine — that it genuinely does not resolve inside the sandbox. The guard paid
+  for itself immediately: §51c's two new non-dry-run sites are inert only because the refusal fires,
+  and one of them names the real `databricks` CLI — they are routed through the helper too. 1185
+  checks pass under bash 5.3 and 3.2.57.
+
 ## [3.8.0] — 2026-08-27
 
 ### Added
