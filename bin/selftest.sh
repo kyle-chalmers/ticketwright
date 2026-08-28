@@ -34,12 +34,14 @@ hdr()  { printf "\n\033[1m%s\033[0m\n" "$1"; }
 # caught it: the runners have no warehouse CLI, so the commands simply failed to resolve.
 #
 # So a real verify_stack run happens on a PATH built from an explicit allowlist. What this guarantees
-# is narrow and worth stating exactly: no tracker/warehouse/vcs tool CLI is reachable. It is NOT a
-# claim that every entry is inert — `git` is here because bin/tw → kit_paths.py shells out to
-# `git rev-parse --show-toplevel` to find the project root.
+# is narrow and worth stating exactly: no tracker/warehouse/vcs tool CLI is reachable, and no MODEL
+# CLI either — enrich_ticket.py spawns one, so the same hermetic PATH is what keeps a selftest run
+# from making a real, billable model call (see safe_enrich below). It is NOT a claim that every entry
+# is inert — `git` is here because bin/tw → kit_paths.py shells out to `git rev-parse --show-toplevel`
+# to find the project root, and `tee` because one enrich test uses it as a stand-in model command.
 SAFEBIN="$TMP/safe-bin"; mkdir -p "$SAFEBIN"
 for c in bash sh env printf awk sed grep tr cut basename dirname realpath readlink python3 mktemp \
-         rm cat head tail sort uniq wc xargs cp mv mkdir touch chmod ln date id git test; do
+         rm cat head tail sort uniq wc xargs cp mv mkdir touch chmod ln date id git test tee; do
   src="$(command -v "$c" 2>/dev/null)" && ln -sf "$src" "$SAFEBIN/$c"
 done
 
@@ -53,6 +55,20 @@ done
 # Deliberately a ONE-LINER: section 53's lint exempts this definition by name, and a body on its own
 # line would read as an unrouted raw call and fail the lint against itself.
 safe_verify_stack() { PATH="${VS_PATH:-$SAFEBIN}" CLAUDE_PLUGIN_ROOT="$KIT" bash "$KIT/bin/verify_stack.sh" "$@"; }
+
+# The ONLY sanctioned way to run enrich_ticket.py. It spawns a headless model CLI at
+# enrich_ticket.py's subprocess.run — argv[0] is `claude` by default — and prints "Enriching N
+# ticket(s)" BEFORE that spawn, so every site asserting on that line was reaching the spawn and
+# staying green whether or not it resolved. Those sites were inert only because they set
+# PATH=/usr/bin:/bin, i.e. only because nobody had installed a model CLI into /usr/bin. That is an
+# accident of the machine, not a property of the suite, and on a machine where it does not hold the
+# suite makes a real, billable, networked model call while still printing ✓.
+# The relative bin/enrich_ticket.py is deliberate: every fixture copies the script into its own bin/.
+# NOTE there is deliberately no EN_PATH escape hatch to match VS_PATH. An inherited EN_PATH would
+# silently reopen exactly this hole, and nothing needs one — section 53's tripwire prepends its stubs
+# to the AMBIENT path and calls this helper unchanged, which is the honest way to test it.
+# Deliberately a ONE-LINER, for the same reason as safe_verify_stack above.
+safe_enrich() { PATH="$SAFEBIN" python3 bin/enrich_ticket.py "$@"; }
 
 hdr "0 · tooling"
 command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
@@ -1639,21 +1655,21 @@ PY2
 [ $? -eq 0 ] && ok "ticket_number: keyed ids keep their number, slug ids score 0 (no phantom order)" \
   || bad "a slug id ending in digits is still ordered as a ticket number"
 
-# --branch resolution. `claude` is kept OFF PATH so enrich_ticket stops at its own guard: reaching
-# "Enriching N ticket(s)" proves the id resolved, without spending a model call.
+# --branch resolution. safe_enrich keeps every model CLI off PATH, so enrich_ticket stops at its own
+# guard: reaching "Enriching N ticket(s)" proves the id resolved, without spending a model call.
 BR="$TMP/brslug"; mkdir -p "$BR/.claude/config" "$BR/tickets/dana/signup-funnel-lift" "$BR/bin"
 cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BR/bin/"
 printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$BR/.claude/config/stack.yaml"
 printf '# signup-funnel-lift: Signup funnel\n\nBody.\n' > "$BR/tickets/dana/signup-funnel-lift/README.md"
 ( cd "$BR" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
   && git checkout -q -b claude/signup-funnel-lift ) 2>/dev/null
-out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
+out="$(cd "$BR" && CLAUDE_PROJECT_DIR="$BR" safe_enrich --branch 2>&1)"
 grep -q 'Enriching 1 ticket' <<<"$out" \
   && ok "--branch resolves a slug branch (claude/<slug>) to its ticket" \
   || bad "--branch could not resolve a slug branch — /ship's convenience path is dead in slug mode" "$out"
 # A branch that names no ticket must resolve to nothing rather than guessing.
 ( cd "$BR" && git checkout -q -b claude/not-a-ticket ) 2>/dev/null
-out="$(cd "$BR" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BR" python3 bin/enrich_ticket.py --branch 2>&1)"
+out="$(cd "$BR" && CLAUDE_PROJECT_DIR="$BR" safe_enrich --branch 2>&1)"
 grep -q 'No ticket ids given' <<<"$out" \
   && ok "--branch on an unrelated branch resolves nothing (identity, not pattern)" \
   || bad "--branch invented a ticket id from an unrelated branch name" "$out"
@@ -1664,7 +1680,7 @@ printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$BK/.claude/conf
 printf '# ENG-12: Signup\n\nBody.\n' > "$BK/tickets/dana/ENG-12 signup/README.md"
 ( cd "$BK" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
   && git checkout -q -b ENG-12 ) 2>/dev/null
-out="$(cd "$BK" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$BK" python3 bin/enrich_ticket.py --branch 2>&1)"
+out="$(cd "$BK" && CLAUDE_PROJECT_DIR="$BK" safe_enrich --branch 2>&1)"
 grep -q 'Enriching 1 ticket' <<<"$out" \
   && ok "--branch still resolves a keyed branch (ENG-12)" \
   || bad "keyed --branch regressed" "$out"
@@ -1706,13 +1722,13 @@ cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$
 printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$UB/.claude/config/stack.yaml"
 printf '# signup-funnel-lift: R\n\nBody.\n' > "$UB/tickets/dana/signup-funnel-lift/README.md"
 ( cd "$UB" && git init -q . && git checkout -q -b claude/signup-funnel-lift ) 2>/dev/null
-out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
+out="$(cd "$UB" && CLAUDE_PROJECT_DIR="$UB" safe_enrich --branch 2>&1)"
 grep -q 'Enriching 1 ticket' <<<"$out" \
   && ok "--branch resolves on an UNBORN branch (no commits yet)" \
   || bad "--branch fails on a branch created before the first commit" "$out"
 # Detached HEAD must resolve nothing rather than guessing.
 ( cd "$UB" && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m i && git checkout -q --detach HEAD ) 2>/dev/null
-out="$(cd "$UB" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$UB" python3 bin/enrich_ticket.py --branch 2>&1)"
+out="$(cd "$UB" && CLAUDE_PROJECT_DIR="$UB" safe_enrich --branch 2>&1)"
 grep -q 'No ticket ids given' <<<"$out" \
   && ok "--branch on a detached HEAD resolves nothing" \
   || bad "--branch guessed an id on a detached HEAD" "$out"
@@ -2471,28 +2487,34 @@ printf '# ENG-3: T\n\nBody $(echo PWNED_SUBST) `echo PWNED_TICK` ; touch %s/PWNE
 # The template has no {prompt} token, so the prompt arrives on stdin — `tee` captures exactly what the
 # command was handed. enrich captures the child's stdout itself, so the file is the only witness.
 SEEN="$ENR/seen.txt"
-(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py ENG-3 --model-cmd "tee $SEEN" >/dev/null 2>&1)
+(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" safe_enrich ENG-3 --model-cmd "tee $SEEN" >/dev/null 2>&1)
 { [ -s "$SEEN" ] \
   && grep -qF 'echo PWNED_SUBST' "$SEEN" \
   && [ ! -e "$ENR/PWNED_FILE" ]; } \
   && ok "a tracker-sourced README reaches the model as data (argv/stdin), never as shell" \
   || bad "enrich may be interpolating the prompt into a shell" "seen=$(head -c 200 "$SEEN" 2>/dev/null) pwned=$([ -e "$ENR/PWNED_FILE" ] && echo yes || echo no)"
-eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py ENG-3 --model-cmd 'echo hi; rm -rf /tmp/nope' 2>&1)"
+eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" safe_enrich ENG-3 --model-cmd 'echo hi; rm -rf /tmp/nope' 2>&1)"
 grep -qi 'shell metacharacter' <<<"$eo" && ok "a shell-shaped model_cmd template is refused" \
   || bad "enrich accepted a model command containing shell metacharacters" "$eo"
 # The historical fallback must survive where the kit is NOT beside the script (this fixture), because
 # a wrong runtime guess must never be the reason enrichment stops working.
-eo="$(cd "$ENR" && PATH=/usr/bin:/bin TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py ENG-3 2>&1)"
-grep -q 'Enriching 1 ticket' <<<"$eo" && ok "enrich falls back to the built-in model command when no adapter resolves" \
+# Assert the SOURCE TAG, not just "Enriching 1 ticket" — every resolution path prints that line, so
+# the bare grep passed even when the fallback was bypassed entirely (which is precisely why routing
+# these sites through an always-on --model-cmd was rejected: it would have kept this test green while
+# testing nothing). "[built-in default]" is the only spelling the fallback produces.
+eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" safe_enrich ENG-3 2>&1)"
+{ grep -q 'Enriching 1 ticket' <<<"$eo" && grep -q '\[built-in default\]' <<<"$eo" \
+  && grep -q 'claude -p' <<<"$eo"; } \
+  && ok "enrich falls back to the built-in model command when no adapter resolves" \
   || bad "enrich stopped working when it could not resolve a runtime adapter" "$eo"
 # A runtime that documents NO headless command must say so and point at the neutral path — not guess.
 eo="$(cd "$ENR" && TICKETWRIGHT_KIT="$KIT" TICKETWRIGHT_RUNTIME=cursor TICKETWRIGHT_PROJECT="$ENR" \
-      PATH=/usr/bin:/bin python3 bin/enrich_ticket.py ENG-3 2>&1)"; erc=$?
+      safe_enrich ENG-3 2>&1)"; erc=$?
 { grep -qi 'No headless model command' <<<"$eo" && grep -q 'ingest_index_records.py' <<<"$eo"; } \
   && ok "a runtime with no headless command reports the agent-neutral ingest recipe" \
   || bad "enrich did not surface the neutral path for a runtime without a model command" "$eo"
 # An id problem must still read as an id problem, not as a model-command problem.
-eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" python3 bin/enrich_ticket.py 2>&1)"
+eo="$(cd "$ENR" && TICKETWRIGHT_PROJECT="$ENR" safe_enrich 2>&1)"
 grep -q 'No ticket ids given' <<<"$eo" && ok "the missing-id guard still fires before model resolution" \
   || bad "model resolution now runs before the id guard" "$eo"
 
@@ -2579,7 +2601,7 @@ cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bi
 printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$EV/.claude/config/stack.yaml"
 printf '# ENG-4: t\n\nBody.\n' > "$EV/tickets/dana/ENG-4/README.md"
 printf -- '---\nseam: runtime\ntool: aaa-evil\ndetect_env: PATH\nskills_root: x\nskills_format: x\nsession_start: no\ntool_gate: no\nsubagents: no\nstructured_questions: no\nmodel_cmd: "touch %s/PWNED_ADAPTER"\n---\n' "$EV" > "$EV/adapters/runtime/aaa-evil.md"
-eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" python3 bin/enrich_ticket.py ENG-4 2>&1)"
+eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" safe_enrich ENG-4 2>&1)"
 { [ ! -e "$EV/PWNED_ADAPTER" ] && grep -qi 'not a known model CLI' <<<"$eo"; } \
   && ok "a repo-supplied adapter cannot run an arbitrary command (model binary allowlist)" \
   || bad "a project-vendored adapters/runtime/*.md executed its model_cmd" "$eo"
@@ -2601,7 +2623,7 @@ PYCHK
   || bad "claude's model_cmd would pass the prompt as an argv value to --disallowedTools"
 
 # A template that reduces to nothing must not raise an uncaught IndexError.
-eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" python3 bin/enrich_ticket.py ENG-4 --model-cmd '  ' 2>&1)"
+eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" safe_enrich ENG-4 --model-cmd '  ' 2>&1)"
 { ! grep -q 'Traceback' <<<"$eo" && grep -qi 'empty after substitution' <<<"$eo"; } \
   && ok "an argv-reducing model command is refused cleanly, not as a traceback" \
   || bad "an empty model command crashed with a traceback" "$eo"
@@ -3457,14 +3479,14 @@ grep -q '\[bob/chargeback-lift\](bob.chargeback-lift.md)' "$OI/tickets/graph/ali
   || bad "the two-owner match was not reported as an error naming both" "$warn35"
 
 # (d) enrich_ticket: a bare id two owners share is a hard stop (exit 3) — enrich-every-owner is gone.
-# `claude` is kept OFF PATH (section 25/26 technique): reaching "Enriching 1 ticket(s)" proves the
-# locator resolved without spending a model call.
-amb="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py chargeback-lift 2>&1)"; arc35=$?
+# safe_enrich keeps every model CLI off PATH (section 25/26 technique): reaching "Enriching 1
+# ticket(s)" proves the locator resolved without spending a model call.
+amb="$(cd "$OI" && CLAUDE_PROJECT_DIR="$OI" safe_enrich chargeback-lift 2>&1)"; arc35=$?
 { [ "$arc35" -eq 3 ] && grep -q 'alice/chargeback-lift' <<<"$amb" && grep -q 'bob/chargeback-lift' <<<"$amb" \
   && ! grep -q 'Enriching' <<<"$amb"; } \
   && ok "enrich_ticket hard-stops (exit 3) on a shared bare id, naming both owner/id spellings" \
   || bad "enrich_ticket guessed, enriched multiple owners, or mis-coded the stop" "rc=$arc35 $amb"
-eq35="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py alice/chargeback-lift 2>&1)"
+eq35="$(cd "$OI" && CLAUDE_PROJECT_DIR="$OI" safe_enrich alice/chargeback-lift 2>&1)"
 grep -q 'Enriching 1 ticket' <<<"$eq35" \
   && ok "the owner/id locator resolves exactly one ticket" || bad "owner/id locator did not resolve" "$eq35"
 
@@ -3472,12 +3494,12 @@ grep -q 'Enriching 1 ticket' <<<"$eq35" \
 # an ambiguous bare branch hard-stops instead of enriching everyone.
 ( cd "$OI" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
   && git checkout -q -b bob-chargeback-lift ) 2>/dev/null
-bq35="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py --branch 2>&1)"
+bq35="$(cd "$OI" && CLAUDE_PROJECT_DIR="$OI" safe_enrich --branch 2>&1)"
 { grep -q 'Enriching 1 ticket' <<<"$bq35" && grep -q 'bob/chargeback-lift' <<<"$bq35"; } \
   && ok "--branch resolves the collision-shape branch (<owner>-<id>) to that owner's ticket" \
   || bad "--branch could not resolve <owner>-<id>" "$bq35"
 ( cd "$OI" && git checkout -q -b chargeback-lift ) 2>/dev/null
-bq36="$(cd "$OI" && PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$OI" python3 bin/enrich_ticket.py --branch 2>&1)"; brc35=$?
+bq36="$(cd "$OI" && CLAUDE_PROJECT_DIR="$OI" safe_enrich --branch 2>&1)"; brc35=$?
 { [ "$brc35" -eq 3 ] && grep -qi 'multiple owners' <<<"$bq36"; } \
   && ok "--branch on an ambiguous bare branch hard-stops too" \
   || bad "--branch picked an owner for an ambiguous bare branch" "rc=$brc35 $bq36"
@@ -8325,6 +8347,91 @@ elif [ "$sn53" -eq 0 ]; then
 else
   ok "none of the $sn53 tool CLI(s) installed here resolve inside the hermetic PATH"
 fi
+
+# ── the same contract, for the MODEL CLI enrich_ticket.py spawns ────────────────────────────────
+# enrich_ticket.py runs subprocess.run on a headless model command — `claude -p …` by default — and
+# prints "Enriching N ticket(s)" BEFORE the spawn. Sixteen sites here run that script; seven reach
+# subprocess.run and six of those launch a real model CLI. They were inert ONLY because they set
+# PATH=/usr/bin:/bin, i.e. only because nobody had installed a model CLI into /usr/bin. On a machine
+# where that is false the suite makes a real, billable, networked model call and still prints ✓ —
+# the same green-over-nothing shape as the verify_stack bug above, in the same file.
+#
+# TWO LIMITS, said plainly rather than implied. (1) A hermetic PATH shadows by NAME: an ABSOLUTE-path
+# model_cmd would still run, because enrich_ticket.py's allowlist gates on Path(argv0).name. Check
+# (e) below is what keeps the shipped adapters honest about that. (2) The lint in (b) matches text,
+# so a variable, `python`, `env`, a wrapper, or a multi-line form evades it. Check (d) is the one
+# that does not — it is behavioral, and it is the real guard.
+
+# (b) no raw enrich invocation left in this file, in the OBVIOUS forms. Both interpreter spellings,
+# since `python` is as easy to type as `python3`. This is a reminder, not the guarantee — see (d).
+en53="$(grep -nE 'python3?[^|]*enrich_ticket\.py' bin/selftest.sh \
+        | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v 'safe_enrich()' | grep -v 'en53=' || true)"
+[ -z "$en53" ] \
+  && ok "no raw enrich_ticket call in the suite in its obvious forms (real runs go through safe_enrich)" \
+  || bad "an enrich_ticket call can spawn a model CLI on the ambient PATH — route it through safe_enrich" "$en53"
+
+# (c) the allowlist must not quietly grow a model CLI, the way it must not grow a tool CLI.
+mb53="$(ls "$SAFEBIN" | grep -xE 'claude|codex|agy|devin|opencode|gemini' || true)"
+[ -z "$mb53" ] && ok "the hermetic PATH holds no model CLI" \
+  || bad "a model CLI entered the hermetic PATH allowlist" "$mb53"
+
+# A conditional CROSS-CHECK on (c), not independent evidence: for these exact names, anything
+# reachable inside $SAFEBIN necessarily also fails (c). Worth running where a model CLI actually
+# exists; vacuous on a CI runner, and reported as such rather than as a silent pass.
+mh53=""; mn53=0
+for c in claude codex agy devin opencode gemini; do
+  command -v "$c" >/dev/null 2>&1 || continue
+  mn53=$((mn53 + 1))
+  ( PATH="$SAFEBIN"; command -v "$c" >/dev/null 2>&1 ) && mh53="$mh53 $c"
+done
+if [ -n "$mh53" ]; then
+  bad "a model CLI is still reachable inside the hermetic PATH" "$mh53"
+elif [ "$mn53" -eq 0 ]; then
+  ok "no model CLI installed here, so the hermetic PATH could not be exercised (vacuous — CI's normal state)"
+else
+  ok "none of the $mn53 model CLI(s) installed here resolve inside the hermetic PATH"
+fi
+
+# (d) THE behavioral guard. Put a logging stub for every model CLI early on the AMBIENT path — i.e.
+# simulate the machine this bug is dangerous on — then enrich a ticket through safe_enrich and prove
+# nothing was spawned. The fixture must fall through to the BUILT-IN default (one ticket, no
+# kit_paths.py beside the script, and no --model-cmd), or the probe would exercise some other command
+# and prove nothing at all. A stub that is never reached leaves its log empty.
+MTRAP="$TMP/model-trap"; mkdir -p "$MTRAP"; MLOG="$TMP/model-spawns.log"; : > "$MLOG"
+for m in claude codex agy devin opencode gemini; do
+  printf '#!/bin/sh\necho "SPAWNED: %s" >> "%s"\nexit 0\n' "$m" "$MLOG" > "$MTRAP/$m"
+  chmod +x "$MTRAP/$m"
+done
+MT="$TMP/mtrap-fixture"; mkdir -p "$MT/.claude/config" "$MT/tickets/dana/ENG-9" "$MT/bin"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$MT/bin/"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$MT/.claude/config/stack.yaml"
+printf '# ENG-9: T\n\nBody.\n' > "$MT/tickets/dana/ENG-9/README.md"
+# TICKETWRIGHT_KIT/PYTHONPATH are unset inside the subshell, not merely left alone: an inherited one
+# would let enrich_ticket.py find a real kit, resolve an adapter, and quietly test some other runtime's
+# command instead of the built-in default this probe is written against. (`unset` rather than `env -u`
+# because safe_enrich is a shell function, which `env` cannot invoke.)
+mo53="$(cd "$MT" && unset TICKETWRIGHT_KIT PYTHONPATH; PATH="$MTRAP:$PATH" TICKETWRIGHT_PROJECT="$MT" safe_enrich ENG-9 2>&1)"
+# Prove the probe was live: it must have reached model resolution AND have been about to run the
+# built-in `claude` default, else an empty log means nothing.
+if ! grep -q 'Enriching 1 ticket' <<<"$mo53" || ! grep -q '\[built-in default\]' <<<"$mo53" \
+   || ! grep -q 'claude -p' <<<"$mo53"; then
+  bad "the model-spawn tripwire never reached the built-in model command — an empty log proves nothing here" "$mo53"
+elif [ -s "$MLOG" ]; then
+  bad "safe_enrich spawned a model CLI that was installed on the ambient PATH" "$(tr '\n' ' ' < "$MLOG")"
+else
+  ok "an installed model CLI is not spawned through safe_enrich (behavioral — stubs on the ambient PATH stayed untouched)"
+fi
+
+# (e) the shipped adapters must name a BARE allowed basename. An absolute path would satisfy
+# enrich_ticket.py's basename allowlist and defeat the hermetic PATH, so this is asserted, not assumed.
+ab53=""
+for f in adapters/runtime/*.md; do
+  v="$(sed -n 's/^model_cmd:[[:space:]]*//p' "$f" | head -1 | tr -d '"' | awk '{print $1}')"
+  [ -z "$v" ] && continue
+  case "$v" in */*) ab53="$ab53 $(basename "$f"):$v";; esac
+done
+[ -z "$ab53" ] && ok "every shipped runtime model_cmd names a bare command, not an absolute path" \
+  || bad "a runtime adapter's model_cmd uses a path — the hermetic PATH cannot shadow it" "$ab53"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -7,6 +7,35 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **`bin/selftest.sh` no longer spawns a real model CLI.** Sixteen sites run `enrich_ticket.py`,
+  which `subprocess.run`s a headless model command — `claude -p …` by default. Seven reached that
+  spawn and six launched a real model CLI. They were inert only because they set
+  `PATH=/usr/bin:/bin`, i.e. only because nobody had installed a model CLI into `/usr/bin`: an
+  accident of the machine, not a property of the suite. Because `Enriching N ticket(s)` prints
+  *before* the spawn, those six assertions passed whether or not the command resolved, so on a
+  machine where it did resolve the suite made a real, billable, networked model call — handing it up
+  to 24KB of ticket README — and still printed ✓. CI never caught it, having no model CLI installed.
+  Same broken contract as the entry below ("read-only, no network, no credentials"), in the same file.
+
+  Every `enrich_ticket.py` run now goes through `safe_enrich()`, which supplies the same hermetic
+  `PATH` that `safe_verify_stack()` already used, extended with `tee` (one test uses it as a
+  stand-in model command) and now documented as excluding model CLIs too. All 16 sites are routed,
+  not just the six that spawned, so the property is lintable with no per-site exemptions to rot.
+  There is deliberately **no** `EN_PATH` escape hatch mirroring `VS_PATH`: an inherited one would
+  silently reopen exactly this hole. §53 gains five checks — no raw invocation left in the file in
+  its obvious forms, no model CLI in the hermetic `PATH`, a conditional cross-check that installed
+  ones do not resolve
+  inside it, a behavioral tripwire that puts a logging stub for all six model CLIs early on the
+  *ambient* `PATH` and proves nothing is spawned, and an assertion that every shipped runtime
+  `model_cmd` names a bare command, since an absolute path would satisfy the basename allowlist and
+  defeat the `PATH`. Two limits are stated rather than implied: absolute-path commands escape, and
+  the text lint cannot survive indirection — the tripwire is the guard that can. Fixing this also
+  exposed a test that was passing vacuously: §31's built-in-fallback check asserted only
+  `Enriching 1 ticket`, which every resolution path prints, so it now pins `[built-in default]` and
+  `claude -p`. Verified by sabotage: strip the hermetic `PATH` from the helper with stubs installed
+  and six sites spawn `claude` while *every pre-existing assertion still passes* — only the new
+  tripwire fails. 1190 checks pass under bash 5.3 and 3.2.57 (1185 before).
+
 - **`bin/selftest.sh` no longer runs a seam's real `verify:` command.** §32's shell-metacharacter
   test called `verify_stack.sh` *without* `--dry-run` against a copy of the shipped
   multi-warehouse example. The injection refusal it asserts is per-seam, so refusing the poisoned
