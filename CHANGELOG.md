@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [3.8.1] — 2026-08-30
 
 ### Fixed
 - **`bin/selftest.sh` no longer spawns a real model CLI.** Sixteen sites run `enrich_ticket.py`,
