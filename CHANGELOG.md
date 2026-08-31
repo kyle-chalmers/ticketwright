@@ -4,6 +4,36 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Changed
+- **All seven skills are now model-invocable; `/setup`, `/ship`, `/productize` confirm before acting
+  instead of being un-invokable.** Those three carried `disable-model-invocation: true`, so the model
+  could never reach for them — a person had to remember to type the slash command every time. That
+  flag is also **Claude-Code-only**: it is silently dropped on every emit runtime (codex, cursor,
+  devin, …), which is the whole reason the installer bolts a "user-invocable only" warning block onto
+  the emitted copies. The fix replaces the coarse, non-portable flag with a portable **in-body HARD
+  HALT** that confirms before the durable/external action — an instruction the agent follows on every
+  runtime, visible in the transcript, and stated plainly as a convention rather than a mechanical
+  block (no runtime enforces it, unlike the flag on Claude Code). `/ship` already had this (its Phase
+  B "stop and wait" gate before any **external post**; it still writes local, gitignored drafts and a
+  committed index row in Phase A first, so the halt is before delivery, not before its first write).
+  `/productize` gains one before it stamps a brand-new skill folder. `/setup` gains a top-level
+  model-invocation gate covering **every mode** — default, `tool`, `role`, `team`, `policies`,
+  `--teammate`, `--voice`, `viewer`, adoption, Bootstrap — so a model-initiated run stops for
+  confirmation before writing in any of them (an explicit user invocation still authorizes that
+  mode's own scoped writes). The net behavior is what "seamless" should mean: the model recognizes
+  when one of these is needed and **asks for confirmation before acting**, rather than doing nothing
+  until the user drives it by hand.
+
+  The `disable-model-invocation` mechanism itself is **retained** — still honored, still emitted with
+  a warning block on foreign runtimes, now unit-covered in selftest — so a future skill that must
+  *never* be model-invoked at all remains supported; no skill ships gated today. Selftest sections
+  37/39/41/45 flip from asserting the gate is present to asserting all seven skills are model-invocable
+  and the three side-effectful ones each carry an in-body HARD HALT; the codex-cli and antigravity
+  golden fixtures are regenerated without the warning block.
+
+
 ## [3.8.1] — 2026-08-30
 
 ### Fixed

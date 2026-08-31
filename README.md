@@ -527,17 +527,22 @@ ticketwright enrich ENG-123              # curated index summary  — needs a mo
   capabilities, never a name baked into code. Where the runtime already reads the canonical copy
   it VERIFIES and emits no skills — `--runtime claude-code` natively (the Claude Code path is
   unchanged), and cursor/opencode/cline/devin because they read `.claude/skills/` directly; the
-  printed report states what that shared file cannot carry for a foreign reader (`allowed-tools`
-  and `disable-model-invocation` are Claude-specific keys those runtimes ignore, warned per
-  affected skill). Where the runtime cannot see the canonical copy it EMITS a translated copy:
-  codex-cli and antigravity share one `.agents/skills/<name>/SKILL.md` emission, each file stamped
-  with a provenance header — hand-copying skill files between layouts is unsupported, because a
-  stale duplicate silently winning over the canonical copy is the failure mode the installer
-  exists to prevent; re-run it to update (a file the installer did not emit is never overwritten —
-  the install fails loudly instead). Skills marked user-invocable-only
-  (`disable-model-invocation: true` — `/setup`, `/ship`, `/productize`) are emitted with a topmost
-  warning block stating that nothing mechanical prevents model invocation there; every other
-  metadata loss is recorded per runtime in `adapters/runtime/<name>.md` § Metadata mapping. The
+  printed report states what that shared file cannot carry for a foreign reader (`allowed-tools` is
+  a Claude-specific key those runtimes ignore, warned per affected skill). Where the runtime cannot
+  see the canonical copy it EMITS a translated copy: codex-cli and antigravity share one
+  `.agents/skills/<name>/SKILL.md` emission, each file stamped with a provenance header —
+  hand-copying skill files between layouts is unsupported, because a stale duplicate silently
+  winning over the canonical copy is the failure mode the installer exists to prevent; re-run it to
+  update (a file the installer did not emit is never overwritten — the install fails loudly
+  instead). All seven skills are model-invocable; the three that take durable or external action
+  confirm before it: `/ship` **stops before any external post**, and `/setup` and `/productize`
+  **stop before writing committed config or a new skill**, via an in-body HARD HALT — an instruction
+  the agent follows on every runtime, stated plainly as a convention rather than a mechanical block
+  (unlike the Claude-only `disable-model-invocation` frontmatter flag they used to carry, which only
+  Claude Code enforced). That flag remains supported (and is emitted with a topmost warning block on
+  foreign runtimes) for any future skill that must never be model-invoked at all; no skill ships
+  gated today. Every other metadata loss is recorded per
+  runtime in `adapters/runtime/<name>.md` § Metadata mapping. The
   `qc-reviewer` agent definition is emitted wherever subagents are user-definable
   (`.codex/agents/*.toml`; markdown for cursor/devin/antigravity); where they are not (cline) or
   the definition path is undocumented (opencode), the report says so. `--global` emits into the

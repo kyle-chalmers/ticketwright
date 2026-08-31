@@ -3,7 +3,6 @@ name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
 argument-hint: <ticket-id | owner/id> [--go] [--chat <target>]   (--go authorizes the external Phase B; --chat overrides the routed chat target)
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
-disable-model-invocation: true
 ---
 
 # /ship

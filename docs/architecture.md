@@ -271,10 +271,9 @@ to anyone adopting or extending the kit:
   is reachable and emits no skills. A duplicate that exists only to be found is a duplicate that
   can go stale and silently win over the real file — that is the failure mode, and not emitting is
   the fix. The verify report also states the shared-file trap: one file, many readers, and a
-  foreign reader ignores Claude-specific keys, so `allowed-tools` and `disable-model-invocation`
-  are lost on those runtimes exactly as on an emit runtime lacking the primitive — warned per
-  affected skill, and `--global` on them is a deliberate, explained no-op (a per-user copy would
-  be a permanent stale-duplicate risk).
+  foreign reader ignores Claude-specific keys, so `allowed-tools` is lost on those runtimes exactly
+  as on an emit runtime lacking the primitive — warned per affected skill, and `--global` on them
+  is a deliberate, explained no-op (a per-user copy would be a permanent stale-duplicate risk).
 - **Where the runtime cannot see it, the emitted copy carries its provenance.** codex-cli and
   antigravity share one `.agents/skills/<name>/SKILL.md` emission (`name` + `description`
   frontmatter — the fields both accept) with a header naming the emitting version and the re-run
@@ -282,10 +281,15 @@ to anyone adopting or extending the kit:
   and it is provenance-aware — its own files are refreshed on re-run, a file it did not emit is
   never overwritten and fails the install loudly instead. `--global` emits into the adapter's
   declared `global_skills_root`, refusing where that value is `unknown` rather than guessing.
-- **Safety metadata that cannot translate rides in the artifact.** A skill whose source declares
-  `disable-model-invocation: true` is user-invocable-only by design; no emit runtime has that
-  primitive, so the emitted file opens with a warning block saying that nothing mechanical
-  prevents model invocation there. Every mapping and every loss — including the `qc-reviewer`
+- **Safety rides in the skill body, not a Claude-only flag.** All seven skills are model-invocable;
+  the three that take durable or external action confirm before it — `ship` before any external post,
+  `setup` and `productize` before writing committed config or a new skill — via an in-body HARD HALT.
+  That is an instruction the agent follows on every runtime, a convention rather than a mechanical
+  block (stated plainly, per tiebreaker #6), unlike the `disable-model-invocation` frontmatter flag,
+  which only Claude Code mechanically enforced. That flag is
+  still supported for a future skill that must never be model-invoked at all: no emit runtime has the
+  primitive, so such a file would open with a warning block saying nothing mechanical prevents model
+  invocation there. No skill ships gated today. Every mapping and every loss — including the `qc-reviewer`
   agent's `tools:` line — is recorded per runtime in `adapters/runtime/<name>.md` § Metadata
   mapping; agent definitions are emitted wherever subagents are user-definable
   (`.codex/agents/*.toml`, markdown for cursor/devin/antigravity) and the loss is stated where

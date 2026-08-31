@@ -139,9 +139,9 @@ a package or checked out.
 
 **Stage A — establish the facts (hand-wiring allowed).**
 1. `ticketwright init` (or copy the kit), then `ticketwright install --runtime codex-cli`.
-   Expect: skills emitted under `.agents/skills/` with provenance headers, user-invocable-only
-   skills carrying their topmost warning block, `.codex/agents/qc-reviewer.toml`, and the printed
-   manual hook-wiring line — no hook config file is emitted.
+   Expect: skills emitted under `.agents/skills/` with provenance headers (all model-invocable —
+   no user-invocable-only warning block, since no skill ships gated), `.codex/agents/qc-reviewer.toml`,
+   and the printed manual hook-wiring line — no hook config file is emitted.
 2. Find where Codex's hooks config actually lives; wire the printed line verbatim:
    `bash bin/tw hook_shim.py --runtime codex-cli --hook db_write_guard || exit 2`. Record the
    config file path that worked — that path is the value `codex-cli.hook_wiring` has been

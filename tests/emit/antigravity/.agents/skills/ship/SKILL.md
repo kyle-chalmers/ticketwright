@@ -5,12 +5,6 @@ description: Finalize and deliver a reviewed ticket — backup, tracker comment,
 
 <!-- emitted by ticketwright install v3.8.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
-> **User-invocable only — not enforced on antigravity.** The canonical source of this skill
-> declares `disable-model-invocation: true`: a person invokes it deliberately; the model
-> must never choose it on its own. antigravity has no equivalent control, so nothing mechanical
-> prevents model invocation here — treat any model-initiated use of this skill as a bug.
-> Its canonical `allowed-tools` restriction ([Read, Write, Edit, Bash, Glob, Grep]) is not enforced here either.
-
 # /ship
 
 Ships a ticket that has **passed `/review`**. Split into a safe Phase A (local, no approval) and a

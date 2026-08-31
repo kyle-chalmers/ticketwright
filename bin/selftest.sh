@@ -3859,8 +3859,8 @@ ship37="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
   && grep -qi 'resolved delivery plan' <<<"$ship37" && grep -qi 'recipient list' <<<"$ship37" \
   && grep -qi 'sharing scope' <<<"$ship37" && grep -q 'HARD HALT' .claude/skills/ship/SKILL.md \
   && grep -q 'stop and wait' .claude/skills/ship/SKILL.md \
-  && grep -q 'disable-model-invocation: true' .claude/skills/ship/SKILL.md; } \
-  && ok "/ship's prose wires the selection call and keeps the hard halt + disable-model-invocation (wiring pin)" \
+  && ! grep -q 'disable-model-invocation' .claude/skills/ship/SKILL.md; } \
+  && ok "/ship's prose wires the selection call and keeps the Phase B hard halt; it is model-invocable (no disable-model-invocation flag) (wiring pin)" \
   || bad "/ship's approval rendering or its safety lines regressed"
 # The preview==execution rule: /ship must halt on a multi-target chat/docstore seam rather than
 # render a target its own steps would not deliver to (wiring pin for the authorization-mismatch fix).
@@ -4116,11 +4116,12 @@ ediff="$(diff -r "$EMIT_P/.agents" tests/emit/codex-cli/.agents 2>&1 \
   && ok "emitted tree (.agents + .codex) is byte-for-byte identical to tests/emit/codex-cli/" \
   || bad "emitted tree diverges from the golden fixtures (regenerate deliberately, per tests/emit/README.md)" \
         "$(head -3 <<<"$ediff")"
-# U1's temporary carve-out (defer gated skills entirely) was COMPLETED by U2's metadata mapping:
-# a skill whose source declares disable-model-invocation: true is now emitted, but the loss must
-# ride in the ARTIFACT — a topmost warning block — and be printed, never silent. Enumerated from
-# SOURCE frontmatter rather than a hardcoded list, with the SAME parser as the emitter — a literal
-# grep would let a validly quoted `"true"` evade this assertion while the emitter gates it.
+# All seven skills are now MODEL-INVOCABLE: none declares disable-model-invocation: true. The three
+# that were user-invocable-only (setup, ship, productize) carry a portable in-body HARD HALT instead
+# of the Claude-only frontmatter flag — a confirm-before-running gate that survives emission to every
+# runtime, unlike the flag (only Claude Code honors it; that mismatch was the whole reason the warning
+# block below exists). Enumerated from SOURCE frontmatter with the SAME parser as the emitter — a
+# literal grep would let a validly quoted `"true"` evade this while the emitter still gated it.
 gated="$(python3 -c "
 import sys, pathlib
 sys.path.insert(0, 'bin')
@@ -4129,16 +4130,42 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
     if kit_paths.read_frontmatter(f).get('disable-model-invocation') == 'true':
         print(f.parent.name)
 ")"
-[ -n "$gated" ] || bad "no source skill declares disable-model-invocation: true — the carve-out fixture premise broke"
-carve_bad=""
-for g in $gated; do
-  gf="$EMIT_P/.agents/skills/$g/SKILL.md"
-  [ -f "$gf" ] || carve_bad="$carve_bad unemitted:$g"
-  grep -q 'User-invocable only' "$gf" 2>/dev/null || carve_bad="$carve_bad unwarned:$g"
-  grep -q "warned    $g" <<<"$emit_out" || carve_bad="$carve_bad unprinted:$g"
-done
-[ -z "$carve_bad" ] && ok "every disable-model-invocation skill is emitted WITH its warning block AND the loss printed ($(echo $gated | tr ' ' ','))" \
-  || bad "a user-invocable-only skill was emitted without its stated loss" "$carve_bad"
+[ -z "$gated" ] && ok "every shipped skill is model-invocable (no source skill declares disable-model-invocation: true)" \
+  || bad "a shipped skill still declares disable-model-invocation: true — all seven must be model-invocable" "$gated"
+# The three that take durable/external action confirm before it with an in-body HARD HALT — the
+# portable replacement for the flag. Stated HONESTLY (not "before its first side effect", which is
+# false for /ship): ship halts before any external POST (Phase A writes drafts + an index row first);
+# setup carries a top-level model-invocation gate covering EVERY mode (not only the default Phase 3
+# path — a real gap a fresh-path-only halt would leave, since viewer/teammate/adopt/bootstrap write);
+# productize halts before it stamps a new skill. These greps are presence pins, not proof of ordering.
+halt_bad=""
+grep -q 'HARD HALT' .claude/skills/ship/SKILL.md || halt_bad="$halt_bad ship"
+grep -q 'HARD HALT' .claude/skills/productize/SKILL.md || halt_bad="$halt_bad productize"
+{ grep -q 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/setup/SKILL.md \
+  && grep -q 'HARD HALT' .claude/skills/setup/SKILL.md; } || halt_bad="$halt_bad setup"
+[ -z "$halt_bad" ] && ok "ship/productize halt before their durable-or-external action, and setup carries a top-level model-invocation confirm gate covering every mode" \
+  || bad "a formerly-gated skill lost its in-body confirm gate (the flag's replacement)" "$halt_bad"
+# The disable-model-invocation mechanism itself is KEPT for a future never-model-fire skill: no skill
+# uses it today. Prove the renderer AND that the enumerator actually DETECTS a gated skill — a test
+# fixture with one gated + one plain skill, so a broken enumerator that only ever returns {} fails
+# here (the == {} check alone was vacuous, per review).
+python3 -c "
+import sys, pathlib, tempfile; sys.path.insert(0, 'bin')
+import emit_runtime
+wb = emit_runtime.warning_block('codex-cli', '[Read, Write]')
+assert 'User-invocable only' in wb, 'warning_block renderer regressed'
+assert '[Read, Write]' in wb, 'warning_block dropped the allowed-tools line'
+assert emit_runtime.gated_skills(pathlib.Path('.')) == {}, 'a shipped skill is still gated'
+with tempfile.TemporaryDirectory() as d:
+    root = pathlib.Path(d)
+    for name, gated in (('g', True), ('ng', False)):
+        sk = root / '.claude' / 'skills' / name; sk.mkdir(parents=True)
+        fm = 'name: ' + name + '\nallowed-tools: [Read]\n' + ('disable-model-invocation: true\n' if gated else '')
+        (sk / 'SKILL.md').write_text('---\n' + fm + '---\nbody\n')
+    got = emit_runtime.gated_skills(root)
+    assert sorted(got) == ['g'], 'enumerator did not detect exactly the gated skill: ' + repr(got)
+" && ok "the disable-model-invocation mechanism is retained and unit-covered (renderer works; enumerator detects exactly a gated fixture skill), ready for a future never-model-fire skill" \
+  || bad "the retained disable-model-invocation mechanism regressed"
 # The count guard: the completion must not quietly drop skills either way.
 emitted_n="$(find "$EMIT_P/.agents/skills" -name SKILL.md | wc -l | tr -d ' ')"
 total_n="$(ls .claude/skills/*/SKILL.md | wc -l | tr -d ' ')"
@@ -4441,12 +4468,12 @@ mm_bad="$(cat "$TMP/hd4255.out")"
 hdr "41 · the emission matrix: all seven runtimes, metadata mapping, agent definitions (PROMPT 7 / U2)"
 # U2 extends the installer to every runtime, data-driven off adapter frontmatter: NATIVE verify
 # where skills_root IS the canonical copy, VERIFY-not-emit where reads_foreign_skills includes it,
-# EMIT elsewhere. What this section pins: the per-runtime fixture trees; that every
-# disable-model-invocation skill is covered by a warning IN AN ARTIFACT THIS INSTALL PRODUCES
-# (the emitted file's topmost block on emit runtimes, the printed verify report on verify
-# runtimes), enumerated from source frontmatter, never a hardcoded list; that verify runtimes
-# provably emit no duplicate skills; and that --global is driven by global_skills_root, refusing
-# on unknown.
+# EMIT elsewhere. What this section pins: the per-runtime fixture trees; that all seven skills are
+# model-invocable (none gated) so NO artifact carries a user-invocable-only warning, while the
+# retained mechanism still would cover a future gated skill IN AN ARTIFACT THIS INSTALL PRODUCES
+# (the emitted file's topmost block on emit runtimes, the printed verify report on verify runtimes),
+# enumerated from source frontmatter, never a hardcoded list; that verify runtimes provably emit no
+# duplicate skills; and that --global is driven by global_skills_root, refusing on unknown.
 E41="$TMP/e41"; mkdir -p "$E41"
 
 # --- structure: the two installer-driving adapter keys hold legal forms ---------------------------
@@ -4517,7 +4544,7 @@ mt_bad="$(cat "$TMP/hd4339.out")"
 [ -z "$mt_bad" ] && ok "every adapter's Metadata mapping table covers all three fields with closed-vocabulary statuses (losses named, never empty)" \
   || bad "a metadata mapping table is missing a field, an illegal status, or an unexplained loss" "$mt_bad"
 
-# --- emit runtimes: antigravity shares the .agents emission, gated warnings ride topmost ----------
+# --- emit runtimes: antigravity shares the .agents emission; no skill is gated, so no warning block -
 gated41="$(python3 -c "
 import sys, pathlib
 sys.path.insert(0, 'bin')
@@ -4526,25 +4553,23 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
     if kit_paths.read_frontmatter(f).get('disable-model-invocation') == 'true':
         print(f.parent.name)
 ")"
-[ -n "$gated41" ] || bad "no source skill declares disable-model-invocation: true — the warning-coverage premise broke"
+[ -z "$gated41" ] || bad "a shipped skill still declares disable-model-invocation: true — all seven must be model-invocable" "$gated41"
 AG_P="$E41/agy"; mkdir -p "$AG_P"
 env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   python3 bin/emit_runtime.py --runtime antigravity --root "$AG_P" >/dev/null 2>&1; ag_rc=$?
 agdiff="$(diff -r "$AG_P/.agents" tests/emit/antigravity/.agents 2>&1)" && [ "$ag_rc" -eq 0 ] \
   && ok "antigravity emission is byte-for-byte identical to tests/emit/antigravity/ (skills + agent definition)" \
   || bad "antigravity emission diverged from its golden fixtures" "rc=$ag_rc $(head -3 <<<"$agdiff")"
-# The warning must be the FIRST RENDERED BLOCK of every gated emitted file (the provenance line
-# above it is an HTML comment): the loss rides in the artifact, not only in a report that scrolls.
-pos_bad=""
-for g in $gated41; do
-  for tree in "$EMIT_P" "$AG_P"; do
-    f="$tree/.agents/skills/$g/SKILL.md"
-    first="$(awk 'NR==1{infm=1; next} infm && /^---$/{infm=0; next} infm{next} /^$/{next} /^<!--/{next} {print; exit}' "$f" 2>/dev/null)"
-    case "$first" in "> **User-invocable only"*) ;; *) pos_bad="$pos_bad $f";; esac
-  done
+# The flip side of the retained mechanism: with nothing gated, NO emitted skill may carry the
+# user-invocable-only warning block on either emit runtime — its presence would mean a skill is
+# secretly not model-invocable. This is the visible half of the byte-for-byte golden diffs above.
+warn_bad=""
+for tree in "$EMIT_P" "$AG_P"; do
+  hits="$(grep -rl 'User-invocable only' "$tree/.agents/skills" 2>/dev/null | tr '\n' ' ')"
+  [ -z "$hits" ] || warn_bad="$warn_bad $hits"
 done
-[ -z "$pos_bad" ] && ok "every gated skill's warning is the topmost rendered block on both emit runtimes ($(echo $gated41 | tr ' ' ','))" \
-  || bad "a gated skill's warning block is missing or not topmost" "$pos_bad"
+[ -z "$warn_bad" ] && ok "no emitted skill carries a user-invocable-only warning on either emit runtime (all skills are model-invocable)" \
+  || bad "an emitted skill still carries a user-invocable-only warning block" "$warn_bad"
 grep -q 'NOT mechanically enforced' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
   && grep -q 'tools: Read, Bash, Glob, Grep' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
   && ok "the codex agent TOML states its tools: loss inside the artifact (lost, but never silently)" \
@@ -4602,7 +4627,7 @@ from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')
     grep -q "warning   $g is user-invocable-only" <<<"$vout" || vbad="$vbad unwarned:$g"
   done
   grep -q 'allowed-tools restrictions' <<<"$vout" || vbad="$vbad allowed-tools-loss-unstated"
-  [ -z "$vbad" ] && ok "$rt: verify-not-emit — canonical copy verified, the only new files are its declared agent definitions, every gated skill warned" \
+  [ -z "$vbad" ] && ok "$rt: verify-not-emit — canonical copy verified, the only new files are its declared agent definitions (no skill ships gated; any future gated skill would be warned in the verify report)" \
     || bad "$rt's verify run broke its contract" "$vbad"
 done
 vdiff="$(diff -r "$VD_P/.cursor" tests/emit/cursor/.cursor 2>&1)" \
@@ -4656,10 +4681,11 @@ GH="$E41/home"; GP="$E41/gproj"; mkdir -p "$GH" "$GP"
 g_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
   python3 bin/emit_runtime.py --runtime codex-cli --global --root "$GP" 2>&1)"; g_rc=$?
 { [ "$g_rc" -eq 0 ] && [ -f "$GH/.agents/skills/ticket/SKILL.md" ] \
-  && grep -q 'User-invocable only' "$GH/.agents/skills/ship/SKILL.md" \
+  && [ -f "$GH/.agents/skills/ship/SKILL.md" ] \
+  && ! grep -q 'User-invocable only' "$GH/.agents/skills/ship/SKILL.md" \
   && [ ! -e "$GH/.codex" ] && grep -q 'project-scoped' <<<"$g_out" \
   && [ -z "$(find "$GP" -type f)" ]; } \
-  && ok "--global emits skills into the declared global_skills_root under \$HOME (warnings intact; agents stay project-scoped, stated)" \
+  && ok "--global emits skills into the declared global_skills_root under \$HOME (all model-invocable, no warning block; agents stay project-scoped, stated)" \
   || bad "--global emission into the declared root broke its contract" "rc=$g_rc"
 ga_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
   python3 bin/emit_runtime.py --runtime antigravity --global --root "$GP" 2>&1)"; ga_rc=$?
@@ -5751,9 +5777,9 @@ python3 "$KIT/bin/effective_config.py" --root "$T3" --json --quiet >/dev/null 2>
 # is stated in adapters/README.md (§ What is MECHANICAL here, and what is instruction) rather
 # than papered over with a grep that would look like proof.
 SH45=".claude/skills/ship/SKILL.md"
-grep -q 'disable-model-invocation: true' "$SH45" \
-  && ok "/ship keeps disable-model-invocation (routing added no model surface)" \
-  || bad "/ship lost disable-model-invocation"
+{ ! grep -q 'disable-model-invocation' "$SH45" && grep -q 'HARD HALT' "$SH45"; } \
+  && ok "/ship is model-invocable and keeps its Phase B HARD HALT (routing added no unguarded side effect)" \
+  || bad "/ship's model-invocation posture or its Phase B halt regressed"
 grep -q 'claude -p' "$SH45" && bad "/ship reintroduced a headless model call" \
   || ok "/ship still makes no headless model call"
 { grep -q 'delivery_plan.py' "$SH45" && grep -q 'check-draft' "$SH45"; } \

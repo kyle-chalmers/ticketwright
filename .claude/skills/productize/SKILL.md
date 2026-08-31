@@ -3,7 +3,6 @@ name: productize
 description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
 argument-hint: "<workflow name> (e.g. monthly vendor reconciliation)"
 allowed-tools: [Read, Write, Edit, Bash, Glob]
-disable-model-invocation: true
 ---
 
 # /productize
@@ -24,7 +23,12 @@ Ask, in prose (runtimes that render structured options show chips; others a numb
 - **Determinism anchor**: the known-good prior run to use as the **golden fixture** (counts/totals
   to assert; the byte-identical output file to diff against).
 
-## Phase 2 — Stamp from the template
+## Phase 2 — Stamp from the template (HARD HALT → confirm before writing a new skill)
+`/productize` is model-invocable: the model may reach for it when it notices a workflow recurring.
+Because this phase writes a **brand-new skill** into the repo — self-modifying tooling — it stops
+first. **Print the plan, then stop and wait for the user** before any file is created: the skill
+name, its path (`.claude/skills/<name>/`), and the file list about to be written (`SKILL.md`,
+`sql/`, `templates/`, `bin/`, `golden/`). Only on explicit confirmation, stamp the files.
 1. `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then copy
    `"$KIT"/templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).
