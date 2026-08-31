@@ -3,7 +3,7 @@ name: productize
 description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
 ---
 
-<!-- emitted by ticketwright install v3.8.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v3.9.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /productize
 
