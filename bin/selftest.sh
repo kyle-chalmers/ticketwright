@@ -4144,19 +4144,27 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
 ")"
 [ -z "$gated" ] && ok "every shipped skill is model-invocable (no source skill declares disable-model-invocation: true)" \
   || bad "a shipped skill still declares disable-model-invocation: true — all seven must be model-invocable" "$gated"
-# The three that take durable/external action confirm before it with an in-body HARD HALT — the
-# portable replacement for the flag. Stated HONESTLY (not "before its first side effect", which is
-# false for /ship): ship halts before any external POST (Phase A writes drafts + an index row first);
-# setup carries a top-level model-invocation gate covering EVERY mode (not only the default Phase 3
-# path — a real gap a fresh-path-only halt would leave, since viewer/teammate/adopt/bootstrap write);
-# productize halts before it stamps a new skill. These greps are presence pins, not proof of ordering.
+# The three that take durable/external action carry a MODEL-INITIATED confirm gate positioned BEFORE
+# their first durable action — pinned by DISTINCTIVE wording AND ordering, so deleting the new gate
+# FAILS here. A bare 'HARD HALT' grep was vacuous: productize already had a later "HARD HALT for human
+# review", and /ship's Phase B external halt would mask a missing pre-Phase-A gate. Line-number
+# ordering (grep -n | head | cut) proves each gate precedes the first thing that mutates.
 halt_bad=""
-grep -q 'HARD HALT' .claude/skills/ship/SKILL.md || halt_bad="$halt_bad ship"
-grep -q 'HARD HALT' .claude/skills/productize/SKILL.md || halt_bad="$halt_bad productize"
-{ grep -q 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/setup/SKILL.md \
-  && grep -q 'HARD HALT' .claude/skills/setup/SKILL.md; } || halt_bad="$halt_bad setup"
-[ -z "$halt_bad" ] && ok "ship/productize halt before their durable-or-external action, and setup carries a top-level model-invocation confirm gate covering every mode" \
-  || bad "a formerly-gated skill lost its in-body confirm gate (the flag's replacement)" "$halt_bad"
+# setup — the top-level model-invocation gate must precede the first `## Mode:` section
+ssg="$(grep -n 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/setup/SKILL.md | head -1 | cut -d: -f1)"
+ssm="$(grep -n '^## Mode: ' .claude/skills/setup/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$ssg" ] && [ -n "$ssm" ] && [ "$ssg" -lt "$ssm" ]; } || halt_bad="$halt_bad setup"
+# ship — the model-invocation gate must precede Phase A (the first in-repo finalization: tidy + index
+# refresh), and the Phase B external-post HARD HALT must still exist
+shg="$(grep -n 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/ship/SKILL.md | head -1 | cut -d: -f1)"
+sha="$(grep -n '^## Phase A' .claude/skills/ship/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$shg" ] && [ -n "$sha" ] && [ "$shg" -lt "$sha" ] && grep -q 'HARD HALT' .claude/skills/ship/SKILL.md; } || halt_bad="$halt_bad ship"
+# productize — the pre-stamp confirm must precede the template copy that writes the new skill folder
+spg="$(grep -n 'confirm before writing a new skill' .claude/skills/productize/SKILL.md | head -1 | cut -d: -f1)"
+spa="$(grep -n 'templates/productized-skill' .claude/skills/productize/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$spg" ] && [ -n "$spa" ] && [ "$spg" -lt "$spa" ]; } || halt_bad="$halt_bad productize"
+[ -z "$halt_bad" ] && ok "setup/ship/productize each carry a model-initiated confirm gate positioned BEFORE their first durable action (distinctive wording + ordering pinned)" \
+  || bad "a formerly-gated skill lost its model-initiated confirm gate, or it sits after the first action" "$halt_bad"
 # The disable-model-invocation mechanism itself is KEPT for a future never-model-fire skill: no skill
 # uses it today. Prove the renderer AND that the enumerator actually DETECTS a gated skill — a test
 # fixture with one gated + one plain skill, so a broken enumerator that only ever returns {} fails

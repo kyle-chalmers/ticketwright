@@ -876,12 +876,14 @@ def main(argv: list[str] | None = None) -> int:
                             sorted(k for k, v in res.seams.items() if isinstance(v, dict)))
         return _emit(out, EXIT_NO_SEAM, args.quiet)
 
-    # The plan is DEMANDED only by a multi-target slot (routing has nothing else to read) and by
-    # --record-delivered (there is no file to append to). A single-mapping slot keeps working with
-    # no plan at all, which is what stops this from breaking every repo that never adopts targets.
-    # An ABSENT plan is the only excusable state, though: a plan that EXISTS but is malformed is a
+    # The plan FILE is demanded at THIS gate only by a multi-target slot (routing has nothing else to
+    # read) and by --record-delivered (there is no file to append to). A single-mapping slot passes
+    # this gate with no plan file — but a TOOL-ONLY chat single mapping still HALTS downstream in
+    # route() (exit 9) when the plan declares no `chat.channel:`/`chat.recipients:`; it is simply not
+    # the no_plan failure HERE. A single mapping that sets a standing destination needs no plan at all.
+    # An ABSENT plan is the only excusable state at this gate: a plan that EXISTS but is malformed is a
     # broken committed record and reports exit 4 on every slot shape — "single mapping" excuses a
-    # missing declaration, not a file nobody can read.
+    # missing FILE here, not a file nobody can read.
     if perr and (perr["code"] != "no_plan" or _is_multi(seam) or args.record_delivered):
         out = _blank(args.seam, None)
         out["error"] = perr

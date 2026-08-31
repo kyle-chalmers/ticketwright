@@ -13,7 +13,16 @@ the **merged** config (`bin/effective_config.py`, never raw `stack.yaml` — a r
 personal and machine override); routes through the docstore / tracker / chat / vcs adapters, so it
 works regardless of the underlying tools.
 
-## Phase A — Finalize (no approval needed; internal to repo)
+> **THE MODEL-INVOCATION CONFIRM GATE — `/ship` is model-invocable.** When the model reaches for
+> `/ship` on its own initiative (the user did not explicitly invoke it), it must **stop and confirm
+> before Phase A's first durable action.** Phase A finalizes *in the repo* — it tidies and overwrites
+> deliverable files and refreshes the committed ticket-index entry — so a model-initiated run must not
+> mutate the ticket before the human has said to ship it. Print the ticket and what Phase A will do,
+> then wait. An explicit user invocation authorizes Phase A as normal. This gate is separate from — and
+> earlier than — the Phase B external-post HARD HALT below, which always applies regardless of who
+> invoked the skill; it is an instruction the agent follows, not a mechanical block.
+
+## Phase A — Finalize (no separate approval when the user invoked `/ship`; internal to repo)
 1. **Resolve WHO first** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
    and show its one-line "Working as …" display; the resolved person is the shipper. Then resolve
    the **ticket locator**: `owner/id` is exact; a bare `<id>` resolves against the shipper's

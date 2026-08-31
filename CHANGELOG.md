@@ -15,9 +15,10 @@ All notable changes to this project are documented here. Format loosely follows
   the emitted copies. The fix replaces the coarse, non-portable flag with a portable **in-body HARD
   HALT** that confirms before the durable/external action — an instruction the agent follows on every
   runtime, visible in the transcript, and stated plainly as a convention rather than a mechanical
-  block (no runtime enforces it, unlike the flag on Claude Code). `/ship` already had this (its Phase
-  B "stop and wait" gate before any **external post**; it still writes local, gitignored drafts and a
-  committed index row in Phase A first, so the halt is before delivery, not before its first write).
+  block (no runtime enforces it, unlike the flag on Claude Code). `/ship` gains a model-initiation gate
+  **before Phase A** (a model-initiated run confirms before Phase A tidies deliverable files and
+  refreshes the committed ticket-index entry — an explicit user invocation authorizes Phase A as
+  before) and keeps its Phase B "stop and wait" gate before any **external post**.
   `/productize` gains one before it stamps a brand-new skill folder. `/setup` gains a top-level
   model-invocation gate covering **every mode** — default, `tool`, `role`, `team`, `policies`,
   `--teammate`, `--voice`, `viewer`, adoption, Bootstrap — so a model-initiated run stops for
