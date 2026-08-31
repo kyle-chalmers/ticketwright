@@ -118,14 +118,17 @@ parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
     an IT device approval that hasn't landed yet. Don't dead-end there: offer the mountless route
     on the spot — the `rclone` adapter fills this slot with no mount, same tier split as above —
     and note they can switch back to the mounted slot once the approval comes through.
-13. **Chat** (or *none*), then its destination — **per-adapter**: read the chosen adapter's
-    frontmatter for the key its verbs interpolate as the default destination (adapters differ on
-    the key name; one generic question writes the wrong key for one of them). Then
-    **`always_include`** — the fixed stakeholder list every message carries (the "never solo-DM a
-    stakeholder" rule). When chat is configured, this list must not be empty.
-    - *This chat question is not final.* A later release adds per-target routing (multiple chat
-      destinations with declared audiences); write the block as a plain single mapping so adding
-      a `targets:` entry later is an extension, not a rewrite.
+13. **Chat** (or *none*): which **tool** fills the slot, its transport, and the adapter's required
+    connection keys — nothing more. **Do NOT ask for a standing channel or a fixed stakeholder
+    list.** Who a result goes to, and where, varies per analysis — it depends on who the analysis
+    is *for* — so the destination and recipients are declared **per-communication** at `/ship` and
+    recorded in the ticket's `delivery-plan.yaml` (`chat.channel:` + a non-empty `chat.recipients:`).
+    Routing **halts and asks** when a ticket declares none, rather than sending to a standing default
+    that may be wrong. Write the seam as a **tool-only single mapping** (tool + transport +
+    connection keys; no `default_channel`, no `always_include`).
+    - *A team that genuinely wants fixed, pre-declared audiences* adopts the `targets:` shape
+      (`stack.example.multi-audience.yaml`), where each audience declares its own destination and
+      recipient list — an extension, not the default.
     - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
       show the chosen adapter's "Permission posture (MCP)" section and carry its read-only probe's
       outcome into the Phase-4 report next to that slot's verify_stack result. A chat connector's
@@ -248,14 +251,15 @@ seams:
                                             # WHERE it is mounted is tier 3 (mount_root in
                                             # .claude/config/connections.local.yaml) — never here.
     verify: null
+  # chat — TOOL-ONLY: the tool + transport, no standing destination. The destination + recipients
+  # are declared per-communication in each ticket's delivery-plan.yaml (chat.channel + recipients),
+  # asked at /ship; routing halts when a ticket declares none.
   chat:
     tool: slack
     adapter: adapters/chat/slack.md
     transport: mcp
     mcp: chatserver
-    default_channel: C0XXXXXXXXX      # this adapter's destination key; others differ
-    default_mode: draft
-    always_include: [Alice]           # never empty when chat is configured
+    default_mode: draft               # policy, not a destination — the draft/send default stays here
     verify: null
     # targets:                        # round 4: email delivery, configured but NOT YET ACTIVATED
     #   email:

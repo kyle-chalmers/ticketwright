@@ -2,7 +2,7 @@
 seam: chat
 tool: slack
 transport: mcp         # MCP ({mcp}) tools only
-requires: [mcp]        # stack.yaml seams.chat.{mcp, default_channel, default_mode, always_include}
+requires: [mcp]        # stack.yaml seams.chat.{mcp, default_mode}; destination + recipients are per-ticket (delivery-plan.yaml chat.channel/recipients)
 channel_key: default_channel   # THIS tool's destination key — read by delivery routing, never guessed by a skill
 user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
@@ -25,13 +25,17 @@ voice-profile frontmatter (written once at `/setup --voice`) for `lookup_user`, 
 identity — and add that mention *in addition to* `{always_include}`. Never substitute the shipper
 *for* a stakeholder.
 
-**Under named targets** (`seams.chat.targets:`), every value below belongs to the ROUTED target:
-`{default_channel}` is that target's own channel (this adapter declares `channel_key:
-default_channel`, so routing reads the right key without any skill knowing this is Slack), and
-`{always_include}` is that target's own list — never another target's, and never a slot-level one.
-The routed target comes from the ticket's `delivery-plan.yaml` `audience:` declaration
-(`bin/delivery_plan.py`); it is never inferred from a channel name or from the message text, and a
-routing failure never falls back to another channel.
+**`{default_channel}` and `{always_include}` are the ROUTED resolution, not config reads.**
+`{default_channel}` is the routed **destination** and `{always_include}` the routed **recipient
+list**, both taken from `bin/delivery_plan.py`'s output (`destination` / `recipients`) that `/ship`
+resolves and the fingerprint pins — the skill never reads a config key here. In the **default
+tool-only shape** the stack sets no `default_channel`: the destination + recipients are authored
+per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked
+at `/ship`. **Under named targets** (`seams.chat.targets:`) they are that ROUTED target's own channel
++ list, selected by the plan's `audience:` declaration — never another target's, never a slot-level
+one (this adapter declares `channel_key: default_channel`, so routing reads the right key without any
+skill knowing this is Slack). Either way the destination is never inferred from a channel name or the
+message text, and a routing failure never falls back to another channel.
 
 ## Permission posture (MCP)
 

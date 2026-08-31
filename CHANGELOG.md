@@ -33,6 +33,19 @@ All notable changes to this project are documented here. Format loosely follows
   and the three side-effectful ones each carry an in-body HARD HALT; the codex-cli and antigravity
   golden fixtures are regenerated without the warning block.
 
+- **Chat delivery is configured tool-only; the destination is decided per-communication.** Setup no
+  longer asks for a standing `default_channel` or a fixed `always_include` stakeholder list — who a
+  result goes to, and where, varies by who the analysis is *for*. The default single-mapping chat
+  shape now names only the **tool + transport**; the destination and a non-empty recipient list are
+  authored in the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at
+  `/ship`. `bin/delivery_plan.py` **halts (exit 9)** for a tool-only chat seam whose plan declares
+  none — it never emits an empty channel — and the `resolution_fingerprint` pins the plan-authored
+  values, so a plan edited between approval and delivery refuses (preview==execution holds). The
+  `targets:` multi-audience shape is unchanged, for teams that want fixed pre-declared audiences. A
+  single mapping that still sets a `default_channel` keeps working (backward compatible). The
+  Teams/Gmail/Outlook adapters no longer config-`require` the destination key or `always_include`
+  (those moved per-ticket; `identity`, the email sending mailbox, stays a team decision).
+
 
 ## [3.8.1] — 2026-08-30
 

@@ -54,15 +54,18 @@ seams:
     dev_db: ANALYTICS_DEV
     verify: "snow connection test"
 
+  # chat — TOOL-ONLY: the tool + transport, no standing destination. WHERE a result goes and WHO
+  # it's for varies per analysis, so the destination + recipients are declared per-ticket in the
+  # ticket's delivery-plan.yaml (chat.channel + chat.recipients), asked at /ship; routing halts when
+  # a ticket declares none. A team that wants fixed, pre-declared audiences uses the `targets:` shape
+  # instead — see stack.example.multi-audience.yaml (each audience declares its own channel + list).
   chat:
     tool: slack
     adapter: adapters/chat/slack.md
     transport: mcp
     mcp: slack
-    default_channel: C0XXXXXXXXX         # your channel's ID
-    default_mode: draft
-    always_include: [Alice]              # FIXED stakeholder list always added to a chat message (never solo-DM a stakeholder)
-    # include_self: false                # also @-mention the shipper (resolve_user.py), IN ADDITION to always_include
+    default_mode: draft                  # policy, not a destination — the draft/send default stays here
+    # include_self: false                # also @-mention the shipper (resolve_user.py) on the routed message
     verify: null                         # MCP-only: skills check reachability via an MCP call, not the shell
 
   docstore:

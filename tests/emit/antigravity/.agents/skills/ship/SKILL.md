@@ -53,12 +53,21 @@ works regardless of the underlying tools.
    enabler, exactly as before. Exit **0** → use the returned `target`, `destination`, `recipients`,
    `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes.
    **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
-   - **9 (nothing declared)** — the ticket has no `audience:` / `classification:`. Show the
-     configured values the CLI lists and ask the user which one this ticket is. Write their answer
-     into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md` § The delivery plan), then
-     re-run. **Never infer the audience** from the ticket README, the channel names, a label, the
-     stakeholders, or how the work "feels" — an inferred audience is exactly how client data reaches
-     an internal room, or worse. "I could not tell, so I picked the first one" is not available.
+   - **9 (nothing declared)** — the plan declares nothing this slot can route on. Two shapes, and the
+     CLI's message names which:
+     - *A `targets:` slot* has no `audience:`/`classification:`. Show the configured values the CLI
+       lists and ask the user which one this ticket is.
+     - *A tool-only chat seam* (the default shape — the stack names the tool, not a standing channel)
+       has no `chat.channel:`/`chat.recipients:`. Ask the user, in prose, **where this goes and who
+       it is for**: the destination (channel / DM / address) and the recipient list. This is the
+       per-communication decision the tool-only shape exists for — who a result goes to depends on
+       who the analysis is for, so it is asked each ship, never configured once.
+     Either way, write the answer into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md`
+     § The delivery plan) — the `audience:` for a targets slot, or the `chat:` block
+     (`channel:` + a non-empty `recipients:`) for a tool-only seam — then re-run. **Never infer** the
+     audience, the channel, OR the recipients from the ticket README, channel names, a label, or how
+     the work "feels" — an inferred destination is exactly how a result reaches the wrong room.
+     "I could not tell, so I picked the first one" is not available.
    - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value
      and the configured ones; ask which was meant. Never match it approximately.
    - **3 (no plan file)** — same as 9: ask, write the file, re-run.

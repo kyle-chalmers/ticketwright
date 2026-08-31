@@ -2,7 +2,7 @@
 seam: chat
 tool: teams
 transport: mcp         # a Microsoft Teams / Graph MCP (server = {mcp}), or incoming-webhook fallback
-requires: [channel, default_mode, always_include]   # + `mcp` (server name) when using the MCP transport
+requires: [default_mode]   # + `mcp` (server name) on the MCP transport; destination (channel) + recipients are per-ticket (delivery-plan.yaml)
 channel_key: channel   # THIS tool's destination key (Slack spells it `default_channel`) — read by delivery routing
 user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 auth: |
@@ -17,6 +17,12 @@ include `{always_include}` (a fixed stakeholder list — never a self-tag). Team
 HTML rather than Slack mrkdwn. If `seams.chat.include_self: true`, also mention the shipper *in
 addition to* `{always_include}`: resolve via `bin/resolve_user.py`, preferring the handle in their
 voice-profile frontmatter for `lookup_user`, else the resolver identity.
+
+**`{channel}` and `{always_include}` are the ROUTED resolution, not config reads** — the routed
+destination and recipient list from `bin/delivery_plan.py` (`destination` / `recipients`) that
+`/ship` pins. In the **default tool-only shape** the stack sets no `channel`: both are authored
+per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked
+at `/ship`.
 
 **Under named targets** (`seams.chat.targets:`), `{channel}` and `{always_include}` are the ROUTED
 target's own — never another target's, never a slot-level one. Teams spells its destination key

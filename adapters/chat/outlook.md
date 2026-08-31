@@ -2,7 +2,7 @@
 seam: chat
 tool: outlook
 transport: mcp         # an Outlook / Microsoft Graph MCP server ({mcp}) — draft/send/people tools
-requires: [mcp, to, identity, default_mode, always_include]
+requires: [mcp, identity, default_mode]   # destination (to) + recipients are per-ticket (delivery-plan.yaml); `identity` is the team sending mailbox (often shared)
 channel_key: to        # THIS tool's destination key — ONE address string (a person or a distribution list), read by delivery routing
 sender_key: identity   # THIS tool's sender key — routing surfaces it on the plan line and pins it in the fingerprint
 user_keys: []             # tier-3 overridable: nothing here is machine-local; the sending identity (often a shared mailbox) is a team decision and credentials live in the MCP server's own auth
@@ -54,6 +54,12 @@ The ONE sanctioned exception to declaration-only routing is prompt 8's `--chat <
 an explicit human command (never an inference) that still routes here without a declared audience —
 the CLI warns that the routing is not recorded with the ticket, and the /ship plan line says so to
 the approver. Nothing else selects this target.
+
+**`{to}` and `{always_include}` are the ROUTED resolution, not config reads** — the routed
+destination and recipient list from `bin/delivery_plan.py` (`destination` / `recipients`) that
+`/ship` pins. In the **default tool-only shape** the stack sets no `to`: both are authored
+per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` = the address + a non-empty
+`chat.recipients:`), asked at `/ship`.
 
 **Under named targets** (`seams.chat.targets:`), every value here belongs to the ROUTED target:
 `{to}` is that target's own destination (this adapter declares `channel_key: to`, so routing reads

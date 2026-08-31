@@ -35,15 +35,14 @@ seams:
     dev_dataset: analytics_dev
     verify: "bq query --use_legacy_sql=false --dry_run 'SELECT 1'"
 
+  # chat — tool-only: destination + recipients declared per-ticket in delivery-plan.yaml, asked at /ship
   chat:
     tool: teams
     adapter: adapters/chat/teams.md
     transport: mcp
     mcp: teams                          # your Teams MCP server name (adapter calls resolve as mcp__{mcp}__…)
-    channel: "Data Team / General"
     default_mode: draft
-    always_include: [Ana]                # fixed stakeholder list (never a self-tag)
-    # include_self: false                # also mention the shipper, in addition to always_include
+    # include_self: false                # also mention the shipper on the routed message
     verify: null
 
   docstore:

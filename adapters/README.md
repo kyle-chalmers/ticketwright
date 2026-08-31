@@ -303,19 +303,25 @@ including a destination or recipient carrying shell metacharacters · 7 slot not
 this slot.** On every non-zero exit the emitted `target` and `destination` are `null`, so a caller
 cannot lift a usable destination out of a failed routing.
 
-A declaration is demanded **only when the slot holds `targets:`**. A single-mapping chat or docstore
-slot routes to itself and needs no plan file, so a repo that never adopts targets behaves exactly as
-it did. The schema:
+A declaration is demanded when the slot holds `targets:` — **and for a tool-only chat seam**: a
+single mapping that names the chat tool but declares no standing destination (no `default_channel`)
+reads its `channel:` + `recipients:` from the plan's `chat:` block, authored per-communication, and
+routing **halts (exit 9)** when the plan declares none — who a result goes to varies per analysis, so
+it is asked at `/ship`, never a standing default. A single-mapping slot that DOES set a standing
+destination still routes to itself and needs no plan file, so a repo on either shape behaves as it
+did. The schema:
 
     schema_version: 1
     audience: internal                 # DECLARED by a person (in the spec, or at the /ship approval).
                                        # NEVER inferred from prose, channel names, or labels.
     classification: internal_archive   # docstore routing input, e.g. internal_archive | client_delivery
     chat:
-      target: internal                 # chosen chat target (null when the seam is a single mapping)
-      channel: "#eng-updates"          # the resolved destination
-      recipients: [Alice]              # the target's own always_include as applied (+ the shipper
-                                       # when include_self is set)
+      target: internal                 # chosen chat target (null for a single mapping / tool-only seam)
+      channel: "#eng-updates"          # the destination — authored HERE for a tool-only seam (asked
+                                       # at /ship), or the resolved echo when the seam holds `targets:`
+      recipients: [Alice]              # the recipient list — authored here for a tool-only seam
+                                       # (non-empty; never solo-DM), else the target's always_include
+                                       # as applied (+ the shipper when include_self is set)
     docstore:
       target: archive                  # chosen docstore target (null when single)
       destination: "Shared drives/Tickets/ENG-1234 example-analysis"

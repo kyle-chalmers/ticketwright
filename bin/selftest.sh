@@ -2283,12 +2283,20 @@ grep -q 'required key(s) not set: mcp' \
 
 # (C) REGRESSION GUARD: a LIST-valued required key must count as present. The interpolation token
 # file is filtered to scalars (only scalars can interpolate), so reusing that filter for a presence
-# check reports `always_include: [Ana]` as missing forever — which it did, on two shipped configs.
-printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: teams\n    adapter: adapters/chat/teams.md\n    transport: mcp\n    channel: "D"\n    default_mode: draft\n    always_include: [Ana]\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
-grep -q 'always_include' \
-  <<<"$(safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)" \
-  && bad "a list-valued required key is misreported as unset (scalar filter leaked into the check)" \
-  || ok "a list-valued required key counts as present (always_include)"
+# check reported `always_include: [Ana]` as missing forever — the bug this guards. No SHIPPED adapter
+# still declares a list-valued required key (chat destinations/recipients moved per-ticket), so the
+# guarantee is proven against a SYNTHETIC repo-vendored adapter (verify_stack resolves project-local
+# adapters as a fallback; CLAUDE_PROJECT_DIR is pinned so that fallback root is this fixture).
+mkdir -p "$RQ/adapters/chat"
+printf -- '---\nseam: chat\ntool: synthetic\ntransport: mcp\nrequires: [mcp, notify]\nchannel_key: room\nuser_keys: []\nauth: "none"\n---\nSynthetic adapter — selftest fixture only.\n' > "$RQ/adapters/chat/synthetic.md"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: synthetic\n    adapter: adapters/chat/synthetic.md\n    transport: mcp\n    mcp: srv\n    notify: [Ana]\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
+RQOUT="$(CLAUDE_PROJECT_DIR="$RQ" safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)"
+# Non-vacuous: the synthetic adapter MUST have resolved (tool=synthetic on the seam line), else an
+# adapter-resolution failure that never prints `notify` would pass this by accident. Given it
+# resolved, `notify` must NOT be reported unset — the list value satisfies its `requires:`.
+{ grep -q 'tool=synthetic' <<<"$RQOUT" && ! grep -qi 'not set.*notify' <<<"$RQOUT"; } \
+  && ok "a list-valued required key counts as present (list satisfies requires:; the synthetic adapter resolved)" \
+  || bad "a list-valued required key is misreported as unset, or the synthetic adapter failed to resolve" "$(grep -iE 'notify|missing|✗|adapter' <<<"$RQOUT" | head -2)"
 
 # (D) REGRESSION GUARD: the check is seam-scoped. A project.* key of the same name must NOT satisfy
 # a missing seam key — the token file merges project tokens in, so reading it would mask this.
@@ -3839,13 +3847,15 @@ rm -f "$S37/.claude/config/connections.local.yaml"
 # The skill itself is prose a model executes, so the mechanically testable behavior is the exact
 # feed it renders from: the resolved channel, recipient list, tool and destination.
 sel "$S37" --seam chat
+# The shipped single-mapping chat shape is TOOL-ONLY: the feed resolves tool + mode from config,
+# while the destination + recipients come from the ticket's plan at ship (routing tested in §45).
 { [ "$SELRC" -eq 0 ] && [ "$(jget "d['selected_by']")" = "single" ] \
   && [ "$(jget "d['target']")" = "None" ] && [ "$(jget "d['tool']")" = "slack" ] \
-  && [ "$(jget "d['values']['default_channel']")" = "C0XXXXXXXXX" ] \
-  && [ "$(jget "d['values']['always_include']")" = "['Alice']" ] \
+  && [ "$(jget "d['values'].get('default_channel')")" = "None" ] \
+  && [ "$(jget "d['values'].get('always_include')")" = "None" ] \
   && [ "$(jget "d['values']['default_mode']")" = "draft" ]; } \
-  && ok "/ship's chat plan line resolves channel + recipient list + mode from config, not memory" \
-  || bad "the chat approval feed is wrong" "rc=$SELRC $(jget "d.get('values',{}).get('default_channel')")"
+  && ok "/ship's chat feed resolves tool + mode for a TOOL-ONLY seam (no standing channel/list; destination is per-ticket — §45 covers routing)" \
+  || bad "the chat approval feed is wrong" "rc=$SELRC tool=$(jget "d.get('tool')") ch=$(jget "d.get('values',{}).get('default_channel')")"
 sel "$S37" --seam docstore
 { [ "$SELRC" -eq 0 ] && [ "$(jget "d['tool']")" = "gdrive" ] \
   && [ "$(jget "d['values']['drive_folder']")" = "Shared drives/Tickets" ]; } \
@@ -3944,9 +3954,7 @@ seams:
     adapter: adapters/chat/slack.md
     transport: mcp
     mcp: chatserver
-    default_channel: C0XXXXXXXXX
     default_mode: draft
-    always_include: [Alice]
     verify: null
   vcs:
     tool: github
@@ -3966,9 +3974,13 @@ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
 grep -q 'required key(s) not set' <<<"$ivout" \
   && bad "a completed interview left an adapter-required key unset (the ask-every-requires rule regressed)" "$ivout" \
   || ok "no adapter-required key is unset — the interview asks for every requires: key"
-[ "$(yq '.seams.chat.always_include | length' "$IVY" 2>/dev/null)" -ge 1 ] 2>/dev/null \
-  && ok "always_include is present and non-empty in the rendered config (round 4)" \
-  || bad "always_include missing or empty in the rendered config"
+# The interview renders a TOOL-ONLY chat seam — no standing default_channel/always_include; the
+# destination + recipients are declared per-ticket at /ship (round 4 no longer bakes a default).
+{ [ "$(yq '.seams.chat.default_channel' "$IVY" 2>/dev/null)" = "null" ] \
+  && [ "$(yq '.seams.chat.always_include' "$IVY" 2>/dev/null)" = "null" ] \
+  && [ "$(yq '.seams.chat.tool' "$IVY" 2>/dev/null)" = "slack" ]; } \
+  && ok "the interview renders a tool-only chat seam (no standing channel/list; destination per-ticket)" \
+  || bad "the interview chat seam is not tool-only (a standing default_channel/always_include leaked in)"
 ivurl="$(yq '.project.ticket_url_template' "$IVY" 2>/dev/null)"
 { [ -n "$ivurl" ] && [ "$ivurl" != "null" ]; } \
   && ok "ticket_url_template is set (round 2 — a dead index link is the textbook silent-wrong)" \
@@ -5604,6 +5616,51 @@ python3 "$DP" --root "$SG" --plan "$SG/dp.yaml" --seam chat --expect-target clie
 [ "$?" -ne 0 ] && ok "a single mapping still refuses an approval pinned to a named target" \
   || bad "a single mapping accepted a foreign expect-target"
 
+# --- (E4b) TOOL-ONLY chat: the DEFAULT single-mapping shape. The stack names the tool but no standing
+# destination, so the channel + recipients are authored PER-COMMUNICATION in the plan; routing HALTS
+# (exit 9) rather than emit an empty channel — who a result goes to varies per analysis.
+TO="$TMP/toolonly45"; mkdir -p "$TO/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_mode: draft\n    verify: null\n' > "$TO/.claude/config/stack.yaml"
+printf 'schema_version: 1\nchat:\n  channel: "#eng-updates"\n  recipients: [Alice, Bob]\n' > "$TO/dp.yaml"
+TOJ="$(python3 "$DP" --root "$TO" --plan "$TO/dp.yaml" --seam chat --quiet 2>/dev/null)"; TORC=$?
+TOD="$(printf '%s' "$TOJ" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['destination'],'|',d['recipients'])" 2>/dev/null)"
+{ [ "$TORC" -eq 0 ] && [ "$TOD" = "#eng-updates | ['Alice', 'Bob']" ]; } \
+  && ok "a tool-only chat seam routes to the plan-authored channel + recipients (destination per-communication)" \
+  || bad "tool-only chat routing did not read the plan" "rc=$TORC $TOD"
+printf 'schema_version: 1\nchat:\n  recipients: [Alice]\n' > "$TO/dp-nochan.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-nochan.yaml" --seam chat --quiet >/dev/null 2>&1
+[ "$?" -eq 9 ] && ok "a tool-only chat seam with no plan channel HALTS (exit 9), never a silent empty destination" \
+  || bad "a tool-only chat seam did not halt on a missing channel"
+printf 'schema_version: 1\nchat:\n  channel: "#eng"\n' > "$TO/dp-norecip.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-norecip.yaml" --seam chat --quiet >/dev/null 2>&1
+[ "$?" -eq 9 ] && ok "a tool-only chat seam with an empty recipient list HALTS (never solo-DM a stakeholder)" \
+  || bad "a tool-only chat seam routed with no recipients"
+python3 "$DP" --root "$TO" --plan "$TO/absent.yaml" --seam chat --quiet >/dev/null 2>&1
+[ "$?" -eq 9 ] && ok "a tool-only chat seam with no plan file HALTS (exit 9) — the destination is per-ticket, not optional" \
+  || bad "a tool-only chat seam with no plan file did not halt"
+TOFP="$(printf '%s' "$TOJ" | python3 -c "import json,sys;print(json.load(sys.stdin)['resolution_fingerprint'])" 2>/dev/null)"
+printf 'schema_version: 1\nchat:\n  channel: "#leaked"\n  recipients: [Alice, Bob]\n' > "$TO/dp-moved.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-moved.yaml" --seam chat --expect-fingerprint "$TOFP" --quiet >/dev/null 2>&1
+[ "$?" -ne 0 ] && ok "the fingerprint pins the plan-authored channel — a plan edited after approval refuses (preview==execution)" \
+  || bad "a moved tool-only channel slipped past the fingerprint"
+# The RECIPIENTS are pinned too, not just the channel: swapping the list after approval must refuse.
+printf 'schema_version: 1\nchat:\n  channel: "#eng-updates"\n  recipients: [Alice, Mallory]\n' > "$TO/dp-recip.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-recip.yaml" --seam chat --expect-fingerprint "$TOFP" --quiet >/dev/null 2>&1
+[ "$?" -ne 0 ] && ok "the fingerprint pins the plan-authored RECIPIENTS too — a swapped list after approval refuses" \
+  || bad "a changed tool-only recipient list slipped past the fingerprint"
+# BACKWARD COMPAT, stated as a test so it is not a hidden claim: a legacy single mapping (a config
+# default_channel, no always_include) is UNCHANGED — it routes to itself with the config channel and
+# an EMPTY recipient list. The never-empty-recipients rule is a property of the tool-only path above,
+# not of this pre-existing legacy shape; making that explicit here so the two are never conflated.
+LG="$TMP/legacy45"; mkdir -p "$LG/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_channel: C0LEGACY\n    default_mode: draft\n    verify: null\n' > "$LG/.claude/config/stack.yaml"
+printf 'schema_version: 1\n' > "$LG/dp.yaml"
+LGJ="$(python3 "$DP" --root "$LG" --plan "$LG/dp.yaml" --seam chat --quiet 2>/dev/null)"; LGRC=$?
+LGD="$(printf '%s' "$LGJ" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['destination'],'|',d['recipients'])" 2>/dev/null)"
+{ [ "$LGRC" -eq 0 ] && [ "$LGD" = "C0LEGACY | []" ]; } \
+  && ok "a legacy single mapping (config default_channel, no always_include) routes unchanged — config channel, empty list (backward compat)" \
+  || bad "the legacy single-mapping chat shape changed" "rc=$LGRC $LGD"
+
 # --- (E4) adversarial-review hardening: rows honored-or-reported, the pin binds the RESOLUTION ---
 # The P1 from the adversarial review: a deliverables row someone wrote to keep a file INTERNAL was
 # silently overridden by the plan-level classification whenever its value wasn't a non-empty string
@@ -5788,8 +5845,8 @@ grep -q 'claude -p' "$SH45" && bad "/ship reintroduced a headless model call" \
 grep -q 'Route the delivery FIRST' "$SH45" \
   && ok "/ship routes BEFORE drafting (the draft must carry the routed list)" \
   || bad "/ship still drafts before it routes"
-grep -qi 'never infer the audience' "$SH45" \
-  && ok "/ship forbids inferring an audience in so many words" \
+{ grep -qi 'never infer' "$SH45" && grep -qi 'audience' "$SH45"; } \
+  && ok "/ship forbids inferring the audience/destination in so many words" \
   || bad "/ship does not forbid inferring the audience"
 grep -q 'tracker and vcs' "$SH45" \
   && ok "/ship still halts on named targets for the two DEFERRED slots (tracker, vcs)" \

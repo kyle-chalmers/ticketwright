@@ -92,6 +92,13 @@ warehouse** — document/report deliverables, nothing to query) — the same ski
 implement every verb section; keep the frontmatter), add a `verify` line to your `stack.yaml`
 entry, run `bash bin/verify_stack.sh`. No skill edits.
 
+**Chat delivery is decided per-communication.** The default single-mapping chat shape is *tool-only*
+— the stack names the tool and transport, not a standing channel. Who a result goes to varies by who
+it is *for*, so the destination and a non-empty recipient list are authored in the ticket's committed
+`delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at `/ship`; `bin/delivery_plan.py`
+halts (exit 9) rather than emit an empty channel, and the `resolution_fingerprint` pins those authored
+values so a plan edited after approval refuses.
+
 **Two audiences in one repo:** a `chat` or `docstore` slot that holds named targets routes per
 ticket, from a **declaration** — the ticket's committed `delivery-plan.yaml` names its `audience:`
 and `classification:`, and `bin/delivery_plan.py` matches those against the values each target

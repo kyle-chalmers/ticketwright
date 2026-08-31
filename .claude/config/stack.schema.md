@@ -332,9 +332,14 @@ targets that do not define their own, per the normal rule — but a *routable* t
 own destination, so an inherited channel is never where a routed message lands, and inheritance is
 never a fallback when routing fails.
 
-**Every rule above binds only when `targets:` is present.** A single-mapping chat slot that omits
-`always_include` keeps validating exactly as before. `bin/verify_stack.sh` enforces the multi-target
-rules and **fails** on a violation (the full table is in `adapters/README.md`).
+**Every rule above binds only when `targets:` is present.** The **default single-mapping chat shape is
+tool-only** — the stack names the tool and transport, with no standing `default_channel` or
+`always_include`; the destination and a non-empty recipient list are declared per-communication in
+the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at `/ship`, and
+routing halts (exit 9) when a ticket declares none. A single mapping that *does* set a standing
+`default_channel` still validates and routes to itself exactly as before (an omitted `always_include`
+is allowed there too). `bin/verify_stack.sh` enforces the multi-target rules and **fails** on a
+violation (the full table is in `adapters/README.md`).
 
 **A docstore needs no desktop mount.** The `gdrive`/`sharepoint` adapters write into a sync folder,
 so they need one installed (per-OS steps:
@@ -496,10 +501,12 @@ The file shape, all keys, and per-platform variants: `.claude/config/viewer.exam
 `adapters/viewer/{macos-open,xdg-open,windows-start}.md`. Check routing without launching anything
 with `bash bin/handoff.sh --dry-run <file>`.
 
-`always_include` (under `seams.chat`) — a **fixed stakeholder list** always added to a chat message
-(e.g. `[Alice]`); the "never solo-DM a stakeholder" rule. It is *not* a self-tag. Under `targets:`
-it moves to each target and becomes **required and non-empty there**, enforced by
-`bin/verify_stack.sh`; a slot-level list is then dead config (lists are not inherited) and warns.
+`always_include` (under `seams.chat`, optional) — a **standing stakeholder list** added to every chat
+message; the "never solo-DM a stakeholder" rule. It is *not* a self-tag. The default tool-only shape
+sets no standing list — the recipient list is declared per-ticket in `delivery-plan.yaml`
+(`chat.recipients:`, non-empty), asked at `/ship`. Under `targets:` a per-target `always_include`
+becomes **required and non-empty there**, enforced by `bin/verify_stack.sh`; a slot-level list is
+then dead config (lists are not inherited) and warns.
 
 `include_self` (under `seams.chat`, optional, default off) — when `true`, the chat adapter also
 mentions the **shipper** (resolved via `bin/resolve_user.py`) *in addition to* `always_include`.
