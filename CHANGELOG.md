@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [3.9.0] — 2026-08-31
 
 ### Changed
 - **All seven skills are now model-invocable; `/setup`, `/ship`, `/productize` confirm before acting
