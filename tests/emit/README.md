@@ -9,8 +9,8 @@ commit as a fixture regeneration; an accidental one turns the suite red.
 What each tree holds mirrors the emission matrix (emit-vs-verify is decided by each adapter's
 `reads_foreign_skills` / `skills_root` frontmatter, never by a runtime name in code):
 
-- `codex-cli/` — the full skill emission under `.agents/skills/` (user-invocable-only skills
-  included, each carrying its topmost warning block) plus the agent definition
+- `codex-cli/` — the full skill emission under `.agents/skills/` (all skills model-invocable, so
+  none carries a user-invocable-only warning block; a future gated skill would) plus the agent definition
   `.codex/agents/qc-reviewer.toml`. NO hook config: the hooks-config file location is not in the
   kit's research, so the installer prints the manual wiring line instead of guessing a path.
 - `antigravity/` — the same `.agents/skills/` emission (one emission serves both runtimes; only

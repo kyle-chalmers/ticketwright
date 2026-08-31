@@ -69,14 +69,13 @@ seams:
         #   file the verify is SKIPPED with a warning rather than run literally.
         verify: "databricks --profile {profile} current-user me"
 
+  # chat — tool-only: destination + recipients declared per-ticket in delivery-plan.yaml, asked at /ship
   chat:
     tool: slack
     adapter: adapters/chat/slack.md
     transport: mcp
     mcp: slack
-    default_channel: C0XXXXXXXXX
     default_mode: draft
-    always_include: [Alice]
     verify: null
 
   docstore:

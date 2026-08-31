@@ -5,12 +5,6 @@ description: Turn a recurring "clone-the-last-ticket" workflow into a parameteri
 
 <!-- emitted by ticketwright install v3.8.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
-> **User-invocable only — not enforced on codex-cli.** The canonical source of this skill
-> declares `disable-model-invocation: true`: a person invokes it deliberately; the model
-> must never choose it on its own. codex-cli has no equivalent control, so nothing mechanical
-> prevents model invocation here — treat any model-initiated use of this skill as a bug.
-> Its canonical `allowed-tools` restriction ([Read, Write, Edit, Bash, Glob]) is not enforced here either.
-
 # /productize
 
 The meta-skill (`skillify_everything`). When a task recurs (quarterly sale, monthly report,
@@ -29,7 +23,12 @@ Ask, in prose (runtimes that render structured options show chips; others a numb
 - **Determinism anchor**: the known-good prior run to use as the **golden fixture** (counts/totals
   to assert; the byte-identical output file to diff against).
 
-## Phase 2 — Stamp from the template
+## Phase 2 — Stamp from the template (HARD HALT → confirm before writing a new skill)
+`/productize` is model-invocable: the model may reach for it when it notices a workflow recurring.
+Because this phase writes a **brand-new skill** into the repo — self-modifying tooling — it stops
+first. **Print the plan, then stop and wait for the user** before any file is created: the skill
+name, its path (`.claude/skills/<name>/`), and the file list about to be written (`SKILL.md`,
+`sql/`, `templates/`, `bin/`, `golden/`). Only on explicit confirmation, stamp the files.
 1. `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then copy
    `"$KIT"/templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).

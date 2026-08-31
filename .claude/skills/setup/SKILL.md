@@ -3,7 +3,6 @@ name: setup
 description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse|meetings>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
 argument-hint: "(none) | tool <chat|docstore|warehouse|meetings> | role | team | policies | viewer | --teammate [name] | --voice [name]"
 allowed-tools: [Read, Write, Edit, Bash, Glob]
-disable-model-invocation: true
 ---
 
 # /setup
@@ -51,6 +50,19 @@ committed file.
 > `{token}` and leave the value to tier 3 — each adapter declares which of its keys are personal
 > in its `user_keys:` frontmatter. `bash bin/verify_stack.sh` warns when a machine-local value is
 > found in committed config.
+
+> **THE MODEL-INVOCATION CONFIRM GATE — `/setup` is model-invocable, in every mode.** When the
+> model reaches for `/setup` on its own initiative (the user did not explicitly invoke it), it must,
+> in EVERY mode — default, `tool`, `role`, `team`, `policies`, `--teammate`, `--voice`, `viewer`,
+> adoption, and Bootstrap — print what it is about to write and **stop for the user's explicit
+> confirmation before writing ANY file.** And regardless of who invoked it, confirm before writing or
+> changing **committed team config** (`.claude/config/stack.yaml`, `AGENTS.md`, `CLAUDE.md`,
+> `.claude/settings.json`, `MIGRATION.md`) or seeding **another person's `people/<id>.yaml`**. An
+> explicit user invocation is its own authorization for that mode's own scoped writes (a `viewer` run
+> the user asked for may write its gitignored file; a person's own `--teammate` run may write their
+> own tier-2/tier-3 files) — a run the model started is not. This gate is an instruction the agent
+> follows, **not** a mechanical block: no runtime enforces it, which is why it is written here where
+> the agent reads it, and why the default path's Phase 3 prints the specifics.
 
 **Every interview in this skill is prose — team modes included.** State questions as prose the
 person answers in chat: runtimes that render structured options show chips, every other runtime
@@ -200,7 +212,19 @@ its re-entry command (`/setup role` for round 5, `/setup policies` for round 6; 
 Everything the interview does not ask ships as a **commented default** the user can edit later:
 `default_epic`, word limits, the other eight policies — each with its "when to change this" note.
 
-### Phase 3 — Write & scaffold
+### Phase 3 — Write & scaffold (HARD HALT → confirm the plan before the first write)
+This is the default path's instance of the **model-invocation confirm gate** above — the fresh-repo
+path writes the most (committed team config + scaffold), so its plan is the most detailed. **Print
+the resolved setup plan, then stop and wait for the user — nothing is written until they confirm.**
+The human authorizes THE PLAN, not merely the idea of setup. The plan names:
+- the tool slot resolved for each seam (and any left as a commented default);
+- every file this phase will create **or change** — `.claude/config/stack.yaml`, `AGENTS.md`,
+  `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, the AI-layer index, the seeded ticket index;
+- on a repo that already has config, exactly *what* would change — `role`/`team`/`policies` are
+  **edit-never-overwrite** (see above), so name the specific keys being edited and never present a
+  whole-file overwrite as the plan.
+
+Only on explicit confirmation, execute:
 5. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
    commented blocks; the 10 policies with a one-line "when to change this" comment each).
 6. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line

@@ -3,7 +3,6 @@ name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
 argument-hint: <ticket-id | owner/id> [--go] [--chat <target>]   (--go authorizes the external Phase B; --chat overrides the routed chat target)
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
-disable-model-invocation: true
 ---
 
 # /ship
@@ -14,7 +13,16 @@ the **merged** config (`bin/effective_config.py`, never raw `stack.yaml` — a r
 personal and machine override); routes through the docstore / tracker / chat / vcs adapters, so it
 works regardless of the underlying tools.
 
-## Phase A — Finalize (no approval needed; internal to repo)
+> **THE MODEL-INVOCATION CONFIRM GATE — `/ship` is model-invocable.** When the model reaches for
+> `/ship` on its own initiative (the user did not explicitly invoke it), it must **stop and confirm
+> before Phase A's first durable action.** Phase A finalizes *in the repo* — it tidies and overwrites
+> deliverable files and refreshes the committed ticket-index entry — so a model-initiated run must not
+> mutate the ticket before the human has said to ship it. Print the ticket and what Phase A will do,
+> then wait. An explicit user invocation authorizes Phase A as normal. This gate is separate from — and
+> earlier than — the Phase B external-post HARD HALT below, which always applies regardless of who
+> invoked the skill; it is an instruction the agent follows, not a mechanical block.
+
+## Phase A — Finalize (no separate approval when the user invoked `/ship`; internal to repo)
 1. **Resolve WHO first** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
    and show its one-line "Working as …" display; the resolved person is the shipper. Then resolve
    the **ticket locator**: `owner/id` is exact; a bare `<id>` resolves against the shipper's
@@ -54,12 +62,21 @@ works regardless of the underlying tools.
    enabler, exactly as before. Exit **0** → use the returned `target`, `destination`, `recipients`,
    `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes.
    **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
-   - **9 (nothing declared)** — the ticket has no `audience:` / `classification:`. Show the
-     configured values the CLI lists and ask the user which one this ticket is. Write their answer
-     into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md` § The delivery plan), then
-     re-run. **Never infer the audience** from the ticket README, the channel names, a label, the
-     stakeholders, or how the work "feels" — an inferred audience is exactly how client data reaches
-     an internal room, or worse. "I could not tell, so I picked the first one" is not available.
+   - **9 (nothing declared)** — the plan declares nothing this slot can route on. Two shapes, and the
+     CLI's message names which:
+     - *A `targets:` slot* has no `audience:`/`classification:`. Show the configured values the CLI
+       lists and ask the user which one this ticket is.
+     - *A tool-only chat seam* (the default shape — the stack names the tool, not a standing channel)
+       has no `chat.channel:`/`chat.recipients:`. Ask the user, in prose, **where this goes and who
+       it is for**: the destination (channel / DM / address) and the recipient list. This is the
+       per-communication decision the tool-only shape exists for — who a result goes to depends on
+       who the analysis is for, so it is asked each ship, never configured once.
+     Either way, write the answer into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md`
+     § The delivery plan) — the `audience:` for a targets slot, or the `chat:` block
+     (`channel:` + a non-empty `recipients:`) for a tool-only seam — then re-run. **Never infer** the
+     audience, the channel, OR the recipients from the ticket README, channel names, a label, or how
+     the work "feels" — an inferred destination is exactly how a result reaches the wrong room.
+     "I could not tell, so I picked the first one" is not available.
    - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value
      and the configured ones; ask which was meant. Never match it approximately.
    - **3 (no plan file)** — same as 9: ask, write the file, re-run.

@@ -2283,12 +2283,20 @@ grep -q 'required key(s) not set: mcp' \
 
 # (C) REGRESSION GUARD: a LIST-valued required key must count as present. The interpolation token
 # file is filtered to scalars (only scalars can interpolate), so reusing that filter for a presence
-# check reports `always_include: [Ana]` as missing forever — which it did, on two shipped configs.
-printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: teams\n    adapter: adapters/chat/teams.md\n    transport: mcp\n    channel: "D"\n    default_mode: draft\n    always_include: [Ana]\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
-grep -q 'always_include' \
-  <<<"$(safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)" \
-  && bad "a list-valued required key is misreported as unset (scalar filter leaked into the check)" \
-  || ok "a list-valued required key counts as present (always_include)"
+# check reported `always_include: [Ana]` as missing forever — the bug this guards. No SHIPPED adapter
+# still declares a list-valued required key (chat destinations/recipients moved per-ticket), so the
+# guarantee is proven against a SYNTHETIC repo-vendored adapter (verify_stack resolves project-local
+# adapters as a fallback; CLAUDE_PROJECT_DIR is pinned so that fallback root is this fixture).
+mkdir -p "$RQ/adapters/chat"
+printf -- '---\nseam: chat\ntool: synthetic\ntransport: mcp\nrequires: [mcp, notify]\nchannel_key: room\nuser_keys: []\nauth: "none"\n---\nSynthetic adapter — selftest fixture only.\n' > "$RQ/adapters/chat/synthetic.md"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: synthetic\n    adapter: adapters/chat/synthetic.md\n    transport: mcp\n    mcp: srv\n    notify: [Ana]\n    verify: null\n' > "$RQ/.claude/config/stack.yaml"
+RQOUT="$(CLAUDE_PROJECT_DIR="$RQ" safe_verify_stack "$RQ/.claude/config/stack.yaml" 2>&1)"
+# Non-vacuous: the synthetic adapter MUST have resolved (tool=synthetic on the seam line), else an
+# adapter-resolution failure that never prints `notify` would pass this by accident. Given it
+# resolved, `notify` must NOT be reported unset — the list value satisfies its `requires:`.
+{ grep -q 'tool=synthetic' <<<"$RQOUT" && ! grep -qi 'not set.*notify' <<<"$RQOUT"; } \
+  && ok "a list-valued required key counts as present (list satisfies requires:; the synthetic adapter resolved)" \
+  || bad "a list-valued required key is misreported as unset, or the synthetic adapter failed to resolve" "$(grep -iE 'notify|missing|✗|adapter' <<<"$RQOUT" | head -2)"
 
 # (D) REGRESSION GUARD: the check is seam-scoped. A project.* key of the same name must NOT satisfy
 # a missing seam key — the token file merges project tokens in, so reading it would mask this.
@@ -3839,13 +3847,15 @@ rm -f "$S37/.claude/config/connections.local.yaml"
 # The skill itself is prose a model executes, so the mechanically testable behavior is the exact
 # feed it renders from: the resolved channel, recipient list, tool and destination.
 sel "$S37" --seam chat
+# The shipped single-mapping chat shape is TOOL-ONLY: the feed resolves tool + mode from config,
+# while the destination + recipients come from the ticket's plan at ship (routing tested in §45).
 { [ "$SELRC" -eq 0 ] && [ "$(jget "d['selected_by']")" = "single" ] \
   && [ "$(jget "d['target']")" = "None" ] && [ "$(jget "d['tool']")" = "slack" ] \
-  && [ "$(jget "d['values']['default_channel']")" = "C0XXXXXXXXX" ] \
-  && [ "$(jget "d['values']['always_include']")" = "['Alice']" ] \
+  && [ "$(jget "d['values'].get('default_channel')")" = "None" ] \
+  && [ "$(jget "d['values'].get('always_include')")" = "None" ] \
   && [ "$(jget "d['values']['default_mode']")" = "draft" ]; } \
-  && ok "/ship's chat plan line resolves channel + recipient list + mode from config, not memory" \
-  || bad "the chat approval feed is wrong" "rc=$SELRC $(jget "d.get('values',{}).get('default_channel')")"
+  && ok "/ship's chat feed resolves tool + mode for a TOOL-ONLY seam (no standing channel/list; destination is per-ticket — §45 covers routing)" \
+  || bad "the chat approval feed is wrong" "rc=$SELRC tool=$(jget "d.get('tool')") ch=$(jget "d.get('values',{}).get('default_channel')")"
 sel "$S37" --seam docstore
 { [ "$SELRC" -eq 0 ] && [ "$(jget "d['tool']")" = "gdrive" ] \
   && [ "$(jget "d['values']['drive_folder']")" = "Shared drives/Tickets" ]; } \
@@ -3859,8 +3869,8 @@ ship37="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
   && grep -qi 'resolved delivery plan' <<<"$ship37" && grep -qi 'recipient list' <<<"$ship37" \
   && grep -qi 'sharing scope' <<<"$ship37" && grep -q 'HARD HALT' .claude/skills/ship/SKILL.md \
   && grep -q 'stop and wait' .claude/skills/ship/SKILL.md \
-  && grep -q 'disable-model-invocation: true' .claude/skills/ship/SKILL.md; } \
-  && ok "/ship's prose wires the selection call and keeps the hard halt + disable-model-invocation (wiring pin)" \
+  && ! grep -q 'disable-model-invocation' .claude/skills/ship/SKILL.md; } \
+  && ok "/ship's prose wires the selection call and keeps the Phase B hard halt; it is model-invocable (no disable-model-invocation flag) (wiring pin)" \
   || bad "/ship's approval rendering or its safety lines regressed"
 # The preview==execution rule: /ship must halt on a multi-target chat/docstore seam rather than
 # render a target its own steps would not deliver to (wiring pin for the authorization-mismatch fix).
@@ -3944,9 +3954,7 @@ seams:
     adapter: adapters/chat/slack.md
     transport: mcp
     mcp: chatserver
-    default_channel: C0XXXXXXXXX
     default_mode: draft
-    always_include: [Alice]
     verify: null
   vcs:
     tool: github
@@ -3966,9 +3974,13 @@ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
 grep -q 'required key(s) not set' <<<"$ivout" \
   && bad "a completed interview left an adapter-required key unset (the ask-every-requires rule regressed)" "$ivout" \
   || ok "no adapter-required key is unset — the interview asks for every requires: key"
-[ "$(yq '.seams.chat.always_include | length' "$IVY" 2>/dev/null)" -ge 1 ] 2>/dev/null \
-  && ok "always_include is present and non-empty in the rendered config (round 4)" \
-  || bad "always_include missing or empty in the rendered config"
+# The interview renders a TOOL-ONLY chat seam — no standing default_channel/always_include; the
+# destination + recipients are declared per-ticket at /ship (round 4 no longer bakes a default).
+{ [ "$(yq '.seams.chat.default_channel' "$IVY" 2>/dev/null)" = "null" ] \
+  && [ "$(yq '.seams.chat.always_include' "$IVY" 2>/dev/null)" = "null" ] \
+  && [ "$(yq '.seams.chat.tool' "$IVY" 2>/dev/null)" = "slack" ]; } \
+  && ok "the interview renders a tool-only chat seam (no standing channel/list; destination per-ticket)" \
+  || bad "the interview chat seam is not tool-only (a standing default_channel/always_include leaked in)"
 ivurl="$(yq '.project.ticket_url_template' "$IVY" 2>/dev/null)"
 { [ -n "$ivurl" ] && [ "$ivurl" != "null" ]; } \
   && ok "ticket_url_template is set (round 2 — a dead index link is the textbook silent-wrong)" \
@@ -4116,11 +4128,12 @@ ediff="$(diff -r "$EMIT_P/.agents" tests/emit/codex-cli/.agents 2>&1 \
   && ok "emitted tree (.agents + .codex) is byte-for-byte identical to tests/emit/codex-cli/" \
   || bad "emitted tree diverges from the golden fixtures (regenerate deliberately, per tests/emit/README.md)" \
         "$(head -3 <<<"$ediff")"
-# U1's temporary carve-out (defer gated skills entirely) was COMPLETED by U2's metadata mapping:
-# a skill whose source declares disable-model-invocation: true is now emitted, but the loss must
-# ride in the ARTIFACT — a topmost warning block — and be printed, never silent. Enumerated from
-# SOURCE frontmatter rather than a hardcoded list, with the SAME parser as the emitter — a literal
-# grep would let a validly quoted `"true"` evade this assertion while the emitter gates it.
+# All seven skills are now MODEL-INVOCABLE: none declares disable-model-invocation: true. The three
+# that were user-invocable-only (setup, ship, productize) carry a portable in-body HARD HALT instead
+# of the Claude-only frontmatter flag — a confirm-before-running gate that survives emission to every
+# runtime, unlike the flag (only Claude Code honors it; that mismatch was the whole reason the warning
+# block below exists). Enumerated from SOURCE frontmatter with the SAME parser as the emitter — a
+# literal grep would let a validly quoted `"true"` evade this while the emitter still gated it.
 gated="$(python3 -c "
 import sys, pathlib
 sys.path.insert(0, 'bin')
@@ -4129,16 +4142,50 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
     if kit_paths.read_frontmatter(f).get('disable-model-invocation') == 'true':
         print(f.parent.name)
 ")"
-[ -n "$gated" ] || bad "no source skill declares disable-model-invocation: true — the carve-out fixture premise broke"
-carve_bad=""
-for g in $gated; do
-  gf="$EMIT_P/.agents/skills/$g/SKILL.md"
-  [ -f "$gf" ] || carve_bad="$carve_bad unemitted:$g"
-  grep -q 'User-invocable only' "$gf" 2>/dev/null || carve_bad="$carve_bad unwarned:$g"
-  grep -q "warned    $g" <<<"$emit_out" || carve_bad="$carve_bad unprinted:$g"
-done
-[ -z "$carve_bad" ] && ok "every disable-model-invocation skill is emitted WITH its warning block AND the loss printed ($(echo $gated | tr ' ' ','))" \
-  || bad "a user-invocable-only skill was emitted without its stated loss" "$carve_bad"
+[ -z "$gated" ] && ok "every shipped skill is model-invocable (no source skill declares disable-model-invocation: true)" \
+  || bad "a shipped skill still declares disable-model-invocation: true — all seven must be model-invocable" "$gated"
+# The three that take durable/external action carry a MODEL-INITIATED confirm gate positioned BEFORE
+# their first durable action — pinned by DISTINCTIVE wording AND ordering, so deleting the new gate
+# FAILS here. A bare 'HARD HALT' grep was vacuous: productize already had a later "HARD HALT for human
+# review", and /ship's Phase B external halt would mask a missing pre-Phase-A gate. Line-number
+# ordering (grep -n | head | cut) proves each gate precedes the first thing that mutates.
+halt_bad=""
+# setup — the top-level model-invocation gate must precede the first `## Mode:` section
+ssg="$(grep -n 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/setup/SKILL.md | head -1 | cut -d: -f1)"
+ssm="$(grep -n '^## Mode: ' .claude/skills/setup/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$ssg" ] && [ -n "$ssm" ] && [ "$ssg" -lt "$ssm" ]; } || halt_bad="$halt_bad setup"
+# ship — the model-invocation gate must precede Phase A (the first in-repo finalization: tidy + index
+# refresh), and the Phase B external-post HARD HALT must still exist
+shg="$(grep -n 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/ship/SKILL.md | head -1 | cut -d: -f1)"
+sha="$(grep -n '^## Phase A' .claude/skills/ship/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$shg" ] && [ -n "$sha" ] && [ "$shg" -lt "$sha" ] && grep -q 'HARD HALT' .claude/skills/ship/SKILL.md; } || halt_bad="$halt_bad ship"
+# productize — the pre-stamp confirm must precede the template copy that writes the new skill folder
+spg="$(grep -n 'confirm before writing a new skill' .claude/skills/productize/SKILL.md | head -1 | cut -d: -f1)"
+spa="$(grep -n 'templates/productized-skill' .claude/skills/productize/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$spg" ] && [ -n "$spa" ] && [ "$spg" -lt "$spa" ]; } || halt_bad="$halt_bad productize"
+[ -z "$halt_bad" ] && ok "setup/ship/productize each carry a model-initiated confirm gate positioned BEFORE their first durable action (distinctive wording + ordering pinned)" \
+  || bad "a formerly-gated skill lost its model-initiated confirm gate, or it sits after the first action" "$halt_bad"
+# The disable-model-invocation mechanism itself is KEPT for a future never-model-fire skill: no skill
+# uses it today. Prove the renderer AND that the enumerator actually DETECTS a gated skill — a test
+# fixture with one gated + one plain skill, so a broken enumerator that only ever returns {} fails
+# here (the == {} check alone was vacuous, per review).
+python3 -c "
+import sys, pathlib, tempfile; sys.path.insert(0, 'bin')
+import emit_runtime
+wb = emit_runtime.warning_block('codex-cli', '[Read, Write]')
+assert 'User-invocable only' in wb, 'warning_block renderer regressed'
+assert '[Read, Write]' in wb, 'warning_block dropped the allowed-tools line'
+assert emit_runtime.gated_skills(pathlib.Path('.')) == {}, 'a shipped skill is still gated'
+with tempfile.TemporaryDirectory() as d:
+    root = pathlib.Path(d)
+    for name, gated in (('g', True), ('ng', False)):
+        sk = root / '.claude' / 'skills' / name; sk.mkdir(parents=True)
+        fm = 'name: ' + name + '\nallowed-tools: [Read]\n' + ('disable-model-invocation: true\n' if gated else '')
+        (sk / 'SKILL.md').write_text('---\n' + fm + '---\nbody\n')
+    got = emit_runtime.gated_skills(root)
+    assert sorted(got) == ['g'], 'enumerator did not detect exactly the gated skill: ' + repr(got)
+" && ok "the disable-model-invocation mechanism is retained and unit-covered (renderer works; enumerator detects exactly a gated fixture skill), ready for a future never-model-fire skill" \
+  || bad "the retained disable-model-invocation mechanism regressed"
 # The count guard: the completion must not quietly drop skills either way.
 emitted_n="$(find "$EMIT_P/.agents/skills" -name SKILL.md | wc -l | tr -d ' ')"
 total_n="$(ls .claude/skills/*/SKILL.md | wc -l | tr -d ' ')"
@@ -4441,12 +4488,12 @@ mm_bad="$(cat "$TMP/hd4255.out")"
 hdr "41 · the emission matrix: all seven runtimes, metadata mapping, agent definitions (PROMPT 7 / U2)"
 # U2 extends the installer to every runtime, data-driven off adapter frontmatter: NATIVE verify
 # where skills_root IS the canonical copy, VERIFY-not-emit where reads_foreign_skills includes it,
-# EMIT elsewhere. What this section pins: the per-runtime fixture trees; that every
-# disable-model-invocation skill is covered by a warning IN AN ARTIFACT THIS INSTALL PRODUCES
-# (the emitted file's topmost block on emit runtimes, the printed verify report on verify
-# runtimes), enumerated from source frontmatter, never a hardcoded list; that verify runtimes
-# provably emit no duplicate skills; and that --global is driven by global_skills_root, refusing
-# on unknown.
+# EMIT elsewhere. What this section pins: the per-runtime fixture trees; that all seven skills are
+# model-invocable (none gated) so NO artifact carries a user-invocable-only warning, while the
+# retained mechanism still would cover a future gated skill IN AN ARTIFACT THIS INSTALL PRODUCES
+# (the emitted file's topmost block on emit runtimes, the printed verify report on verify runtimes),
+# enumerated from source frontmatter, never a hardcoded list; that verify runtimes provably emit no
+# duplicate skills; and that --global is driven by global_skills_root, refusing on unknown.
 E41="$TMP/e41"; mkdir -p "$E41"
 
 # --- structure: the two installer-driving adapter keys hold legal forms ---------------------------
@@ -4517,7 +4564,7 @@ mt_bad="$(cat "$TMP/hd4339.out")"
 [ -z "$mt_bad" ] && ok "every adapter's Metadata mapping table covers all three fields with closed-vocabulary statuses (losses named, never empty)" \
   || bad "a metadata mapping table is missing a field, an illegal status, or an unexplained loss" "$mt_bad"
 
-# --- emit runtimes: antigravity shares the .agents emission, gated warnings ride topmost ----------
+# --- emit runtimes: antigravity shares the .agents emission; no skill is gated, so no warning block -
 gated41="$(python3 -c "
 import sys, pathlib
 sys.path.insert(0, 'bin')
@@ -4526,25 +4573,23 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
     if kit_paths.read_frontmatter(f).get('disable-model-invocation') == 'true':
         print(f.parent.name)
 ")"
-[ -n "$gated41" ] || bad "no source skill declares disable-model-invocation: true — the warning-coverage premise broke"
+[ -z "$gated41" ] || bad "a shipped skill still declares disable-model-invocation: true — all seven must be model-invocable" "$gated41"
 AG_P="$E41/agy"; mkdir -p "$AG_P"
 env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" \
   python3 bin/emit_runtime.py --runtime antigravity --root "$AG_P" >/dev/null 2>&1; ag_rc=$?
 agdiff="$(diff -r "$AG_P/.agents" tests/emit/antigravity/.agents 2>&1)" && [ "$ag_rc" -eq 0 ] \
   && ok "antigravity emission is byte-for-byte identical to tests/emit/antigravity/ (skills + agent definition)" \
   || bad "antigravity emission diverged from its golden fixtures" "rc=$ag_rc $(head -3 <<<"$agdiff")"
-# The warning must be the FIRST RENDERED BLOCK of every gated emitted file (the provenance line
-# above it is an HTML comment): the loss rides in the artifact, not only in a report that scrolls.
-pos_bad=""
-for g in $gated41; do
-  for tree in "$EMIT_P" "$AG_P"; do
-    f="$tree/.agents/skills/$g/SKILL.md"
-    first="$(awk 'NR==1{infm=1; next} infm && /^---$/{infm=0; next} infm{next} /^$/{next} /^<!--/{next} {print; exit}' "$f" 2>/dev/null)"
-    case "$first" in "> **User-invocable only"*) ;; *) pos_bad="$pos_bad $f";; esac
-  done
+# The flip side of the retained mechanism: with nothing gated, NO emitted skill may carry the
+# user-invocable-only warning block on either emit runtime — its presence would mean a skill is
+# secretly not model-invocable. This is the visible half of the byte-for-byte golden diffs above.
+warn_bad=""
+for tree in "$EMIT_P" "$AG_P"; do
+  hits="$(grep -rl 'User-invocable only' "$tree/.agents/skills" 2>/dev/null | tr '\n' ' ')"
+  [ -z "$hits" ] || warn_bad="$warn_bad $hits"
 done
-[ -z "$pos_bad" ] && ok "every gated skill's warning is the topmost rendered block on both emit runtimes ($(echo $gated41 | tr ' ' ','))" \
-  || bad "a gated skill's warning block is missing or not topmost" "$pos_bad"
+[ -z "$warn_bad" ] && ok "no emitted skill carries a user-invocable-only warning on either emit runtime (all skills are model-invocable)" \
+  || bad "an emitted skill still carries a user-invocable-only warning block" "$warn_bad"
 grep -q 'NOT mechanically enforced' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
   && grep -q 'tools: Read, Bash, Glob, Grep' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
   && ok "the codex agent TOML states its tools: loss inside the artifact (lost, but never silently)" \
@@ -4602,7 +4647,7 @@ from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')
     grep -q "warning   $g is user-invocable-only" <<<"$vout" || vbad="$vbad unwarned:$g"
   done
   grep -q 'allowed-tools restrictions' <<<"$vout" || vbad="$vbad allowed-tools-loss-unstated"
-  [ -z "$vbad" ] && ok "$rt: verify-not-emit — canonical copy verified, the only new files are its declared agent definitions, every gated skill warned" \
+  [ -z "$vbad" ] && ok "$rt: verify-not-emit — canonical copy verified, the only new files are its declared agent definitions (no skill ships gated; any future gated skill would be warned in the verify report)" \
     || bad "$rt's verify run broke its contract" "$vbad"
 done
 vdiff="$(diff -r "$VD_P/.cursor" tests/emit/cursor/.cursor 2>&1)" \
@@ -4656,10 +4701,11 @@ GH="$E41/home"; GP="$E41/gproj"; mkdir -p "$GH" "$GP"
 g_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
   python3 bin/emit_runtime.py --runtime codex-cli --global --root "$GP" 2>&1)"; g_rc=$?
 { [ "$g_rc" -eq 0 ] && [ -f "$GH/.agents/skills/ticket/SKILL.md" ] \
-  && grep -q 'User-invocable only' "$GH/.agents/skills/ship/SKILL.md" \
+  && [ -f "$GH/.agents/skills/ship/SKILL.md" ] \
+  && ! grep -q 'User-invocable only' "$GH/.agents/skills/ship/SKILL.md" \
   && [ ! -e "$GH/.codex" ] && grep -q 'project-scoped' <<<"$g_out" \
   && [ -z "$(find "$GP" -type f)" ]; } \
-  && ok "--global emits skills into the declared global_skills_root under \$HOME (warnings intact; agents stay project-scoped, stated)" \
+  && ok "--global emits skills into the declared global_skills_root under \$HOME (all model-invocable, no warning block; agents stay project-scoped, stated)" \
   || bad "--global emission into the declared root broke its contract" "rc=$g_rc"
 ga_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" HOME="$GH" \
   python3 bin/emit_runtime.py --runtime antigravity --global --root "$GP" 2>&1)"; ga_rc=$?
@@ -5578,6 +5624,51 @@ python3 "$DP" --root "$SG" --plan "$SG/dp.yaml" --seam chat --expect-target clie
 [ "$?" -ne 0 ] && ok "a single mapping still refuses an approval pinned to a named target" \
   || bad "a single mapping accepted a foreign expect-target"
 
+# --- (E4b) TOOL-ONLY chat: the DEFAULT single-mapping shape. The stack names the tool but no standing
+# destination, so the channel + recipients are authored PER-COMMUNICATION in the plan; routing HALTS
+# (exit 9) rather than emit an empty channel — who a result goes to varies per analysis.
+TO="$TMP/toolonly45"; mkdir -p "$TO/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_mode: draft\n    verify: null\n' > "$TO/.claude/config/stack.yaml"
+printf 'schema_version: 1\nchat:\n  channel: "#eng-updates"\n  recipients: [Alice, Bob]\n' > "$TO/dp.yaml"
+TOJ="$(python3 "$DP" --root "$TO" --plan "$TO/dp.yaml" --seam chat --quiet 2>/dev/null)"; TORC=$?
+TOD="$(printf '%s' "$TOJ" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['destination'],'|',d['recipients'])" 2>/dev/null)"
+{ [ "$TORC" -eq 0 ] && [ "$TOD" = "#eng-updates | ['Alice', 'Bob']" ]; } \
+  && ok "a tool-only chat seam routes to the plan-authored channel + recipients (destination per-communication)" \
+  || bad "tool-only chat routing did not read the plan" "rc=$TORC $TOD"
+printf 'schema_version: 1\nchat:\n  recipients: [Alice]\n' > "$TO/dp-nochan.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-nochan.yaml" --seam chat --quiet >/dev/null 2>&1
+[ "$?" -eq 9 ] && ok "a tool-only chat seam with no plan channel HALTS (exit 9), never a silent empty destination" \
+  || bad "a tool-only chat seam did not halt on a missing channel"
+printf 'schema_version: 1\nchat:\n  channel: "#eng"\n' > "$TO/dp-norecip.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-norecip.yaml" --seam chat --quiet >/dev/null 2>&1
+[ "$?" -eq 9 ] && ok "a tool-only chat seam with an empty recipient list HALTS (never solo-DM a stakeholder)" \
+  || bad "a tool-only chat seam routed with no recipients"
+python3 "$DP" --root "$TO" --plan "$TO/absent.yaml" --seam chat --quiet >/dev/null 2>&1
+[ "$?" -eq 9 ] && ok "a tool-only chat seam with no plan file HALTS (exit 9) — the destination is per-ticket, not optional" \
+  || bad "a tool-only chat seam with no plan file did not halt"
+TOFP="$(printf '%s' "$TOJ" | python3 -c "import json,sys;print(json.load(sys.stdin)['resolution_fingerprint'])" 2>/dev/null)"
+printf 'schema_version: 1\nchat:\n  channel: "#leaked"\n  recipients: [Alice, Bob]\n' > "$TO/dp-moved.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-moved.yaml" --seam chat --expect-fingerprint "$TOFP" --quiet >/dev/null 2>&1
+[ "$?" -ne 0 ] && ok "the fingerprint pins the plan-authored channel — a plan edited after approval refuses (preview==execution)" \
+  || bad "a moved tool-only channel slipped past the fingerprint"
+# The RECIPIENTS are pinned too, not just the channel: swapping the list after approval must refuse.
+printf 'schema_version: 1\nchat:\n  channel: "#eng-updates"\n  recipients: [Alice, Mallory]\n' > "$TO/dp-recip.yaml"
+python3 "$DP" --root "$TO" --plan "$TO/dp-recip.yaml" --seam chat --expect-fingerprint "$TOFP" --quiet >/dev/null 2>&1
+[ "$?" -ne 0 ] && ok "the fingerprint pins the plan-authored RECIPIENTS too — a swapped list after approval refuses" \
+  || bad "a changed tool-only recipient list slipped past the fingerprint"
+# BACKWARD COMPAT, stated as a test so it is not a hidden claim: a legacy single mapping (a config
+# default_channel, no always_include) is UNCHANGED — it routes to itself with the config channel and
+# an EMPTY recipient list. The never-empty-recipients rule is a property of the tool-only path above,
+# not of this pre-existing legacy shape; making that explicit here so the two are never conflated.
+LG="$TMP/legacy45"; mkdir -p "$LG/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_channel: C0LEGACY\n    default_mode: draft\n    verify: null\n' > "$LG/.claude/config/stack.yaml"
+printf 'schema_version: 1\n' > "$LG/dp.yaml"
+LGJ="$(python3 "$DP" --root "$LG" --plan "$LG/dp.yaml" --seam chat --quiet 2>/dev/null)"; LGRC=$?
+LGD="$(printf '%s' "$LGJ" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['destination'],'|',d['recipients'])" 2>/dev/null)"
+{ [ "$LGRC" -eq 0 ] && [ "$LGD" = "C0LEGACY | []" ]; } \
+  && ok "a legacy single mapping (config default_channel, no always_include) routes unchanged — config channel, empty list (backward compat)" \
+  || bad "the legacy single-mapping chat shape changed" "rc=$LGRC $LGD"
+
 # --- (E4) adversarial-review hardening: rows honored-or-reported, the pin binds the RESOLUTION ---
 # The P1 from the adversarial review: a deliverables row someone wrote to keep a file INTERNAL was
 # silently overridden by the plan-level classification whenever its value wasn't a non-empty string
@@ -5751,9 +5842,9 @@ python3 "$KIT/bin/effective_config.py" --root "$T3" --json --quiet >/dev/null 2>
 # is stated in adapters/README.md (§ What is MECHANICAL here, and what is instruction) rather
 # than papered over with a grep that would look like proof.
 SH45=".claude/skills/ship/SKILL.md"
-grep -q 'disable-model-invocation: true' "$SH45" \
-  && ok "/ship keeps disable-model-invocation (routing added no model surface)" \
-  || bad "/ship lost disable-model-invocation"
+{ ! grep -q 'disable-model-invocation' "$SH45" && grep -q 'HARD HALT' "$SH45"; } \
+  && ok "/ship is model-invocable and keeps its Phase B HARD HALT (routing added no unguarded side effect)" \
+  || bad "/ship's model-invocation posture or its Phase B halt regressed"
 grep -q 'claude -p' "$SH45" && bad "/ship reintroduced a headless model call" \
   || ok "/ship still makes no headless model call"
 { grep -q 'delivery_plan.py' "$SH45" && grep -q 'check-draft' "$SH45"; } \
@@ -5762,8 +5853,8 @@ grep -q 'claude -p' "$SH45" && bad "/ship reintroduced a headless model call" \
 grep -q 'Route the delivery FIRST' "$SH45" \
   && ok "/ship routes BEFORE drafting (the draft must carry the routed list)" \
   || bad "/ship still drafts before it routes"
-grep -qi 'never infer the audience' "$SH45" \
-  && ok "/ship forbids inferring an audience in so many words" \
+{ grep -qi 'never infer' "$SH45" && grep -qi 'audience' "$SH45"; } \
+  && ok "/ship forbids inferring the audience/destination in so many words" \
   || bad "/ship does not forbid inferring the audience"
 grep -q 'tracker and vcs' "$SH45" \
   && ok "/ship still halts on named targets for the two DEFERRED slots (tracker, vcs)" \

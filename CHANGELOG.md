@@ -4,6 +4,50 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Changed
+- **All seven skills are now model-invocable; `/setup`, `/ship`, `/productize` confirm before acting
+  instead of being un-invokable.** Those three carried `disable-model-invocation: true`, so the model
+  could never reach for them — a person had to remember to type the slash command every time. That
+  flag is also **Claude-Code-only**: it is silently dropped on every emit runtime (codex, cursor,
+  devin, …), which is the whole reason the installer bolts a "user-invocable only" warning block onto
+  the emitted copies. The fix replaces the coarse, non-portable flag with a portable **in-body HARD
+  HALT** that confirms before the durable/external action — an instruction the agent follows on every
+  runtime, visible in the transcript, and stated plainly as a convention rather than a mechanical
+  block (no runtime enforces it, unlike the flag on Claude Code). `/ship` gains a model-initiation gate
+  **before Phase A** (a model-initiated run confirms before Phase A tidies deliverable files and
+  refreshes the committed ticket-index entry — an explicit user invocation authorizes Phase A as
+  before) and keeps its Phase B "stop and wait" gate before any **external post**.
+  `/productize` gains one before it stamps a brand-new skill folder. `/setup` gains a top-level
+  model-invocation gate covering **every mode** — default, `tool`, `role`, `team`, `policies`,
+  `--teammate`, `--voice`, `viewer`, adoption, Bootstrap — so a model-initiated run stops for
+  confirmation before writing in any of them (an explicit user invocation still authorizes that
+  mode's own scoped writes). The net behavior is what "seamless" should mean: the model recognizes
+  when one of these is needed and **asks for confirmation before acting**, rather than doing nothing
+  until the user drives it by hand.
+
+  The `disable-model-invocation` mechanism itself is **retained** — still honored, still emitted with
+  a warning block on foreign runtimes, now unit-covered in selftest — so a future skill that must
+  *never* be model-invoked at all remains supported; no skill ships gated today. Selftest sections
+  37/39/41/45 flip from asserting the gate is present to asserting all seven skills are model-invocable
+  and the three side-effectful ones each carry an in-body HARD HALT; the codex-cli and antigravity
+  golden fixtures are regenerated without the warning block.
+
+- **Chat delivery is configured tool-only; the destination is decided per-communication.** Setup no
+  longer asks for a standing `default_channel` or a fixed `always_include` stakeholder list — who a
+  result goes to, and where, varies by who the analysis is *for*. The default single-mapping chat
+  shape now names only the **tool + transport**; the destination and a non-empty recipient list are
+  authored in the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at
+  `/ship`. `bin/delivery_plan.py` **halts (exit 9)** for a tool-only chat seam whose plan declares
+  none — it never emits an empty channel — and the `resolution_fingerprint` pins the plan-authored
+  values, so a plan edited between approval and delivery refuses (preview==execution holds). The
+  `targets:` multi-audience shape is unchanged, for teams that want fixed pre-declared audiences. A
+  single mapping that still sets a `default_channel` keeps working (backward compatible). The
+  Teams/Gmail/Outlook adapters no longer config-`require` the destination key or `always_include`
+  (those moved per-ticket; `identity`, the email sending mailbox, stays a team decision).
+
+
 ## [3.8.1] — 2026-08-30
 
 ### Fixed

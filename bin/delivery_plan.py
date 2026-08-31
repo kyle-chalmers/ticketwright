@@ -41,13 +41,19 @@ EXIT CODES: 0 ok · 2 usage · 3 plan file missing · 4 plan/config malformed (i
 or recipient carrying shell metacharacters — the tier-3 injection refusal, inherited from
 effective_config, never re-derived) · 7 slot not configured (the one case a caller may degrade, the
 way /ship already skips an absent chat/docstore) · 8 the declared value matches no configured
-target, or an unknown `--override` · 9 the plan exists but declares nothing for this slot.
+target, or an unknown `--override` · 9 nothing is declared for this slot (a `targets:` slot with no
+plan declaration, or a TOOL-ONLY chat seam whose plan declares no `chat.channel:`/`chat.recipients:`
+— whether or not a plan file exists).
 0/2/3/4/7/8 carry the same meanings as the resolver's published family; **9 is a delivery-plan
-EXTENSION**, not part of that family — no declaration is a state only a persisted plan can be in.
+EXTENSION**, not part of that family — a missing declaration is a state only a persisted plan
+resolves.
 
-A DECLARATION IS DEMANDED ONLY WHEN THE SLOT HOLDS `targets:`. A single mapping routes to itself
-with `target: null` and needs no plan file at all, so a repo that never adopts targets ships exactly
-as it does today. That scoping is the difference between a stricter rule and a regression.
+A DECLARATION IS DEMANDED WHEN THE SLOT HOLDS `targets:` — and also for a TOOL-ONLY chat seam: a
+single mapping that names the chat tool but declares no standing destination (no `default_channel`
+in the stack) reads its destination + recipients from the plan's `chat:` block, authored
+per-communication, and HALTS (exit 9) when the plan declares none — never a silent empty channel. A
+single mapping that DOES set a standing destination still routes to itself and needs no plan file, so
+a repo that never adopts either shape ships exactly as it does today.
 
 ON EVERY NON-ZERO EXIT, `target` AND `destination` ARE NULL. A caller cannot pick a usable
 destination out of a failed routing, whether or not it checks the exit code.
@@ -438,7 +444,8 @@ def _blank(seam_name: str, declared: str | None) -> dict:
 
 
 def route(res: "ec.Resolution", seam_name: str, declared: str | None,
-          override: str | None = None, self_name: str | None = None) -> tuple[dict, dict | None]:
+          override: str | None = None, self_name: str | None = None,
+          plan_chat: dict | None = None) -> tuple[dict, dict | None]:
     """Route one slot from its DECLARED value. Returns (result, error).
 
     Precedence, and there is no fourth step: an explicit `--override` (the `--chat <target>` flag),
@@ -466,7 +473,7 @@ def route(res: "ec.Resolution", seam_name: str, declared: str | None,
         if sel_err or unit is None:
             out["error"] = sel_err
             return out, sel_err
-        return _fill(out, res, seam_name, unit, "single", self_name)
+        return _fill(out, res, seam_name, unit, "single", self_name, plan_chat=plan_chat)
 
     targets = seam["targets"]
     names = sorted(t for t, v in targets.items() if isinstance(v, dict))
@@ -529,7 +536,8 @@ def route(res: "ec.Resolution", seam_name: str, declared: str | None,
 
 
 def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
-          selected_by: str, self_name: str | None, own: dict | None = None) -> tuple[dict, dict | None]:
+          selected_by: str, self_name: str | None, own: dict | None = None,
+          plan_chat: dict | None = None) -> tuple[dict, dict | None]:
     """`own` is the target's OWN mapping when this is a named target, else None.
 
     The rules the audit enforces are re-checked HERE, at the point of use, on purpose. The audit
@@ -562,12 +570,29 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
     if dest is not None and (not isinstance(dest, str) or not dest.strip()):
         # `channel: []`, a mapping, an int, `""` — not places a message can go. A named target
         # carrying one REFUSES (junk in the leak-relevant path is a halt); a single mapping
-        # degrades to "no destination", which is what its plan line already renders honestly.
+        # degrades to "no destination", resolved from the plan below for a tool-only chat seam.
         if own is not None:
             err = _err("malformed", f"{unit['label']}: `{dkey}` must be a non-empty string, got "
                                     f"{type(dest).__name__} — refusing to emit it as a destination")
             return _fail(out, err)
         dest = None
+    # TOOL-ONLY CHAT: the stack names the chat tool but declares no standing destination, so the
+    # destination is authored PER-COMMUNICATION in the plan's `chat.channel:` — never a standing
+    # default. Absent → HALT (exit 9: declare it and re-run), never a silent empty channel. A config
+    # that DOES set the destination skips this entirely (config wins), so existing repos are
+    # unchanged. `tool_only` also gates the recipient source below.
+    tool_only = False
+    if dest is None and selected_by == "single" and seam_name == "chat":
+        tool_only = True
+        cand = (plan_chat or {}).get("channel")
+        if isinstance(cand, str) and cand.strip():
+            dest = cand.strip()
+        else:
+            err = _err("no_declaration",
+                       "chat names a tool but no standing destination — declare `chat.channel:` "
+                       "(and `chat.recipients:`) in the delivery plan and re-run "
+                       "(adapters/README.md § The delivery plan); routing never invents a channel")
+            return _fail(out, err)
     if dest is None and own is not None:
         err = _err("malformed", f"{unit['label']}: declares no `{dkey}:` of its own — a routed "
                                 f"target never delivers to an inherited destination")
@@ -594,14 +619,26 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
     out["destination"], out["destination_key"] = dest, dkey
 
     if seam_name == "chat":
-        names = _str_list(vals.get("always_include")) or []
-        if own is not None and not _str_list(own.get("always_include")):
-            # The never-solo-DM list is a precondition of sending, not a lint. A routed target
-            # without one does not deliver — refusing here is what makes the rule bind even on a
-            # config nobody verified.
-            err = _err("malformed", f"{unit['label']}: declares no non-empty `always_include:` — "
-                                    f"refusing to route a message with no stakeholder list")
-            return _fail(out, err)
+        if tool_only:
+            # A tool-only seam authors its recipients per-communication too (`chat.recipients:`).
+            # Empty is a HALT — never solo-DM a stakeholder — the same precondition a named target's
+            # `always_include` enforces, applied to the plan-sourced list.
+            names = _str_list((plan_chat or {}).get("recipients"))
+            if not names:
+                err = _err("no_declaration",
+                           "chat names a tool but no standing recipient list — declare "
+                           "`chat.recipients:` (a non-empty list) in the delivery plan and re-run; "
+                           "a message is never sent with no stakeholder list")
+                return _fail(out, err)
+        else:
+            names = _str_list(vals.get("always_include")) or []
+            if own is not None and not _str_list(own.get("always_include")):
+                # The never-solo-DM list is a precondition of sending, not a lint. A routed target
+                # without one does not deliver — refusing here is what makes the rule bind even on a
+                # config nobody verified.
+                err = _err("malformed", f"{unit['label']}: declares no non-empty `always_include:` — "
+                                        f"refusing to route a message with no stakeholder list")
+                return _fail(out, err)
         if self_name and str(vals.get("include_self")).lower() in ("true", "1"):
             if self_name not in names:
                 names = names + [self_name]
@@ -839,12 +876,14 @@ def main(argv: list[str] | None = None) -> int:
                             sorted(k for k, v in res.seams.items() if isinstance(v, dict)))
         return _emit(out, EXIT_NO_SEAM, args.quiet)
 
-    # The plan is DEMANDED only by a multi-target slot (routing has nothing else to read) and by
-    # --record-delivered (there is no file to append to). A single-mapping slot keeps working with
-    # no plan at all, which is what stops this from breaking every repo that never adopts targets.
-    # An ABSENT plan is the only excusable state, though: a plan that EXISTS but is malformed is a
+    # The plan FILE is demanded at THIS gate only by a multi-target slot (routing has nothing else to
+    # read) and by --record-delivered (there is no file to append to). A single-mapping slot passes
+    # this gate with no plan file — but a TOOL-ONLY chat single mapping still HALTS downstream in
+    # route() (exit 9) when the plan declares no `chat.channel:`/`chat.recipients:`; it is simply not
+    # the no_plan failure HERE. A single mapping that sets a standing destination needs no plan at all.
+    # An ABSENT plan is the only excusable state at this gate: a plan that EXISTS but is malformed is a
     # broken committed record and reports exit 4 on every slot shape — "single mapping" excuses a
-    # missing declaration, not a file nobody can read.
+    # missing FILE here, not a file nobody can read.
     if perr and (perr["code"] != "no_plan" or _is_multi(seam) or args.record_delivered):
         out = _blank(args.seam, None)
         out["error"] = perr
@@ -853,8 +892,14 @@ def main(argv: list[str] | None = None) -> int:
     # what selects the store that file's link is minted from.
     file_rel = args.file_rel or args.record_delivered
     declared = declared_value(plan or {}, args.seam, file_rel)
+    # A TOOL-ONLY chat seam reads its destination + recipients from the plan's `chat:` block
+    # (adapters/README.md § The delivery plan); route() uses it only when the stack declares no
+    # standing destination. docstore is unaffected — it has no tool-only shape here.
+    plan_chat = (plan or {}).get("chat")
+    if not isinstance(plan_chat, dict):
+        plan_chat = None
 
-    out, err = route(res, args.seam, declared, args.override, args.self_name)
+    out, err = route(res, args.seam, declared, args.override, args.self_name, plan_chat)
     # `single` is the sentinel /ship already renders for a single mapping's null target (#38's
     # convention), so passing that plan line back must MATCH rather than look like a changed target.
     actual_target = out.get("target") or "single"
