@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Added
+- **`/setup` now scaffolds a human-facing `README.md`.** Setup wrote `AGENTS.md` (the agent's rules
+  file) but nothing a person landing on the repo could read in a minute. It now also renders a short
+  intro (under 250 words of prose) — what this is (a ticket-driven work repo) and how work moves
+  through it — from the new `templates/project-README.md.tmpl`. It's tool-agnostic (only `{{repo_name}}`
+  and `{{domain}}` tokens) and **never overwrites an existing README**: if one is present (fresh or
+  adopt), it renders `README.ticketwright.md` for the human to merge, mirroring the `AGENTS.ticketwright.md`
+  convention. Written once, then human-owned — `/setup role` does not re-render it.
+
+
 ## [3.9.0] — 2026-08-31
 
 ### Changed

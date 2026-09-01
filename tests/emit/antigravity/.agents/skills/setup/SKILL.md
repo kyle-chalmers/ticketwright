@@ -219,7 +219,9 @@ the resolved setup plan, then stop and wait for the user — nothing is written 
 The human authorizes THE PLAN, not merely the idea of setup. The plan names:
 - the tool slot resolved for each seam (and any left as a commented default);
 - every file this phase will create **or change** — `.claude/config/stack.yaml`, `AGENTS.md`,
-  `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, the AI-layer index, the seeded ticket index;
+  `CLAUDE.md`, the human-facing `README.md` (or `README.ticketwright.md` if a README already
+  exists — never overwritten), `.claude/settings.json`, `.gitignore`, the AI-layer index, the
+  seeded ticket index;
 - on a repo that already has config, exactly *what* would change — `role`/`team`/`policies` are
   **edit-never-overwrite** (see above), so name the specific keys being edited and never present a
   whole-file overwrite as the plan.
@@ -228,7 +230,8 @@ Only on explicit confirmation, execute:
 5. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
    commented blocks; the 10 policies with a one-line "when to change this" comment each).
 6. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
-   `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules),
+   `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules), the human-facing `README.md`
+   (rendered to `README.ticketwright.md` instead if a README already exists — never overwritten),
    `.claude/settings.json` (hooks — omitted on a plugin install — + read-only CLI allows), folders,
    `.gitignore` (deliverable CSVs committed by default; PII opts out via `*.private.csv` / a
    `private/` subfolder), the AI-layer index, and the seeded ticket index.
