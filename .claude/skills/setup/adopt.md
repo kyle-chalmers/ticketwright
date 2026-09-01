@@ -28,6 +28,10 @@ in, never replace).
 ## 3 · Non-destructive scaffold
 - `AGENTS.md` exists → render the template to `AGENTS.ticketwright.md` instead and note the diff
   worth merging (the stack table, the policies, the lifecycle line). The human merges.
+- `README.md` exists → render `project-README.md.tmpl` to `README.ticketwright.md` (never over the
+  existing one; and if `README.ticketwright.md` also exists, leave it and flag it as a merge
+  candidate). No repo-root `README.md` → render straight to `README.md` — a human landing on an
+  adopted repo deserves the same one-minute intro as a fresh one.
 - Ticket index: seed `index_data.json` only if absent; then `/refresh index --all` to bootstrap
   the catalog over the existing backlog (deterministic render first, curated enrichment after).
 
@@ -38,6 +42,7 @@ One row per finding, with a recommendation:
 | custom `start-work.md` command | shadows `/ticket` | **replace** — plugin covers it; delete after a trial ticket |
 | custom warehouse-specific spec/build flow | extends `/spec-and-build` | **keep** — domain-optimized; note it in AGENTS.md |
 | hand-maintained rules file | overlaps rendered AGENTS.md | **merge** — adopt the stack table + policies block |
+| `README.ticketwright.md` | new human-facing intro (README already existed) | **merge** — fold the intro into your README, then delete the sibling |
 Include: what was auto-configured, what needs a human decision, and the suggested trial — run ONE
 real ticket through `/ticket → /review → /ship` before deleting anything custom.
 

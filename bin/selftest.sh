@@ -8524,5 +8524,70 @@ done
 [ -z "$ab53" ] && ok "every shipped runtime model_cmd names a bare command, not an absolute path" \
   || bad "a runtime adapter's model_cmd uses a path — the hermetic PATH cannot shadow it" "$ab53"
 
+# ── 54 · project README scaffold ──────────────────────────────────────────────
+# /setup writes a short, human-facing repo-root README (the human half of the "two readers"
+# rule; AGENTS.md is the agent half). It's a rendered template — deterministic, word-budgeted,
+# tool-agnostic — and it is NEVER written over an existing README (sibling file instead).
+hdr "54 · project README scaffold (templates/project-README.md.tmpl)"
+RM_TMPL="templates/project-README.md.tmpl"
+
+# (a) the template ships
+[ -f "$RM_TMPL" ] && ok "project-README.md.tmpl exists" \
+  || bad "missing $RM_TMPL — /setup has no human-facing README to scaffold"
+
+# (b) renders clean under --strict, reusing the §5 canonical vars fixture (only {{repo_name}}
+#     and {{domain}} are referenced, both present there). --strict exits 2 on any leftover token.
+if [ -f "$RM_TMPL" ] && bash bin/render.sh "$RM_TMPL" --vars "$TMP/vars.env" --strict \
+     >"$TMP/readme.out" 2>"$TMP/readme.err"; then
+  ok "project README renders with zero unresolved tokens (--strict)"
+else
+  bad "project README has unresolved {{tokens}} under --strict" "$(cat "$TMP/readme.err" 2>/dev/null)"
+fi
+
+# (c) prose word budget ≤ 250, EXCLUDING diagrams (fenced code) and tables (and headings);
+#     bullets count as prose. Strip fences/tables/headings to a temp file, then count — never
+#     var="$(python3 … <<'PY')" (bash-3.2 heredoc-in-$() parse trap; see §52).
+python3 - "$RM_TMPL" <<'PY' >"$TMP/readme.wc" 2>/dev/null || true
+import re, sys
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError:
+    print("ERR"); sys.exit(0)
+kept, in_fence = [], False
+for line in text.splitlines():
+    s = line.lstrip()
+    if s.startswith("```"):
+        in_fence = not in_fence; continue
+    if in_fence:            continue   # diagrams / code blocks
+    if s.startswith("|"):   continue   # table rows
+    if s.startswith("#"):   continue   # ATX headings
+    kept.append(line)
+print(len(re.findall(r"\S+", "\n".join(kept))))
+PY
+wc_readme="$(cat "$TMP/readme.wc" 2>/dev/null)"
+case "$wc_readme" in
+  ''|*[!0-9]*) bad "could not count README prose words" "got: '$wc_readme'" ;;
+  *) if [ "$wc_readme" -le 250 ]; then
+       ok "project README prose is ${wc_readme} words (≤250, excl. diagrams/tables)"
+     else
+       bad "project README prose is ${wc_readme} words (>250 excl. diagrams/tables — trim it)"
+     fi ;;
+esac
+
+# (d) the setup references PIN the absent/present/collision policy, not just imply it: each names
+#     the sibling file; scaffold.md names the template + carries non-overwrite wording.
+rm_refs_ok=1; rm_refs_msg=""
+for f in .claude/skills/setup/scaffold.md .claude/skills/setup/adopt.md .claude/skills/setup/SKILL.md; do
+  grep -q 'README.ticketwright.md' "$f" || { rm_refs_ok=0; rm_refs_msg="$rm_refs_msg ${f##*/}:no-sibling"; }
+done
+grep -q 'project-README.md.tmpl' .claude/skills/setup/scaffold.md \
+  || { rm_refs_ok=0; rm_refs_msg="$rm_refs_msg scaffold:no-render"; }
+grep -qiE 'never overwrite|do not overwrite|leave it untouched|never scaffold over' \
+     .claude/skills/setup/scaffold.md \
+  || { rm_refs_ok=0; rm_refs_msg="$rm_refs_msg scaffold:no-nonoverwrite"; }
+[ "$rm_refs_ok" -eq 1 ] \
+  && ok "scaffold.md/adopt.md/SKILL.md pin the README render + sibling-file non-overwrite rule" \
+  || bad "a setup reference doesn't pin the README scaffold policy" "$rm_refs_msg"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

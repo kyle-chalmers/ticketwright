@@ -244,9 +244,11 @@ before it is paid.
   read-only `meetings` adapters. Seven of
   those directories are tool slots; the eighth, `runtime/`, declares what each agent harness can do
   (see [runtimes.md](runtimes.md)) and carries no verbs, because it is not a tool the project calls.
-- **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), ticket
-  README, plan, spec, `.gitignore` (deliverables committed by default; PII opts out via
-  `*.private.csv` / a `private/` subfolder), role snippets, and the productized-skill skeleton.
+- **Templates** (`templates/`): AGENTS.md (+ the one-line `CLAUDE.md` `@AGENTS.md` import), the
+  human-facing project README (`project-README.md.tmpl` — a sub-250-word intro `/setup` renders to
+  `README.md`, or to `README.ticketwright.md` when a README already exists), ticket README, plan,
+  spec, `.gitignore` (deliverables committed by default; PII opts out via `*.private.csv` / a
+  `private/` subfolder), role snippets, and the productized-skill skeleton.
 - **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers

@@ -41,6 +41,26 @@ Also write `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/template
 one-line `@AGENTS.md` import so **Claude Code** auto-loads these rules (it reads `CLAUDE.md`; other
 agents read `AGENTS.md` directly). Keep it to that single import line.
 
+## Human-facing README (`README.md`)
+`AGENTS.md` is the *agent's* front door; a human landing on the repo needs one too. Render
+`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/project-README.md.tmpl` → a short intro
+(under 250 words of prose) to what this is — a ticket-driven work repo — and how work moves through
+it. Only two tokens: `{{repo_name}}` (the same value used for the `AGENTS.md` heading) and
+`{{domain}}` (from `project.domain`). It names no tool slots, so it renders cleanly whatever the
+stack is.
+
+**Never overwrite an existing README** (same non-destructive rule as `AGENTS.md`):
+- **No repo-root `README.md`** → render → `README.md`.
+- **`README.md` already exists** → render → `README.ticketwright.md` instead, and call it out
+  prominently in the setup report / punch list: *"README exists — merge `README.ticketwright.md`
+  into it, then delete the sibling."* The human owns the merge.
+- **`README.ticketwright.md` also already exists** → leave it untouched; report it as an existing
+  merge candidate rather than regenerating over a human's in-progress merge.
+
+This is a **one-time scaffold**: once written, the README is the human's to edit. `/setup role`
+re-renders `AGENTS.md` when `domain`/`role` change but must **not** re-render the README — the
+`{{domain}}` value is a snapshot at setup time, and re-rendering would clobber human edits.
+
 ## Hooks + settings (`.claude/settings.json`)
 Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/.claude/settings.json.tmpl` → `.claude/settings.json`.
 **The `hooks` block is install-mode-dependent:**
