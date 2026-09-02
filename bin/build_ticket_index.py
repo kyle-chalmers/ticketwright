@@ -972,7 +972,7 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="exit 1 if INDEX.md/OBJECTS.md — or the graph nodes, when the layer is on — are stale vs a fresh render")
     ap.add_argument("--stats", action="store_true", help="print coverage + health stats and exit 0")
     ap.add_argument("--recurring", action="store_true",
-                    help="list objects touched by many tickets over a long span (productize candidates)")
+                    help="list objects touched by many tickets over a long span (skillify candidates)")
     ap.add_argument("--min-tickets", dest="min_tickets", type=int, default=3,
                     help="with --recurring: minimum tickets for an object to be listed")
     ap.add_argument("--prune", action="store_true",
@@ -1027,7 +1027,7 @@ def main() -> int:
                 return 0
         rec = [s for s in agg.values() if s["tickets"] >= args.min_tickets]
         rec.sort(key=lambda s: (-s["tickets"], -span_days(s["dates"]), s["label"].lower()))
-        print(f"Recurring objects (touched by ≥ {args.min_tickets} tickets) — candidates to productize:")
+        print(f"Recurring objects (touched by ≥ {args.min_tickets} tickets) — candidates to skillify:")
         if not rec:
             print("  (none)")
         for s in rec:

@@ -61,7 +61,7 @@ What that buys, and the mechanism behind each piece:
   verdict sits next to the deliverable, so a reader can tell validated work from exploratory work
   before reusing either.
 - **Old work re-runs.** The `deterministic_outputs` policy (explicit `ORDER BY` on exports,
-  golden-replay diffs on productized skills) keeps a prior analysis executable where its queries
+  golden-replay diffs on generated skills) keeps a prior analysis executable where its queries
   and inputs still exist - a stronger claim than a document makes.
 - **Continuity.** When someone leaves, their reasoning survives with their SQL: the context,
   assumptions and verdicts stay in the repo, readable by the next person and traceable by the
@@ -387,7 +387,7 @@ Three supporting skills you'll reach for occasionally:
 |---|---|
 | `/setup` | Configure the repo (once) · add a tool later (`/setup tool chat`) · pick which apps open your deliverables (`/setup viewer`) · onboard a person (`/setup --teammate`, entered automatically for an unrecognized person) |
 | `/refresh` | Rebuild the ticket catalog (`index`) or the domain knowledge pack (`context`) — day-to-day, hooks keep these fresh automatically |
-| `/productize` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
+| `/skillify` | Turn a recurring workflow (quarterly pull, monthly report) into its own parameterized, golden-tested skill |
 
 (The v1 command names — `/start-ticket`, `/qc-review`, … — were retired in v3; see the rename map
 in [docs/troubleshooting.md](docs/troubleshooting.md#upgrading).)
@@ -535,7 +535,7 @@ ticketwright enrich ENG-123              # curated index summary  — needs a mo
   winning over the canonical copy is the failure mode the installer exists to prevent; re-run it to
   update (a file the installer did not emit is never overwritten — the install fails loudly
   instead). All seven skills are model-invocable; the three that take durable or external action
-  confirm before it: `/ship` **stops before any external post**, and `/setup` and `/productize`
+  confirm before it: `/ship` **stops before any external post**, and `/setup` and `/skillify`
   **stop before writing committed config or a new skill**, via an in-body HARD HALT — an instruction
   the agent follows on every runtime, stated plainly as a convention rather than a mechanical block
   (unlike the Claude-only `disable-model-invocation` frontmatter flag they used to carry, which only

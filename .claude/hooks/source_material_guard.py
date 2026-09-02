@@ -9,7 +9,7 @@ kit's own definition ("a named file or workflow carries it and honoring it is on
 two paths bypassed the skills entirely:
 
   git add -f / git commit   run directly, with no skill involved
-  cp -r <ticket dir> <dest> the docstore `backup` verb — ALSO reached from the productized-skill
+  cp -r <ticket dir> <dest> the docstore `backup` verb — ALSO reached from the generated-skill
                             template, which backs up and commits without ever calling /ship
   rclone copy <ticket dir>  the same verb on an UNMOUNTED docstore, where the destination is a
                             cloud remote rather than a path, so no `cp` appears at all
@@ -124,7 +124,7 @@ def _git_staging_segments(command: str) -> bool:
 # `cp -r`, but a docstore does not have to be a filesystem: the `rclone` adapter uploads straight
 # to a cloud remote with no mount in the path, so matching only `cp`/`rsync` would let the
 # unmounted backup verb carry raw transcripts out of the repo without ever meeting this guard —
-# the same escape the productized-skill template opened for `cp -r`. rclone's directory verbs are
+# the same escape the generated-skill template opened for `cp -r`. rclone's directory verbs are
 # recursive by definition (they transfer a directory's CONTENTS), so they need no `-r` to qualify.
 _COPY_RE = re.compile(r"\b(?:cp|rsync|rclone)\b")
 # rclone accepts global flags BEFORE the subcommand (`rclone -vv copy …`,

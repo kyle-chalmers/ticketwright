@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`/productize` is now `/skillify`; `templates/productized-skill/` is now `templates/generated-skill/`.**
+  The policy that drives the skill has always been called `skillify_everything`, so the command name
+  was the odd one out — and "productize" carried a product-shipping connotation the skill never had:
+  it turns a repeated workflow into a skill, it does not ship a product. The skill directory
+  (`.claude/skills/skillify/`), its `name:` frontmatter, the skeleton it stamps from, and the
+  adjective in prose ("productized skill" → "generated skill") all move together. **There is no
+  backwards-compatible alias** — the old name is gone. Note that `templates/AGENTS.md.tmpl` was
+  already rendered into existing repos naming `/productize`, and `/refresh` does not re-render
+  `AGENTS.md`: an existing repo needs `/setup role` re-run, or that one line edited by hand. See
+  `docs/troubleshooting.md` for the rename map.
+
 ### Added
 - **`/setup` now scaffolds a human-facing `README.md`.** Setup wrote `AGENTS.md` (the agent's rules
   file) but nothing a person landing on the repo could read in a minute. It now also renders a short

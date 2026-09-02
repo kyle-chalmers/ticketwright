@@ -1,14 +1,14 @@
 ---
-name: productize
+name: skillify
 description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
-argument-hint: "<workflow name> (e.g. monthly vendor reconciliation)"
-allowed-tools: [Read, Write, Edit, Bash, Glob]
 ---
 
-# /productize
+<!-- emitted by ticketwright install v3.9.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+
+# /skillify
 
 The meta-skill (`skillify_everything`). When a task recurs (quarterly sale, monthly report,
-periodic reconciliation), this stamps out a new **folder skill** with the productized skeleton:
+periodic reconciliation), this stamps out a new **folder skill** with the generated-skill skeleton:
 a phased pipeline with hard halts, parameterized SQL/steps, a QC checkpoint, a golden-replay
 regression test, and a hard halt before any external post. `/refresh index` + the `--recurring`
 flag of `bin/build_ticket_index.py` surface candidates ("this object shows up in 7 tickets").
@@ -24,13 +24,13 @@ Ask, in prose (runtimes that render structured options show chips; others a numb
   to assert; the byte-identical output file to diff against).
 
 ## Phase 2 — Stamp from the template (HARD HALT → confirm before writing a new skill)
-`/productize` is model-invocable: the model may reach for it when it notices a workflow recurring.
+`/skillify` is model-invocable: the model may reach for it when it notices a workflow recurring.
 Because this phase writes a **brand-new skill** into the repo — self-modifying tooling — it stops
 first. **Print the plan, then stop and wait for the user** before any file is created: the skill
 name, its path (`.claude/skills/<name>/`), and the file list about to be written (`SKILL.md`,
 `sql/`, `templates/`, `bin/`, `golden/`). Only on explicit confirmation, stamp the files.
 1. `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then copy
-   `"$KIT"/templates/productized-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
+   `"$KIT"/templates/generated-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).
 2. Render `SKILL.md.tmpl` with the interview answers into the canonical phase shape:
    **Phase 0** pre-flight (validate params + `verify_stack` for touched seams + an object drift

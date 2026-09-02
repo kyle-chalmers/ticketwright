@@ -18,7 +18,7 @@ from the adapters, never from this line.
 ## How work flows (plan → build → check → ship)
 `/ticket <id>` (opens the ticket + auto-loads its context and prior art) → `/spec-and-build`
 (blueprint, then build) → `/review` (independent check) → `/ship` (gated delivery). Recurring work
-→ `/productize`. Knowledge maintenance → `/refresh` (ticket catalog + domain pack).
+→ `/skillify`. Knowledge maintenance → `/refresh` (ticket catalog + domain pack).
 On a plugin install these names are namespaced — `/ticketwright:ticket <id>`, `/ticketwright:review`,
 … — the short names apply to vendored/pip installs.
 
@@ -227,11 +227,11 @@ is true.
 2. **db_write_requires_approval** — `off` | `high_risk` (default) | `all`; show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
-5. **skillify_everything** — recurring work becomes a `/productize` skill the agent can invoke itself.
+5. **skillify_everything** — when work recurs it becomes its own skill (`/skillify`), not another copy-paste.
 6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
 7. **commit_plan_before_implement** — `/spec-and-build` commits the spec before building (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
-9. **deterministic_outputs** — explicit `ORDER BY` on exports; productized skills ship golden-replay diffs.
+9. **deterministic_outputs** — explicit `ORDER BY` on exports; generated skills ship golden-replay diffs.
 10. **human_review_handoff** — `off` | `review` (default) | `all`; open the deliverables in the
     human's own apps and **wait for sign-off** before the verdict. Which apps is per-user and
     gitignored (`.claude/config/viewer.local.yaml`); run

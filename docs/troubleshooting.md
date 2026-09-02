@@ -182,6 +182,14 @@ Pass `--scope user` to `marketplace remove` explicitly — with no `--scope` it 
 `productize-workflow` → `productize` · `build-ticket-index`+`build-context-pack` → `refresh`.
 The old names routed automatically through v2.x as deprecated aliases; they were removed in v3.0.0.
 
+**Later renames:** `productize` → `skillify` (the skill, its `/`-command, and the
+`templates/productized-skill/` skeleton, now `templates/generated-skill/`). There is no alias — the
+old name is simply gone. Note that `templates/AGENTS.md.tmpl` was already rendered into existing
+repos naming `/productize`, and `/refresh` does **not** re-render `AGENTS.md`: to update an existing
+repo, re-run `/setup role` or edit that line in your own `AGENTS.md` by hand.
+
+**If you installed via `ticketwright init` or `ticketwright install --runtime <name>`, delete the old directory yourself.** Neither command prunes: both only ever write, so an upgrade leaves `.claude/skills/productize/` (or `.agents/skills/productize/` on a non-Claude runtime) sitting beside the new `skillify/`. Both carry the same description and both are model-invocable, and the stale one tries to copy `templates/productized-skill/`, which no longer exists — so it fails *after* its confirmation gate has already been cleared. Since v4.0.0 both commands print a WARNING naming the exact path; remove it with `rm -rf .claude/skills/productize`.
+
 ## Something else went wrong
 
 `bash bin/selftest.sh` runs the kit's full 200+-check suite (config parsing, adapter coverage,

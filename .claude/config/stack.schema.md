@@ -410,16 +410,16 @@ Two consequences worth knowing before you adopt it:
 
 | Policy | Type | Default | Enforced by |
 |---|---|---|---|
-| `hard_halt_before_external_posts` | bool | `true` | `ship`, every productized skill — pause for human go before any tracker/chat/docstore write. |
+| `hard_halt_before_external_posts` | bool | `true` | `ship`, every generated skill — pause for human go before any tracker/chat/docstore write. |
 | `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
 | `source_material_guard` | `on` \| `off` | `on` | Ask before a raw meeting transcript is staged for commit or copied into a docstore backup. Optional; **defaults to `on`**, and a missing or unparseable value resolves to `on` — unparseable config must never quietly widen what leaves the repo. Enforced by `.claude/hooks/source_material_guard.py` over `bin/scan_source_materials.py`; `/ship` calls the same classifier so the halt is visible where hooks are not wired. Matches filenames and document shape, **never meaning**. |
 | `chat_default_draft` | bool | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
 | `hyperlink_everything` | bool | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
-| `skillify_everything` | bool | `true` | recurring work → a `/productize` skill the agent can invoke, not a one-off. |
+| `skillify_everything` | bool | `true` | recurring work → a `/skillify` skill the agent can invoke, not a one-off. |
 | `reduce_assumptions` | bool | `true` | ask before building; still document every assumption in the ticket README. |
 | `commit_plan_before_implement` | bool | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
 | `system_evolution` | bool | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
-| `deterministic_outputs` | bool | `true` | data exports use explicit `ORDER BY`; productized skills ship golden-replay diffs. |
+| `deterministic_outputs` | bool | `true` | data exports use explicit `ORDER BY`; generated skills ship golden-replay diffs. |
 | `human_review_handoff` | enum | `review` | `review` layer ⑤ (and `spec-and-build` under `all`) — open deliverables in the user's own apps and wait for sign-off. See below. |
 
 All are booleans except `db_write_requires_approval` and `human_review_handoff`.

@@ -1,6 +1,6 @@
 # SQL-template authoring rules + the render gate
 
-Two hard rules for every `sql/*.tmpl` in a productized skill. Both have burned real runs; the
+Two hard rules for every `sql/*.tmpl` in a generated skill. Both have burned real runs; the
 render gate (`bin/render_and_validate.sh`) enforces both mechanically.
 
 ## Rule 1 — Never put a token in a SQL comment

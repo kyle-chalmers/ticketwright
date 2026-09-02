@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# split_and_export.sh — the export-phase helper productized multi-deliverable skills kept re-improvising.
+# split_and_export.sh — the export-phase helper generated multi-deliverable skills kept re-improvising.
 #
 # Two jobs, both about getting clean CSVs out of a warehouse CLI:
 #

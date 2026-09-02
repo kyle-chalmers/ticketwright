@@ -181,11 +181,19 @@ generic persona (`generalist`, `data analysis`) and lists no analysis tools."
     exactly one token, `{{role_focus}}`, from a three-to-six-line `templates/roles/<role>.md`
     snippet; `domain` fills one word in one sentence. Nothing else reads either.
 16. **Analysis tools** — "Which tools does the team do the actual analysis in?" (transformation
-    frameworks, notebooks, spreadsheets, BI apps — whatever applies). Write the answer to
-    `project.analysis_tools`, a tier-1 list rendered into `AGENTS.md` as descriptive context for
-    the agent. It is **not a tool slot**: nothing verifies it and nothing executes from it. Do
-    **not** add anything from this answer to `permissions.allow` — that file is runtime-specific,
-    invisible to `verify_stack.sh`, and does not travel to a teammate's environment.
+    frameworks, notebooks, spreadsheets, BI apps — whatever applies). **Seed this from Phase 1
+    detection, but only with tools that are NOT already filling a tool slot** — a detected CLI that
+    became the warehouse belongs there, not duplicated here. What this catches is the tool the team
+    works *in* on data that lives somewhere else, which no slot claims and which is otherwise easy
+    to forget. Confirm each one is **team-standard** before writing it: detection sees this machine
+    and this session, and `project.analysis_tools` is committed team config.
+    For a tool whose role isn't obvious from its name, add a **short** parenthetical saying what it
+    is used for. Keep it to a few words — the list renders as one comma-joined sentence.
+    Write the answer to `project.analysis_tools`, a tier-1 list rendered into `AGENTS.md` as
+    descriptive context. It is **not a tool slot**: nothing verifies it and nothing executes from
+    it. Do **not** add anything from this answer to `permissions.allow` — that file is
+    runtime-specific, invisible to `verify_stack.sh`, and does not travel to a teammate's
+    environment.
 
 ## Round 6 — House rules (skippable)
 

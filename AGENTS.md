@@ -98,7 +98,7 @@ contributor docs like this one). A seam is one of: `tracker`, `warehouse`, `chat
 `.claude/commands/`) is written **once against verbs** and must never *invoke* a concrete tool — no
 `acli`/`snow`/`gh`/`psql`/`mcp__*` calls in orchestration. Tool specifics live only in adapters +
 `stack.yaml`. Selftest section 3 greps for leaks and fails on one. Two sanctioned exceptions: the
-CLI-**detection** probe in `setup`, and the self-lint line in `productize`. Naming a tool in
+CLI-**detection** probe in `setup`, and the self-lint line in `skillify`. Naming a tool in
 illustrative prose is fine; calling one is not. If a new tool requires a skill edit, the abstraction
 is leaking — flag it.
 
@@ -181,5 +181,5 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 - Skill/command/adapter frontmatter must be valid, parseable YAML with a `description` — a broken
   flow-node silently drops all metadata when loaded as a plugin (selftest section 14 checks this).
 - The v1 command names (`/start-ticket`, `/qc-review`, …) were retired in v3; the surface is 7 skills
-  (`setup`, `ticket`, `spec-and-build`, `review`, `ship`, `productize`, `refresh`). Don't reintroduce
+  (`setup`, `ticket`, `spec-and-build`, `review`, `ship`, `skillify`, `refresh`). Don't reintroduce
   the old aliases (selftest section 14b fails on them).

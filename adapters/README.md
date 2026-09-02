@@ -619,4 +619,4 @@ when a machine-local value is hardcoded into a `verify:` string instead of a `{t
 **Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** `bin/selftest.sh`
 (section 3) enforces this: it greps `.claude/skills/**` + `.claude/commands/**` for tool names, with
 two sanctioned exceptions (the CLI-detection probe in `setup` and the self-lint line in
-`productize`).
+`skillify`).

@@ -397,6 +397,25 @@ def report_foreign(foreign: list[Path]) -> int:
     return 2 if foreign else 0
 
 
+# Skills that USED to ship and no longer do. Neither this emitter nor `ticketwright init` prunes:
+# both only ever write. So an install that predates a rename keeps the old skill directory sitting
+# next to the new one — same description, both model-invocable, and the stale copy points at a
+# template path that no longer exists, so it fails AFTER its hard halt has already been cleared.
+# We WARN and never delete: removing files a user may have edited is not this tool's call.
+RETIRED_SKILLS = ("productize",)
+
+
+def warn_retired_skills(root: Path, label: str) -> None:
+    """Name any retired skill directory still present. Never deletes."""
+    for name in RETIRED_SKILLS:
+        stale = root / name
+        if stale.is_dir():
+            print(f"  WARNING: {stale} is a RETIRED skill left over from an older version. It was "
+                  f"renamed, not removed, so this install now has both. Delete that directory — "
+                  f"nothing here will do it for you, and while it exists an agent may pick the "
+                  f"stale copy ({label}).", file=sys.stderr)
+
+
 def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
                 foreign: list[Path]) -> list[str]:
     """Translate every canonical skill into emit_root. Returns the names emitted."""
@@ -441,6 +460,7 @@ def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
     if other:
         print(f"  note: display-only source keys dropped (nothing a reader loses): {', '.join(other)}.")
     print("  hand-copying these files between runtime layouts is unsupported — re-run this install to update.")
+    warn_retired_skills(emit_root, f"emitted tree for {tool}")
     return emitted
 
 
