@@ -142,7 +142,7 @@ helper, copy it into `resources/`.
 
 ## AI-layer index (`documentation/AI_LAYER_INDEX.md`)
 A one-line-each inventory of the installed skills (`setup`, `ticket`, `spec-and-build`, `review`,
-`ship`, `productize`, `refresh`), the `qc-reviewer` agent, the hooks, and the adapters in use — so
+`ship`, `skillify`, `refresh`), the `qc-reviewer` agent, the hooks, and the adapters in use — so
 humans and agents can find what exists.
 
 ## Ticket index

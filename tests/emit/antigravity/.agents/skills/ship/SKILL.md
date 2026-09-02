@@ -213,7 +213,7 @@ execute — nothing the steps don't do may appear in it:
 10. **System-evolution retro** (policy `system_evolution`). Reflect briefly: did anything go wrong or
     get re-done this ticket? If so, **which layer was insufficient** — a global rule, the context
     pack, a skill, or an adapter? Propose the concrete fix to *that* artifact and note it. A repeated
-    manual step is a signal to `/productize` it. Fixing the layer, not just the ticket, is what
+    manual step is a signal to `/skillify` it. Fixing the layer, not just the ticket, is what
     compounds. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 11, not
     this retro.)*
 11. **Voice refine** (only if a voice profile resolved for the shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they

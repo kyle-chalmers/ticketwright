@@ -569,13 +569,13 @@ hdr "8 · statusline renders"
 out="$(echo '{}' | CLAUDE_PROJECT_DIR="$KIT" bash .claude/statusline.sh 2>&1)"
 grep -q "ENG" <<<"$out" && ok "statusline: $out" || bad "statusline empty/broken" "$out"
 
-hdr "9 · productize stamp smoke (SKILL.md.tmpl → 0 leftover tokens)"
-err="$(bash bin/render.sh templates/productized-skill/SKILL.md.tmpl \
+hdr "9 · skillify stamp smoke (SKILL.md.tmpl → 0 leftover tokens)"
+err="$(bash bin/render.sh templates/generated-skill/SKILL.md.tmpl \
   skill_name=x one_line_description=x argument_hint=x workflow_name=x params_table=x \
   param_validation=x precondition=x render_run_steps=x qc_table=x output_filenames=x \
   golden_invocation=x golden_fixture=x golden_assertions=x failure_mode_tests=x side_effects=x \
   2>&1 >/dev/null)"
-[ -z "$err" ] && ok "productized SKILL.md stamps clean" || bad "leftover tokens in stamped SKILL.md" "$err"
+[ -z "$err" ] && ok "generated SKILL.md stamps clean" || bad "leftover tokens in stamped SKILL.md" "$err"
 
 hdr "10 · ticket index (renderer + url template + hooks)"
 P="$TMP/proj"
@@ -762,12 +762,12 @@ roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/r
 
 hdr "14b · v2 skill surface (7 skills; v1 alias stubs removed in v3)"
 sk_missing=""
-for s in setup ticket spec-and-build review ship productize refresh; do
+for s in setup ticket spec-and-build review ship skillify refresh; do
   [ -f ".claude/skills/$s/SKILL.md" ] || sk_missing="$sk_missing $s"
 done
-[ -z "$sk_missing" ] && ok "all 7 v2 skills present (setup ticket spec-and-build review ship productize refresh)" \
+[ -z "$sk_missing" ] && ok "all 7 v2 skills present (setup ticket spec-and-build review ship skillify refresh)" \
   || bad "v2 skill missing:$sk_missing"
-extra="$(ls -d .claude/skills/*/ | grep -Ev '/(setup|ticket|spec-and-build|review|ship|productize|refresh)/$' || true)"
+extra="$(ls -d .claude/skills/*/ | grep -Ev '/(setup|ticket|spec-and-build|review|ship|skillify|refresh)/$' || true)"
 [ -z "$extra" ] && ok "no stray skill folders beyond the 7" || bad "unexpected skill folder (v1 leftover?)" "$extra"
 al_bad=""
 for a in configure-workspace onboard-teammate start-ticket qc-review deliver-ticket productize-workflow \
@@ -874,11 +874,11 @@ SELECT count(* FROM {{src}} ORDER BY 1;
 EOF
 bash "$RV" "$TMP/par.sql.tmpl" src=T >/dev/null 2>&1 \
   && bad "unbalanced parens NOT caught" || ok "rejects unbalanced parens in rendered SQL"
-# the SHIPPED productized templates must obey their own rules (render clean under --strict)
-bash "$RV" templates/productized-skill/sql/step.sql.tmpl --strict \
+# the SHIPPED generated-skill templates must obey their own rules (render clean under --strict)
+bash "$RV" templates/generated-skill/sql/step.sql.tmpl --strict \
   period=Q src=T as_of_date=2026-06-30 select_columns=id source_object=T filter="1=1" order_key=id >/dev/null 2>&1 \
   && ok "shipped step.sql.tmpl passes its own gate (--strict)" || bad "step.sql.tmpl fails the render gate"
-bash "$RV" templates/productized-skill/sql/qc.sql.tmpl --strict \
+bash "$RV" templates/generated-skill/sql/qc.sql.tmpl --strict \
   grain_key=id output_object=O source_object=S filter="1=1" required_col=id >/dev/null 2>&1 \
   && ok "shipped qc.sql.tmpl passes its own gate (--strict)" || bad "qc.sql.tmpl fails the render gate"
 
@@ -1011,7 +1011,7 @@ cf="$(grep -REn 'commandify' .claude/config .claude/skills templates 2>/dev/null
 parse_bad=""
 # bin/tw is deliberately extensionless (skills read `bin/tw <script>`), so the *.sh glob misses it —
 # and it is the one script every migrated skill now depends on.
-for s in bin/*.sh bin/tw .claude/statusline.sh templates/productized-skill/bin/*.sh; do
+for s in bin/*.sh bin/tw .claude/statusline.sh templates/generated-skill/bin/*.sh; do
   [ -f "$s" ] || continue
   bash -n "$s" 2>/dev/null || parse_bad="$parse_bad $s"
 done
@@ -4129,7 +4129,7 @@ ediff="$(diff -r "$EMIT_P/.agents" tests/emit/codex-cli/.agents 2>&1 \
   || bad "emitted tree diverges from the golden fixtures (regenerate deliberately, per tests/emit/README.md)" \
         "$(head -3 <<<"$ediff")"
 # All seven skills are now MODEL-INVOCABLE: none declares disable-model-invocation: true. The three
-# that were user-invocable-only (setup, ship, productize) carry a portable in-body HARD HALT instead
+# that were user-invocable-only (setup, ship, skillify) carry a portable in-body HARD HALT instead
 # of the Claude-only frontmatter flag — a confirm-before-running gate that survives emission to every
 # runtime, unlike the flag (only Claude Code honors it; that mismatch was the whole reason the warning
 # block below exists). Enumerated from SOURCE frontmatter with the SAME parser as the emitter — a
@@ -4146,7 +4146,7 @@ for f in sorted(pathlib.Path('.claude/skills').glob('*/SKILL.md')):
   || bad "a shipped skill still declares disable-model-invocation: true — all seven must be model-invocable" "$gated"
 # The three that take durable/external action carry a MODEL-INITIATED confirm gate positioned BEFORE
 # their first durable action — pinned by DISTINCTIVE wording AND ordering, so deleting the new gate
-# FAILS here. A bare 'HARD HALT' grep was vacuous: productize already had a later "HARD HALT for human
+# FAILS here. A bare 'HARD HALT' grep was vacuous: skillify already had a later "HARD HALT for human
 # review", and /ship's Phase B external halt would mask a missing pre-Phase-A gate. Line-number
 # ordering (grep -n | head | cut) proves each gate precedes the first thing that mutates.
 halt_bad=""
@@ -4159,11 +4159,11 @@ ssm="$(grep -n '^## Mode: ' .claude/skills/setup/SKILL.md | head -1 | cut -d: -f
 shg="$(grep -n 'MODEL-INVOCATION CONFIRM GATE' .claude/skills/ship/SKILL.md | head -1 | cut -d: -f1)"
 sha="$(grep -n '^## Phase A' .claude/skills/ship/SKILL.md | head -1 | cut -d: -f1)"
 { [ -n "$shg" ] && [ -n "$sha" ] && [ "$shg" -lt "$sha" ] && grep -q 'HARD HALT' .claude/skills/ship/SKILL.md; } || halt_bad="$halt_bad ship"
-# productize — the pre-stamp confirm must precede the template copy that writes the new skill folder
-spg="$(grep -n 'confirm before writing a new skill' .claude/skills/productize/SKILL.md | head -1 | cut -d: -f1)"
-spa="$(grep -n 'templates/productized-skill' .claude/skills/productize/SKILL.md | head -1 | cut -d: -f1)"
-{ [ -n "$spg" ] && [ -n "$spa" ] && [ "$spg" -lt "$spa" ]; } || halt_bad="$halt_bad productize"
-[ -z "$halt_bad" ] && ok "setup/ship/productize each carry a model-initiated confirm gate positioned BEFORE their first durable action (distinctive wording + ordering pinned)" \
+# skillify — the pre-stamp confirm must precede the template copy that writes the new skill folder
+spg="$(grep -n 'confirm before writing a new skill' .claude/skills/skillify/SKILL.md | head -1 | cut -d: -f1)"
+spa="$(grep -n 'templates/generated-skill' .claude/skills/skillify/SKILL.md | head -1 | cut -d: -f1)"
+{ [ -n "$spg" ] && [ -n "$spa" ] && [ "$spg" -lt "$spa" ]; } || halt_bad="$halt_bad skillify"
+[ -z "$halt_bad" ] && ok "setup/ship/skillify each carry a model-initiated confirm gate positioned BEFORE their first durable action (distinctive wording + ordering pinned)" \
   || bad "a formerly-gated skill lost its model-initiated confirm gate, or it sits after the first action" "$halt_bad"
 # The disable-model-invocation mechanism itself is KEPT for a future never-model-fire skill: no skill
 # uses it today. Prove the renderer AND that the enumerator actually DETECTS a gated skill — a test
@@ -6390,7 +6390,7 @@ grep -q '"permissionDecision": "ask"' <<<"$g_add" \
   || bad "git add of a raw transcript is not gated" "$g_add"
 g_cp="$(guard48 "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -r $GD48/tickets/a/ENG-1 /d/x\"},\"cwd\":\"$GD48\"}")"
 grep -q '"permissionDecision": "ask"' <<<"$g_cp" \
-  && ok 'guard ASKS on the docstore cp -r (bypass 2 — the productized path — closed)' \
+  && ok 'guard ASKS on the docstore cp -r (bypass 2 — the generated-skill path — closed)' \
   || bad "a folder-wide docstore backup of a raw transcript is not gated" "$g_cp"
 # Path narrowing must never turn into a silent pass: when the parsed paths land OUTSIDE the repo
 # (an unexpanded ~, a variable, a glob, with a destination that happens to exist), the guard falls
@@ -6495,8 +6495,8 @@ grep -q '\"permissionDecision\": \"ask\"' <<<"$g_lim" && grep -qi 'did NOT cover
 
 # --- (F) structural pin: the callers exist where the hook cannot reach --------------------------
 { grep -q 'scan_source_materials.py' .claude/skills/ship/SKILL.md \
-  && grep -q 'scan_source_materials.py' templates/productized-skill/SKILL.md.tmpl; } \
-  && ok "pin: /ship and the productized template both call the scanner" \
+  && grep -q 'scan_source_materials.py' templates/generated-skill/SKILL.md.tmpl; } \
+  && ok "pin: /ship and the generated-skill template both call the scanner" \
   || bad "a workflow that backs up + commits does not call the scanner"
 ship48="$(grep -c 'scan_source_materials.py' .claude/skills/ship/SKILL.md || true)"
 [ "${ship48:-0}" -ge 2 ] \
@@ -8588,6 +8588,37 @@ grep -qiE 'never overwrite|do not overwrite|leave it untouched|never scaffold ov
 [ "$rm_refs_ok" -eq 1 ] \
   && ok "scaffold.md/adopt.md/SKILL.md pin the README render + sibling-file non-overwrite rule" \
   || bad "a setup reference doesn't pin the README scaffold policy" "$rm_refs_msg"
+
+# (e) the README's command table NAMES ALL SEVEN SKILLS, by their current names. The word-budget
+#     check above deliberately skips `|` table rows, so the table was both unbudgeted AND
+#     unverified: a rename could ship a template advertising a command that no longer exists, with
+#     a fully green suite. That is exactly what nearly happened at the productize→skillify rename.
+rm_cmd_bad=""
+for s54 in ticket spec-and-build review ship setup refresh skillify; do
+  grep -q -- "/$s54" "$RM_TMPL" || rm_cmd_bad="$rm_cmd_bad $s54"
+done
+[ -z "$rm_cmd_bad" ] \
+  && ok "the project README template names all 7 skills by their current names" \
+  || bad "the README template omits (or still misnames) a skill" "$rm_cmd_bad"
+
+# (f) a RETIRED skill name must never reappear in the shipped template. `productize` is gone; a
+#     stale template row would send a new teammate to a command that does not exist.
+grep -q 'productize' "$RM_TMPL" \
+  && bad "the README template still advertises the retired 'productize' command" \
+  || ok "the README template advertises no retired skill name"
+
+# (g) BOTH install paths warn about a retired skill directory an upgrade cannot prune. Neither
+#     `ticketwright init` nor emit_runtime deletes anything, so a renamed skill leaves the old
+#     directory beside the new one — same description, both model-invocable, and the stale copy
+#     points at a template path that no longer exists. The warning is the only thing standing
+#     between a user and an agent picking the dead copy.
+rt_bad=""
+grep -q 'RETIRED_SKILLS' bin/emit_runtime.py || rt_bad="$rt_bad emit_runtime"
+grep -qi 'retired' ticketwright/cli.py || rt_bad="$rt_bad cli.py"
+grep -q 'productize' docs/troubleshooting.md || rt_bad="$rt_bad troubleshooting"
+[ -z "$rt_bad" ] \
+  && ok "both install paths + the docs name a retired skill dir an upgrade leaves behind" \
+  || bad "a retired skill directory would survive an upgrade unannounced" "$rt_bad"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

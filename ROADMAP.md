@@ -12,7 +12,7 @@ The ticket index is **active**, not just browsable, and observable.
   an advisory verdict line, and a read-only **`--eval`** recall-quality diagnostic.
 - **Object reverse-index** (`tickets/OBJECTS.md`), scale-aware above ~150 objects.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
-- **Index observability** — `--recurring` (productize candidates) and `--stats` health metrics.
+- **Index observability** — `--recurring` (skillify candidates) and `--stats` health metrics.
 - **Ingest validation** trust boundary; **privacy guard** (the per-install store can't be committed).
 - 38 adapters across 8 seams; 7 worked stacks; **300+-check self-test**; GitHub Actions CI.
   (Seven of those directories are tool seams with verb contracts; the eighth, `runtime/`, declares
@@ -38,7 +38,7 @@ Lineage: Ticketwright is the canonical evolution of earlier prototypes — the a
 Hardened by exercising a productized recurring pull end-to-end. All stdlib-only, tool-agnostic; none changes
 the lightweight stance.
 
-- **Render gate** (`bin/render_and_validate.sh`) for `/productize` — errors on a `{{token}}`
+- **Render gate** (`bin/render_and_validate.sh`) for `/skillify` — errors on a `{{token}}`
   inside a SQL comment (a multi-line value would break out of the `--`), warns on an unquoted SQL
   string/date literal (`= {{asof}}` reads as arithmetic), and asserts zero leftover tokens + balanced
   quotes/parens on the rendered SQL.

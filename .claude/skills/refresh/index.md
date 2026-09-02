@@ -9,7 +9,7 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
   objects = enrichment ∪ a deterministic grep of each ticket's SQL) — plus the graph layer under
   `tickets/graph/` + `tickets/objects/` unless `project.graph_notes` is off. `--check` (staleness
   gate, covers every file it renders) · `--stats` (coverage) · `--recurring` (frequently-touched
-  objects — productization candidates).
+  objects — skillify candidates).
 - **`tickets/index_data.json`** — the curated store (title/status/date/summary/tags/cross_refs/
   objects + each README's content hash). This skill writes it.
 

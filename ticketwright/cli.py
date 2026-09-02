@@ -83,6 +83,17 @@ def cmd_init(args) -> int:
         copied.append("bin/KIT_VERSION")
     else:
         preserved.append("bin/KIT_VERSION")
+    # `init` only ever writes — it never prunes a path the kit has since removed. So a repo
+    # scaffolded before a skill was renamed keeps the OLD skill directory alongside the new one:
+    # same description, both model-invocable, and the stale copy points at a template that no
+    # longer exists, so it fails after its hard halt has already been cleared. Name it; never
+    # delete it, because the user may have edited it.
+    for retired in ("productize",):
+        stale = dest / ".claude" / "skills" / retired
+        if stale.is_dir():
+            print(f"  WARNING: {stale} is a RETIRED skill from an older version — renamed, not "
+                  f"removed, so this repo now has both. Delete that directory; nothing here will "
+                  f"do it for you.", file=sys.stderr)
     print(f"ticketwright {__version__}: scaffolded into {dest}")
     print(f"  copied {len(copied)} files · preserved {len(preserved)} existing")
     print("  next: run `/setup` (writes stack.yaml + AGENTS.md + the index), then `/ticket <id>`")

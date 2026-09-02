@@ -230,9 +230,9 @@ before it is paid.
 
 ## What's inside
 
-- **7 skills** (`.claude/skills/`): setup, ticket, spec-and-build, review, ship, productize,
+- **7 skills** (`.claude/skills/`): setup, ticket, spec-and-build, review, ship, skillify,
   refresh — each SKILL.md is short, with depth in per-skill reference files
-  (`ticket/priming.md`, `setup/adopt.md`, `productize/authoring.md`, …).
+  (`ticket/priming.md`, `setup/adopt.md`, `skillify/authoring.md`, …).
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`
   delegates to (one per pyramid layer in `--deep` mode). Where the runtime's adapter declares no
   user-definable subagents or an isolation posture of `none`/`unknown`, `/review` walks the same
@@ -248,7 +248,7 @@ before it is paid.
   human-facing project README (`project-README.md.tmpl` — a sub-250-word intro `/setup` renders to
   `README.md`, or to `README.ticketwright.md` when a README already exists), ticket README, plan,
   spec, `.gitignore` (deliverables committed by default; PII opts out via `*.private.csv` / a
-  `private/` subfolder), role snippets, and the productized-skill skeleton.
+  `private/` subfolder), role snippets, and the generated-skill skeleton.
 - **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
@@ -292,7 +292,7 @@ to anyone adopting or extending the kit:
   declared `global_skills_root`, refusing where that value is `unknown` rather than guessing.
 - **Safety rides in the skill body, not a Claude-only flag.** All seven skills are model-invocable;
   the three that take durable or external action confirm before it — `ship` before any external post,
-  `setup` and `productize` before writing committed config or a new skill — via an in-body HARD HALT.
+  `setup` and `skillify` before writing committed config or a new skill — via an in-body HARD HALT.
   That is an instruction the agent follows on every runtime, a convention rather than a mechanical
   block (stated plainly, per tiebreaker #6), unlike the `disable-model-invocation` frontmatter flag,
   which only Claude Code mechanically enforced. That flag is
@@ -343,4 +343,4 @@ object-to-tickets hop. Exposing that to agents would make the graph load-bearing
   unreachable ones halt with auth notes only where proceeding blind would be wrong.
 - **Out of scope (deliberately):** a heavy external knowledge-base/orchestration service
   (Archon-style retrieval over MCP). Task management is the tracker's job; orchestration is
-  `/productize` + the host agent's own subagents.
+  `/skillify` + the host agent's own subagents.
