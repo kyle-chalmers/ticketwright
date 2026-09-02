@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [4.0.1] — 2026-09-02
+
+### Fixed
+- **The kit-integrity selftest passes on a plugin install.** Section 31 ran `bin/tw` from inside the
+  kit's own tree and expected the kit root — right only when the kit is a git repo, so on a plugin
+  install (a cache, not a repo) two assertions failed for a reason no user ever meets. The test now
+  builds a git project and runs from a ticket subdirectory, which is the real scenario; `bin/tw`
+  itself was already correct there.
+- **A verify can no longer hang setup.** `verify_stack.sh` runs each slot's verify under a wall-clock
+  cap (`VERIFY_TIMEOUT`, default 30s) and reports a timeout as "appears to need interactive auth"
+  — a browser-SSO warehouse connection used to block the whole check with no output.
+
+### Docs
+- `/setup`: fall back to the current local branch when `refs/remotes/origin/HEAD` is unset (an
+  unpushed repo); expect `selftest.sh` to take several minutes and judge it by exit code; on a
+  remote created empty, the scaffold's first push seeds `main` and the PR flow starts with the next
+  change; a slot's `mcp:` value must be the runtime's exact tool prefix (`mcp__<name>__*`).
+
 ## [4.0.0] — 2026-09-02
 
 Breaking: `/productize` is now `/skillify`, and `templates/productized-skill/` is now

@@ -3,7 +3,7 @@ name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
 ---
 
-<!-- emitted by ticketwright install v4.0.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v4.0.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /ship
 
