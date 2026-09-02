@@ -140,7 +140,9 @@ which prints the resolved commands without launching anything. Never commit this
      confirms instead of asking. The default branch comes from
      `git symbolic-ref refs/remotes/origin/HEAD` — **not** `git symbolic-ref HEAD`, which reports
      whatever branch happens to be checked out and would misconfigure any setup run from a
-     feature branch.
+     feature branch. On a repo nothing has been pushed to yet that probe exits 128 ("not a
+     symbolic ref") — fall back to the current local branch and confirm it in prose; never leave the
+     agent to improvise on a failed probe.
    - **Obsidian:** installed or not (e.g. `command -v obsidian`, or the OS application folder).
      Never a question — `graph_notes`/`graph_config` already default correctly; this only decides
      which one-liner the Phase-4 report prints (step 8).
@@ -258,7 +260,9 @@ Only on explicit confirmation, execute — **source of truth first, derived file
 7. **Two distinct checks — keep them labeled as such in the report:**
    - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` — **kit integrity**. It
      validates the plugin's *own bundled example* stacks, **not** your repo's config. A failure here
-     is fatal.
+     is fatal. It runs 1,200+ assertions and takes several minutes — longer than a typical
+     tool timeout, so run it in the background or with a raised timeout, and judge it by its exit
+     code (non-zero on any failure), not by whether the tail of its output looks green.
    - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh" .claude/config/stack.yaml`
      — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
@@ -296,4 +300,6 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    ticket PR references rules/adapters absent from the repo's history. Offer a commit (e.g.
    `chore: initialize ticketwright workspace`). First flag that `stack.yaml` may hold internal
    identifiers (tracker site, warehouse project/dataset) — config, not secrets, but worth a glance
-   before committing to a public repo.
+   before committing to a public repo. On a remote created empty (no default branch yet), this
+   first push seeds `main` directly — there is nothing to open a PR against — and the PR flow
+   starts with the next change; say so rather than colliding with a never-push-to-main rule.

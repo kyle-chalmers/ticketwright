@@ -21,6 +21,12 @@ it in later" is always a valid answer: write the key as a `# TODO` and keep goin
 `verify_stack.sh` names every unset required key as a warning on every run, so a deferred key is a
 tracked choice, not a silent hole.
 
+One key deserves a precision note wherever it is asked: a slot's **`mcp:` value must be the
+runtime's exact tool prefix** — the `<name>` in `mcp__<name>__*` — because adapters render tool
+names from it. Tell the person to copy it from a tool name they can see, not from a UI label; a
+friendly name that matches no connected server makes every rendered tool name point at nothing,
+and nothing errors until a skill tries to call one.
+
 Never promise a question count, in this file or in any report — a stated number becomes the
 binding constraint on correctness, which is exactly the defect this round structure replaced.
 

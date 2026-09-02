@@ -179,10 +179,22 @@ while IFS= read -r line; do
     if [[ $seam_warned -eq 1 ]]; then count_warn "$label"; else count_ok; fi
     continue
   fi
-  if eval "$verify" >/dev/null 2>&1; then
+  # A verify is a quick read-only reachability check. One that opens a browser for SSO blocks
+  # forever with no output, so it runs under a wall-clock cap (VERIFY_TIMEOUT seconds, default 30)
+  # via perl's alarm — present on macOS and every mainstream Linux; without perl it runs uncapped.
+  rc=0
+  if command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift; exec @ARGV' "${VERIFY_TIMEOUT:-30}" bash -c "$verify" >/dev/null 2>&1 || rc=$?
+  else
+    eval "$verify" >/dev/null 2>&1 || rc=$?
+  fi
+  if [[ $rc -eq 0 ]]; then
     echo "  ✓ reachable"
     flush_posture
     if [[ $seam_warned -eq 1 ]]; then count_warn "$label"; else count_ok; fi
+  elif [[ $rc -eq 142 ]]; then
+    echo "  ⚠ timed out after ${VERIFY_TIMEOUT:-30}s — this verify appears to need interactive auth (browser/SSO). Run it yourself once, or point the slot at a non-interactive connection."
+    flush_posture; count_warn "$label"
   else
     echo "  ✗ UNREACHABLE → $verify"; flush_posture; count_fail "$label"
   fi

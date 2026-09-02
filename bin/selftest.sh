@@ -2388,16 +2388,22 @@ p="$(env -u CLAUDE_PROJECT_DIR TICKETWRIGHT_PROJECT="$TMP" python3 bin/kit_paths
 # A run from a ticket SUBDIRECTORY must find the repo, not the subdirectory — else a stray index
 # lands inside a ticket folder. bin/tw must therefore NOT default TICKETWRIGHT_PROJECT to $PWD.
 # Exercise bin/tw itself, since the claim is about the LAUNCHER not exporting TICKETWRIGHT_PROJECT=$PWD.
-# Invoking kit_paths.py directly left this green even with such an export added to tw.
-p="$(cd "$KIT/bin" && env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT bash "$KIT/bin/tw" --project)"
-[ "$p" = "$KIT" ] && ok "bin/tw run from a subdirectory resolves the repo root, not the subdirectory" \
-  || bad "bin/tw resolved the wrong project root from a subdirectory" "$p"
+# The scenario is a USER project (a git repo) with the cwd inside it — not the kit's own tree: on a
+# plugin install the kit lives in a cache that is no git repo, so "cd into the kit" tested the wrong
+# thing and failed there for a reason no user meets.
+SUBP="$TMP/subproj"; mkdir -p "$SUBP/tickets/alice/ENG-9" && (cd "$SUBP" && git init -q . 2>/dev/null)
+SUBPR="$(cd "$SUBP" && pwd -P)"
+p="$(cd "$SUBP/tickets/alice/ENG-9" && env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT bash "$KIT/bin/tw" --project)"
+[ "$p" = "$SUBPR" ] && ok "bin/tw run from a ticket subdirectory resolves the repo root, not the subdirectory" \
+  || bad "bin/tw resolved the wrong project root from a subdirectory" "got '$p' want '$SUBPR'"
 # ...and the skill-facing invocation form must survive a non-root cwd with NO Claude variable, which is
-# how every pip / cp -r install runs. A bare ./bin/tw would fail here.
-p="$(cd "$KIT/bin" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash -c \
+# how every pip / cp -r install runs: the kit is vendored at the project root and the form finds it
+# through git's toplevel. A bare ./bin/tw would fail here.
+mkdir -p "$SUBP/bin" "$SUBP/adapters" "$SUBP/templates" && cp "$KIT/bin/kit_paths.py" "$KIT/bin/tw" "$SUBP/bin/"
+p="$(cd "$SUBP/tickets/alice/ENG-9" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT bash -c \
   'bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit' 2>/dev/null)"
-[ "$p" = "$KIT" ] && ok "the skill invocation form resolves from a subdirectory with no Claude env var" \
-  || bad "the skill invocation form is cwd-dependent (would collapse to /templates/…)" "got '$p'"
+[ "$p" = "$SUBPR" ] && ok "the skill invocation form resolves from a subdirectory with no Claude env var" \
+  || bad "the skill invocation form is cwd-dependent (would collapse to /templates/…)" "got '$p' want '$SUBPR'"
 
 # --- a failure must never become a filesystem path ------------------------------------------------
 # `"$(tw --kit)"/templates/x` is the idiom skills use, so an error on stdout would silently produce

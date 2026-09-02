@@ -3,7 +3,7 @@ name: spec-and-build
 description: Research-rich spec then execute it. `spec` mode writes a PRP-style blueprint (committed before building); `build` mode implements it in fresh context with independent validation. The IMPLEMENT phase.
 ---
 
-<!-- emitted by ticketwright install v4.0.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v4.0.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /spec-and-build
 
