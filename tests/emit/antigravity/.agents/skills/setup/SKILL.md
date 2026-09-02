@@ -153,14 +153,19 @@ which prints the resolved commands without launching anything. Never commit this
      adapter. Never a bare `docs/` path: `docs/` does not ship in the PyPI package.
    - **Names only, here too:** report profile/connection/mount *names* and paths — never echo a
      tool config file's contents anywhere; those files can hold plaintext secrets.
-4. **Existing state — four routes, checked in order.** First write the boundary down: the ADOPT
+4. **Existing state — five routes, checked in order.** First write the boundary down: the ADOPT
    triggers are evidence of prior ticket work — ticket-looking folders, an existing index, or
    custom `.claude/commands` / `.claude/skills`. A repo whose only Ticketwright trace is
    `.claude/settings.json` (plugin enablement) is **fresh** — enablement is how the kit arrives,
    not evidence of prior work.
-   1. `stack.yaml` exists but there is **no `people/` directory at all** → this repo predates
+   1. `stack.yaml` exists but there is **no `AGENTS.md`** → a Phase-3 halt left half-done (the config
+      was written or hand-created; the scaffold never ran). Checked FIRST, before the Bootstrap
+      route, because a hand-created recovery has no `people/` yet either. Write whatever of step 5
+      is still missing (`.claude/settings.json`, and the round-1 machine pin if it was refused),
+      then resume at step 6.
+   2. `stack.yaml` exists but there is **no `people/` directory at all** → this repo predates
       per-person config: run the **Bootstrap** below, then return to what the person asked for.
-   2. `stack.yaml` exists (and `people/` too) → resolve who is at the keyboard:
+   3. `stack.yaml` exists (and `people/` too) → resolve who is at the keyboard:
       `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/whoami.py" --root . --json`
       - `miss` → this is a **teammate new to this repo**: switch to [teammate.md](teammate.md)
         automatically. Editing the team's shared config must never be a new cloner's first
@@ -170,10 +175,11 @@ which prints the resolved commands without launching anything. Never commit this
       - `conflict` → surface whoami's warning verbatim and resolve the identity first — fix the
         stale side (the machine pin, or this repo's git config; step 0 of
         [teammate.md](teammate.md) walks it) before offering any team-config edit.
-      - `resolved` → offer to **edit** the existing config; never overwrite it.
-   3. No `stack.yaml`, and the adopt triggers above are present → an **existing repo**: switch to
+      - `resolved` → offer to **edit** the existing config; never overwrite it (the half-done case is
+        route 1 above, so it never reaches this branch).
+   4. No `stack.yaml`, and the adopt triggers above are present → an **existing repo**: switch to
       [adopt.md](adopt.md) (map onto what's there; write MIGRATION.md).
-   4. None of the above → a **fresh repo**: continue to Phase 2.
+   5. None of the above → a **fresh repo**: continue to Phase 2.
 
 ### Bootstrap — a configured repo that predates `people/`
 Immediately after an upgrade, `people/<id>.yaml` exists for nobody, so `whoami` returns `miss` for
@@ -226,15 +232,27 @@ The human authorizes THE PLAN, not merely the idea of setup. The plan names:
   **edit-never-overwrite** (see above), so name the specific keys being edited and never present a
   whole-file overwrite as the plan.
 
-Only on explicit confirmation, execute:
-5. Compose `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
-   commented blocks; the 10 policies with a one-line "when to change this" comment each).
-6. Scaffold the repo per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
+Only on explicit confirmation, execute — **source of truth first, derived files after**:
+5. Write `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
+   commented blocks; the 10 policies with a one-line "when to change this" comment each) as the
+   FIRST write, then `.claude/settings.json` per [scaffold.md](scaffold.md) (hooks — omitted on a
+   plugin install — + read-only CLI allows). Step 6 renders FROM `stack.yaml`, and some runtimes
+   refuse every write under `.claude/` in a non-interactive run — a categorical path guard (the
+   refusal calls the file "sensitive") that no allow rule lifts. **If the `stack.yaml` write is
+   refused, STOP: scaffold nothing else** — an `AGENTS.md` describing a stack that does not exist on
+   disk is worse than an empty repo. Report the refusal text verbatim; that the runtime's `.claude/`
+   guard is the cause, not a Ticketwright error; the two ways forward — approve the prompt in an
+   interactive session, or create the `.claude/` files by hand from the printed plan (print their
+   full contents on request); and that everything else is written on the next confirm. Never route
+   around the guard.
+6. Scaffold the rest per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules), the human-facing `README.md`
    (rendered to `README.ticketwright.md` instead if a README already exists — never overwritten),
-   `.claude/settings.json` (hooks — omitted on a plugin install — + read-only CLI allows), folders,
-   `.gitignore` (deliverable CSVs committed by default; PII opts out via `*.private.csv` / a
+   folders, `.gitignore` (deliverable CSVs committed by default; PII opts out via `*.private.csv` / a
    `private/` subfolder), the AI-layer index, and the seeded ticket index.
+   Note that the round-1 `whoami --bind` machine pin (`.claude/config/connections.local.yaml`) sits
+   under the same guard: in a headless run that refusal lands during the interview, before this
+   halt — record it and list the pin with the deferred `.claude/` files rather than stopping there.
 
 ### Phase 4 — Verify & hand off
 7. **Two distinct checks — keep them labeled as such in the report:**

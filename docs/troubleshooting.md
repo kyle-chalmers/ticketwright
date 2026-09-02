@@ -76,7 +76,7 @@ notes (CLI login, `config.toml`, MCP server connect). For a personalized walk-th
 
 ## The ticket index looks stale or wrong
 
-- `python3 bin/build_ticket_index.py --check` — tells you if `INDEX.md`/`OBJECTS.md`, or the graph
+- Staleness check: `/refresh index` (`/ticketwright:refresh index` on a plugin install) reports and fixes it; `ticketwright index --check` on pip; `python3 bin/build_ticket_index.py --check` in a vendored repo — tells you if `INDEX.md`/`OBJECTS.md`, or the graph
   nodes under `tickets/graph/` + `tickets/objects/` when that layer is on, drift from a fresh render.
   Fix: run it without `--check` (or let the PostToolUse hook do it on the next edit).
 - A row marked `▱` is un-enriched (deterministic title only) — `/refresh index <id>` curates it.

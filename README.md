@@ -140,7 +140,10 @@ claude plugin install ticketwright@ticketwright --scope project
 
 That writes the repo's own `.claude/settings.json`. Both commands default to `--scope user`, so
 **omit `--scope project` only if you want Ticketwright for yourself across every repo** rather
-than for this repo's team.
+than for this repo's team. On a machine that already knows a marketplace named `ticketwright` (a
+personal install, or another repo's), `marketplace add … --scope project` prints "already on disk —
+declared in project settings" — expected, not an error: the cached marketplace is reused and the
+project-scoped declaration still lands in this repo's settings.
 
 **2 · Fully restart Claude Code** — quit and relaunch, not just a new prompt. Plugin skills load
 at session start, so installing and running `/setup` in the same session silently fails: the
@@ -197,6 +200,25 @@ if you want zero diff.)
 **What teammates will then see:** opening (and trusting) the repo registers the marketplace from
 the committed `.claude/settings.json` and primes the session banner — and then they follow
 Track 2, because registration is not installation (the fact Track 2 opens with).
+
+#### Headless / agent-driven setup
+
+`/setup` runs under `claude -p` too, and it is **two turns by design**. The first turn detects,
+interviews (defaults where nobody answers) and prints the plan, then halts at the confirm gate — that
+stop is the gate working, not a hang; nothing is written until a person has seen the plan. The
+confirm is a second turn: `claude -p --continue "yes, write it"`. One limit is the runtime's, not
+Ticketwright's: a non-interactive Claude Code refuses every write under `.claude/` — a categorical
+sensitive-file guard that `permissions.allow` rules do not lift — so `.claude/config/stack.yaml`,
+`.claude/settings.json`, `.claude/statusline.sh` and the gitignored `connections.local.yaml` /
+`posture.local.yaml` need either an interactive approval or a person writing them from the printed
+plan (setup prints their full contents on request). Setup writes `stack.yaml` first and stops when
+that write is refused, so a headless run never leaves an `AGENTS.md` describing a stack that isn't on
+disk; with `stack.yaml` in place, a re-run recognizes the half-finished repo and scaffolds everything
+outside `.claude/` headlessly. Add `--strict-mcp-config` (with no `--mcp-config`) to keep MCP out of
+the run, so detection reflects the CLIs on the machine rather than whichever servers it happens to
+have connected. One more `.claude/` write happens earlier than the plan: round 1 of the interview pins your identity into
+`.claude/config/connections.local.yaml` (`whoami --bind`), so in a headless run that refusal shows up
+during the interview — setup records it and lists the pin with the other deferred `.claude/` files.
 
 ### Track 2 — Joining a configured repo
 
@@ -351,7 +373,10 @@ Three details in that block are deliberate:
   existing git credential helper (keychain / `gh auth login`). A fork edits just this one URL.
 - **`source: "git"` is the discriminator `claude plugin marketplace add` writes** for an `https://…git`
   URL — that `source` object is copied from the CLI's own output rather than hand-authored. (`git` and
-  `url` are *different* marketplace source types; don't swap one for the other.)
+  `url` are *different* marketplace source types; don't swap one for the other. If someone ran the
+  shorthand instead — `claude plugin marketplace add owner/repo` — the CLI writes
+  `{"source": "github", "repo": "owner/repo"}`; both forms are valid, and setup's merge keeps whichever
+  one is already there rather than rewriting it.)
 - **`autoUpdate` is scoped to formal releases.** The version only moves in a tagged release commit —
   so day-to-day commits to `main` never put teammates onto un-released work. Neither install command
   writes this key (no flag sets it); `/ticketwright:setup` adds it, or add it by hand. What it does

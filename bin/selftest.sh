@@ -594,6 +594,18 @@ if grep -q 'ENG-1' "$P/tickets/INDEX.md" 2>/dev/null && grep -q '▱' "$P/ticket
 grep -q 'acme.example/browse/ENG-1' "$P/tickets/INDEX.md" 2>/dev/null && ok "ticket_url_template applied" || bad "ticket_url_template not applied"
 if CLAUDE_PROJECT_DIR="$P" python3 bin/build_ticket_index.py --check >/dev/null 2>&1; then
   ok "--check passes after render (deterministic)"; else bad "--check reported stale immediately after render"; fi
+# The header's rebuild hint has to work on every install mode. A plugin install has no project bin/
+# (the engines live in the plugin cache), so the old "Re-run `python3 bin/build_ticket_index.py`" sent a
+# fresh plugin user to "No such file or directory". The skill is the route named first; the script
+# path stays as the vendored/pip alternative.
+for f in INDEX.md OBJECTS.md; do
+  head -3 "$P/tickets/$f" 2>/dev/null | grep -q 'ticketwright:refresh index' \
+    && ok "$f header names the refresh skill (install-mode-neutral rebuild hint)" \
+    || bad "$f header does not name /ticketwright:refresh index" "$(head -3 "$P/tickets/$f" 2>/dev/null)"
+done
+grep -q 'Re-run `python3 bin/build_ticket_index.py`' "$P/tickets/INDEX.md" "$P/tickets/OBJECTS.md" 2>/dev/null \
+  && bad "rendered header still offers the script as the only rebuild route" \
+  || ok "rendered header no longer offers the script as the only rebuild route"
 mkdir -p "$P/tickets/alice/ENG-2"
 printf '# ENG-2: Second demo ticket\n\nAnother demo ticket.\n' > "$P/tickets/alice/ENG-2/README.md"
 echo "{\"tool_input\":{\"file_path\":\"$P/tickets/alice/ENG-2/README.md\"},\"cwd\":\"$P\"}" | CLAUDE_PROJECT_DIR="$P" python3 .claude/hooks/regenerate_ticket_index.py >/dev/null 2>&1
@@ -3430,6 +3442,26 @@ grep 'acli jira project list' adapters/tracker/jira.md | grep -qE -- '--recent|-
   && grep -qi 'Expected-target evidence' adapters/warehouse/snowflake.md; } \
   && ok "warehouse adapters carry names-only enumeration + expected-target evidence notes" \
   || bad "per-person setup notes missing from a warehouse adapter"
+# (G) Phase 3 write order + the refusal halt. stack.yaml is the FIRST write (the scaffold renders FROM
+# it), settings.json second, the derived files after; a refused stack.yaml write STOPS the whole
+# scaffold and names the cause + the two ways forward + the resume promise. A headless run on an
+# empty repo once hit a runtime guard on .claude/ AFTER AGENTS.md and the index were already written,
+# leaving a repo whose rules describe a stack absent from disk. Line-number ordering proves the halt
+# is stated before the scaffold step it protects; the routing pin proves a re-run can finish it.
+s34w="$(grep -n 'FIRST write' "$SK" | head -1 | cut -d: -f1)"
+s34s="$(grep -n '^6\. Scaffold the rest' "$SK" | head -1 | cut -d: -f1)"
+{ [ -n "$s34w" ] && [ -n "$s34s" ] && [ "$s34w" -lt "$s34s" ] \
+  && grep -q 'STOP: scaffold nothing else' "$SK" && grep -qi 'refusal text verbatim' "$SK" \
+  && grep -qi 'by hand from the printed plan' "$SK" && grep -qi 'next confirm' "$SK"; } \
+  && ok "Phase 3 writes stack.yaml FIRST and halts the whole scaffold on a refused write (cause + two ways forward + next-confirm promise)" \
+  || bad "Phase 3 write order / refusal halt is missing, or stated after the scaffold step"
+grep -qi 'resume at step 6' <<<"$skflat" \
+  && ok "a re-run that finds stack.yaml without AGENTS.md resumes the scaffold, not an edit" \
+  || bad "the half-done routing (stack.yaml present, AGENTS.md absent) is not written down"
+grep -q 'never the bare CLI' .claude/skills/setup/scaffold.md \
+  && ok "scaffold.md allows named read verbs in permissions.allow, never the bare CLI" \
+  || bad "scaffold.md must name read verbs in permissions.allow, not allow the bare CLI"
+
 hdr "35 · owner is ticket identity (locator, graph separation, ambiguity hard stops, whoami wiring)"
 # Two owners, one slug — the case that used to collapse. Every engine must treat (owner, id) as the
 # identity: separate graph nodes, owner-qualified backlinks, within-owner-first link resolution, and
