@@ -1,5 +1,9 @@
 # Scaffold details — what `/setup` writes into a fresh repo
 
+Write order is fixed in SKILL.md Phase 3: `.claude/config/stack.yaml` first, `.claude/settings.json`
+second, then everything below (all of it renders from or presumes `stack.yaml`). The sections here
+are grouped by artifact, not by order.
+
 ## Global rules (`AGENTS.md`)
 Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens
 from `stack.yaml`: tool names, key_prefix, terminal_status, word limits, policies). Fill
@@ -126,8 +130,11 @@ git-sourced marketplaces (see the upstream caveat in `ROADMAP.md`); `claude plug
 ticketwright` is the manual pull. Do **not** add these keys on a vendored
 (`cp -r`/pip) install — there's no marketplace to enable from; the kit is already in-repo.
 
-Then append the chosen warehouse/tracker/vcs **read-only** CLI allows to `permissions.allow` (e.g.
-`Bash(<warehouse_cli> …:*)`). **Statusline:** the template's `statusLine.command` is the
+Then append the chosen warehouse/tracker/vcs **read-only** CLI allows to `permissions.allow`. Name
+the read verbs, one entry each — e.g. `Bash(<cli> jobs list:*)`, `Bash(<cli> jobs get:*)`,
+`Bash(<cli> current-user me:*)`, `Bash(<cli> api get:*)` — never the bare CLI (`Bash(<cli>:*)`),
+which pre-approves every write that CLI can make, including the non-SQL ones the `db_write_guard`
+hook never sees. **Statusline:** the template's `statusLine.command` is the
 project-relative `.claude/statusline.sh`, so on a plugin install **copy
 `${CLAUDE_PLUGIN_ROOT}/.claude/statusline.sh` → `.claude/statusline.sh`** so it resolves (on a
 vendored install it's already there).

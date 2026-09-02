@@ -27,6 +27,44 @@ All notable changes to this project are documented here. Format loosely follows
   adopt), it renders `README.ticketwright.md` for the human to merge, mirroring the `AGENTS.ticketwright.md`
   convention. Written once, then human-owned — `/setup role` does not re-render it.
 
+### Fixed
+- **`/setup` writes `stack.yaml` first and stops cleanly when the runtime refuses it.** Phase 3 used
+  to compose `.claude/config/stack.yaml` and the scaffold in one sweep. On a brand-new empty repo
+  under a headless run whose runtime refuses every write beneath `.claude/` (a categorical path guard
+  no allow rule lifts non-interactively), setup had already written `AGENTS.md`, `CLAUDE.md`,
+  `README.md`, `.gitignore`, `people/*.yaml`, the AI-layer index and the seeded ticket index before
+  the refusal landed — leaving an `AGENTS.md` that describes a stack absent from disk and no source
+  of truth. The order is now `stack.yaml` → `.claude/settings.json` → the derived scaffold (which
+  renders FROM `stack.yaml`), and a refused `stack.yaml` write halts the whole scaffold and reports
+  the refusal text, the cause, and the two ways forward (approve the prompt interactively, or
+  hand-create the `.claude/` files from the printed plan); everything else is written on the next
+  confirm, and a re-run that finds `stack.yaml` without `AGENTS.md` resumes the scaffold instead of
+  offering an edit — that route is checked before the Bootstrap route (a hand-created recovery has no
+  `people/` yet), and it first writes whatever of `.claude/` is still missing (`settings.json`, the
+  round-1 machine pin) before rendering. `scaffold.md` also now says to allow a CLI's named read verbs (`jobs list`,
+  `jobs get`, `current-user me`, `api get`), never the bare CLI.
+- **The generated `tickets/INDEX.md` and `OBJECTS.md` headers no longer point plugin users at a script
+  that isn't there.** Both headers said "Re-run `python3 bin/build_ticket_index.py`". On a plugin install
+  the repo has no `bin/` (the engines live in the plugin cache and the skills resolve them), so a fresh
+  plugin user following the hint got "No such file or directory". The hint now names the skill first —
+  `/refresh index` (`/ticketwright:refresh index` on a plugin install) — then `ticketwright index` for pip
+  installs, and the script path only for vendored repos; the `--prune`/`--check` messages and
+  `docs/ticket-index.md` / `docs/troubleshooting.md` carry the same three routes. Selftest section 10 pins the new header on both files.
+
+### Docs
+- **README: headless / agent-driven setup.** A new Track 1 subsection says plainly that `/setup` under
+  `claude -p` is a two-turn flow — the plan turn halts at the confirm gate by design, and the confirm
+  is a second turn with `--continue` — and that a non-interactive runtime refuses every write under
+  `.claude/` (a categorical sensitive-file guard no allow rule lifts), so `stack.yaml`,
+  `settings.json`, `statusline.sh` and the two gitignored `*.local.yaml` records need an interactive
+  approval or a person writing them from the printed plan, while everything outside `.claude/`
+  scaffolds headlessly. It names `--strict-mcp-config` as the way to keep MCP out of a headless run.
+- **README: install-block accuracy.** The Track 1 install note now says that on a machine that already
+  knows a `ticketwright` marketplace, `marketplace add … --scope project` prints "already on disk —
+  declared in project settings" — expected, not an error. The finished-file example notes that the
+  `owner/repo` shorthand writes `{"source": "github", "repo": …}` where the `https://…git` form writes
+  `{"source": "git", "url": …}`; both are valid, and setup's merge keeps whichever exists.
+
 
 ## [3.9.0] — 2026-08-31
 
