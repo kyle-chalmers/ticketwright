@@ -3,7 +3,7 @@ name: setup
 description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse|meetings>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
 ---
 
-<!-- emitted by ticketwright install v3.9.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.0.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /setup
 
