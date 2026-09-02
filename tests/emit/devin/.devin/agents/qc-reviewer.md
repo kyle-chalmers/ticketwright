@@ -4,7 +4,7 @@ description: Independent, read-only quality reviewer for a ticket's deliverables
 tools: Read, Bash, Glob, Grep
 ---
 
-<!-- emitted by ticketwright install v3.9.0 — do not hand-edit; re-run `ticketwright install --runtime devin` to update. -->
+<!-- emitted by ticketwright install v4.0.0 — do not hand-edit; re-run `ticketwright install --runtime devin` to update. -->
 
 # QC Reviewer (sub-agent)
 

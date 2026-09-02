@@ -4,7 +4,13 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [4.0.0] — 2026-09-02
+
+Breaking: `/productize` is now `/skillify`, and `templates/productized-skill/` is now
+`templates/generated-skill/`. There is no alias — the old name is gone, and an older install's
+retired skill directory is warned about rather than deleted. Everything else in this release is
+additive: `/setup` scaffolds a human-facing README, writes `stack.yaml` first and resumes a
+half-configured repo cleanly, and every rebuild hint names the plugin, pip and vendored routes.
 
 ### Changed
 - **`/productize` is now `/skillify`; `templates/productized-skill/` is now `templates/generated-skill/`.**

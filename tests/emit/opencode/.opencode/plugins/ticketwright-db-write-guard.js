@@ -1,4 +1,4 @@
-// emitted by ticketwright install v3.9.0 — do not hand-edit; re-run `ticketwright install --runtime opencode` to update.
+// emitted by ticketwright install v4.0.0 — do not hand-edit; re-run `ticketwright install --runtime opencode` to update.
 // ticketwright — OpenCode tool gate: db_write_requires_approval, presented as an OpenCode plugin.
 //
 // OpenCode has no ask tier (`permission.ask` exists in the SDK types but never fires — open
