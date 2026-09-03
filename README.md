@@ -129,6 +129,21 @@ carries its own one-line check, so a stall is diagnosable instead of mysterious.
 
 ### Track 1 — Setting up a repo
 
+**Hand it to your agent.** Paste this into a Claude Code session opened on the repo, and the
+five steps below happen with you answering rather than driving:
+
+```text
+Set up Ticketwright in this repo for my whole team. Install it at project scope
+from the repo root, get me to restart so the skills load, then run
+/ticketwright:setup and put its questions to me rather than answering them
+yourself - it's asking about my team's tools and my identity. Show me the file
+list before committing anything.
+```
+
+The prompt keeps the interview yours on purpose: `setup` asks about your team's tools and who
+you are, and an agent that infers those from whatever is installed on the machine writes a
+confidently wrong `stack.yaml`. To drive it by hand instead, follow the steps:
+
 **1 · Install the plugin at project scope**, from inside the repo you want to work tickets in:
 
 ```bash
@@ -229,6 +244,21 @@ it is the step people lose an afternoon to: the repo's committed `.claude/settin
 start, but does NOT install the plugin.** Verified live: a teammate's `installed_plugins.json`
 stayed `{}` across restarts until the manual install in step 2. Skip step 2 and
 `/ticketwright:setup` is not a command that exists.
+
+**Hand it to your agent.** Paste this into a Claude Code session opened on the repo — it works
+the checklist below for you, in order:
+
+```text
+Install the Ticketwright plugin for this repo. Start with:
+python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+Follow its fixes in order. I want it installed for this repo only, not globally.
+If a check fails in a way its fix doesn't cover, stop and tell me instead of
+working around it. When it's clean, tell me how to restart.
+```
+
+The prompt stays short because the doctor carries the detail: every check prints its own fix,
+so there is one copy of each instruction rather than two that drift. The rest of this track is
+what that prompt makes happen — read on to drive it yourself, or when an agent gets stuck.
 
 #### If you are the agent helping someone install — read this first
 

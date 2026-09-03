@@ -1259,6 +1259,49 @@ s21step "$T2" '**1 · ' '**2 · ' | grep -q 'git clone' \
   && ok "README Track 2 step 1 says git clone (not 'download')" \
   || bad "Track 2 step 1 must tell the joiner to git clone — a Download-ZIP folder has no .git"
 
+# (g) the paste-able install prompts. A person who has just cloned has no plugin, so no skill and no
+# /setup — the only thing that always works is text they can paste into a chat box. Both prompts
+# stay SHORT on purpose: the doctor prints each fix at the moment it applies, so a prompt that
+# restated them would be a second copy to drift. What the prompt must carry is the part no tool
+# enforces — "this repo only" (an agent that runs the bare install goes global) and, for Track 1,
+# that the interview belongs to the person (an agent inferring the stack writes it wrong).
+python3 - README.md templates/AGENTS.md.tmpl >"$TMP/s21b-prompts.out" 2>&1 <<'PYPROMPT'
+import sys
+def blocks(path):
+    out, cur, infence = [], [], False
+    for l in open(path, encoding="utf-8").read().splitlines():
+        if l.startswith("```text"):
+            infence, cur = True, []
+            continue
+        if infence and l.startswith("```"):
+            out.append("\n".join(cur)); infence = False
+            continue
+        if infence: cur.append(l)
+    return out
+readme, tmpl = blocks(sys.argv[1]), blocks(sys.argv[2])
+bad = []
+t1 = [b for b in readme if b.startswith("Set up Ticketwright in this repo")]
+t2 = [b for b in readme if b.startswith("Install the Ticketwright plugin for this repo")]
+if len(t1) != 1: bad.append("README has %d Track 1 prompt blocks, want 1" % len(t1))
+if len(t2) != 1: bad.append("README has %d Track 2 prompt blocks, want 1" % len(t2))
+if t1 and "put its questions to me" not in t1[0]:
+    bad.append("the Track 1 prompt no longer keeps the interview with the person")
+if t2:
+    if "this repo only, not globally" not in t2[0]:
+        bad.append("the Track 2 prompt no longer says this repo only")
+    if "plugin_doctor.py" not in t2[0]:
+        bad.append("the Track 2 prompt no longer starts at the doctor")
+    if not [b for b in tmpl if b.strip() == t2[0].strip()]:
+        bad.append("templates/AGENTS.md.tmpl's joiner prompt is not byte-identical to README's")
+for name, b in (("Track 1", t1), ("Track 2", t2)):
+    if b and len(b[0].splitlines()) > 8:
+        bad.append("%s prompt is %d lines — keep it short enough to paste" % (name, len(b[0].splitlines())))
+print(" | ".join(bad))
+PYPROMPT
+[ -z "$(cat "$TMP/s21b-prompts.out")" ] \
+  && ok "both paste-able install prompts are present, short, and identical across README and the AGENTS template" \
+  || bad "an install prompt drifted, grew, or lost the rule no tool enforces" "$(cat "$TMP/s21b-prompts.out")"
+
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
 GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"
 printf 'project:\n  key_prefix: ENG\n' > "$GC/.claude/config/stack.yaml"

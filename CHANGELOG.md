@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Added
+- **A prompt you can paste, for each track.** The person who most needs Ticketwright installed has
+  no plugin yet, so no `/setup` and no skill to ask — and every onboarding session so far opened
+  with someone improvising the words. Track 1 and Track 2 now each lead with a short prompt in a
+  copyable block: hand it to an agent and it does the track. They stay short on purpose. The doctor
+  already prints each fix at the moment it applies, so a prompt that restated them would be a
+  second copy to drift; what they carry instead is the part no tool enforces — "this repo only, not
+  globally", and, for Track 1, that the `setup` interview belongs to the person rather than to an
+  agent guessing the stack from whatever is installed. The joiner prompt also ships in
+  `templates/AGENTS.md.tmpl`, so it lands in every configured repo, and selftest pins the two copies
+  byte-identical.
+
 ## [4.0.2] — 2026-09-03
 
 ### Added
