@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [4.0.2] — 2026-09-03
 
 ### Added
 - **`bin/plugin_doctor.py` — every install state gets a name and a fix.** Onboarding onto a repo that

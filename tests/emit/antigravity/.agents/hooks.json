@@ -1,5 +1,5 @@
 {
-  "_provenance": "emitted by ticketwright install v4.0.1 \u2014 do not hand-edit; re-run `ticketwright install --runtime antigravity` to update.",
+  "_provenance": "emitted by ticketwright install v4.0.2 \u2014 do not hand-edit; re-run `ticketwright install --runtime antigravity` to update.",
   "_schema_note": "hook-entry shape assembled from the documented fields; the config file's full schema is live-unverified \u2014 see the enforcement table in AGENTS.md.",
   "hooks": {
     "PreToolUse": [
