@@ -3,7 +3,7 @@ name: ticket
 description: The front door — open or resume a ticket, auto-load its context and prior art, and route to the next step (spec, build, review, or ship). Start every ticket here.
 ---
 
-<!-- emitted by ticketwright install v4.0.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.0.2 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /ticket
 
