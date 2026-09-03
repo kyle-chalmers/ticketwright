@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [4.0.3] — 2026-09-03
 
 ### Added
 - **A prompt you can paste, for each track.** The person who most needs Ticketwright installed has

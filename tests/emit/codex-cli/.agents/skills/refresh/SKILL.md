@@ -3,7 +3,7 @@ name: refresh
 description: Maintain the repo's knowledge — `index` rebuilds the ticket catalog (INDEX.md), `context` rebuilds the domain knowledge pack (documentation/). Day-to-day, hooks keep these fresh automatically.
 ---
 
-<!-- emitted by ticketwright install v4.0.2 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.0.3 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /refresh
 
