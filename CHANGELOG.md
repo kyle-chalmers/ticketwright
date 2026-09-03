@@ -4,6 +4,61 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Added
+- **`bin/plugin_doctor.py` — every install state gets a name and a fix.** Onboarding onto a repo that
+  already carries the committed enablement failed in ways nothing in the kit could describe: a CLI too
+  old to accept `--scope` (Claude Code 2.0.x has neither `--scope` nor `plugin list`), a marketplace
+  registered with nothing installed, a global install nobody meant, an install record whose
+  `installPath` was never created (the install reports success, re-running it is a no-op), and a
+  "Download ZIP" folder with no `.git`. The doctor checks all of that in one command — plus `yq`, git
+  identity, the update channel to update through, and whether the installed version is behind the
+  marketplace catalog — and prints the fix for each, human-readable or `--json`. It runs from the
+  marketplace clone before anything is installed
+  (`python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py`, a fork substitutes its
+  own marketplace name) and through `bin/tw` afterwards. Stdlib only, no network, no writes; it never
+  runs an install, and it reuses `update_notice.py` so its upgrade fix is the same string the session
+  banner prints. `/setup` runs it at preflight and halts on the states nothing setup writes can fix.
+- **Install prerequisites an agent can read before the plugin loads.** README Track 2 and
+  `templates/AGENTS.md.tmpl` carry the same fourteen checks in the same order as the doctor, each
+  tagged with a `doctor-check` marker; selftest pins the set and order against the doctor's own check
+  list, so the three surfaces cannot drift.
+
+### Fixed
+- **The joiner install no longer lands at user scope.** README Track 2, `docs/troubleshooting.md` and
+  the rendered `AGENTS.md` all gave the bare `claude plugin install ticketwright@ticketwright`, which
+  defaults to `--scope user` — installing Ticketwright for every repo on the machine while the repo
+  itself got nothing. All three now give the `--scope project` pair, run from the repository root
+  (a project-scope install keys to the session's directory, claude-code#82830), with the in-app
+  `/plugin install` → Project-scope route as the fallback for a CLI too old for the flag.
+- **The "teammates are prompted to install" claim is gone.** It was in the README, `setup/scaffold.md`,
+  `.claude/settings.json.tmpl` and `templates/AGENTS.md.tmpl`, and it is not what happens: registering
+  the marketplace is not installing the plugin, and the documented behavior (Claude Code 2.1.195 and
+  later report the plugin as not installed and show the install command; older builds say nothing) is
+  now what those four files say.
+- **"Restart" says what it means.** Every restart instruction now names `/reload-plugins` or a new
+  session first, then a full quit of the Claude app (Cmd+Q, or File → Exit) if the skills are still
+  absent — a new chat inside the running app is not a restart.
+- **`bin/update_notice.py` recognises a `local` install row** (the desktop app writes one) and emits
+  the uninstall/reinstall pair at the scope the record actually carries, instead of assuming
+  `--scope project`.
+- **An unbound teammate no longer writes into someone else's folder.** A `people/<id>.yaml` placeholder
+  with no identities resolved to the project's `assignee_dir`, so a first ticket opened before
+  `/setup --teammate` landed under another person's directory. The ticket front door now halts and
+  names the fix.
+
+### Changed
+- **`/setup` preflight order:** git repo → the doctor's findings → `yq` (with the platform install
+  command offered before the self-test needs it) → identity. A ZIP folder or a broken install is
+  reported before setup writes anything, since nothing setup writes would repair it.
+
+### Docs
+- `docs/troubleshooting.md`: cause 2 is now "Your Claude Code CLI is too old" with per-channel update
+  commands; a new cause covers an install record with no payload, including the safety conditions on
+  the copy-the-clone recovery; the upgrade table gains a `local`-scope row; a new block names the three
+  ways to run the doctor.
+
 ## [4.0.1] — 2026-09-02
 
 ### Fixed

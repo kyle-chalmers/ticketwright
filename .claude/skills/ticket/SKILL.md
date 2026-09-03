@@ -18,19 +18,30 @@ brief, nothing else. Follow [priming.md](priming.md) § Recall. Useful mid-sessi
 this before?", "which tickets touched VW_X?").
 
 ## Phase 0 — Resolve & preflight (halt-on-fail)
-0. **Resolve WHO first** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
-   and show its one-line "Working as …" display. This person is the default owner for everything
-   below. By status:
-   - `resolved` — proceed; new work belongs to this person.
-   - `miss` with a people map present (any `people/*.yaml`) — ask once ("I don't recognize
-     `<identity>`. Who are you?"), then `whoami.py --bind <id>`; never infer from a name.
-   - `miss` with **no people map at all** — fall back to `project.assignee_dir`, the documented
-     last resort for repos that predate owner routing.
-   - `ambiguous` — ask which person it is; never rank or pick.
-   - `conflict` — proceed as the machine-pinned person and surface the warning line verbatim.
-1. Read the merged config — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --json`,
-   never raw `stack.yaml`: `project.*`, `seams.tracker`, `seams.vcs`. If the team config is
-   missing, say so and offer `/setup` — don't scaffold blind.
+0. **Read the merged config first — it is what decides WHO** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --json`,
+   never raw `stack.yaml`. It carries `project.*`, `seams.tracker`, `seams.vcs` — and it settles the
+   owner **mechanically**, in one field, so no skill re-derives the rule. If the team config is
+   missing, say so and offer `/setup` — don't scaffold blind. Branch on **`owner_source`**, never on
+   a `people/` listing of your own: a roster can live entirely in
+   `$XDG_CONFIG_HOME/ticketwright/people/` and never appear in this repo, and only the resolver
+   looks in both homes — "no `people/*.yaml` here" is not the same question.
+   - `resolved` — proceed; `owner` is this person and owns everything below.
+   - `unbound` — **HARD STOP here, before any ticket path is rendered.** Say:
+     "I can't tell who you are: `people/<id>.yaml` is a placeholder (or no `people/` entry matches
+     this machine's identity). Run `/setup --teammate` first — it asks who you are, binds it, and
+     sets up your machine." Do **not** fall back to `project.assignee_dir`: with a roster present
+     that key names a COLLEAGUE, and their `tickets/<owner>/` folder is exactly where an unbound
+     teammate's work silently lands. Never infer an owner from a name.
+   - `assignee_dir_fallback` — proceed with `owner`: there is no roster in either home, so
+     `project.assignee_dir` is the documented last resort for repos that predate owner routing.
+   - `none` — stop: no roster and no `assignee_dir`. Offer `/setup`.
+   Read `owner`, never `project.assignee_dir` directly.
+1. **Then show who that is** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`,
+   and show its one-line "Working as …" display. This is the display-and-binding step; the routing
+   decision was already made in step 0, and whoami never overrides it. Two statuses still change
+   what you do next: `ambiguous` — ask which person it is; never rank or pick, and step 0's hard
+   stop stands until they answer. `conflict` — proceed as the machine-pinned person and surface the
+   warning line verbatim.
 2. **Verify** the tracker + vcs seams (run their `verify` commands). If one is unreachable, print
    that adapter's `auth` notes and offer to continue **local-only** (workspace + context still work;
    tracker fetch is skipped) — degrade, don't die.
@@ -44,10 +55,11 @@ this before?", "which tickets touched VW_X?").
 ## Phase 1 — Resume, don't restart
 4. Render `project.ticket_path` → the ticket dir, filling `{assignee}` with the **locator's owner**
    (the step-0 resolved person for new or bare-id work — never the static `project.assignee_dir`,
-   except through step 0's no-people-map last resort). If the dir exists: read its `README.md`, list
-   `final_deliverables/`, check `git log --oneline -10` + `git status`, summarize what's done and
-   what remains, re-fetch the ticket for new comments, then **skip to Phase 3**. Resuming another
-   person's ticket (locator owner ≠ resolved person) is fine — say so out loud.
+   except through step 0's `assignee_dir_fallback` last resort). If the dir exists: read its
+   `README.md`, list `final_deliverables/`, check `git log --oneline -10` + `git status`, and
+   summarize what's done and what remains, re-fetch the ticket for new comments, then **skip to
+   Phase 3**. Resuming another person's ticket (locator owner ≠ resolved person) is fine — say so
+   out loud.
 
 ## Phase 2 — Workspace (new ticket)
 5. **Branch** via the vcs adapter, named `<id>`, off `seams.vcs.default_branch` — or a **worktree**

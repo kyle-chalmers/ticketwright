@@ -35,6 +35,17 @@ Anything else is REJECTED, not ignored.
 would silently disable the kit's safety gates with nothing in code review to catch it. Rejecting is
 not the same as ignoring — ignoring would let someone believe they had turned a gate off.
 
+WHO THE OWNER IS, AND HOW THAT WAS DECIDED. `owner` / `owner_source` answer both in one place, so
+no skill has to re-derive the rule from `person` + `project.assignee_dir` and get it wrong:
+  resolved                the person `bin/whoami.py` resolved (or an explicit --person).
+  unbound                 people/<id>.yaml files EXIST but nobody resolved (a miss, an ambiguity,
+                          or an identity-free placeholder). `owner` is null — filing this person's
+                          work under `project.assignee_dir` would land it in a COLLEAGUE'S folder,
+                          which is the failure mode nobody notices. Callers halt and bind first.
+  assignee_dir_fallback   no people map at all: `project.assignee_dir`, the documented last resort
+                          for repos that predate owner routing.
+  none                    no people map and no `assignee_dir` — nothing to file under.
+
 NOT A HOOK HELPER — a public CLI. No Claude environment variable is required anywhere.
 
   effective_config.py --root <repo> --json
@@ -83,6 +94,11 @@ EXIT_OK, EXIT_USAGE, EXIT_MISSING, EXIT_MALFORMED, EXIT_STALE, EXIT_PROHIBITED =
 EXIT_NO_SEAM, EXIT_NO_TARGET = 7, 8
 
 TIER_TEAM, TIER_PERSON, TIER_MACHINE, TIER_INHERITED = "team", "person", "machine", "inherited"
+
+# How the owner of new work was decided (see the module docstring). Named constants because the
+# strings are a CONTRACT: skills branch on them, and `unbound` is the one that must halt a caller.
+OWNER_RESOLVED, OWNER_UNBOUND = "resolved", "unbound"
+OWNER_FALLBACK, OWNER_NONE = "assignee_dir_fallback", "none"
 
 # Structural keys the RESOLVER owns, not any adapter. Carved out of user_keys validation
 # explicitly — without this, validation rejects every valid local file for declaring who you are.
@@ -194,6 +210,39 @@ def resolve_person(root: Path, explicit: str | None, tier3: dict | None) -> str 
     except Exception:  # noqa: BLE001 — identity is optional; never let it break config resolution
         pass
     return None
+
+
+def people_ids(root: Path) -> list[str]:
+    """Every `people/<id>.yaml` id across both tier-2 homes — PRESENCE, not parseability.
+
+    Deliberately a filename scan rather than `whoami.load_people()`: a people file the parser
+    chokes on still means this repo has a roster, and treating it as "no people map" would restore
+    exactly the `assignee_dir` fallback the roster exists to prevent.
+    """
+    ids: set[str] = set()
+    for home in (user_config_home() / "people", root / "people"):
+        try:
+            if home.is_dir():
+                ids.update(p.stem for p in home.glob("*.yaml") if p.is_file())
+        except OSError:
+            continue
+    return sorted(ids)
+
+
+def _resolve_owner(res: "Resolution") -> None:
+    """Set `owner` + `owner_source` — see the module docstring for the four outcomes."""
+    if res.person:
+        res.owner, res.owner_source = res.person, OWNER_RESOLVED
+        return
+    if res.people:
+        # A roster exists and this person is not in it (or is an identity-free placeholder).
+        res.owner, res.owner_source = None, OWNER_UNBOUND
+        return
+    assignee = res.project.get("assignee_dir")
+    if isinstance(assignee, str) and assignee.strip():
+        res.owner, res.owner_source = assignee.strip(), OWNER_FALLBACK
+        return
+    res.owner, res.owner_source = None, OWNER_NONE
 
 
 def _adapter_frontmatter(adapter_rel: str | None, root: Path) -> dict | None:
@@ -489,6 +538,9 @@ class Resolution:
     def __init__(self) -> None:
         self.root = Path(".")
         self.person: str | None = None
+        self.people: list[str] = []      # the roster: every people/<id>.yaml, both tier-2 homes
+        self.owner: str | None = None    # whose tickets/<owner>/ new work belongs in
+        self.owner_source: str = OWNER_NONE
         self.project: dict = {}
         self.policies: dict = {}
         self.seams: dict = {}
@@ -514,6 +566,9 @@ class Resolution:
             "schema": SCHEMA_VERSION,
             "root": str(self.root),
             "person": self.person,
+            "people": self.people,
+            "owner": self.owner,
+            "owner_source": self.owner_source,
             "tiers": self.tiers,
             "project": self.project,
             "policies": self.policies,
@@ -636,6 +691,8 @@ def resolve(root: str | Path, person: str | None = None,
         res.tiers["machine"] = str(local_path)
 
     res.person = resolve_person(res.root, person, tier3)
+    res.people = people_ids(res.root)
+    _resolve_owner(res)
 
     # tier 2: cross-repo defaults, then the in-repo copy overriding key by key
     tier2: dict = {}

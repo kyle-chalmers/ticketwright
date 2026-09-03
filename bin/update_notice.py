@@ -193,30 +193,46 @@ def eligible_pair(settings: object) -> tuple[str, str] | None:
     return found[0] if len(found) == 1 else None
 
 
-def installed_version(config_root: Path, plugin: str, marketplace: str, root: Path) -> str | None:
-    """The version installed at PROJECT scope for `root`, or None.
+def install_rows(config_root: Path, plugin: str, marketplace: str) -> list:
+    """Every install record the local manifest holds for `<plugin>@<marketplace>`, or [].
 
-    The manifest keeps every installed version side by side (3.5.0, 3.6.0, 3.6.1 …) across several
-    repos, so selection has to be exact: scope `project`, and a `projectPath` that resolves to the
-    same directory as `root`. Zero matches or two matches is None — the same refusal-to-guess
-    kit_paths._plugin_kit makes, for the same reason.
-
-    NOTHING READ HERE IS EVER RETURNED EXCEPT THE VERSION STRING. The records carry other repos'
-    filesystem paths.
+    Nothing is filtered here — scope, path and version judgments belong to the selector below, and
+    the doctor needs the unfiltered list to see a `user`-scope row this repo did not ask for.
     """
     data = _load_json(config_root / "plugins" / "installed_plugins.json")
     if not isinstance(data, dict):
-        return None
+        return []
     plugins = data.get("plugins")          # sibling keys (`version`, …) are tolerated and ignored
     if not isinstance(plugins, dict):
-        return None
+        return []
     records = plugins.get(f"{plugin}{PAIR_SEP}{marketplace}")
-    if not isinstance(records, list):
-        return None
+    return records if isinstance(records, list) else []
+
+
+# The two scopes that install INTO A REPO. `project` writes `.claude/settings.json` (committed) and
+# `local` writes `.claude/settings.local.json` (gitignored); the desktop app has been observed
+# writing a `local` row with a `projectPath` alongside its own `user` row, so treating `project` as
+# the only repo scope reported a plainly-installed repo as "not installed". `user` is deliberately
+# NOT here: a global install is a different state, named separately by the doctor.
+REPO_SCOPES = ("project", "local")
+
+
+def repo_install_matches(rows: object, root: Path) -> list:
+    """Every record in `rows` that installs INTO `root` (scope `project` or `local`).
+
+    Returned in manifest order. Callers that need one answer go through `select_repo_install`,
+    which refuses to guess between two; the raw list exists so a diagnostic can SAY "two records
+    match" and name their versions.
+
+    NOTHING READ HERE IS EVER PRINTED EXCEPT A VERSION AND A SCOPE. The records carry other repos'
+    filesystem paths.
+    """
+    if not isinstance(rows, list):
+        return []
 
     root_str = str(root)
-    candidates = [r for r in records
-                  if isinstance(r, dict) and r.get("scope") == "project"
+    candidates = [r for r in rows
+                  if isinstance(r, dict) and r.get("scope") in REPO_SCOPES
                   and isinstance(r.get("projectPath"), str) and r["projectPath"]]
 
     # Two ways a record can name this repo, and BOTH are checked for EVERY record:
@@ -255,10 +271,115 @@ def installed_version(config_root: Path, plugin: str, marketplace: str, root: Pa
                 matches.append(rec)
         except (OSError, ValueError, RuntimeError):
             continue  # missing, dead mount, unreadable parent, symlink loop — all unjudgeable
+    return matches
+
+
+def select_repo_install(rows: object, root: Path) -> tuple[str, str] | None:
+    """The ONE `(version, scope)` installed into `root`, or None.
+
+    The manifest keeps every installed version side by side (3.5.0, 3.6.0, 3.6.1 …) across several
+    repos, so selection has to be exact: a repo scope, and a `projectPath` that resolves to the same
+    directory as `root`. Zero matches or two matches is None — the same refusal-to-guess
+    kit_paths._plugin_kit makes, for the same reason.
+
+    The SCOPE comes back with the version because the remediation command needs it: telling someone
+    to `uninstall --scope project` a row that was written at `local` scope answers "not found", and
+    the person is then stuck being told to fix an install the tool says does not exist.
+    """
+    matches = repo_install_matches(rows, root)
     if len(matches) != 1:
         return None
-    version = matches[0].get("version")
-    return version if isinstance(version, str) and version else None
+    version, scope = matches[0].get("version"), matches[0].get("scope")
+    if not (isinstance(version, str) and version) or scope not in REPO_SCOPES:
+        return None
+    return version, scope
+
+
+def installed_version(config_root: Path, plugin: str, marketplace: str, root: Path) -> str | None:
+    """The version installed into `root`, or None. Thin wrapper over `select_repo_install`."""
+    selected = select_repo_install(install_rows(config_root, plugin, marketplace), root)
+    return selected[0] if selected else None
+
+
+# `owner/repo`, the only shape a `{"source":"github","repo":…}` marketplace entry may carry. Two
+# ordinary name segments and exactly one slash: anything else would be spliced into a `git clone`
+# URL a person is invited to paste.
+GITHUB_REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+
+
+def marketplace_url(entry: object) -> str | None:
+    """The clone URL an `extraKnownMarketplaces` entry names, or None.
+
+    Claude Code writes the source two ways and BOTH appear in real repos:
+    `{"source":"git","url":…}` and `{"source":"github","repo":"owner/repo"}`. Reading only the first
+    makes a `github` repo look like a marketplace with no URL, and then the "register the
+    marketplace" fix has no command in it.
+    """
+    if not isinstance(entry, dict):
+        return None
+    src = entry.get("source")
+    if isinstance(src, str):
+        return src if "://" in src else None      # a bare local path is not a URL to hand anyone
+    if not isinstance(src, dict):
+        return None
+    kind = src.get("source")
+    if kind == "git":
+        url = src.get("url")
+        return url if isinstance(url, str) and "://" in url else None
+    if kind == "github":
+        repo = src.get("repo")
+        if isinstance(repo, str) and GITHUB_REPO.fullmatch(repo):
+            return f"https://github.com/{repo}.git"
+    return None
+
+
+def settings_pairs(settings: object) -> list:
+    """Every `(plugin, marketplace, url)` the repo's settings DECLARE, autoUpdate ignored.
+
+    Deliberately more permissive than `eligible_pair`: that function answers "may this repo be
+    nagged about a new release", which is an opt-in and therefore requires `autoUpdate: true`. This
+    one answers "what plugin is this repo about", which a diagnostic needs to know whether or not
+    anybody opted into auto-update — a repo with `autoUpdate: false` still has an install to check.
+    """
+    if not isinstance(settings, dict):
+        return []
+    markets = settings.get("extraKnownMarketplaces")
+    enabled = settings.get("enabledPlugins")
+    if not isinstance(markets, dict) or not isinstance(enabled, dict):
+        return []
+
+    found = []
+    for key, on in enabled.items():
+        if on is not True or not isinstance(key, str) or PAIR_SEP not in key:
+            continue
+        plugin, _, marketplace = key.rpartition(PAIR_SEP)
+        if (SAFE_NAME.fullmatch(plugin) and plugin not in TRAVERSAL
+                and SAFE_NAME.fullmatch(marketplace) and marketplace not in TRAVERSAL
+                and marketplace in markets):
+            found.append((plugin, marketplace, marketplace_url(markets.get(marketplace))))
+    return found
+
+
+def settings_pair(settings: object) -> tuple | None:
+    """The one `(plugin, marketplace, url)` this repo declares, or None when there is not exactly one.
+
+    AMBIGUITY IS None, as everywhere else in this file: a repo enabling two plugins cannot tell a
+    diagnostic which one it is being asked about, and the caller's job is to say so and ask for
+    `--plugin`, not to pick.
+    """
+    pairs = settings_pairs(settings)
+    return pairs[0] if len(pairs) == 1 else None
+
+
+def install_pair_command(ref: str, scope: str) -> str:
+    """The uninstall+install pair that swaps a repo onto the catalog version, at its RECORDED scope.
+
+    ONE definition, because two callers print it: this file's notice line and bin/plugin_doctor.py's
+    `catalog_current` fix. Selftest asserts they are byte-identical, which is only a real guarantee
+    while there is a single place the bytes come from.
+    """
+    return (f"claude plugin uninstall {ref} --scope {scope} "
+            f"&& claude plugin install {ref} --scope {scope}")
 
 
 def catalog_version(config_root: Path, plugin: str, marketplace: str) -> str | None:
@@ -311,15 +432,20 @@ def notice(root: Path, config_root: Path) -> str | None:
         return None
     plugin, marketplace = pair
 
-    installed = installed_version(config_root, plugin, marketplace, root)
+    selected = select_repo_install(install_rows(config_root, plugin, marketplace), root)
     catalog = catalog_version(config_root, plugin, marketplace)
-    if not installed or not catalog or not is_newer(catalog, installed):
+    if selected is None or not catalog:
+        return None
+    installed, scope = selected
+    if not is_newer(catalog, installed):
         return None
 
+    # The RECORDED scope, never a hardcoded `project`. The desktop app writes `local` rows, and
+    # `uninstall --scope project` against one of those answers "not found" — a remediation line that
+    # sends the reader down a dead end is worse than the stale version it was trying to fix.
     ref = f"{plugin}{PAIR_SEP}{marketplace}"
     return (f"{plugin} {catalog} is available — this repo is running {installed}. "
-            f"Pick it up: claude plugin uninstall {ref} --scope project "
-            f"&& claude plugin install {ref} --scope project")
+            f"Pick it up: {install_pair_command(ref, scope)}")
 
 
 class _BadArgs(Exception):

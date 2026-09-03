@@ -146,7 +146,12 @@ identity resolver (tier-3 `person:` → `$TICKETWRIGHT_PERSON` → the identitie
 enumerates in `people/<id>.yaml`; statuses `resolved`/`miss`/`ambiguous`/`conflict`). It never
 guesses: a miss is answered by asking the person and recording the answer with
 `whoami.py --bind <id>`, an ambiguity is asked about rather than ranked, and a machine pinned to
-one person while git says another wins for the pin but warns naming both. `bin/resolve_user.py` is
+one person while git says another wins for the pin but warns naming both. **Who owns new work, and
+how that was decided, is one answer from the resolver** — `owner` + `owner_source`
+(`resolved` · `unbound` · `assignee_dir_fallback` · `none`) — rather than a rule each skill
+re-derives. `project.assignee_dir` is the last resort for repos with no people map at all; once a
+roster exists, an unresolved person yields `unbound` and `/ticket` stops there, because filing an
+unbound teammate's work under that key lands it in a colleague's folder. `bin/resolve_user.py` is
 a thin shim over it that maps the resolved person to a voice profile, kept while `/ship` still
 calls it. The Claude SessionStart hook only *displays* the result ("Working as …") — it is never
 the resolver or the write path. Every ticket-opening and shipping workflow (`/ticket`, `/ship`,

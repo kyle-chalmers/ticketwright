@@ -1165,6 +1165,100 @@ grep -qi 'project-scoped' README.md \
   && ok "README Track 1 installs at project scope (--scope project on both commands)" \
   || bad "README Track 1 must pass --scope project to BOTH marketplace add and plugin install (both default to user scope)"
 
+# --- (21b, cont.) Track 2 — the JOINER install is project-scoped, from a clone, at the repo root ---
+# Everything below is bounded by heading or by step marker. A global grep would let Track 1's
+# (already correct) lines certify Track 2, which is precisely how the joiner path shipped a
+# user-scope install to every teammate while section 21b stayed green.
+s21sec() {  # $1 = file, $2 = heading regex. Prints that heading's section; `####` stays inside.
+  awk -v h="$2" 'BEGIN{f=0} /^###? /{ if (f) exit; if ($0 ~ h) f=1 } f' "$1"
+}
+s21step() { # $1 = file, $2 = opening step marker, $3 = closing step marker
+  awk -v a="$2" -v b="$3" 'BEGIN{f=0} index($0,b)==1{ if (f) exit } index($0,a)==1{f=1} f' "$1"
+}
+T2="$TMP/s21b-track2.md"; s21sec README.md '^### Track 2 —' > "$T2"
+T1="$TMP/s21b-track1.md"; s21sec README.md '^### Track 1 —' > "$T1"
+[ -s "$T2" ] && [ -s "$T1" ] \
+  && ok "README Track 1 and Track 2 sections both extract by heading" \
+  || bad "a Getting-started track heading was renamed — the Track-2 pins below cannot bind"
+
+# (a) the joiner pair itself: BOTH commands, BOTH with --scope project, inside ONE fenced block in
+#     the Track 2 section. Both default to --scope user, which installs for every repo on the
+#     machine and leaves this one with nothing.
+python3 - "$T2" <<'PY' >"$TMP/s21b-pair.out" 2>&1
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+blocks, cur, infence = [], [], False
+for l in lines:
+    if l.startswith("```"):
+        if infence: blocks.append(cur); cur = []
+        infence = not infence
+        continue
+    if infence: cur.append(l)
+MK = "claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project"
+IN = "claude plugin install ticketwright@ticketwright --scope project"
+hit = [b for b in blocks if any(l.strip() == MK for l in b) and any(l.strip() == IN for l in b)]
+print("OK" if hit else "MISSING (%d fenced blocks scanned)" % len(blocks))
+PY
+[ "$(cat "$TMP/s21b-pair.out")" = "OK" ] \
+  && ok "README Track 2 gives the install pair with --scope project in one fenced block" \
+  || bad "Track 2's fenced install block must carry BOTH --scope project commands (both default to user scope)" "$(cat "$TMP/s21b-pair.out")"
+
+# (b) negative: no RUNNABLE bare install anywhere in the two docs a joiner copy-pastes from. Code
+#     fences only — prose that quotes the bare command while explaining the bug must stay legal.
+python3 - README.md docs/troubleshooting.md <<'PY' >"$TMP/s21b-bare.out" 2>&1
+import sys
+bad = []
+for path in sys.argv[1:]:
+    infence = False
+    for n, l in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
+        if l.startswith("```"):
+            infence = not infence
+            continue
+        if infence and "claude plugin install ticketwright@ticketwright" in l and "--scope" not in l:
+            bad.append("%s:%d" % (path, n))
+print(" ".join(bad))
+PY
+[ -z "$(cat "$TMP/s21b-bare.out")" ] \
+  && ok "no fenced bare 'plugin install' (which silently installs at user scope) in README or troubleshooting" \
+  || bad "a copy-pasteable install command is missing --scope" "$(cat "$TMP/s21b-bare.out")"
+
+# (c) the false claim is gone from all four surfaces that carried it. Registration clones the
+#     marketplace; it has never installed the plugin, and no prompt appears.
+p21="$(grep -rli 'prompted to install' README.md .claude/skills/setup/scaffold.md \
+        .claude/settings.json.tmpl templates/AGENTS.md.tmpl 2>/dev/null || true)"
+[ -z "$p21" ] \
+  && ok "the 'teammates are prompted to install' claim is gone from README/scaffold/settings.tmpl/AGENTS.tmpl" \
+  || bad "a doc still claims teammates are prompted to install the plugin" "$p21"
+
+# (d) …and the replacement is one FIXED sentence, so the three prose surfaces cannot each invent
+#     their own version of the distinction. The JSON _README carries the shorter phrase (it is one
+#     long string, not prose).
+CANON21="Registering the marketplace is not installing the plugin — a teammate who opens and trusts the repo gets the marketplace clone, then runs the install themselves (Track 2)."
+c21=""
+for f in README.md .claude/skills/setup/scaffold.md templates/AGENTS.md.tmpl docs/troubleshooting.md; do
+  tr '\n' ' ' < "$f" | tr -s ' ' | grep -qF "$CANON21" || c21="$c21 $f"
+done
+grep -q 'not installing the plugin' .claude/settings.json.tmpl || c21="$c21 settings.json.tmpl"
+[ -z "$c21" ] \
+  && ok "the registration-is-not-installation sentence is verbatim in README, scaffold.md, AGENTS.md.tmpl and troubleshooting" \
+  || bad "a surface lost (or reworded) the canonical registration-vs-installation sentence" "$c21"
+
+# (e) "restart" was read as "new chat" by every teammate who hit this. Each restart instruction must
+#     name a full QUIT, bounded to the step that carries it.
+q21=""
+s21step "$T1" '**2 · ' '**3 · ' | grep -qi 'quit' || q21="$q21 README-track1-step2"
+s21step "$T2" '**3 · ' '**4 · ' | grep -qi 'quit' || q21="$q21 README-track2-step3"
+s21step docs/troubleshooting.md '**1 · ' '**2 · ' | grep -qi 'quit' || q21="$q21 troubleshooting-cause1"
+[ -z "$q21" ] \
+  && ok "every restart instruction names a full quit (a new chat inside the running app is not one)" \
+  || bad "a restart instruction says only 'restart', which teammates read as 'new chat'" "$q21"
+
+# (f) Track 2 step 1 must say `git clone`: a "Download ZIP" folder has no .git, so the repo can
+#     never branch, commit, or open a PR, and the failure surfaces much later.
+s21step "$T2" '**1 · ' '**2 · ' | grep -q 'git clone' \
+  && ok "README Track 2 step 1 says git clone (not 'download')" \
+  || bad "Track 2 step 1 must tell the joiner to git clone — a Download-ZIP folder has no .git"
+
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
 GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"
 printf 'project:\n  key_prefix: ENG\n' > "$GC/.claude/config/stack.yaml"
@@ -3467,6 +3561,33 @@ grep -qi 'resume at step 6' <<<"$skflat" \
 grep -q 'never the bare CLI' .claude/skills/setup/scaffold.md \
   && ok "scaffold.md allows named read verbs in permissions.allow, never the bare CLI" \
   || bad "scaffold.md must name read verbs in permissions.allow, not allow the bare CLI"
+# (H) preflight: the two states that make the rest of a run pointless are probed BEFORE detection,
+# in the repo flow and the per-person flow alike. A Download-ZIP folder can never branch or open a
+# PR; an install record with no payload is not fixable by anything setup writes.
+s34p="$(grep -n 'Preflight' "$SK" | head -1 | cut -d: -f1)"
+s34c="$(grep -n '^1\. \*\*CLIs' "$SK" | head -1 | cut -d: -f1)"
+{ [ -n "$s34p" ] && [ -n "$s34c" ] && [ "$s34p" -lt "$s34c" ]; } \
+  && ok "setup's Phase-1 preflight runs before the CLI detection step" \
+  || bad "the Phase-1 preflight is missing or placed after detection" "preflight=${s34p:-none} clis=${s34c:-none}"
+p34miss=""
+for f in "$SK" "$TM"; do
+  grep -q 'git rev-parse --show-toplevel' "$f" || p34miss="$p34miss $f(git)"
+  grep -qi 'Download-ZIP' "$f" || p34miss="$p34miss $f(zip)"
+  grep -q 'git clone' "$f" || p34miss="$p34miss $f(clone)"
+  grep -q 'bin/plugin_doctor.py' "$f" || p34miss="$p34miss $f(doctor)"
+  grep -qi 'verbatim' "$f" || p34miss="$p34miss $f(verbatim)"
+  for id in scope_supported repo_install install_payload yq_present; do
+    grep -q "$id" "$f" || p34miss="$p34miss $f($id)"
+  done
+  grep -qi 'offer to run it' "$f" || p34miss="$p34miss $f(yq-offer)"
+  grep -qi 'exit code' "$f" || p34miss="$p34miss $f(exit-code)"
+done
+[ -z "$p34miss" ] \
+  && ok "both setup flows probe git + the doctor, quote its fixes verbatim, name the three halting checks, and offer the yq install" \
+  || bad "a preflight element is missing from a setup flow" "$p34miss"
+grep -qi 'what the key is for' "$SK" \
+  && ok "the Phase-4 report explains what assignee_dir is FOR (never 'setup won't touch it')" \
+  || bad "the report's assignee_dir line is missing or still framed as a warning"
 
 hdr "35 · owner is ticket identity (locator, graph separation, ambiguity hard stops, whoami wiring)"
 # Two owners, one slug — the case that used to collapse. Every engine must treat (owner, id) as the
@@ -3632,6 +3753,68 @@ oi_other="$(grep -rl 'assignee_dir' .claude/skills/ 2>/dev/null | grep -v 'skill
 [ -z "$oi_other" ] \
   && ok "no skill outside /ticket's last resort (and setup's scaffolding) reads assignee_dir" \
   || bad "a static assignee_dir read survives outside the documented last resort" "$oi_other"
+# (i) an UNBOUND teammate never lands in someone else's folder. The identity-free placeholder a team
+# mode writes still returns `miss` (34(F)), while `project.assignee_dir` names whoever configured the
+# repo — so a resolver that fell through to it files a new teammate's first ticket in a COLLEAGUE'S
+# directory, the failure nobody notices. `owner_source` is what makes the three cases distinguishable.
+OW="$TMP/ownersrc"; mkdir -p "$OW/.claude/config" "$OW/people" "$TMP/ownersrc-noxdg"
+git -C "$OW" init -q 2>/dev/null
+git -C "$OW" config user.email "newbie@acme.example"; git -C "$OW" config user.name "New Bie"
+printf 'project:\n  key_prefix: ENG\n  assignee_dir: founder\n  ticket_path: "tickets/{assignee}/{id}"\n' \
+  > "$OW/.claude/config/stack.yaml"
+printf 'display_name: New Bie\n' > "$OW/people/newbie.yaml"   # the identity-free placeholder
+owrun() { env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT \
+  USER=ow-nobody XDG_CONFIG_HOME="$TMP/ownersrc-noxdg" \
+  python3 "$KIT/bin/effective_config.py" --root "$OW" "$@"; }
+{ [ "$(owrun --key owner_source)" = "unbound" ] && [ -z "$(owrun --key owner)" ]; } \
+  && ok "a placeholder people map + a whoami miss resolves to owner_source=unbound with NO owner" \
+  || bad "an unbound teammate still resolves to an owner" \
+         "source=$(owrun --key owner_source) owner=$(owrun --key owner)"
+owrun --json > "$TMP/ow-unbound.json" 2>/dev/null
+python3 - "$TMP/ow-unbound.json" > "$TMP/ow-unbound.out" 2>&1 <<'PYOW'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["owner"] is None and d["owner_source"] == "unbound", (d["owner"], d["owner_source"])
+# The other person's id may appear ONLY as the raw team key it was read from — never as the owner,
+# and never composed into a path under their folder.
+leaks = [k for k, v in d.items() if k != "project" and "founder" in json.dumps(v)]
+assert not leaks, leaks
+PYOW
+[ $? -eq 0 ] && ok "…and the foreign assignee_dir never becomes the owner or any resolved path" \
+  || bad "project.assignee_dir leaked into an unbound teammate's resolution" "$(cat "$TMP/ow-unbound.out")"
+owbound="$(env -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT TICKETWRIGHT_PERSON=newbie USER=ow-nobody \
+  XDG_CONFIG_HOME="$TMP/ownersrc-noxdg" python3 "$KIT/bin/effective_config.py" --root "$OW" --key owner)"
+[ "$owbound" = "newbie" ] \
+  && ok "…and binding that person flips owner_source to resolved (the halt is a stop, not a wall)" \
+  || bad "a bound person did not become the owner" "got=$owbound"
+rm -f "$OW/people/newbie.yaml"   # no roster at all: the documented last resort, and only there
+{ [ "$(owrun --key owner_source)" = "assignee_dir_fallback" ] && [ "$(owrun --key owner)" = "founder" ]; } \
+  && ok "assignee_dir is the owner ONLY when no people map exists (owner_source says which)" \
+  || bad "the no-people-map last resort stopped working" "source=$(owrun --key owner_source)"
+tk35="$(tr '\n' ' ' < .claude/skills/ticket/SKILL.md)"
+{ grep -qi "can't tell who you are" <<<"$tk35" && grep -q '/setup --teammate' <<<"$tk35" \
+  && grep -q 'owner_source' <<<"$tk35"; } \
+  && ok "/ticket HALTS an unbound teammate (bind first) instead of filing under assignee_dir" \
+  || bad "/ticket's unbound-teammate halt or its owner_source detector is missing"
+# …and the halt is decided MECHANICALLY, which is an ORDERING property of the prose. The first
+# version of this front door branched on whoami's status first and only then read the merged
+# config, so the routing decision came from a `people/*.yaml` glob the skill did itself — which
+# cannot see a roster living in $XDG_CONFIG_HOME/ticketwright/people/. effective_config looks in
+# BOTH homes; whoami's status is the display, not the route. Pinned by line number, because the
+# words alone stayed true while the order was wrong.
+ecl35=$(grep -n 'effective_config' .claude/skills/ticket/SKILL.md | head -1 | cut -d: -f1)
+osl35=$(grep -n 'owner_source' .claude/skills/ticket/SKILL.md | head -1 | cut -d: -f1)
+adl35=$(grep -n 'assignee_dir' .claude/skills/ticket/SKILL.md | head -1 | cut -d: -f1)
+wml35=$(grep -n 'whoami.py' .claude/skills/ticket/SKILL.md | head -1 | cut -d: -f1)
+o35=""
+[ -n "$ecl35" ] && [ -n "$osl35" ] && [ -n "$adl35" ] && [ -n "$wml35" ] \
+  || o35="a required mention is missing (effective_config=${ecl35:-none} owner_source=${osl35:-none} assignee_dir=${adl35:-none} whoami=${wml35:-none})"
+[ -z "$o35" ] && [ "$ecl35" -lt "$osl35" ] || o35="${o35:-the owner_source branch precedes the effective_config read}"
+[ -z "$o35" ] && [ "$ecl35" -lt "$adl35" ] || o35="${o35:-assignee_dir is named before the resolver that decides whether it may be used}"
+[ -z "$o35" ] && [ "$ecl35" -lt "$wml35" ] || o35="${o35:-whoami is consulted before the config that owns the routing decision}"
+[ -z "$o35" ] \
+  && ok "/ticket reads effective_config FIRST, then branches on owner_source (whoami is display, never the route)" \
+  || bad "/ticket decides owner routing before reading the resolver" "$o35"
 
 hdr "36 · absent tool slots render the enabling command (whole-path adapter tokens)"
 # The template language is a flat substitution pass — no conditionals — so a tool slot the stack
@@ -6583,7 +6766,7 @@ grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
 # Pre-install honesty: the hooks ship WITH the plugin, so the rendered doc must name the install
 # command and say the table is guidance until it runs — the first, uninstalled session is exactly
 # the one where a newcomer pokes at the warehouse.
-{ grep -q 'claude plugin install ticketwright@ticketwright' templates/AGENTS.md.tmpl \
+{ grep -q 'claude plugin install ticketwright@ticketwright --scope project' templates/AGENTS.md.tmpl \
   && grep -q '/ticketwright:ticket' templates/AGENTS.md.tmpl; } \
   && ok "pin: the template names the plugin-install command and the namespaced skill form" \
   || bad "the template lost the pre-install note or the /ticketwright: namespacing line"
@@ -7279,6 +7462,35 @@ cat > "$C2/plugins/installed_plugins.json" <<JSON
   {"scope":"project","projectPath":"$UR","version":"3.6.0"}]}}
 JSON
 un_silent "TWO project records match this repo (ambiguous — never guess a version)" "$C2" "$UR"
+# A `local` row is a REPO install too. The desktop app has been observed writing one (carrying a
+# projectPath) alongside its own user row, so filtering on scope == "project" reported a repo that
+# plainly runs the plugin as "not installed" — and the notice went silent for exactly the repo it
+# was written for.
+mkver localrow 3.6.1 3.5.0
+un_json "$C2/plugins/installed_plugins.json" "{\"plugins\":{\"acme@acmehub\":[{\"scope\":\"local\",\"projectPath\":\"$UR\",\"installPath\":\"$UR/cache\",\"version\":\"3.5.0\"}]}}"
+un_run "$C2" "$UR"; out="$UN_OUT"
+if un_clean "local row"; then
+  { un_one_line && grep -q '3\.5\.0' <<<"$out" \
+    && grep -q 'claude plugin uninstall acme@acmehub --scope local' <<<"$out" \
+    && grep -q 'claude plugin install acme@acmehub --scope local' <<<"$out"; } \
+    && ok "a LOCAL-scope record fires the notice, with the RECORDED scope in the command" \
+    || bad "a local-scope install was missed, or the notice hardcoded a scope" "$out"
+  # The scope is not decoration: `uninstall --scope project` against a local row answers "not
+  # found", and the reader is then stuck being told to fix an install the tool denies having.
+  grep -q -- '--scope project' <<<"$out" \
+    && bad "the notice named --scope project for a record written at local scope" "$out" \
+    || ok "…and never names a scope the record does not have"
+fi
+# One project row and one local row for the SAME repo is still ambiguity: two precedence layers,
+# two candidate versions, and nothing here can say which one Claude Code actually loaded.
+mkver mixscope 3.6.1 3.5.0
+un_json "$C2/plugins/installed_plugins.json" "{\"plugins\":{\"acme@acmehub\":[{\"scope\":\"project\",\"projectPath\":\"$UR\",\"version\":\"3.5.0\"},{\"scope\":\"local\",\"projectPath\":\"$UR\",\"version\":\"3.6.0\"}]}}"
+un_silent "one PROJECT row and one LOCAL row for this repo (ambiguous across scopes)" "$C2" "$UR"
+# A `user` row is NOT a repo install — a global install is a different state, and treating it as
+# this repo's would report a version the repo did not choose.
+mkver useronly 3.6.1 3.5.0
+un_json "$C2/plugins/installed_plugins.json" "{\"plugins\":{\"acme@acmehub\":[{\"scope\":\"user\",\"projectPath\":\"$UR\",\"version\":\"3.5.0\"}]}}"
+un_silent "a USER-scope record even when it carries this repo's projectPath" "$C2" "$UR"
 # The SAME ambiguity wearing a disguise: one record spells the canonical path, the other a symlink
 # to it. Counting only the textual match would pick a version and call it the answer.
 mkver dual 3.6.1 3.5.0
@@ -8439,6 +8651,68 @@ vs53="$(grep -nE 'bash[^|]*verify_stack\.sh|(^|[[:space:]]|[;&|(])sh[[:space:]][
   && ok "no raw non-dry-run verify_stack call in the suite (real runs go through safe_verify_stack)" \
   || bad "a verify_stack call runs seam commands for real on the ambient PATH — route it through safe_verify_stack" "$vs53"
 
+# A message string can reach a real tool too, and this one is invisible: an unescaped backtick
+# inside a DOUBLE-QUOTED ok/bad argument is command substitution, so `ok "the modern `claude` shim…"`
+# runs the real claude binary while printing a ✓ with the word silently deleted. That is how five
+# messages in a new section invoked the very CLI the section existed to keep away from, including a
+# literal `claude plugin install`. Markdown-style backticks belong in these strings — escaped, or
+# not at all.
+#
+# The scan JOINS backslash-continued lines before looking. A physical-line grep only ever reached
+# calls whose message sits on the SAME line as the ok/bad token; write the token on one line and its
+# message on the next (an ordinary continuation, and what a long message naturally grows into) and
+# the old form walked straight past it. Joining also reaches the trailing "&& ok" of a multi-line
+# compound, which is how most of this file is written. Comment lines are skipped, and a trailing
+# backslash inside one does not continue it — matching what bash actually does.
+bt53_scan() {   # bt53_scan <file> → "<first physical line>:<joined text>" per offender
+  python3 - "$1" <<'BT53PY'
+import re, sys
+src = open(sys.argv[1], encoding="utf-8", errors="replace").read().splitlines()
+joined, buf, start = [], "", 0
+for n, line in enumerate(src, 1):
+    if not buf:
+        start = n
+    if line.endswith("\\") and not line.lstrip().startswith("#"):
+        buf += line[:-1]
+        continue
+    joined.append((start, buf + line))
+    buf = ""
+if buf:
+    joined.append((start, buf))
+# The call can sit anywhere in a joined command, so SEARCH rather than match; the backtick test then
+# reads only the tail from that call onward, which is the part that becomes the message arguments.
+call = re.compile(r'(?:^|[\s;&|(])(?:ok|bad)\s+"')
+for n, text in joined:
+    if text.lstrip().startswith("#"):
+        continue
+    m = call.search(text)
+    if m and re.search(r'[^\\]`', text[m.start():]):
+        print("%d:%s" % (n, text.strip()[:160]))
+BT53PY
+}
+bt53_scan bin/selftest.sh > "$TMP/bt53.out" 2>&1
+bt53="$(cat "$TMP/bt53.out")"
+[ -z "$bt53" ] \
+  && ok "no unescaped backtick inside a double-quoted ok/bad message (it would EXECUTE, not quote)" \
+  || bad "an ok/bad message contains an unescaped backtick — it runs as a command substitution" "$bt53"
+# Prove the scanner can SEE that shape, on a FIXTURE rather than on this file: a clean file scanning
+# clean is equally consistent with a lint that matches nothing at all. The fixture is generated (its
+# backticks are built from the code point) so this file never carries the offending literal itself.
+python3 - "$TMP/bt53-fixture.sh" <<'BT53FX'
+import sys
+t = chr(96)
+open(sys.argv[1], "w", encoding="utf-8").write(
+    "ok \\\n"                                            # the evader: message on the NEXT line
+    + '  "the modern ' + t + 'claude' + t + ' shim is fine"\n'
+    + "true \\\n"
+    + "  && ok \\\n"
+    + '     "escaped is legal: \\' + t + 'claude\\' + t + '"\n')
+BT53FX
+bt53_scan "$TMP/bt53-fixture.sh" > "$TMP/bt53.fix" 2>&1
+{ [ "$(grep -c . "$TMP/bt53.fix")" -eq 1 ] && grep -q '^1:' "$TMP/bt53.fix"; } \
+  && ok "the backtick lint catches a message carried on a backslash continuation, and spares the escaped form" \
+  || bad "the backtick lint cannot see a continued ok/bad call — the very shape that evades it" "$(cat "$TMP/bt53.fix")"
+
 # The allowlist must not quietly grow a tool CLI. This is the property the hermetic PATH actually
 # guarantees; it does NOT claim every entry is inert (git is there for kit_paths' rev-parse).
 sb53="$(ls "$SAFEBIN" | grep -xE 'snow|snowsql|acli|jira|gh|glab|databricks|dbsqlcli|psql|bq|az|sqlcmd|rclone' || true)"
@@ -8657,6 +8931,653 @@ grep -q 'productize' docs/troubleshooting.md || rt_bad="$rt_bad troubleshooting"
 [ -z "$rt_bad" ] \
   && ok "both install paths + the docs name a retired skill dir an upgrade leaves behind" \
   || bad "a retired skill directory would survive an upgrade unannounced" "$rt_bad"
+
+hdr "55 · plugin doctor: every install state is NAMED, and no probe touches a real CLI"
+# The gap this exists for: registering a marketplace is not installing a plugin, and five distinct
+# broken states all look identical from the outside ("the skills aren't there"). Everything below
+# asserts that each state gets its OWN name and its OWN fix — and that finding out never costs a
+# real install, a real network call, or a real `claude` binary.
+PD="$TMP/doctor"; mkdir -p "$PD"
+PD_DOC="$KIT/bin/plugin_doctor.py"
+# The privacy fixture, same technique as section 51: a FOREIGN repo's paths live in every manifest
+# this section writes, and may never reach the output. TWO distinct values, sharing no substring, so
+# "no projectPath leaked" and "no installPath leaked" are separate findings rather than one grep
+# standing in for both — the earlier fixture derived the install path from the project path, and a
+# doctor that printed installPath only would still have looked clean.
+PD_FOREIGN="/Users/someone-else/Development/private-repo"
+PD_FOREIGN_INSTALL="/Volumes/Backup/claude-plugin-cache/quarantine-9f2c"
+
+# --- the fake `claude` on PATH -------------------------------------------------------------------
+# A shim, never the real CLI. The TRIPWIRE is the load-bearing part: `plugin install` WITHOUT
+# `--help` touches a file, so an accidental real install shows up as a failed assertion instead of
+# as a plugin quietly appearing on the contributor's machine.
+PD_TRIP="$PD/tripwire-installed"
+pd_shim() {   # pd_shim <dir> <help-options-line>
+  mkdir -p "$1"
+  cat > "$PD/shim.tmpl" <<'PDSHIM'
+#!/bin/sh
+# fake `claude` — selftest section 55. Read-only; installs nothing, ever.
+for a in "$@"; do
+  [ "$a" = "--version" ] && { echo '2.1.258 (Claude Code)'; exit 0; }
+done
+if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then
+  for a in "$@"; do
+    if [ "$a" = "--help" ]; then
+      printf '%s\n' 'Usage: claude plugin install <plugin>' 'Options:' '@@HELP@@'
+      exit 0
+    fi
+  done
+  : > '@@TRIP@@'          # an install was attempted — the tripwire the suite asserts on
+  exit 90
+fi
+if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then
+  printf '%s\n' '@@LIST@@'
+  exit 0
+fi
+exit 0
+PDSHIM
+  sed -e "s|@@HELP@@|$2|" -e "s|@@TRIP@@|$PD_TRIP|" -e "s|@@LIST@@|$3|" \
+      "$PD/shim.tmpl" > "$1/claude"
+  chmod +x "$1/claude"
+}
+PD_MODERN="$PD/bin-modern"; PD_OLD="$PD/bin-old"; PD_NONE="$PD/bin-none"
+pd_shim "$PD_MODERN" '  -s, --scope <scope>   install scope' 'acme@acmehub'
+pd_shim "$PD_OLD"    '  -h, --help            display help'  "error: unknown command 'list'"
+mkdir -p "$PD_NONE"
+# Prove the shims themselves behave, or every probe assertion below measures the wrong thing.
+PATH="$PD_MODERN:$SAFEBIN" claude plugin install --help 2>&1 | grep -q -- '--scope' \
+  && ok "the modern claude shim advertises --scope (the probe has something true to find)" \
+  || bad "the modern claude shim does not mention --scope"
+PATH="$PD_OLD:$SAFEBIN" claude plugin install --help 2>&1 | grep -q -- '--scope' \
+  && bad "the OLD claude shim mentions --scope — the 'too old' case would be vacuous" \
+  || ok "the old claude shim advertises no --scope (2.0.x behaviour)"
+[ ! -f "$PD_TRIP" ] \
+  && ok "no install was attempted while probing the shims" \
+  || bad "the tripwire fired: something ran a real claude plugin install"
+
+# --- fixture builders ----------------------------------------------------------------------------
+# A real plugin payload the install records can legitimately point at.
+PD_PAYLOAD="$PD/payload"; mkdir -p "$PD_PAYLOAD/.claude-plugin"
+printf '{"name":"acme","version":"3.5.0"}' > "$PD_PAYLOAD/.claude-plugin/plugin.json"
+
+# pd_repo <dir> <git|gitfile|nogit> <git-source|github-source|two|none>
+pd_repo() {
+  rm -rf "$1"; mkdir -p "$1/.claude"
+  case "$3" in
+    git-source)
+      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"},"autoUpdate":true}},"enabledPlugins":{"acme@acmehub":true}}' \
+        > "$1/.claude/settings.json" ;;
+    github-source)
+      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"github","repo":"acme-org/acme-kit"}}},"enabledPlugins":{"acme@acmehub":true}}' \
+        > "$1/.claude/settings.json" ;;
+    two)
+      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"}},"bhub":{"source":{"source":"git","url":"https://b.example/b.git"}}},"enabledPlugins":{"acme@acmehub":true,"bee@bhub":true}}' \
+        > "$1/.claude/settings.json" ;;
+    none) rm -f "$1/.claude/settings.json" ;;
+  esac
+  case "$2" in
+    git)     mkdir -p "$1/.git" ;;
+    gitfile) printf 'gitdir: /elsewhere/worktrees/x\n' > "$1/.git" ;;   # a worktree's .git is a FILE
+  esac
+}
+
+# pd_cfg <config-root> <repo> <state>
+# States are the install shapes seen in the wild: nothing for this repo, one project row, one local
+# row (the desktop app writes these), two rows, a user-scope row, a row whose payload was never
+# written (Claude Code 2.0.22), and a row already at the catalog version.
+pd_cfg() {
+  local d="$1" repo="$2" state="$3"
+  rm -rf "$d"; mkdir -p "$d/plugins/marketplaces/acmehub/.claude-plugin"
+  printf '{"name":"acme","version":"3.6.1"}' \
+    > "$d/plugins/marketplaces/acmehub/.claude-plugin/plugin.json"
+  printf '{"acmehub":{"installLocation":"%s"}}' "$d/plugins/marketplaces/acmehub" \
+    > "$d/plugins/known_marketplaces.json"
+  [ "$state" = "unregistered" ] && printf '{}' > "$d/plugins/known_marketplaces.json"
+  case "$state" in
+    none|unregistered)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$PD_FOREIGN","installPath":"$PD_FOREIGN_INSTALL","version":"9.9.9"}]}}
+JSON
+      ;;
+    project)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$PD_FOREIGN","installPath":"$PD_FOREIGN_INSTALL","version":"9.9.9"},
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
+JSON
+      ;;
+    local)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"local","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
+JSON
+      ;;
+    ambiguous)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"},
+  {"scope":"local","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.6.0"}]}}
+JSON
+      ;;
+    user)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"user","installPath":"$PD_PAYLOAD","version":"3.5.0"},
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
+JSON
+      ;;
+    nopayload)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$repo","installPath":"$d/plugins/cache/acme/4.0.1","version":"3.5.0"}]}}
+JSON
+      ;;
+    current)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.6.1"}]}}
+JSON
+      ;;
+  esac
+}
+
+# pd_run <shim-dir> <args…> — sets PD_OUT/PD_ERR/PD_RC IN THE CALLING SHELL (never wrap in $( ),
+# for the same subshell reason section 51 documents at length).
+PD_OUT=""; PD_ERR=""; PD_RC=0
+pd_run() {
+  local shim="$1"; shift
+  PATH="$shim:$SAFEBIN" python3 "$PD_DOC" "$@" >"$TMP/pd.out" 2>"$TMP/pd.err"
+  PD_RC=$?
+  PD_OUT="$(cat "$TMP/pd.out")"; PD_ERR="$(cat "$TMP/pd.err")"
+}
+# Flatten the last --json run into `<id> <status>` lines so a status assertion is one grep.
+pd_table() {
+  python3 - "$TMP/pd.out" <<'PDPY' > "$TMP/pd.tbl"
+import json, sys
+try:
+    doc = json.load(open(sys.argv[1]))
+except Exception as exc:                      # a malformed report must fail LOUDLY, not silently
+    print("PARSE_ERROR", type(exc).__name__)
+    raise SystemExit(0)
+for check in doc.get("checks", []):
+    print(check.get("id"), check.get("status"))
+PDPY
+}
+pd_is() { grep -qx "$1 $2" "$TMP/pd.tbl"; }   # pd_is <id> <status>
+# pd_case <label> <shim> <args…> — run, flatten, and assert the report parsed and stderr is clean.
+pd_case() {
+  local label="$1"; shift
+  local shim="$1"; shift
+  pd_run "$shim" "$@"
+  pd_table
+  { [ -z "$PD_ERR" ] && ! grep -q PARSE_ERROR "$TMP/pd.tbl"; } && return 0
+  bad "$label: the report did not parse or wrote to stderr" "rc=$PD_RC err=$PD_ERR"
+  return 1
+}
+
+PDR="$PD/repo"; PDC="$PD/cfg"
+pd_repo "$PDR" git git-source
+
+# --- (a) the JSON report: schema, and the PINNED check order -------------------------------------
+python3 - "$PD_DOC" <<'PDPY' > "$TMP/pd.ids"
+import importlib, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))
+print(" ".join(importlib.import_module("plugin_doctor").CHECK_IDS))
+PDPY
+pd_ids="$(cat "$TMP/pd.ids")"
+[ -n "$pd_ids" ] \
+  && ok "plugin_doctor exposes CHECK_IDS as a module constant (the shared contract is readable)" \
+  || bad "plugin_doctor.CHECK_IDS is not importable — README/template marker sync cannot be pinned"
+pd_cfg "$PDC" "$PDR" project
+if pd_case "json shape" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe; then
+  python3 - "$TMP/pd.out" "$pd_ids" <<'PDPY' > "$TMP/pd.shape"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+problems = []
+if doc.get("schema") != 1:
+    problems.append("schema != 1")
+for key in ("root", "plugin", "marketplace", "names_from", "checks", "summary"):
+    if key not in doc:
+        problems.append("missing key: " + key)
+if [c["id"] for c in doc["checks"]] != sys.argv[2].split():
+    problems.append("check order != CHECK_IDS")
+if sorted(doc["summary"]) != ["fail", "ok", "unknown", "warn"]:
+    problems.append("summary keys: " + repr(sorted(doc["summary"])))
+if sum(doc["summary"].values()) != len(doc["checks"]):
+    problems.append("summary does not count every check")
+bad_status = sorted({c["status"] for c in doc["checks"]} - {"ok", "warn", "fail", "unknown"})
+if bad_status:
+    problems.append("status outside the vocabulary: " + repr(bad_status))
+if any(not isinstance(c.get("fix"), list) for c in doc["checks"]):
+    problems.append("a check's fix is not a list")
+print("; ".join(problems) if problems else "OK")
+PDPY
+  pd_shape="$(cat "$TMP/pd.shape")"
+  [ "$pd_shape" = "OK" ] \
+    && ok "the --json report carries schema 1, the four summary counts, and the checks IN THE PINNED ORDER" \
+    || bad "the --json report does not match the pinned shape" "$pd_shape"
+fi
+
+# --- (b) the repo_install state matrix ------------------------------------------------------------
+# Each state MUTATES ONE THING, so no verdict below can be vacuous.
+pd_cfg "$PDC" "$PDR" project
+pd_case "project row" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is repo_install ok && grep -q '3\.5\.0' "$TMP/pd.out" && grep -q 'project scope' "$TMP/pd.out"; } \
+       && ok "one PROJECT row → repo_install ok, naming the version and the scope" \
+       || bad "a plain project install was not reported as installed" "$PD_OUT"; }
+pd_cfg "$PDC" "$PDR" local
+pd_case "local row" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is repo_install ok && grep -q 'local scope' "$TMP/pd.out"; } \
+       && ok "one LOCAL row → repo_install ok (the desktop app writes these; 'project only' called them missing)" \
+       || bad "a local-scope install was not recognised" "$PD_OUT"; }
+pd_cfg "$PDC" "$PDR" none
+pd_case "no row" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is repo_install fail && grep -q 'registering a marketplace is not installing a plugin' "$TMP/pd.out" \
+         && grep -q 'claude plugin install acme@acmehub --scope project' "$TMP/pd.out" \
+         && grep -q 'repository root' "$TMP/pd.out" && grep -q '/plugin install' "$TMP/pd.out"; } \
+       && ok "NOTHING installed → repo_install fail, with the --scope project pair, the repo-root rule and the in-app fallback" \
+       || bad "the 'declared but not installed' state was not named with its fix" "$PD_OUT"; }
+[ "$PD_RC" -eq 1 ] \
+  && ok "a failing check exits 1 (an agent can branch on it without parsing)" \
+  || bad "a failing check did not exit 1" "rc=$PD_RC"
+pd_cfg "$PDC" "$PDR" ambiguous
+pd_case "two rows" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is repo_install warn && grep -q '3\.5\.0, 3\.6\.0' "$TMP/pd.out"; } \
+       && ok "TWO rows for one repo → warn naming both versions (never a guess at which one runs)" \
+       || bad "the ambiguous install state was not named" "$PD_OUT"; }
+# …and the ambiguous report is VERSIONS ONLY: it must not print the paths it read to find them.
+{ grep -qF "$PD_FOREIGN" "$TMP/pd.out" || grep -qF "$PD_PAYLOAD" "$TMP/pd.out"; } \
+  && bad "the ambiguous report leaked an install path" "$PD_OUT" \
+  || ok "the ambiguous report names versions only — no installPath, no other repo's projectPath"
+pd_cfg "$PDC" "$PDR" user
+pd_case "user row" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is user_install warn && grep -q 'every repo on this machine' "$TMP/pd.out" \
+         && grep -q 'claude plugin uninstall acme@acmehub --scope user' "$TMP/pd.out"; } \
+       && ok "a USER-scope row → the global install nobody meant is named, with the undo command" \
+       || bad "a user-scope install was not reported" "$PD_OUT"; }
+
+# --- (c) the install record with no payload (Claude Code 2.0.22) ----------------------------------
+pd_cfg "$PDC" "$PDR" nopayload
+pd_case "missing payload" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is install_payload fail && grep -q 'does not exist' "$TMP/pd.out" \
+         && grep -q '2.0.22' "$TMP/pd.out" \
+         && grep -q 'claude plugin uninstall acme@acmehub --scope project' "$TMP/pd.out" \
+         && grep -q 'rsync' "$TMP/pd.out" && grep -q 'same commit' "$TMP/pd.out"; } \
+       && ok "an install record pointing at nothing → install_payload fail: update, uninstall+reinstall, then the conditional rsync" \
+       || bad "the missing-payload state was not named with its documented workaround" "$PD_OUT"; }
+grep -qF "$PDC/plugins/cache" "$TMP/pd.out" \
+  && bad "the payload fix printed the recorded installPath (only --root may be emitted)" "$PD_OUT" \
+  || ok "the payload fix DESCRIBES the recorded path without printing it"
+pd_cfg "$PDC" "$PDR" project
+pd_case "payload present" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { pd_is install_payload ok \
+       && ok "control: a record pointing at a real payload passes (the fail above is not vacuous)" \
+       || bad "a healthy payload was reported as broken" "$PD_OUT"; }
+
+# --- (d) the CLI that is too old for --scope ------------------------------------------------------
+# These two runs deliberately DROP --no-probe: they are what exercises the shim, and the tripwire is
+# what proves the probe stayed read-only.
+pd_case "modern cli" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json \
+  && { { pd_is scope_supported ok && pd_is claude_version ok && grep -q '2\.1\.258' "$TMP/pd.out"; } \
+       && ok "a modern CLI → scope_supported ok, and the version is reported (2.1.195 is where the hint appears)" \
+       || bad "the modern CLI probe did not pass" "$PD_OUT"; }
+pd_case "old cli" "$PD_OLD" --root "$PDR" --config-root "$PDC" --json \
+  && { { pd_is scope_supported fail && grep -q 'this CLI rejects' "$TMP/pd.out" \
+         && grep -q 'claude update' "$TMP/pd.out" \
+         && grep -q '/plugin install acme@acmehub' "$TMP/pd.out" \
+         && grep -q 'Project scope' "$TMP/pd.out"; } \
+       && ok "a 2.0.x CLI → scope_supported fail, with the per-channel update AND the in-app fallback that needs no terminal" \
+       || bad "the too-old CLI state was not named" "$PD_OUT"; }
+pd_case "no cli" "$PD_NONE" --root "$PDR" --config-root "$PDC" --json \
+  && { { pd_is claude_on_path fail && pd_is scope_supported unknown && pd_is claude_version unknown; } \
+       && ok "no claude CLI at all → claude_on_path fail and the two probes honestly unknown (never assumed)" \
+       || bad "a missing claude CLI was not handled" "$PD_OUT"; }
+pd_case "no probe" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is scope_supported unknown && pd_is claude_version unknown; } \
+       && ok "--no-probe reports the two subprocess checks as unknown rather than guessing" \
+       || bad "--no-probe did not suppress the claude subprocesses" "$PD_OUT"; }
+[ ! -f "$PD_TRIP" ] \
+  && ok "THE TRIPWIRE HELD: not one probe ran a real plugin install" \
+  || bad "a probe attempted a real plugin install (the tripwire file exists)"
+
+# --- (e) the install channel decides the UPDATE COMMAND -------------------------------------------
+# Synthetic realpaths: a symlinked `claude` whose target spells each channel's layout.
+pd_channel() {   # pd_channel <bin-dir> <target-relative-path>
+  mkdir -p "$PD/chan/$(dirname "$2")" "$1"
+  printf '#!/bin/sh\nexit 0\n' > "$PD/chan/$2"; chmod +x "$PD/chan/$2"
+  ln -snf "$PD/chan/$2" "$1/claude"
+}
+pd_channel "$PD/ch-native" ".local/share/claude/versions/2.1.258/claude"
+pd_channel "$PD/ch-npm"    "lib/node_modules/@anthropic-ai/claude-code/cli.js"
+pd_channel "$PD/ch-brew"   "Cellar/claude-code/2.1.258/bin/claude"
+pd_channel "$PD/ch-other"  "opt/somewhere/claude"
+pd_chan_case() {   # pd_chan_case <bin-dir> <status> <needle> <label>
+  pd_case "$4" "$1" --root "$PDR" --config-root "$PDC" --json --no-probe || return 0
+  { pd_is install_channel "$2" && grep -q -- "$3" "$TMP/pd.out"; } \
+    && ok "install channel: $4" \
+    || bad "install channel misread: $4" "$PD_OUT"
+}
+pd_chan_case "$PD/ch-native" ok      'claude update'                              "a native install is told to run \`claude update\`"
+pd_chan_case "$PD/ch-npm"    ok      'npm install -g @anthropic-ai/claude-code'   "an npm/nvm install gets the npm command (and the shadowing warning)"
+pd_chan_case "$PD/ch-brew"   ok      'brew upgrade claude-code'                   "a Homebrew install gets \`brew upgrade\`"
+pd_chan_case "$PD/ch-other"  unknown 'claude doctor'                              "an unrecognised install offers all three plus \`claude doctor\`"
+pd_case "npm shadowing note" "$PD/ch-npm" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { grep -q 'shadows a native one' "$TMP/pd.out" \
+       && ok "the npm fix names the nvm-shadows-native trap that made three CLIs stale" \
+       || bad "the npm fix omits the shadowing warning" "$PD_OUT"; }
+
+# --- (f) a Download-ZIP folder is not a clone -----------------------------------------------------
+PDZ="$PD/zipfolder"; pd_repo "$PDZ" nogit git-source
+pd_case "zip folder" "$PD_MODERN" --root "$PDZ" --config-root "$PDC" --json --no-probe \
+  && { { pd_is git_clone fail && grep -q 'Download ZIP' "$TMP/pd.out" \
+         && grep -q 'git clone https://acme.example/acme.git' "$TMP/pd.out"; } \
+       && ok "no .git → git_clone fail naming the Download-ZIP folder and the clone command" \
+       || bad "a ZIP folder was not distinguished from a clone" "$PD_OUT"; }
+PDW="$PD/worktree"; pd_repo "$PDW" gitfile git-source
+pd_case "worktree" "$PD_MODERN" --root "$PDW" --config-root "$PDC" --json --no-probe \
+  && { pd_is git_clone ok \
+       && ok "a .git FILE (a git worktree) counts as a clone — the check tests existence, not type" \
+       || bad "a git worktree was mistaken for a ZIP folder" "$PD_OUT"; }
+# cwd_is_root: judged from the working directory, so it is exercised by running from a subdirectory.
+( cd "$KIT/bin" && PATH="$PD_MODERN:$SAFEBIN" python3 "$PD_DOC" --root "$KIT" \
+    --config-root "$PDC" --json --no-probe > "$TMP/pd.sub" 2>&1 )
+grep -q '"cwd_is_root"' "$TMP/pd.sub" && grep -q '82830' "$TMP/pd.sub" \
+  && ok "running from a subdirectory names the repo-root rule (claude-code#82830)" \
+  || bad "cwd_is_root did not flag a run from inside a subdirectory" "$(head -5 "$TMP/pd.sub")"
+
+# --- (g) name resolution: flags > settings > manifest > none --------------------------------------
+pd_names() {   # pd_names <label>
+  python3 - "$TMP/pd.out" <<'PDPY' > "$TMP/pd.names"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+print(doc.get("names_from"), doc.get("plugin"), doc.get("marketplace"))
+PDPY
+}
+pd_cfg "$PDC" "$PDR" project
+pd_case "settings git source" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { pd_names; n="$(cat "$TMP/pd.names")"
+       [ "$n" = "settings acme acmehub" ] \
+         && ok "names come from the repo's settings.json — never a hardcoded plugin name (fork-safe)" \
+         || bad "settings-based name resolution failed" "$n"; }
+PDG="$PD/repo-github"; pd_repo "$PDG" git github-source
+pd_cfg "$PD/cfg-gh" "$PDG" none
+pd_case "settings github source" "$PD_MODERN" --root "$PDG" --config-root "$PD/cfg-gh" --json --no-probe \
+  && { { grep -q '"names_from": "settings"' "$TMP/pd.out" \
+         && grep -q 'https://github.com/acme-org/acme-kit.git' "$TMP/pd.out"; } \
+       && ok "the {source:github, repo:owner/name} form yields a clone URL too (both shapes exist in the wild)" \
+       || bad "the github source form produced no marketplace URL" "$PD_OUT"; }
+pd_case "flags win" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+      --plugin zed --marketplace zedhub \
+  && { pd_names; n="$(cat "$TMP/pd.names")"
+       [ "$n" = "flags zed zedhub" ] \
+         && ok "explicit --plugin/--marketplace override the repo's settings" \
+         || bad "flags did not take precedence over settings" "$n"; }
+PDT="$PD/repo-two"; pd_repo "$PDT" git two
+pd_case "two plugins" "$PD_MODERN" --root "$PDT" --config-root "$PDC" --json --no-probe \
+  && { { grep -q '"names_from": "none"' "$TMP/pd.out" && pd_is repo_install unknown \
+         && grep -q 'more than one plugin' "$TMP/pd.out" && grep -q -- '--plugin' "$TMP/pd.out"; } \
+       && ok "two enabled plugins → unknown, asking for --plugin (ambiguity is never resolved by guessing)" \
+       || bad "an ambiguous settings file did not degrade to unknown" "$PD_OUT"; }
+# The manifest tier: the script running from INSIDE a marketplace clone, in a repo with no settings
+# at all. This is the pre-install one-liner, and it is what makes the doctor fork-safe.
+PDM="$PD/mkt"; mkdir -p "$PDM/.claude-plugin" "$PDM/bin"
+printf '%s' '{"name":"acmehub","owner":{"name":"acme"},"plugins":[{"name":"acme","source":"./"}]}' \
+  > "$PDM/.claude-plugin/marketplace.json"
+cp "$PD_DOC" "$KIT/bin/update_notice.py" "$PDM/bin/"
+PDN="$PD/repo-nosettings"; pd_repo "$PDN" git none
+PD_DOC_SAVED="$PD_DOC"; PD_DOC="$PDM/bin/plugin_doctor.py"
+pd_case "manifest tier" "$PD_MODERN" --root "$PDN" --config-root "$PDC" --json --no-probe \
+  && { pd_names; n="$(cat "$TMP/pd.names")"
+       [ "$n" = "manifest acme acmehub" ] \
+         && ok "with no repo settings, the marketplace clone's OWN manifest supplies both names" \
+         || bad "the manifest tier did not resolve the names" "$n"; }
+# …and with neither settings nor a manifest, it says so instead of inventing a name.
+PDB="$PD/bare"; mkdir -p "$PDB/bin"
+cp "$PD_DOC_SAVED" "$KIT/bin/update_notice.py" "$PDB/bin/"
+PD_DOC="$PDB/bin/plugin_doctor.py"
+pd_case "no names" "$PD_MODERN" --root "$PDN" --config-root "$PDC" --json --no-probe \
+  && { { grep -q '"names_from": "none"' "$TMP/pd.out" && pd_is marketplace_registered unknown \
+         && pd_is repo_install unknown && pd_is install_payload unknown \
+         && pd_is user_install unknown && pd_is catalog_current unknown; } \
+       && ok "no settings and no manifest → the five name-dependent checks are unknown, not invented" \
+       || bad "an unnamed plugin produced a confident verdict" "$PD_OUT"; }
+PD_DOC="$PD_DOC_SAVED"
+
+# --- (h) it runs where NOTHING else does ----------------------------------------------------------
+# A lone script beside a marketplace manifest, no kit, no sibling helper, no Claude variables, run
+# from a directory that is not a repo. This is the teammate's very first moment.
+PDL="$PD/lonely"; mkdir -p "$PDL/.claude-plugin" "$PDL/bin" "$PD/elsewhere"
+printf '%s' '{"name":"acmehub","plugins":[{"name":"acme","source":"./"}]}' \
+  > "$PDL/.claude-plugin/marketplace.json"
+cp "$PD_DOC" "$PDL/bin/"          # deliberately WITHOUT update_notice.py
+( cd "$PD/elsewhere" && PATH="$PD_NONE:$SAFEBIN" env -u TICKETWRIGHT_KIT -u TICKETWRIGHT_PROJECT \
+    -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u CLAUDE_CONFIG_DIR \
+    python3 "$PDL/bin/plugin_doctor.py" --config-root "$PD/cfg-empty" --json --no-probe \
+    > "$TMP/pd.lonely" 2>"$TMP/pd.lonely.err" )
+pd_lrc=$?
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$TMP/pd.lonely" 2>/dev/null \
+  && [ "$pd_lrc" -le 1 ] && [ ! -s "$TMP/pd.lonely.err" ] \
+  && ok "a lone copy with no kit, no helper and no CLAUDE_* variable still emits valid JSON (exit $pd_lrc, clean stderr)" \
+  || bad "the pre-install one-liner did not survive a bare environment" "rc=$pd_lrc $(head -3 "$TMP/pd.lonely.err")"
+grep -q 'update_notice.py is not importable' "$TMP/pd.lonely" \
+  && ok "…and it SAYS which checks it could not run, rather than reporting them as passing" \
+  || bad "the degraded run did not name its own degradation" "$(head -5 "$TMP/pd.lonely")"
+pdkp="$(grep -nE '^[[:space:]]*(from|import)[[:space:]]+[^#]*kit_paths' "$PD_DOC" || true)"
+[ -z "$pdkp" ] \
+  && ok "plugin_doctor never imports kit_paths (which exits 3 with no kit — the state this file describes)" \
+  || bad "plugin_doctor imports kit_paths" "$pdkp"
+grep -q 'MUST NEVER IMPORT' "$PD_DOC" \
+  && ok "the docstring STATES the kit_paths rule, so the next contributor knows it is deliberate" \
+  || bad "plugin_doctor.py does not state why it avoids kit_paths"
+
+# --- (i) privacy: NO value read from the two config manifests reaches any output ------------------
+# The contract stated in plugin_doctor.py's docstring, asserted as written: the ONLY path emitted is
+# the caller's own --root. Everything else those manifests carry — another repo's projectPath, that
+# repo's installPath, and the SELECTED row's own installPath — is judged and discarded. Checking a
+# foreign projectPath alone was the weaker version of this: a doctor that printed install locations
+# and no project paths passed it, and install locations are the ones that name a machine's layout.
+pd_leak=""
+for state in none project local ambiguous user nopayload current; do
+  pd_cfg "$PDC" "$PDR" "$state"
+  for mode in json human; do
+    if [ "$mode" = json ]; then
+      pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe
+    else
+      pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --no-probe
+    fi
+    grep -qF "$PD_FOREIGN"         "$TMP/pd.out" && pd_leak="$pd_leak $state/$mode:projectPath"
+    grep -qF "$PD_FOREIGN_INSTALL" "$TMP/pd.out" && pd_leak="$pd_leak $state/$mode:foreign-installPath"
+    grep -qF "$PD_PAYLOAD"         "$TMP/pd.out" && pd_leak="$pd_leak $state/$mode:own-installPath"
+    grep -qF "$PDC/plugins/marketplaces/acmehub" "$TMP/pd.out" \
+      && pd_leak="$pd_leak $state/$mode:installLocation"
+  done
+done
+[ -z "$pd_leak" ] \
+  && ok "across every install state, in BOTH modes, no projectPath, installPath or installLocation is printed — only --root" \
+  || bad "a value read from installed_plugins.json / known_marketplaces.json leaked out of the doctor" "$pd_leak"
+# The one tilde path the doctor DOES print is a documentation template built from the marketplace
+# NAME, not a location read from either manifest — so it must carry the fixture's name and no real
+# home directory, and the docstring must say that is deliberate.
+pd_cfg "$PDC" "$PDR" nopayload
+pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --no-probe
+{ grep -qF '~/.claude/plugins/marketplaces/acmehub/' "$TMP/pd.out" \
+  && ! grep -qF "$HOME/.claude/plugins" "$TMP/pd.out"; } \
+  && ok "the rsync fix names the marketplace by the caller's own name, as a ~ template — never an expanded home path" \
+  || bad "the payload fix printed a real home path instead of the ~ documentation template" "$PD_OUT"
+grep -q 'documentation template built from the marketplace NAME' "$PD_DOC" \
+  && ok "…and the docstring states that exception, so the next reader does not delete it as a leak" \
+  || bad "plugin_doctor.py does not explain why one ~ path is legal under its own privacy rule"
+
+# --- (j) it is a READ-ONLY diagnostic -------------------------------------------------------------
+pd_snapshot() { find "$PDC" "$PDR" -print0 2>/dev/null | xargs -0 ls -ld | sed 's/  */ /g' | sort; }
+pd_snapshot > "$TMP/pd.tree.before"
+pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json
+pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC"
+pd_snapshot > "$TMP/pd.tree.after"
+diff -q "$TMP/pd.tree.before" "$TMP/pd.tree.after" >/dev/null \
+  && ok "the fixture tree is byte-for-byte unchanged after a full run (no writes, ever)" \
+  || bad "the doctor modified the config or repo tree" "$(diff "$TMP/pd.tree.before" "$TMP/pd.tree.after" | head -4)"
+[ ! -f "$PD_TRIP" ] \
+  && ok "and still no install was attempted, after every case in this section" \
+  || bad "the tripwire fired during the read-only assertions"
+
+# --- (k) the marker list is the SAME list, in all three places ------------------------------------
+# README.md and templates/AGENTS.md.tmpl carry the same checklist a person reads; each line is
+# tagged `<!-- doctor-check: <id> -->`. If those drift from CHECK_IDS, the person and the tool are
+# giving different advice — which is worse than either alone.
+pd_markers() {   # pd_markers <file> <heading>
+  python3 - "$1" "$2" <<'PDPY' > "$TMP/pd.markers"
+import re, sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+heading = sys.argv[2]
+start = next((i for i, l in enumerate(lines) if l.strip() == heading), None)
+if start is None:
+    print("NO_SECTION")
+    raise SystemExit(0)
+level = len(heading) - len(heading.lstrip("#"))
+ids = []
+for line in lines[start + 1:]:
+    stripped = line.strip()
+    if stripped.startswith("#") and len(stripped) - len(stripped.lstrip("#")) <= level:
+        break
+    ids += re.findall(r"<!--\s*doctor-check:\s*([a-z_]+)\s*-->", line)
+print(" ".join(ids) if ids else "NO_MARKERS")
+PDPY
+}
+pd_markers README.md '#### If you are the agent helping someone install — read this first'
+pd_rm="$(cat "$TMP/pd.markers")"
+[ "$pd_rm" = "$pd_ids" ] \
+  && ok "README's install checklist tags every doctor check, in the doctor's order" \
+  || bad "README's doctor-check markers do not match CHECK_IDS" "got: $pd_rm"
+pd_markers templates/AGENTS.md.tmpl '## Installing this plugin (read this if you are the agent helping someone install)'
+pd_tm="$(cat "$TMP/pd.markers")"
+[ "$pd_tm" = "$pd_ids" ] \
+  && ok "the AGENTS template's install section tags every doctor check, in the doctor's order" \
+  || bad "templates/AGENTS.md.tmpl's doctor-check markers do not match CHECK_IDS" "got: $pd_tm"
+
+# --- (l) the remediation pair is ONE string, shared with the update notice ------------------------
+# Two surfaces print the same command. If they drift, one of them is telling someone to uninstall a
+# scope that does not exist — the exact dead end `--scope project` hardcoding produced.
+pd_pair() {   # pd_pair <config-root> <repo>
+  python3 - "$KIT" "$1" "$2" <<'PDPY' > "$TMP/pd.pair"
+import json, subprocess, sys
+kit, cfg, repo = sys.argv[1:4]
+run = lambda *a: subprocess.run([sys.executable] + list(a), capture_output=True, text=True).stdout
+line = run(kit + "/bin/update_notice.py", "--root", repo, "--config-root", cfg).strip()
+doc = json.loads(run(kit + "/bin/plugin_doctor.py", "--root", repo, "--config-root", cfg,
+                     "--json", "--no-probe"))
+fix = next((c["fix"] for c in doc["checks"] if c["id"] == "catalog_current"), [])
+marker = "Pick it up: "
+if not line or marker not in line:
+    print("NO_NOTICE " + repr(line[:80]))
+elif not fix:
+    print("NO_FIX")
+elif line.split(marker, 1)[1] != fix[0]:
+    print("DRIFT notice=%r doctor=%r" % (line.split(marker, 1)[1], fix[0]))
+else:
+    print("MATCH " + fix[0])
+PDPY
+}
+pd_cfg "$PDC" "$PDR" project
+PATH="$PD_NONE:$SAFEBIN" pd_pair "$PDC" "$PDR"
+pd_p="$(cat "$TMP/pd.pair")"
+case "$pd_p" in
+  "MATCH claude plugin uninstall acme@acmehub --scope project"*)
+    ok "catalog_current's fix is byte-identical to the update notice's command, at PROJECT scope" ;;
+  *) bad "the doctor and the notice disagree about the remediation command (project row)" "$pd_p" ;;
+esac
+pd_cfg "$PDC" "$PDR" local
+PATH="$PD_NONE:$SAFEBIN" pd_pair "$PDC" "$PDR"
+pd_p="$(cat "$TMP/pd.pair")"
+case "$pd_p" in
+  "MATCH claude plugin uninstall acme@acmehub --scope local"*)
+    ok "…and at LOCAL scope both emit --scope local (uninstalling the wrong scope answers 'not found')" ;;
+  *) bad "the local-scope remediation is wrong or has drifted" "$pd_p" ;;
+esac
+pd_cfg "$PDC" "$PDR" current
+pd_case "already current" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { pd_is catalog_current ok \
+       && ok "control: a repo already at the catalog version reports catalog_current ok" \
+       || bad "a current install was reported as stale" "$PD_OUT"; }
+
+# --- (m) malformed input is UNKNOWN, never a traceback --------------------------------------------
+pd_cfg "$PDC" "$PDR" project
+printf '{"plugins":{"acme@acmehub":[{"scope":"project"' > "$PDC/plugins/installed_plugins.json"
+pd_case "truncated manifest" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { pd_is repo_install fail \
+       && ok "a truncated installed_plugins.json reads as 'nothing installed', with no traceback" \
+       || bad "a truncated manifest was not handled" "$PD_OUT"; }
+pd_cfg "$PDC" "$PDR" project
+rm -f "$PDC/plugins/installed_plugins.json"
+if mkfifo "$PDC/plugins/installed_plugins.json" 2>/dev/null; then
+  pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe
+  pd_table
+  { [ "$PD_RC" -le 1 ] && [ -z "$PD_ERR" ] && ! grep -q PARSE_ERROR "$TMP/pd.tbl"; } \
+    && ok "a FIFO where the manifest should be does not hang or crash the doctor" \
+    || bad "a FIFO manifest broke the doctor" "rc=$PD_RC err=$PD_ERR"
+  rm -f "$PDC/plugins/installed_plugins.json"
+else
+  ok "mkfifo unavailable on this platform — FIFO case skipped (stated, not silently passed)"
+fi
+PDX="$PD/mkt-bad"; mkdir -p "$PDX/.claude-plugin" "$PDX/bin"
+printf '%s' '{"name":"acmehub","plugins":' > "$PDX/.claude-plugin/marketplace.json"
+cp "$PD_DOC" "$KIT/bin/update_notice.py" "$PDX/bin/"
+PDNS="$PD/repo-nosettings2"; pd_repo "$PDNS" git none
+PATH="$PD_NONE:$SAFEBIN" python3 "$PDX/bin/plugin_doctor.py" --root "$PDNS" \
+  --config-root "$PDC" --json --no-probe > "$TMP/pd.badmkt" 2>"$TMP/pd.badmkt.err"
+pd_bmrc=$?
+{ [ "$pd_bmrc" -le 1 ] && [ ! -s "$TMP/pd.badmkt.err" ] \
+  && grep -q '"names_from": "none"' "$TMP/pd.badmkt"; } \
+  && ok "a malformed marketplace.json yields no names rather than a crash or a wrong name" \
+  || bad "a malformed marketplace manifest was not handled" "rc=$pd_bmrc $(head -3 "$TMP/pd.badmkt.err")"
+
+# --- (n) reachable through the launcher, on every runtime -----------------------------------------
+PATH="$PD_NONE:$SAFEBIN" bash bin/tw plugin_doctor.py --help > "$TMP/pd.help" 2>&1
+pd_hrc=$?
+{ [ "$pd_hrc" -eq 0 ] && grep -q -- '--no-probe' "$TMP/pd.help" && grep -q -- '--json' "$TMP/pd.help"; } \
+  && ok "bash bin/tw plugin_doctor.py --help exits 0 with real usage (harness-neutral, no CLAUDE_* needed)" \
+  || bad "the launcher route to plugin_doctor is broken" "rc=$pd_hrc $(head -3 "$TMP/pd.help")"
+# A usage error is exit 2 — the third of the three documented codes.
+PATH="$PD_NONE:$SAFEBIN" python3 "$PD_DOC" --not-a-flag >/dev/null 2>&1
+[ $? -eq 2 ] \
+  && ok "a usage error exits 2 (0 clean, 1 a real failure, 2 the caller's mistake)" \
+  || bad "a bad flag did not exit 2"
+
+# --- (o) the restart advisory: ONE wording, said ONCE, and the same words the README carries ------
+# "Restart" was read as "new chat" on three machines in a row, so this text is the one the fix
+# actually turns on. Two failure modes, both real: it was pasted into three separate fix lists (a
+# single broken install printed the same four sentences three times, and a reader skims all three),
+# and the doctor's copy said "File → Exit elsewhere" while every page said "on Windows/Linux". A
+# person following the page and an agent reading --json must be quoting one string.
+python3 - "$PD_DOC" <<'PDPY' > "$TMP/pd.advisory"
+import importlib, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))
+print(importlib.import_module("plugin_doctor").RESTART_ADVISORY)
+PDPY
+pd_adv="$(cat "$TMP/pd.advisory")"
+tr '\n' ' ' < README.md | tr -s ' ' > "$TMP/pd.readme.flat"
+{ [ -n "$pd_adv" ] && grep -qF "$pd_adv" "$TMP/pd.readme.flat"; } \
+  && ok "the doctor's restart advisory appears VERBATIM in README.md (the tool and the page cannot drift)" \
+  || bad "README.md does not carry the doctor's restart advisory word for word" "$pd_adv"
+# Said once in the human report: the footer is where it prints, and no check repeats it above.
+pd_cfg "$PDC" "$PDR" none
+pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --no-probe
+pd_advn="$(tr '\n' ' ' < "$TMP/pd.out" | tr -s ' ' | grep -o -F "$pd_adv" | grep -c . || true)"
+[ "$pd_advn" = "1" ] \
+  && ok "a broken install prints the restart advisory exactly once (it used to appear three times)" \
+  || bad "the restart advisory is repeated in the human report" "printed $pd_advn times"
+# …and exactly one check CARRIES it in --json, which is the only place an agent can read a fix from.
+pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe
+python3 - "$TMP/pd.out" "$TMP/pd.advisory" <<'PDPY' > "$TMP/pd.advj"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+adv = open(sys.argv[2], encoding="utf-8").read().strip()
+print(" ".join(c["id"] for c in doc["checks"] if adv in c["fix"]) or "NONE")
+PDPY
+[ "$(cat "$TMP/pd.advj")" = "restart" ] \
+  && ok "…and in --json exactly one check carries it: restart, the check that decides when it applies" \
+  || bad "the restart advisory is carried by the wrong number of checks in --json" "$(cat "$TMP/pd.advj")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

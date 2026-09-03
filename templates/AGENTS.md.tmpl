@@ -42,6 +42,83 @@ them cleanly. Skills target abstract
 verbs and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI,
 or ID in a skill**; put it in the config/adapter.
 
+## Installing this plugin (read this if you are the agent helping someone install)
+
+The plugin ref is `ticketwright@ticketwright` and the marketplace URL is
+`https://github.com/kyle-chalmers/ticketwright.git`. A fork edits the ref and the URL in this
+section. Registering the marketplace is not installing the plugin — a teammate who opens and trusts
+the repo gets the marketplace clone, then runs the install themselves (Track 2).
+
+One command reports every check below with its fix, and runs before anything is installed, from the
+marketplace clone that lands on disk when the repo is trusted:
+
+```bash
+python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py     # --json for a report
+bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" plugin_doctor.py                      # once installed
+```
+
+The checks, in the order the doctor runs them:
+
+1. **A clone, not a downloaded ZIP.** <!-- doctor-check: git_clone -->
+   `ls -d .git`. A `<repo>-main` folder cannot branch, commit, or open a PR — `git clone` instead.
+2. **You are at the repository root.** <!-- doctor-check: cwd_is_root -->
+   `git rev-parse --show-toplevel`. A project-scope install keys to the session's directory
+   (claude-code#82830), so run both install commands from the root.
+3. **The `claude` CLI is on PATH.** <!-- doctor-check: claude_on_path -->
+   `command -v claude`. The in-app route below needs no terminal.
+4. **Which version that CLI is.** <!-- doctor-check: claude_version -->
+   `claude --version`. Reported, not judged: from Claude Code 2.1.195 the app itself reports a
+   repo's plugin as not installed and shows the install command.
+5. **That CLI understands `--scope`.** <!-- doctor-check: scope_supported -->
+   `claude plugin install --help` mentions `--scope`. If not, the CLI is too old for either install
+   command — use the in-app route below, then update it.
+6. **How that CLI was installed.** <!-- doctor-check: install_channel -->
+   `readlink -f "$(command -v claude)"`: native → `claude update`; npm or nvm →
+   `npm install -g @anthropic-ai/claude-code@latest`; Homebrew → `brew upgrade claude-code`. An nvm
+   `claude` earlier on PATH shadows a native one; `claude doctor` lists conflicts.
+7. **The marketplace is registered.** <!-- doctor-check: marketplace_registered -->
+   An entry in `~/.claude/plugins/known_marketplaces.json` whose `installLocation` exists. Missing:
+   the first command of the pair below.
+8. **This repo has an install record.** <!-- doctor-check: repo_install -->
+   A row in `~/.claude/plugins/installed_plugins.json` whose `projectPath` is this repo.
+   Registration never creates one. Fix: the pair below, from the repository root, then restart.
+9. **The install record points at files that exist.** <!-- doctor-check: install_payload -->
+   The recorded `installPath` holds a `.claude-plugin/plugin.json`. Seen on Claude Code 2.0.22:
+   install reports success, the directory is never created, and re-installing is a no-op. Fix:
+   update the CLI, then uninstall at the recorded scope and install again; if uninstall answers
+   "not found", copy the marketplace clone into the recorded path (see troubleshooting).
+10. **No machine-wide install nobody meant.** <!-- doctor-check: user_install -->
+    A `scope: "user"` row turns the plugin on for every repo on the machine. For this repo only:
+    `claude plugin uninstall ticketwright@ticketwright --scope user`, then the pair below.
+11. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
+    Behind means a tagged release was not picked up; the fix is the uninstall-and-install pair the
+    session banner names, at the scope the record carries.
+12. **`yq` is installed.** <!-- doctor-check: yq_present -->
+    `command -v yq`. Needed only by the kit's self-test. macOS `brew install yq`; Linux your
+    distribution's package; Windows `winget install MikeFarah.yq`.
+13. **Git identity is set.** <!-- doctor-check: git_identity -->
+    `git config --get user.name` / `--get user.email`, else the first commit fails.
+14. **Restart the right way.** <!-- doctor-check: restart -->
+    Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit the
+    Claude app (Cmd+Q on macOS, File → Exit on Windows/Linux) and relaunch. A new chat inside the
+    running app is not a restart.
+
+The install itself is two commands, run from the repository root:
+
+```bash
+claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project
+claude plugin install ticketwright@ticketwright --scope project
+```
+
+"already on disk — declared in project settings" from the first command is expected, not an error.
+A CLI that rejects `--scope` is too old: run `/plugin install ticketwright@ticketwright` in the
+session and choose **Project** scope, or use **+ → Plugins → Add plugin** in the desktop app — both
+run in the app's own engine — then update the CLI. Verify with `claude plugin list`
+(`ticketwright@ticketwright … enabled`) and by `/ticketwright:setup` appearing in the next session;
+the kit's self-test takes several minutes, so judge it by its exit code. More states and their
+recoveries:
+<https://github.com/kyle-chalmers/ticketwright/blob/main/docs/troubleshooting.md>.
+
 ## Reading config — always through the resolver
 Config lives in THREE tiers, and only the first is committed team config:
 
@@ -141,9 +218,10 @@ path for read/exploration. What each policy can carry on the MCP path — and wh
 And a limit that precedes every runtime row: the hooks ship WITH the plugin. Until the plugin is
 installed and the session restarted, every ENFORCEMENT cell above is GUIDANCE — a teammate's very
 first session in this repo, exactly the one where a newcomer pokes at the warehouse, has no hooks
-at all. Install first: `claude plugin install ticketwright@ticketwright`. And one privacy rule for
-that same onboarding window: never run bare `snow connection list` — it prints account, user, and
-role into the transcript. Enumerate connection NAMES only:
+at all. Install first — see the "Installing this plugin" section of this repo's AGENTS.md:
+`claude plugin install ticketwright@ticketwright --scope project` from the repo root. And one
+privacy rule for that same onboarding window: never run bare `snow connection list` — it prints
+account, user, and role into the transcript. Enumerate connection NAMES only:
 `snow connection list --format JSON | python3 -c "import json,sys;[print(c['connection_name']) for c in json.load(sys.stdin)]"`.
 
 Per-runtime caveats — the part that keeps the table honest:
@@ -283,6 +361,8 @@ These belong to the *repo's* plugin setup, not to any one ticket: `.claude/setti
 any of them dirty while a ticket is in flight, give them a separate `chore(plugins): …` commit **on
 the same branch as the ticket** — a distinct commit (clean history, easy revert) that rides the
 ticket's **one** PR, so there's never a second PR to merge. (A standalone setup change with no ticket
-open is its own small PR to `{{default_branch}}`.) The enablement travels with the repo, so teammates
-who trust it are prompted to install the plugin. Personal / machine-local config stays gitignored and
-is never committed: `.claude/settings.local.json`, `.claude/worktrees/`.
+open is its own small PR to `{{default_branch}}`.) The enablement travels with the repo, and
+registering the marketplace is not installing the plugin — a teammate who opens and trusts the repo
+gets the marketplace clone, then runs the install themselves (Track 2). Personal / machine-local
+config stays gitignored and is never committed: `.claude/settings.local.json`,
+`.claude/worktrees/`.

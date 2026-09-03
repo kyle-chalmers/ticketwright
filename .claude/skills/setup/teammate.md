@@ -38,11 +38,34 @@ commits `/ship` makes. If either is unset, have the person set them now — repo
 re-run step 0): the identity recorded is now one this machine actually resolves by.
 
 ## 1 · Install prerequisites
-Check what's present: `for c in <the CLIs named by the configured tool slots> yq jq git; do
+**First, the two that make everything after them pointless.** Both probes are read-only:
+
+- **Is this a clone?** `!git rev-parse --show-toplevel` — a non-zero exit means there is no
+  repository here. **Halt**: "There is no `.git` in this folder. If it came from a Download-ZIP
+  button (the folder name usually ends in `-main`), Ticketwright cannot branch, commit, or open a
+  PR from it. Clone the repo instead — `git clone <the repository's URL>` — then re-run this
+  inside the clone."
+- **Is the kit installed and usable here?**
+  `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/plugin_doctor.py" --json` — a
+  read-only pass over the install prerequisites; it installs nothing and makes no network call.
+  Report every finding that is not `ok` with its `fix` lines **verbatim** — they are exact
+  commands. A `fail` on `scope_supported` (the agent CLI is too old to install a plugin for one
+  repo), `repo_install` (nothing is installed for this repository) or `install_payload` (the
+  install record points at a directory that does not exist) is a **halt**: none of it is fixable
+  by anything this flow writes, and the fix text names the route out — including the in-session
+  install and the update command for how the CLI was installed. `warn`/`unknown` findings are
+  reported and the flow continues; on a vendored or pip install the install checks answer
+  `unknown`, which is the expected answer there. If the script is absent (an older kit copy), say
+  so in one line and carry on.
+
+Then check the rest: `for c in <the CLIs named by the configured tool slots> yq jq git; do
 command -v $c >/dev/null && echo "✓ $c" || echo "✗ $c (install)"; done`. For each missing tool give
 the install command (Homebrew / winget / apt as appropriate). Scope note: `yq` is needed only by
 the kit's own `selftest.sh` (step 5 runs it once, as a kit-integrity check) — no skill in a
-configured repo invokes it day to day, so a missing `yq` blocks that one check, nothing else.
+configured repo invokes it day to day, so a missing `yq` blocks that one check, nothing else. When
+`yq_present` is not `ok`, print the doctor's platform install command and **offer to run it now**,
+before step 5 needs it — and say what step 5 costs: several minutes, longer than a typical tool
+timeout, judged by its **exit code**, not by how green the tail of its output looks.
 
 ## 2 · Authenticate each configured tool
 For every configured tool slot, open its adapter's `auth:` notes and walk the person through

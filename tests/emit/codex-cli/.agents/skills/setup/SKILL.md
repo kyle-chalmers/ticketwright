@@ -130,6 +130,34 @@ which prints the resolved commands without launching anything. Never commit this
 ## Default mode — configure the repo
 
 ### Phase 1 — Detect (no questions yet)
+0. **Preflight — the ways a run is doomed before it starts.** Both probes are read-only and cheap;
+   run them before anything else, because neither failure is fixable by anything this skill writes.
+   - **Is this a clone?** `!git rev-parse --show-toplevel` — a non-zero exit means there is no
+     repository here. **Halt**, and say why: "There is no `.git` in this folder. If it came from a
+     Download-ZIP button (the folder name usually ends in `-main`), Ticketwright cannot branch,
+     commit, or open a PR from it, and no config would fix that. Clone the repo instead —
+     `git clone <the repository's URL>` — then re-run `/setup` inside the clone."
+   - **Is the kit installed and usable here?**
+     `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/plugin_doctor.py" --json` — one
+     read-only pass over the install prerequisites (it never installs anything, and makes no
+     network call). Report **every** finding that is not `ok`, each with its `fix` lines
+     **verbatim**: they are exact commands, and a paraphrased command is one nobody can run.
+     A `fail` on any of these three is a **halt**, because nothing setup writes reaches the cause:
+     - `scope_supported` — the agent CLI is too old to install a plugin for one repo; the fix names
+       both the in-session install route and the update command for how it was installed;
+     - `repo_install` — nothing is installed for this repository;
+     - `install_payload` — the install record points at a directory that does not exist.
+     Everything else (`warn`, `unknown`, a global-only install, a stale catalog) is reported and
+     the run continues. On a non-plugin install — a vendored kit, a pip install — the install
+     checks answer `unknown`: that is the expected answer there, not a failure. If the script is
+     absent (an older kit copy), say so in one line and carry on.
+   - **`yq`** — when `yq_present` is not `ok`, Phase 4's kit-integrity check cannot run at all.
+     Print the platform install command the doctor gives, and **offer to run it now**, while it is
+     still cheap — not at the moment the check fails. Say in the same breath what that check costs:
+     it runs 1,200+ assertions over several minutes, longer than a typical tool timeout, so give it
+     the background or a raised timeout and judge it by its **exit code**, never by whether the
+     tail of its output looks green.
+   Identity routing is unchanged: it happens at step 4 below.
 1. **CLIs:** `!for c in snow acli gh glab bq databricks yq jq git rclone; do command -v $c >/dev/null && echo "✓ $c" || echo "– $c"; done`
 2. **MCP servers** connected this session (tracker / chat / warehouse servers).
 3. **Repo facts — probes, not questions.**
@@ -282,6 +310,11 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    - **The punch list** — one entry per skipped round, each naming its re-entry command
      (`/setup role` for round 5, `/setup policies` for round 6). Deferring must be trackable;
      "took defaults" must never be indistinguishable from "chose".
+   - **`project.assignee_dir`, in one line — what the key is for, not a warning.** It is the
+     last-resort owner subdir under `tickets/` for a repo with no `people/` roster. Once a roster
+     exists, the owner of new work is whoever `whoami` resolves, and a person it does not
+     recognize is a stop (`/setup --teammate`) rather than a fall-back to this key — so say that,
+     and never describe it as something setup is refusing to touch.
    - **Email, when round 4 recorded delivery:** say plainly that email is **configured but not
      yet activated** — the commented target block holds the answers, and nothing will send until
      someone deliberately activates it: convert the chat slot to `targets:` form with a declared
