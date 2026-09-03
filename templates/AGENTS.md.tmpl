@@ -64,7 +64,7 @@ marketplace clone that lands on disk when the repo is trusted:
 
 ```bash
 python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py     # --json for a report
-bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" plugin_doctor.py                      # once installed
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" plugin_doctor.py   # once installed
 ```
 
 The checks, in the order the doctor runs them:
@@ -144,7 +144,7 @@ result instead — and note the resolver may report a value the raw file does no
 as a docstore `base_path` composed from a team folder and your own mount root:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --root . --json
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --root . --json
 ```
 
 It needs no agent-specific environment variable, so this works under any harness. `provenance` names
@@ -323,7 +323,7 @@ is true.
 10. **human_review_handoff** — `off` | `review` (default) | `all`; open the deliverables in the
     human's own apps and **wait for sign-off** before the verdict. Which apps is per-user and
     gitignored (`.claude/config/viewer.local.yaml`); run
-    `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" handoff.sh <paths>`. Every other
+    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <paths>`. Every other
     pause guards something leaving the machine — this one makes sure a person actually saw the
     output. If no viewer config exists, say so once and carry on; never block on it.
 

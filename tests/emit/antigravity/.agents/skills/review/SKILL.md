@@ -18,7 +18,7 @@ pass gets its own context, and the verdict records which review the ticket actua
 
 ## Phase 0 — Setup
 0. Resolve the **ticket locator**: run
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
    (show the "Working as …" line), then resolve `owner/id` exactly, or a bare `<id>` against the
    resolved person's `tickets/<owner>/` first and other owners second — **two or more foreign owners
    sharing a bare id is a hard stop listing the `owner/id` choices, never a pick**. Reviewing
@@ -73,7 +73,7 @@ canonical order resolves next — the ticket's declared target before the seam d
 - **Hand the deliverables to the human, then stop** (policy `human_review_handoff`; skip this whole
   bullet when it is `off`). Layers ①–④ prove the query is *internally* consistent; only a person can
   say the numbers are the right numbers. Do not emit a verdict before this:
-  1. `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" handoff.sh <final_deliverables + qc_queries paths>`
+  1. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <final_deliverables + qc_queries paths>`
      — routes each file to the app that user chose. It exits 0 and stays silent when they have no
      viewer config; in that case say so **once** and continue, never block.
   2. If it produced no output and no **usable** config exists, offer the one-time setup: which app
@@ -81,7 +81,7 @@ canonical order resolves next — the ticket's declared target before the seam d
      `.claude/config/viewer.local.yaml` (gitignored, per-user) or the user-level path — see
      `.claude/config/viewer.example.yaml`. "None / don't ask again" writes `enabled: false`.
      Check usable, not merely present:
-     `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --viewer-plan`
+     `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --viewer-plan`
      reports `"usable": false` when config exists but opens nothing — a real state now that the
      portable half (globs → categories, in `people/<id>.yaml`) and the machine half (categories →
      applications, in `.claude/config/connections.local.yaml`) can be configured independently.
@@ -105,7 +105,7 @@ The pyramid's independence claim is only true when the runtime can actually give
 second context. Probe what the current runtime declares before spawning anything:
 
 ```
-bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" kit_paths.py --json
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json
 ```
 
 Read two capability keys from `capabilities` — `subagents` and `subagent_isolation` — and branch on

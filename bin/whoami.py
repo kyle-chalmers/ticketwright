@@ -228,7 +228,7 @@ def resolve(root: str | Path, tier3: object = _UNSET) -> dict:
     ident, ids = _match(root, index)
 
     res: dict = {"status": "miss", "id": None, "display_name": None, "identity": None,
-                 "source": "none", "candidates": [], "warning": None, "display": None}
+                 "source": "none", "candidates": [], "observed": [], "warning": None, "display": None}
 
     t3 = _load_tier3(root) if tier3 is _UNSET else tier3
     pinned = t3.get("person") if isinstance(t3, dict) else None
@@ -263,6 +263,18 @@ def resolve(root: str | Path, tier3: object = _UNSET) -> dict:
                    warning=(f"whoami: '{ident}' is enumerated by more than one person "
                             f"({', '.join(ids)}) — say who you are: whoami.py --bind <id>"))
         return res
+    # A MISS still owes the caller the roster. `setup/SKILL.md` and `teammate.md` both promise the
+    # bind interview "every id under people/ as a candidate plus someone new", and this returned an
+    # empty list — so the agent had nothing to offer and people typed their own id by hand with a
+    # populated people/ sitting right there. STATUS STAYS "miss": candidates here are a roster to
+    # choose from, never the ambiguity of one identity enumerated by several people, and a caller
+    # that switched on a non-empty `candidates` alone would conflate the two.
+    if people:
+        res.update(candidates=sorted(people))
+    # `identity` stays None on a miss — nothing MATCHED, and filling it would imply otherwise. What
+    # the caller actually needs to quote back ("I don't recognize <identity>. Who are you?") is what
+    # we LOOKED for, which is a different fact and gets its own field rather than overloading one.
+    res.update(observed=list(local_identities(root)))
     return res
 
 

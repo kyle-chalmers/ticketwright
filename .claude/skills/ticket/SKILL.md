@@ -18,7 +18,7 @@ brief, nothing else. Follow [priming.md](priming.md) § Recall. Useful mid-sessi
 this before?", "which tickets touched VW_X?").
 
 ## Phase 0 — Resolve & preflight (halt-on-fail)
-0. **Read the merged config first — it is what decides WHO** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --json`,
+0. **Read the merged config first — it is what decides WHO** — `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --json`,
    never raw `stack.yaml`. It carries `project.*`, `seams.tracker`, `seams.vcs` — and it settles the
    owner **mechanically**, in one field, so no skill re-derives the rule. If the team config is
    missing, say so and offer `/setup` — don't scaffold blind. Branch on **`owner_source`**, never on
@@ -36,7 +36,7 @@ this before?", "which tickets touched VW_X?").
      `project.assignee_dir` is the documented last resort for repos that predate owner routing.
    - `none` — stop: no roster and no `assignee_dir`. Offer `/setup`.
    Read `owner`, never `project.assignee_dir` directly.
-1. **Then show who that is** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`,
+1. **Then show who that is** — `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`,
    and show its one-line "Working as …" display. This is the display-and-binding step; the routing
    decision was already made in step 0, and whoami never overrides it. Two statuses still change
    what you do next: `ambiguous` — ask which person it is; never rank or pick, and step 0's hard
@@ -74,14 +74,14 @@ this before?", "which tickets touched VW_X?").
    when `project.intake` lists `email`/`chat`/`meetings`, that folder also carries what a human
    dropped in — meeting notes arrive as `YYYY-MM-DD-<slug>-meeting.md`, and priming enumerates
    them with `scan_source_materials.py --intake` rather than guessing at names;
-   resolve the kit once with `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then render
+   resolve the kit once with `KIT="$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)"`, then render
    `"$KIT"/templates/ticket-README.md.tmpl` → the ticket dir —
    **only if that README doesn't already exist**. Where the tracker *is* the ticket folder, step 3's
    `create_ticket` already wrote it, and re-rendering would replace a briefed ticket with empty
    template tokens.
 6b. **Refresh the catalog** so the new ticket shows up immediately — it won't otherwise, because the
    PostToolUse index hook only fires on `Write`/`Edit` and scaffolding happens via Bash:
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" build_ticket_index.py` (writes this
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py` (writes this
    project's `tickets/INDEX.md` + `OBJECTS.md`, and the graph layer when it's on; the new row shows
    `▱` until `/ship` curates it).
 
@@ -96,7 +96,7 @@ this before?", "which tickets touched VW_X?").
 7b. **Meeting references** — the complete rule, stated here because emitted runtimes carry this
    file without priming.md. When `seams.meetings` is configured, enumerate the ticket's meeting
    references:
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" meeting_refs.py --ticket <ticket-dir> --json`.
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" meeting_refs.py --ticket <ticket-dir> --json`.
    Zero refs ⇒ do nothing — never fetch speculatively. An invalid ref (exit 4) is a NAMED error to
    surface, never silence; `"reason": "refused-credential"` means a URL or token was committed —
    ask for the bare `<provider>:<id>` instead. For each ref whose provider matches the configured

@@ -18,7 +18,7 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
 ## Steps
 
 1. **Identify the person.** Take the name from the argument, else resolve the current shipper:
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json`. Settle on a
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" resolve_user.py --json`. Settle on a
    short `profile_id` (their `assignee_dir` short-name is a fine default — but this keys on the
    *person*, not the ticket-owner folder).
 
@@ -36,7 +36,7 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
    `stack.yaml`, so this person-scoped flow must not write it. Point them at `/setup tool chat`,
    the team flow that owns that block.
 
-3. **Render the seed.** `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/render.sh"
+3. **Render the seed.** `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/render.sh"
    templates/voice-profile.md.tmpl profile_id=<id> display_name="<name>" bootstrapped=<today>
    sources="<how built>"` → write to the resolved path. (Tracker-side enrichment — a display
    handle — happens here, once, via the tracker adapter if useful; write it into the frontmatter. Do

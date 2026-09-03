@@ -108,7 +108,7 @@ reaches the network. Three ways to run it, in the order they become available:
 python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
 
 # on a plugin install, from the repo
-bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" plugin_doctor.py
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" plugin_doctor.py
 
 # machine-readable, for an agent
 python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py --json

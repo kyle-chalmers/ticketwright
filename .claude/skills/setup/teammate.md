@@ -17,9 +17,10 @@ edits committed `stack.yaml`**: when a team value looks wrong, say so and point 
 Every question below is prose the person answers in chat, never a structured tool-call payload.
 
 ## 0 · Who is this?
-`!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/whoami.py" --root . --json`
+`!python3 "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/whoami.py" --root . --json`
 - `resolved` → show the one-line "Working as …" display and continue.
-- `miss` → ask, in prose: "I don't recognize `<identity>`. Who are you?" — offering every id under
+- `miss` → ask, in prose: "I don't recognize `<observed[0]>`. Who are you?" (`identity` is null on
+  a miss because nothing matched; `observed` is what we looked for) — offering every id under
   `people/` as a candidate plus "someone new" (the roster of placeholders exists for exactly this
   moment). **Before binding, run step 0.5** — on a fresh machine the git identity may be entirely
   unset, and binding first records a weaker identity than the one they are about to configure.
@@ -46,7 +47,7 @@ re-run step 0): the identity recorded is now one this machine actually resolves 
   PR from it. Clone the repo instead — `git clone <the repository's URL>` — then re-run this
   inside the clone."
 - **Is the kit installed and usable here?**
-  `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/plugin_doctor.py" --json` — a
+  `!python3 "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/plugin_doctor.py" --json` — a
   read-only pass over the install prerequisites; it installs nothing and makes no network call.
   Report every finding that is not `ok` with its `fix` lines **verbatim** — they are exact
   commands. A `fail` on `scope_supported` (the agent CLI is too old to install a plugin for one
@@ -105,12 +106,12 @@ understands and polices):
 - under `seams.<slot>…`: ONLY values for keys the adapter declares in `user_keys:` — the resolver
   refuses anything else, and `policies:` is never mergeable from a personal file.
 Confirm it resolves:
-`!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/effective_config.py" --root . --json`
+`!python3 "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/effective_config.py" --root . --json`
 must report no errors, with each override attributed to the machine tier.
 
 ## 5 · Verify connectivity — bound to the expected target
-Run `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` first (the kit itself),
-then `bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh"`. Three rules make the
+Run `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/selftest.sh"` first (the kit itself),
+then `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/verify_stack.sh"`. Three rules make the
 result mean something:
 - **Bind the check to the target.** "The CLI responded" is not proof the person reached the right
   place — a personal profile can point at an entirely different account or workspace. Use the

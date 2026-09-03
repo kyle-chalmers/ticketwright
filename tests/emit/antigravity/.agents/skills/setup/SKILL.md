@@ -1,16 +1,26 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <chat|docstore|warehouse|meetings>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
+description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <tracker|warehouse|chat|docstore|meetings|vcs>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
 ---
 
 <!-- emitted by ticketwright install v4.0.3 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /setup
 
-> **Why this skill still spells out `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}` paths while every
-> other skill calls `bin/tw`:** `/setup` is the bootstrapper. On a plugin install the project has
-> no `bin/` until this skill puts one there, so it cannot resolve assets through the launcher it
-> is about to install. Leave these paths as they are.
+> **Why this skill spells out a kit path while everything else calls `bin/tw`:** `/setup` is the
+> bootstrapper. On a plugin install the project has no `bin/` until **step 5b** of Phase 3 puts one
+> there, so it cannot resolve assets through the launcher it is about to install.
+>
+> **This exemption covers this file's body and nothing else.** The runtime substitutes the exact
+> token `${CLAUDE_PLUGIN_ROOT}` into a SKILL.md body at skill launch, so the form
+> `TW_KIT="${CLAUDE_PLUGIN_ROOT}"; <cmd> "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/..."`
+> works *here*. It does **not** work in `scaffold.md`, `teammate.md` or `voice.md`: those are opened
+> with Read, which returns raw bytes, so the token arrives verbatim, expands to empty, and silently
+> points every path at `/…`. Those files use the project launcher like the rest of the kit.
+>
+> Never write the one-expansion `${CLAUDE_PLUGIN_ROOT:-...}` anywhere. It matches no token, so it
+> reaches the shell with the variable unset on every install shape — the bug that broke every
+> documented `bin/` command for months.
 
 One skill, three jobs: **configure a repo** (run once), **add a tool later** (`/setup tool chat`),
 and **onboard a person** (`/setup --teammate`). Detect first, ask last — detection produces the
@@ -20,7 +30,7 @@ output; leave a commented default when it fails loudly at `verify_stack.sh` or o
 (see [interview.md](interview.md)). Never promise a question count.
 
 Every mode sits on one scope axis. **TEAM-scoped** modes write the team's committed config: the
-default repo-configuration mode, `tool <chat|docstore|warehouse|meetings>`, and the round re-runs
+default repo-configuration mode, `tool <tracker|warehouse|chat|docstore|meetings|vcs>`, and the round re-runs
 `role` / `team` / `policies`. **PERSON-scoped** modes write
 one person's own config: `--teammate` (the per-person flow), `--voice`, and `viewer`. The axis is
 *who the config is about*, not committed-vs-local — `--voice` is person-scoped yet writes a
@@ -85,11 +95,19 @@ approved exemplars → save. `/ship` then drafts in that voice, within the hard 
 an existing `stack.yaml`. (This is a first-class mode, **not** a tool slot — `voice` is never a
 `seams.*` entry.)
 
-## Mode: `tool <chat|docstore|warehouse|meetings>` — add one tool slot to the team config (team-wide)
+## Mode: `tool <tracker|warehouse|chat|docstore|meetings|vcs>` — add one tool slot to the team config (team-wide)
 E.g. `/setup tool chat`. Detect candidates for just that tool slot, then run only that slot's
-interview round from [interview.md](interview.md) (round 3 for warehouse, round 4 for
-chat/docstore/meetings — including the slot's adapter-required keys), add the block to committed
-`stack.yaml`, verify it, and re-render `AGENTS.md`. Nothing else changes.
+interview round from [interview.md](interview.md) (round 2 for tracker, round 3 for warehouse,
+round 4 for chat/docstore/meetings, round 4's VCS question for vcs — including the slot's
+adapter-required keys), add the block to committed `stack.yaml`, verify it, and re-render
+`AGENTS.md`. Nothing else changes.
+**`tracker` and `vcs` are re-entry slots too, and they are the ones people need most.** The
+interview always fills them, so they are never *absent* — but they are routinely filled with the
+WRONG transport detail, and until this mode accepted them there was no documented command that
+repaired one. The case that forced this: a person on an MCP-only tracker whose `verify` names a CLI
+they do not have, so `verify_stack` reports a healthy tracker as unreachable. `/setup tool tracker`
+re-runs that slot's questions — transport, `mcp:`, `cli:`, and the read-only `verify` — against the
+existing config, edit-never-overwrite. Same for `vcs`.
 **Deprecated spellings:** the old `/setup chat` / `/setup docstore` / `/setup warehouse` (without
 `tool`) keep working for one release — accept them, print "Note: `/setup chat` is now
 `/setup tool chat`; the old spelling goes away in the next release." (substituting the slot
@@ -124,7 +142,7 @@ Then write `.claude/config/viewer.local.yaml` (this repo) or
 platform-matching `open_cmd`/`reveal_cmd` from `.claude/config/viewer.example.yaml` and pointing
 `adapter:` at the `adapters/viewer/` file for this OS. "None / don't ask again" ⇒ `enabled: false`.
 Confirm with
-`!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/handoff.sh" --dry-run <any ticket file>`,
+`!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/handoff.sh" --dry-run <any ticket file>`,
 which prints the resolved commands without launching anything. Never commit this file.
 
 ## Default mode — configure the repo
@@ -138,7 +156,7 @@ which prints the resolved commands without launching anything. Never commit this
      commit, or open a PR from it, and no config would fix that. Clone the repo instead —
      `git clone <the repository's URL>` — then re-run `/setup` inside the clone."
    - **Is the kit installed and usable here?**
-     `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/plugin_doctor.py" --json` — one
+     `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/plugin_doctor.py" --json` — one
      read-only pass over the install prerequisites (it never installs anything, and makes no
      network call). Report **every** finding that is not `ok`, each with its `fix` lines
      **verbatim**: they are exact commands, and a paraphrased command is one nobody can run.
@@ -196,7 +214,7 @@ which prints the resolved commands without launching anything. Never commit this
    2. `stack.yaml` exists but there is **no `people/` directory at all** → this repo predates
       per-person config: run the **Bootstrap** below, then return to what the person asked for.
    3. `stack.yaml` exists (and `people/` too) → resolve who is at the keyboard:
-      `!python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/whoami.py" --root . --json`
+      `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/whoami.py" --root . --json`
       - `miss` → this is a **teammate new to this repo**: switch to [teammate.md](teammate.md)
         automatically. Editing the team's shared config must never be a new cloner's first
         offered action. (`--teammate` stays the explicit re-run.)
@@ -244,7 +262,7 @@ going — `verify_stack.sh` names any unset required key on every run (a warning
 so a deferred key is reported rather than lost. A skipped round is written down twice — a
 `# TODO(setup)` line in `stack.yaml` and a punch-list entry in the Phase-4 report — each naming
 its re-entry command (`/setup role` for round 5, `/setup policies` for round 6; later,
-`/setup team` adds teammates and `/setup tool <chat|docstore|warehouse|meetings>` adds a declined slot).
+`/setup team` adds teammates and `/setup tool <tracker|warehouse|chat|docstore|meetings|vcs>` adds a declined slot).
 Everything the interview does not ask ships as a **commented default** the user can edit later:
 `default_epic`, word limits, the other eight policies — each with its "when to change this" note.
 
@@ -275,6 +293,27 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    interactive session, or create the `.claude/` files by hand from the printed plan (print their
    full contents on request); and that everything else is written on the next confirm. Never route
    around the guard.
+5b. **Install the launcher into the project — do this before step 6, and this step is why every
+   other file can stay Claude-neutral.** Copy `bin/tw` and `bin/kit_paths.py` from the kit into
+   `<project>/bin/`, `chmod +x bin/tw`, and commit both:
+
+   ```bash
+   TW_KIT="${CLAUDE_PLUGIN_ROOT}"; K="${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+   mkdir -p bin && cp "$K/bin/tw" "$K/bin/kit_paths.py" bin/ && chmod +x bin/tw
+   bash bin/tw --kit    # must print a kit path, not an error
+   ```
+
+   This SKILL.md body is the one place the `${CLAUDE_PLUGIN_ROOT}` token is actually substituted —
+   the runtime rewrites it at skill launch — which is exactly why `/setup` can bootstrap and nothing
+   else has to. A file opened with Read (every `references/` file, every template, the rendered
+   `AGENTS.md`) receives the token verbatim, so no spelling of it works there. The two shipped
+   files carry their own resolution: `kit_paths.py` reads
+   `~/.claude/plugins/installed_plugins.json` to find the exact installed kit for THIS project — no
+   environment variable, no glob, no guess — and `bin/tw` delegates to it. After this step every
+   other command in the kit is `bash "$(git rev-parse --show-toplevel)/bin/tw" <script>`, which
+   works on a plugin, vendored, pip or `init` install and under any agent.
+   *Check:* `bash bin/tw --kit` prints a path. If it errors, stop — step 6 renders commands that
+   would all fail.
 6. Scaffold the rest per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules), the human-facing `README.md`
    (rendered to `README.ticketwright.md` instead if a README already exists — never overwritten),
@@ -286,12 +325,12 @@ Only on explicit confirmation, execute — **source of truth first, derived file
 
 ### Phase 4 — Verify & hand off
 7. **Two distinct checks — keep them labeled as such in the report:**
-   - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/selftest.sh"` — **kit integrity**. It
+   - `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/selftest.sh"` — **kit integrity**. It
      validates the plugin's *own bundled example* stacks, **not** your repo's config. A failure here
      is fatal. It runs 1,200+ assertions and takes several minutes — longer than a typical
      tool timeout, so run it in the background or with a raised timeout, and judge it by its exit
      code (non-zero on any failure), not by whether the tail of its output looks green.
-   - `!bash "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/verify_stack.sh" .claude/config/stack.yaml`
+   - `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/verify_stack.sh" .claude/config/stack.yaml`
      — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
      adapter's auth notes as the fix.
