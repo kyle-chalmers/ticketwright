@@ -14,44 +14,76 @@ Just re-run it. Every skill is resume-safe by design:
 
 ## The slash commands are missing (`/ticketwright:setup` → unknown command)
 
-Four distinct causes, in the order to check them:
+Several distinct causes, in the order to check them. To check all of them at once, jump to
+[Diagnose all of this in one command](#diagnose-all-of-this-in-one-command) below.
 
-**1 · The committed config registers the marketplace but does not install the plugin.** The repo's
-committed `.claude/settings.json` (`enabledPlugins` + `extraKnownMarketplaces`) registers and
-clones the marketplace on session start — installing the plugin is a separate, manual step, and
-skipping it leaves `~/.claude/plugins/installed_plugins.json` at `{}` no matter how many times you
-restart. Fix:
+**1 · The committed config registered the marketplace; nobody installed the plugin.** Registering
+the marketplace is not installing the plugin — a teammate who opens and trusts the repo gets the
+marketplace clone, then runs the install themselves (Track 2). Skipping that second step leaves
+`~/.claude/plugins/installed_plugins.json` at `{}` no matter how many times you restart. Fix, from
+the repository root:
 
 ```bash
-claude plugin install ticketwright@ticketwright
+claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project
+claude plugin install ticketwright@ticketwright --scope project
 claude plugin list        # should show ticketwright@ticketwright … enabled
 ```
 
-then **fully restart Claude Code** — plugin skills load at session start, so installing and
-running `/setup` in the same session silently fails.
+Both commands default to `--scope user`, which installs Ticketwright for every repo on the machine
+instead of this one. "already on disk — declared in project settings" from the first command is
+expected, not an error. If your CLI rejects `--scope`, see cause 2. Then run `/reload-plugins` or
+start a new session; if the commands still do not appear, fully quit the Claude app (Cmd+Q on
+macOS, File → Exit on Windows/Linux) and relaunch — a new chat is not a restart.
 
-**2 · An older Claude Code rejects the marketplace manifest — silently.** Schema errors in
-`marketplace.json` are swallowed on session start; they surface only on an explicit
-`claude plugin marketplace add`. Fix: upgrade Claude Code — or run the explicit pair, which at
-least shows you the real error instead of silence:
+**2 · Your Claude Code CLI is too old.** Symptoms: `claude plugin install --scope project` answers
+`unknown option '--scope'`; `claude plugin list` answers `unknown command 'list'`; an install that
+reports success writes a record with no payload (cause 3); schema errors in `marketplace.json` are
+swallowed on session start and surface only on an explicit `claude plugin marketplace add`. Claude
+Code 2.0.x has neither `--scope` nor `plugin list`; the desktop app bundles its own newer engine, so
+its terminal pane can still be running the old binary from your shell PATH. Check with
+`claude --version`, then update through the channel that installed it — `readlink -f "$(command -v
+claude)"` says which:
+
+| Channel | Update |
+|---|---|
+| native installer (`~/.local/bin/claude`) | `claude update` |
+| npm / nvm | `npm install -g @anthropic-ai/claude-code@latest` |
+| Homebrew | `brew upgrade claude-code` |
+
+`claude doctor` reports install health and conflicting installs — an nvm `claude` earlier on PATH
+shadows a native one. **Nothing to update right now?** The in-app route needs no terminal: run
+`/plugin install ticketwright@ticketwright` in the session and choose **Project** scope, or use
+**+ → Plugins → Add plugin** in the desktop app. Both run in the app's own engine.
+
+**3 · Installed, but the payload is missing.** The install printed "Successfully installed" and
+wrote a record whose `installPath` was never created, so re-running install is a no-op and the
+skills never load. Seen on Claude Code 2.0.22. Symptoms: `ls ~/.claude/plugins/cache/` has no
+ticketwright entry, and `claude plugin uninstall` answers "not found" even though the install said
+it succeeded. Fix: update the CLI (cause 2), then uninstall and install again at the scope the
+record carries:
 
 ```bash
-claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git
-claude plugin install ticketwright@ticketwright
+claude plugin uninstall ticketwright@ticketwright --scope project
+claude plugin install ticketwright@ticketwright --scope project
 ```
 
-**3 · Install reported success, but the recorded installPath was never created** — likely a
-Claude Code bug. Symptoms: `ls ~/.claude/plugins/cache/` has no ticketwright entry, and
-`claude plugin uninstall` answers "not found" even though the install said it succeeded.
-Recovery: copy the already-cloned marketplace into the cache path the install recorded:
+If uninstall still answers "not found", copy the already-cloned marketplace into the cache path the
+install recorded:
 
 ```bash
 SRC=~/.claude/plugins/marketplaces/ticketwright
 DST=~/.claude/plugins/cache/ticketwright/ticketwright/<version>
-mkdir -p "$(dirname "$DST")" && cp -R "$SRC" "$DST"
+mkdir -p "$DST" && rsync -a --exclude .git -- "$SRC"/ "$DST"/
 ```
 
-(`<version>` is what `claude plugin list` reports, e.g. `3.7.0`.)
+Copy the CONTENTS, not the directory: `$DST` often already exists here — empty, or holding a
+half-written install — and `cp -R "$SRC" "$DST"` onto an existing destination nests the clone at
+`$DST/ticketwright`, which loads nothing and looks like the copy worked. The trailing slashes on
+both paths are what make `rsync` fill `$DST` instead. (`<version>` is what `claude plugin list`
+reports, e.g. `3.7.0`.) Two conditions make the copy safe rather than a guess: the clone's
+checked-out commit is the one the record was written from, and the marketplace's `marketplace.json`
+points at `"source": "./"` — the plugin's files are the clone's files. If either is untrue,
+reinstall instead.
 
 **4 · Your local fix keeps vanishing.** The committed `extraKnownMarketplaces` re-resolves the
 marketplace name to the git URL on every session start, overwriting user-scope registrations — a
@@ -62,6 +94,29 @@ committed project settings: repoint the marketplace there.
 One interaction worth knowing: the update-notice banner (`bin/update_notice.py`) names an
 uninstall + install pair to pick up a release. If case 3 has struck, that uninstall fails with
 "not found" — follow recovery 3 first, then run the pair.
+
+### Diagnose all of this in one command
+
+`bin/plugin_doctor.py` names every state above — CLI too old for `--scope`, marketplace registered
+with nothing installed, a global install nobody meant, an install record with no payload, a
+Download-ZIP folder instead of a clone — and prints the fix for each. It reads files and runs
+`claude --version` / `claude plugin install --help`; it never installs, never writes, and never
+reaches the network. Three ways to run it, in the order they become available:
+
+```bash
+# before anything is installed — the marketplace clone appears when you trust the repo
+python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+
+# on a plugin install, from the repo
+bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" plugin_doctor.py
+
+# machine-readable, for an agent
+python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py --json
+```
+
+The first path names the `ticketwright` marketplace; a fork substitutes its own marketplace name.
+The full checklist behind these checks, written for the agent helping someone install, is in the
+project README under Track 2.
 
 ## "Tool slot unreachable" / auth errors
 
@@ -154,6 +209,7 @@ project `stack.yaml` it does nothing at all.
 |---|---|---|
 | Claude Code plugin (project scope) | the committed `autoUpdate` is meant to pick up each tagged release | the catalog refreshes but the installed plugin is not yet swapped (claude-code #61854) — to pull manually: `claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project` (`claude plugin update` does not work at project scope) |
 | Claude Code plugin (user scope) | `claude plugin update ticketwright` | defaults to `--scope user`, matching a no-`--scope` install |
+| Claude Code plugin (local scope) | reinstall at project scope | a per-person override in `.claude/settings.local.json`, written by the desktop app or by `--scope local`; it takes precedence over the committed project declaration, so removing it restores what the team declared |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
 | vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
 
@@ -175,7 +231,8 @@ claude plugin install ticketwright@ticketwright --scope project
 
 Pass `--scope user` to `marketplace remove` explicitly — with no `--scope` it drops the declaration from
 **every** scope, including other repos' project-scoped ones. Then commit the repo's
-`.claude/settings.json`.
+`.claude/settings.json`. `bin/plugin_doctor.py` reports this state as its `user_install` check,
+with the same two commands.
 
 **v1 → v2 rename map:** `configure-workspace`+`onboard-teammate` → `setup` ·
 `start-ticket`+`prime-*`+`recall` → `ticket` · `qc-review` → `review` · `deliver-ticket` → `ship` ·

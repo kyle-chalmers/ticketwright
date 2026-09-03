@@ -53,9 +53,10 @@ path for read/exploration. What each policy can carry on the MCP path — and wh
 And a limit that precedes every runtime row: the hooks ship WITH the plugin. Until the plugin is
 installed and the session restarted, every ENFORCEMENT cell above is GUIDANCE — a teammate's very
 first session in this repo, exactly the one where a newcomer pokes at the warehouse, has no hooks
-at all. Install first: `claude plugin install ticketwright@ticketwright`. And one privacy rule for
-that same onboarding window: never run bare `snow connection list` — it prints account, user, and
-role into the transcript. Enumerate connection NAMES only:
+at all. Install first — see the "Installing this plugin" section of this repo's AGENTS.md:
+`claude plugin install ticketwright@ticketwright --scope project` from the repo root. And one
+privacy rule for that same onboarding window: never run bare `snow connection list` — it prints
+account, user, and role into the transcript. Enumerate connection NAMES only:
 `snow connection list --format JSON | python3 -c "import json,sys;[print(c['connection_name']) for c in json.load(sys.stdin)]"`.
 
 Per-runtime caveats — the part that keeps the table honest:
