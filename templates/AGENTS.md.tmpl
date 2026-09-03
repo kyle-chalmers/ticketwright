@@ -49,6 +49,16 @@ The plugin ref is `ticketwright@ticketwright` and the marketplace URL is
 section. Registering the marketplace is not installing the plugin — a teammate who opens and trusts
 the repo gets the marketplace clone, then runs the install themselves (Track 2).
 
+The person you are helping can hand you this and you have everything you need:
+
+```text
+Install the Ticketwright plugin for this repo. Start with:
+python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+Follow its fixes in order. I want it installed for this repo only, not globally.
+If a check fails in a way its fix doesn't cover, stop and tell me instead of
+working around it. When it's clean, tell me how to restart.
+```
+
 One command reports every check below with its fix, and runs before anything is installed, from the
 marketplace clone that lands on disk when the repo is trusted:
 
