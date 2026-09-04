@@ -46,9 +46,16 @@ These are not decoration. Cite them in review. When a change to this kit is ambi
 bash bin/selftest.sh                       # THE gate — kit integrity + hook/engine unit tests. Run before and after any change.
 python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
 bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
-claude plugin validate . --strict          # plugin + marketplace manifest validation (CI runs this)
+claude plugin validate .claude-plugin/marketplace.json --strict   # marketplace schema ONLY
 python3 -m build                           # build the sdist + wheel (needs the `dev` extra: pip install -e ".[dev]")
 ```
+
+`claude plugin validate .` does NOT validate this plugin. The repo is both a plugin and a
+single-plugin marketplace, and a root target resolves to `marketplace.json` in preference to
+`plugin.json`, so it reads no skills, agents or hooks — a garbage `SKILL.md` passes, exit 0.
+Pointing it at `plugin.json` does not help either: `skills`/`agents`/`commands` are symlinks
+into `.claude/` and the validator does not follow symlinks. CI validates a dereferenced copy
+(see the `plugin-validate` job). Locally, `bash bin/selftest.sh` is the gate that matters.
 
 `selftest.sh` is authoritative and self-contained: read-only, no network, no credentials, bash 3.2-safe.
 "3.2-safe" is enforced, not aspirational: stock macOS `/bin/bash` (3.2.57) mis-parses a heredoc nested

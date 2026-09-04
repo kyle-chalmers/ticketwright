@@ -57,10 +57,60 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
-      - name: Plugin + marketplace manifest validation (strict)
-        run: claude plugin validate . --strict
+      # Pinned: this step executes the package and its lifecycle scripts on the runner.
+      - name: Install Claude Code CLI 2.1.258 (pinned)
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.258
+          installed="$(claude --version)"
+          case "$installed" in
+            2.1.258*) echo "claude $installed" ;;
+            *) echo "::error::Expected claude 2.1.258, got '$installed'"; exit 1 ;;
+          esac
+
+      # Marketplace only. A root target resolves to marketplace.json in preference to
+      # plugin.json, so this reads no skills, agents or hooks. Kept because it is the CLI's
+      # own opinion of the marketplace schema, which selftest's greps cannot give us.
+      - name: Marketplace manifest (strict)
+        run: claude plugin validate .claude-plugin/marketplace.json --strict
+
+      # skills/, agents/ and commands/ are symlinks into .claude/, and the validator does not
+      # follow symlinks -- it reads nothing and passes. Validate a dereferenced copy instead.
+      # CLAUDE.md is stripped from the copy only: the validator rejects it at a plugin root,
+      # but the real file is a deliberate @AGENTS.md import for contributors (AGENTS.md:3).
+      - name: Plugin manifest + skills + agents (strict, dereferenced)
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          rsync -aL --exclude '.git/' --exclude '.claude/worktrees/' --exclude '.venv/' \
+                --exclude '*_cache/' ./ "$tmp/tw/"
+          rm -f "$tmp/tw/.claude-plugin/marketplace.json" "$tmp/tw/CLAUDE.md"
+          claude plugin validate "$tmp/tw" --strict
+
+      # Negative control: proves the step above reads skill content. Without it, a regression
+      # back to a content-blind target is indistinguishable from a passing gate.
+      - name: "Negative control: corrupt skill must fail validation"
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          rsync -aL --exclude '.git/' --exclude '.claude/worktrees/' --exclude '.venv/' \
+                --exclude '*_cache/' ./ "$tmp/tw/"
+          rm -f "$tmp/tw/.claude-plugin/marketplace.json" "$tmp/tw/CLAUDE.md"
+          victim="$(find "$tmp/tw/skills" -type f -name SKILL.md | sort | head -n 1)"
+          test -f "$victim"
+          cp tests/plugin-validate-negative/broken-SKILL.md "$victim"
+          out="$tmp/validate.out"
+          if claude plugin validate "$tmp/tw" --strict >"$out" 2>&1; then
+            echo "::error::Negative control PASSED. The gate is not reading skill content."
+            cat "$out"; exit 1
+          fi
+          # A non-zero exit alone is not proof: an unrelated failure is also non-zero.
+          if ! grep -qF "${victim#"$tmp"/tw/}" "$out" || ! grep -qiE 'frontmatter|yaml' "$out"; then
+            echo "::error::Validation failed for the wrong reason."
+            cat "$out"; exit 1
+          fi
+          echo "Negative control OK."
 
   # The publish workflow was the only place that ever ran `uv build`, so a broken wheel stayed
   # invisible until release day. Build and actually install it here instead — which, per this
