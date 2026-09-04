@@ -111,9 +111,11 @@ artifact it touches:
   from the tracker workflow or the most-common status among already-shipped folders. *(setup/adopt.md)*
 - **Full count reconciliation** — beyond the `--prune` pointer, make the SessionStart hook and `--stats`
   agree on one basis when store and disk diverge. *(hooks/ticket_index_context.py)*
-- **Nits** — `verify: null` prints `⚠`; use a distinct glyph for "MCP-only, not shell-verifiable." An
-  adopted repo's `resources/*.py` vs the plugin's `bin/` doc-references should reconcile.
-  *(verify_stack.sh, MIGRATION template)*
+- **Nits** — An adopted repo's `resources/*.py` vs the plugin's `bin/` doc-references should
+  reconcile. *(MIGRATION template)*
+  ~~`verify: null` prints `⚠`; use a distinct glyph for "MCP-only, not shell-verifiable."~~ — done:
+  `⊘` now marks both the MCP-only and the `both`-with-no-verify cases, which the branch previously
+  conflated with a missing verify.
 - **Out of scope here (sibling `git-ship` skill, not this repo)** — squash-merge branch cleanup edges
   (`git branch -D` after a squash; stash/restore an unrelated dirty tree before `checkout main`), and
   its stale co-author trailer.

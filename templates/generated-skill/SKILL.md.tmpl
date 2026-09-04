@@ -62,7 +62,7 @@ the summary and **exit** — no tracker post, no docstore backup, no commit. To 
 
 ## Phase 5 — Post-review (separate invocation)
 **Scan the source material before the backup** —
-`bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" scan_source_materials.py --ticket <ticket-dir>`
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" scan_source_materials.py --ticket <ticket-dir>`
 — and halt on a non-zero exit. This phase backs up and commits without ever calling `/ship`, so
 without this line a raw meeting transcript leaves the repo by a path no skill inspected. Then,
 honoring `hard_halt_before_external_posts`: docstore backup → tracker comment (smart links) → chat

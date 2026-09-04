@@ -83,6 +83,14 @@ def _pip_kit() -> Path | None:
     return None
 
 
+def _safe_resolve(p: Path) -> Path:
+    """resolve() that never raises — a manifest path may name a deleted directory."""
+    try:
+        return p.resolve()
+    except OSError:
+        return p
+
+
 def _plugin_kit(project: Path | None) -> Path | None:
     """The Claude plugin cache, read from installed_plugins.json — never globbed.
 
@@ -102,7 +110,12 @@ def _plugin_kit(project: Path | None) -> Path | None:
             continue
         rows.extend(r for r in installs if isinstance(r, dict))
     if project:
-        exact = [r for r in rows if r.get("projectPath") and Path(r["projectPath"]) == project]
+        # .resolve() BOTH sides: `project` is already resolved, but projectPath is whatever the
+        # installer wrote. On macOS /tmp is a symlink to /private/tmp, so an unresolved compare
+        # misses — and the deliberate no-fall-through below then reports no kit at all. This is
+        # now THE resolution path for every documented command on a plugin install.
+        exact = [r for r in rows if r.get("projectPath")
+                 and _safe_resolve(Path(r["projectPath"])) == project]
         if exact:
             # A project-scoped entry exists, so it is the answer or there is no answer. Falling through
             # to the user-scope entry here would silently run a DIFFERENT version of the kit — the same

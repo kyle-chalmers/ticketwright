@@ -4,6 +4,49 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Fixed
+- **Every documented `bin/` command worked only on a vendored install — the plugin path was broken,
+  and the kit could not see it.** Skills located kit assets through
+  `${CLAUDE_PLUGIN_ROOT:-<fallback>}`. The runtime substitutes the EXACT token
+  `${CLAUDE_PLUGIN_ROOT}` and nothing else, so a token carrying a `:-` default never matched: it
+  reached the shell verbatim, where the variable is genuinely unset. The `:-$CLAUDE_PROJECT_DIR`
+  spelling then produced `/bin/…` (both variables unset) and the `:-$(git rev-parse …)` spelling
+  produced `<project>/bin/tw`, which a plugin install never creates. Two teammates independently
+  reported the first documented command failing with "No such file or directory"; the dev repo never
+  reproduced it, because its fallback lands on the repo root where `bin/` really does live.
+  There is a second half, and it is the subtler one: substitution fires **only in a `SKILL.md` body
+  injected at skill launch**, never in a file opened with Read. So no spelling of the token could
+  ever have served `references/` files, templates, or the rendered `AGENTS.md` — which is where
+  `/setup`'s scaffolding and all of `/refresh index` live. The fix is therefore not a better token
+  but a **project-owned launcher**: `/setup` now copies `bin/tw` + `bin/kit_paths.py` into
+  `<project>/bin/` and commits them (step 5b), `bin/tw` gained a shim tier that resolves the real kit
+  from `~/.claude/plugins/installed_plugins.json` with no environment variable, and every skill,
+  reference file, template and generated skill now calls
+  `bash "$(git rev-parse --show-toplevel)/bin/tw" <script>` — **no Claude variable anywhere**, which
+  is what the agent-neutrality rule asked for all along. `/setup`'s own body keeps the token, because
+  it bootstraps the launcher it installs. Selftest now pins the population split (no kit path may be
+  invoked through the token from a Read-only file), that only `/setup`'s body carries it, that the
+  bootstrapper really does install the launcher, and sweeps `README.md` and `docs/` for the old form.
+- **`verify_stack` told MCP-only tracker users to fix the wrong thing.** The null-verify branch
+  tested `transport == "mcp"` exactly, so a `both` seam with no verify fell to the generic
+  "no verify command — NOT verified" and sent its owner off to write a verify they do not need.
+  It now names the MCP path, and "not checkable from a shell" gets its own `⊘` glyph instead of
+  sharing `⚠` with "you forgot one" (closes a ROADMAP nit).
+- **An unrecognised person was offered an empty roster.** `whoami` returned `candidates: []` on a
+  miss even with a populated `people/`, though two skills promise the roster at exactly that moment;
+  a teammate with five files in `people/` still had to type their own id by hand. The miss now
+  returns the roster, keeps `status: "miss"` (a roster is not the ambiguity of one identity claimed
+  by several people), and adds `observed` — what was looked for — so the question can name it, while
+  `identity` stays null because nothing matched.
+
+### Added
+- **`/setup tool` accepts `tracker` and `vcs`.** The interview always fills those slots, so they are
+  never *absent* — but they are routinely filled with the wrong transport detail, and until now no
+  documented command repaired one. The case that forced it: an MCP-only tracker whose `verify` names
+  a CLI the person does not have, reported as unreachable on a healthy setup.
+
 ## [4.0.3] — 2026-09-03
 
 ### Added

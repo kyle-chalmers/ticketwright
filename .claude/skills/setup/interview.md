@@ -226,7 +226,7 @@ deliverables open for human sign-off at `/review` only."
      re-entry command.
 - **Re-entry commands exist** — a promise with no mechanism is worse than no promise:
   `/setup role` re-runs round 5, `/setup policies` re-runs round 6, `/setup team` re-runs
-  round 1's roster question (new teammates later), and `/setup tool <chat|docstore|warehouse|meetings>`
+  round 1's roster question (new teammates later), and `/setup tool <tracker|warehouse|chat|docstore|meetings|vcs>`
   adds a tool slot that was declined in rounds 3–4.
 
 ## What a completed interview writes (worked shape, fixture values)

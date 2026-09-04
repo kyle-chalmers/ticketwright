@@ -4,10 +4,25 @@ Write order is fixed in SKILL.md Phase 3: `.claude/config/stack.yaml` first, `.c
 second, then everything below (all of it renders from or presumes `stack.yaml`). The sections here
 are grouped by artifact, not by order.
 
+**Resolve the kit root in EACH command — there is no persistent shell.** Every Bash invocation the
+agent makes is a fresh process, so a variable set in one call is gone in the next. `<KIT>` below is a
+placeholder you substitute with a real path, **not** a live shell variable. Get it once with:
+
+```bash
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit
+```
+
+That works because SKILL.md step 5b already copied `bin/tw` + `bin/kit_paths.py` into this project
+and `kit_paths.py` finds the installed kit with no environment variable. **Never reach for the
+Claude plugin-root variable in this file** (selftest fails on the literal, so it is not spelled out
+here). The runtime substitutes that token only in a SKILL.md body injected at skill launch; this is
+a reference file opened with Read, so it would arrive verbatim, expand to empty, and silently point
+every template path at `/templates/…`.
+
 ## Global rules (`AGENTS.md`)
-Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens
+Render `<KIT>/templates/AGENTS.md.tmpl` → `AGENTS.md` (tokens
 from `stack.yaml`: tool names, key_prefix, terminal_status, word limits, policies). Fill
-`{{role_focus}}` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/roles/<role>.md` using
+`{{role_focus}}` from `<KIT>/templates/roles/<role>.md` using
 `project.role` (`generalist` unless the user changed it), and `{{domain}}` from `project.domain`
 (`data analysis` unless the user changed it — any short phrase works: "ops analysis",
 "research", "reporting"). This is the always-loaded tier —
@@ -29,7 +44,7 @@ conditionals, so an absent tool slot would render a broken path). Pass each pair
   ``meetings_adapter=*(not configured — run `/setup tool meetings` to add one)*``). Tracker and
   VCS are always chosen in the interview (tracker *none*
   selects the `local` adapter), so they go absent only in a hand-edited config — render the same
-  note with plain `/setup` as the command (there is no `/setup tool tracker|vcs` mode).
+  note naming `/setup tool tracker` or `/setup tool vcs` — both are re-entry slots now.
 
 These absent-slot values are **render-time display values only** — they go into the rendered
 `AGENTS.md`, never into `stack.yaml`, where an absent tool slot stays omitted (or a commented
@@ -41,13 +56,13 @@ pass the `project.analysis_tools` list as a comma-separated phrase, e.g.
 display value — `analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run
 /setup role)` — never an empty string and never a leftover token.
 
-Also write `CLAUDE.md` from `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/CLAUDE.md.tmpl` — a
+Also write `CLAUDE.md` from `<KIT>/templates/CLAUDE.md.tmpl` — a
 one-line `@AGENTS.md` import so **Claude Code** auto-loads these rules (it reads `CLAUDE.md`; other
 agents read `AGENTS.md` directly). Keep it to that single import line.
 
 ## Human-facing README (`README.md`)
 `AGENTS.md` is the *agent's* front door; a human landing on the repo needs one too. Render
-`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/project-README.md.tmpl` → a short intro
+`<KIT>/templates/project-README.md.tmpl` → a short intro
 (under 250 words of prose) to what this is — a ticket-driven work repo — and how work moves through
 it. Only two tokens: `{{repo_name}}` (the same value used for the `AGENTS.md` heading) and
 `{{domain}}` (from `project.domain`). It names no tool slots, so it renders cleanly whatever the
@@ -66,12 +81,12 @@ re-renders `AGENTS.md` when `domain`/`role` change but must **not** re-render th
 `{{domain}}` value is a snapshot at setup time, and re-rendering would clobber human edits.
 
 ## Hooks + settings (`.claude/settings.json`)
-Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/.claude/settings.json.tmpl` → `.claude/settings.json`.
+Render `<KIT>/.claude/settings.json.tmpl` → `.claude/settings.json`.
 **The `hooks` block is install-mode-dependent:**
-- **Plugin install** (`${CLAUDE_PLUGIN_ROOT}` set): `.claude-plugin/plugin.json` already wires the
+- **Plugin install** (the kit lives outside the project, under the plugin cache): `.claude-plugin/plugin.json` already wires the
   kit's hooks from the plugin dir — **OMIT the `hooks` block** here, or they double-fire (double
   db-write prompts, double index regen). Keep `permissions` + `statusLine`.
-- **Vendored install** (`cp -r`, no `${CLAUDE_PLUGIN_ROOT}`): **keep the `hooks` block** — nothing
+- **Vendored install** (`cp -r` / `init`, the kit sits in the repo): **keep the `hooks` block** — nothing
   else wires it: `db_write_guard.py` (PreToolUse) makes `db_write_requires_approval` mechanical;
   `session_context.py` + `ticket_index_context.py` (SessionStart) prime the stack + ticket catalog;
   `regenerate_ticket_index.py` (PostToolUse) keeps `tickets/INDEX.md` fresh on folder changes.
@@ -137,12 +152,12 @@ the read verbs, one entry each — e.g. `Bash(<cli> jobs list:*)`, `Bash(<cli> j
 which pre-approves every write that CLI can make, including the non-SQL ones the `db_write_guard`
 hook never sees. **Statusline:** the template's `statusLine.command` is the
 project-relative `.claude/statusline.sh`, so on a plugin install **copy
-`${CLAUDE_PLUGIN_ROOT}/.claude/statusline.sh` → `.claude/statusline.sh`** so it resolves (on a
+`<KIT>/.claude/statusline.sh` → `.claude/statusline.sh`** so it resolves (on a
 vendored install it's already there).
 
 ## Folders + `.gitignore`
 Create `tickets/{assignee_dir}/`, `documentation/`, `resources/`, `specs/` (and `ci/` if wanted).
-Render `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/templates/gitignore.tmpl` → `.gitignore` (merge if
+Render `<KIT>/templates/gitignore.tmpl` → `.gitignore` (merge if
 one exists). Deliverable exports (`final_deliverables/*.csv` etc.) are **committed by default** so
 results live with the ticket and show in the PR; PII/customer data opts out via a `*.private.csv`
 name or a `private/` subfolder (both gitignored). If the tracker adapter ships an attachment-download
@@ -156,7 +171,7 @@ humans and agents can find what exists.
 ## Ticket index
 Seed an empty curated store — `tickets/index_data.json` with
 `{"schema_version": 1, "tickets": []}` — then run
-`python3 "${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}/bin/build_ticket_index.py"` to write the
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py` to write the
 initial `tickets/INDEX.md`. From here it self-maintains (PostToolUse regen on folder changes,
 SessionStart surfacing, curated summaries at ship time). An existing backlog gets bootstrapped with
 `/refresh index --all`.

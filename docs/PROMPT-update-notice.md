@@ -64,7 +64,7 @@ and a kit that silently swaps its own running code has a worse property than a s
    the other hooks in prose: `db_write_guard` deliberately fails SAFE (asks more when its scanner
    is unavailable), and that asymmetry is load-bearing.
 3. Other runtimes: the CLI is invocable through the established launcher form
-   (`bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" update_notice.py --root .` — keep the fallback; a
+   (`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" update_notice.py --root .` — the project-owned launcher; a
    plugin install has no project `bin/`, and the launcher rejects path-containing script names).
    Add one line naming it in whichever runtime artifact already lists per-runtime session-start
    equivalents. No new per-runtime machinery.

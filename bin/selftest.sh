@@ -2537,10 +2537,85 @@ p="$(cd "$SUBP/tickets/alice/ENG-9" && env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT
 # how every pip / cp -r install runs: the kit is vendored at the project root and the form finds it
 # through git's toplevel. A bare ./bin/tw would fail here.
 mkdir -p "$SUBP/bin" "$SUBP/adapters" "$SUBP/templates" && cp "$KIT/bin/kit_paths.py" "$KIT/bin/tw" "$SUBP/bin/"
+# BOTH branches of the two-statement form get exercised, because each is the ONLY one that runs on
+# half the installs. This used to execute `${CLAUDE_PLUGIN_ROOT:-…}` — a form no skill uses any
+# more — so it asserted the skill-facing invocation while testing something else entirely.
+# (i) UNSUBSTITUTED: vendored / pip / init. The runtime leaves the token verbatim, bash expands the
+# unset variable to empty, and the fallback finds the kit through git's toplevel. A bare ./bin/tw
+# would fail here, which is why the subdirectory matters.
 p="$(cd "$SUBP/tickets/alice/ENG-9" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT bash -c \
-  'bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit' 2>/dev/null)"
-[ "$p" = "$SUBPR" ] && ok "the skill invocation form resolves from a subdirectory with no Claude env var" \
+  'TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit' 2>/dev/null)"
+[ "$p" = "$SUBPR" ] && ok "skill form, token NOT substituted (vendored/pip): resolves via git toplevel from a subdirectory" \
   || bad "the skill invocation form is cwd-dependent (would collapse to /templates/…)" "got '$p' want '$SUBPR'"
+# (ii) SUBSTITUTED: a plugin install. The runtime rewrites the bare token to an absolute path BEFORE
+# the model reads the line, so the assignment already carries it and the fallback must not fire.
+# Simulated by writing the absolute path where substitution would have put it.
+psub="$(cd "$SUBP/tickets/alice/ENG-9" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT bash -c \
+  "TW_KIT=\"$KIT\"; bash \"\${TW_KIT:-\$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw\" --kit" 2>/dev/null)"
+[ "$psub" = "$KIT" ] \
+  && ok "skill form, token SUBSTITUTED (plugin install): uses the plugin root, never the project" \
+  || bad "a substituted plugin root was overridden by the git-toplevel fallback" "got '$psub' want '$KIT'"
+# And the form that shipped for months must be gone from every skill body — it is the actual bug:
+# the runtime substitutes only the BARE token, so `${CLAUDE_PLUGIN_ROOT:-…}` reached the shell
+# verbatim with the variable unset and resolved to /bin/tw on exactly the installs it was meant for.
+oldform="$(grep -rn 'CLAUDE_PLUGIN_ROOT:-' .claude/skills .claude/commands .claude/agents templates README.md docs 2>/dev/null \
+  | grep -v 'never `\${CLAUDE_PLUGIN_ROOT:-' | grep -vE '^[^:]+:[0-9]+:>' || true)"
+[ -z "$oldform" ] \
+  && ok "no single-expansion \${CLAUDE_PLUGIN_ROOT:-…} survives in a skill, command, agent or template" \
+  || bad "the broken single-expansion form crept back in (it silently resolves to /bin/… on plugin installs)" "$oldform"
+# THE POPULATION SPLIT, which a green suite otherwise says nothing about. Token substitution fires
+# ONLY in a SKILL.md body injected at skill launch; a file the model opens with Read gets raw bytes.
+# So a ${CLAUDE_PLUGIN_ROOT} in a reference file or template is inert — it expands to empty and
+# points the path at /… . The first fix for the one-expansion bug converted both populations and
+# silently fixed only half; this keeps the inert half from coming back.
+readfiles="$(grep -rln 'CLAUDE_PLUGIN_ROOT' .claude/skills templates 2>/dev/null \
+  | grep -v '/SKILL.md$' || true)"
+[ -z "$readfiles" ] \
+  && ok "no reference file or template invokes a kit path through \${CLAUDE_PLUGIN_ROOT} (it is never substituted there)" \
+  || bad "a Read-only file uses \${CLAUDE_PLUGIN_ROOT}; substitution does not fire there, so it resolves to /…" "$readfiles"
+# Only /setup's own body may carry the token at all — it bootstraps the launcher it then installs.
+bodytok="$(grep -rln 'CLAUDE_PLUGIN_ROOT' .claude/skills/*/SKILL.md 2>/dev/null \
+  | grep -v 'skills/setup/SKILL.md' || true)"
+[ -z "$bodytok" ] \
+  && ok "only /setup's body carries the plugin token; every other skill uses the project launcher" \
+  || bad "a skill body still depends on a Claude-only token instead of the project launcher" "$bodytok"
+# And the bootstrapper must actually install the launcher, or AGENTS.md's claim is fiction and the
+# project form every other file uses has nothing to resolve to.
+{ grep -q 'bin/kit_paths.py' .claude/skills/setup/SKILL.md \
+  && grep -qE 'cp .*bin/tw' .claude/skills/setup/SKILL.md; } \
+  && ok "/setup installs bin/tw + bin/kit_paths.py into the project (the launcher every other file assumes)" \
+  || bad "/setup does not install the launcher, so <project>/bin/tw never exists on a plugin install"
+# BEHAVIORAL, not a grep. Build a project that has ONLY what step 5b installs, then run every kit
+# script the reference files actually invoke THROUGH the launcher. A string grep cannot see that a
+# reference file names `<project>/bin/whoami.py` — a path the shim never creates — so the joiner
+# flow died on its first command while this section stayed green. This walks that path.
+LNCH="$TMP/launcher"; rm -rf "$LNCH"; mkdir -p "$LNCH/bin"
+git -C "$LNCH" init -q 2>/dev/null
+cp "$KIT/bin/tw" "$KIT/bin/kit_paths.py" "$LNCH/bin/" && chmod +x "$LNCH/bin/tw"
+lnch_fail=""
+for s in $(grep -rhoE 'bin/tw" [a-z_]+\.(py|sh)' .claude/skills templates 2>/dev/null \
+           | sed 's|.*bin/tw" ||' | sort -u); do
+  [ -f "$KIT/bin/$s" ] || lnch_fail="$lnch_fail $s(absent-from-kit)"
+done
+[ -z "$lnch_fail" ] \
+  && ok "every script the skills invoke through the launcher exists in the kit" \
+  || bad "a skill routes through bin/tw to a script the kit does not ship" "$lnch_fail"
+# And the launcher pair alone must be enough to reach one: no other kit file may be required.
+lout="$(cd "$LNCH" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_KIT="$KIT" \
+  bash "$LNCH/bin/tw" --kit 2>&1)"
+[ "$lout" = "$KIT" ] \
+  && ok "a project holding ONLY bin/tw + bin/kit_paths.py resolves the kit and can run its scripts" \
+  || bad "the two installed files are not sufficient to reach the kit" "got '$lout'"
+# The commit list must carry them, or they never reach the joiner's clone and the whole design fails.
+grep -qE '`bin/tw`.*`bin/kit_paths\.py`|bin/tw. \+ .bin/kit_paths' .claude/skills/setup/SKILL.md \
+  && ok "the launcher pair is named in what /setup offers to commit" \
+  || bad "/setup never offers to commit the launcher, so a clone has no bin/tw"
+# …and it must run before ANY mode, not only the fresh-repo scaffold: a teammate joining a repo that
+# an earlier Ticketwright configured finds no committed launcher, so a person-flow that assumed one
+# would fail on its first command — the same error this release exists to end, via another door.
+grep -q 'Ensure the launcher — run this FIRST in every mode' .claude/skills/setup/SKILL.md \
+  && ok "/setup ensures the launcher before every mode (covers joiners on repos configured earlier)" \
+  || bad "the launcher install is scoped to one mode; a joiner on an older repo still has no bin/tw"
 
 # --- a failure must never become a filesystem path ------------------------------------------------
 # `"$(tw --kit)"/templates/x` is the idiom skills use, so an error on stdout would silently produce
@@ -2632,9 +2707,19 @@ grep -rq 'bin/tw' .claude/skills/ticket/SKILL.md \
   && ok "/ticket resolves kit assets through bin/tw" || bad "/ticket was not migrated to bin/tw"
 # /setup is the bootstrapper: on a plugin install it INSTALLS the launcher, so it cannot depend on it.
 # Assert the exemption is real and explained, or a future cleanup will "fix" it into a bootstrap loop.
-grep -q 'CLAUDE_PLUGIN_ROOT:-\$CLAUDE_PROJECT_DIR' .claude/skills/setup/scaffold.md \
-  && ok "/setup still uses absolute kit paths (it bootstraps the launcher)" \
-  || bad "/setup was migrated to bin/tw — that is a bootstrap loop on a plugin install"
+# The invariant is "setup does not route kit assets through bin/tw", NOT any particular string.
+# This used to grep for `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}` — which pinned a BUG in place:
+# the runtime substitutes only the bare token, so the `:-` form reached the shell verbatim with both
+# variables unset and resolved to `/bin/...`. Assert the exemption itself, and the correct form.
+# The bootstrap loop lives in the BODY, not in scaffold.md: SKILL.md must resolve the kit without
+# the launcher, because step 5b is what installs the launcher. After 5b, scaffold.md may (and does)
+# use the project launcher like every other file — that is the point of installing it.
+grep -q 'TW_KIT="\${CLAUDE_PLUGIN_ROOT}"' .claude/skills/setup/SKILL.md \
+  && ok "/setup's BODY resolves the kit without the launcher (its body is substituted; it bootstraps)" \
+  || bad "/setup's body lost its bootstrap resolution — it cannot install the launcher it needs"
+grep -qE 'bash "\$\(git rev-parse --show-toplevel[^"]*\)/bin/tw"' .claude/skills/setup/scaffold.md \
+  && ok "scaffold.md uses the project launcher (installed by step 5b), not a Claude-only token" \
+  || bad "scaffold.md does not use the project launcher — a Read-only file cannot use the token"
 grep -qi 'bootstrapper' .claude/skills/setup/SKILL.md \
   && ok "/setup documents WHY it is exempt from the bin/tw migration" \
   || bad "/setup's exemption is undocumented and reads as an oversight"
@@ -3339,6 +3424,50 @@ whorun --field id > "$TMP/who-miss.out" 2>/dev/null; mrc=$?
 grep -q "founder" <<<"$(whorun --json 2>/dev/null)" \
   && bad "project.assignee_dir leaked into a miss — the exact silent-misfiling fallback PROMPT 3 forbids" \
   || ok "project.assignee_dir is never a fallback owner (founder appears nowhere)"
+# (E2) a miss still hands back the ROSTER. setup/SKILL.md and teammate.md both promise the bind
+# interview "every id under people/ as a candidate"; whoami returned candidates: [] with a populated
+# people/, so the agent had nothing to offer and people typed their own id by hand. Status must stay
+# "miss" — a roster to pick from is not the ambiguity of one identity claimed by several people, and
+# a caller keying off a non-empty `candidates` alone would conflate them.
+# Heredoc FIRST, then read the file: `var="$(python3 … <<'X')"` is the bash-3.2 parse trap §52 lints.
+whorun --json > "$TMP/who-miss.json" 2>/dev/null || true
+python3 - "$TMP/who-miss.json" <<'PYMISS' >"$TMP/who-cand.out" 2>&1
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(d.get("status"), ",".join(d.get("candidates") or []))
+PYMISS
+who_cand="$(cat "$TMP/who-cand.out")"
+[ "$who_cand" = "miss alice,carol" ] \
+  && ok "a miss offers every id under people/ as a candidate, and stays status=miss" \
+  || bad "a miss did not return the roster (or changed status)" "got=$who_cand"
+# `observed` is a CONSUMED field (teammate.md quotes observed[0] back at the person), so it needs its
+# own coverage: present and populated when an identity exists, and legitimately EMPTY on a machine
+# with no git identity and no $USER — the case teammate.md must not index into.
+whorun --json > "$TMP/who-obs.json" 2>/dev/null || true
+python3 - "$TMP/who-obs.json" <<'PYOBS' >"$TMP/who-obs.out" 2>&1
+import json, sys
+d = json.load(open(sys.argv[1]))
+print("has" if isinstance(d.get("observed"), list) and d["observed"] else "empty", d.get("identity"))
+PYOBS
+who_obs="$(cat "$TMP/who-obs.out")"
+[ "$who_obs" = "has None" ] \
+  && ok "a miss reports what it LOOKED for in observed, while identity stays null (nothing matched)" \
+  || bad "observed/identity wrong on a miss" "got=$who_obs"
+mkdir -p "$TMP/who-noid"
+env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT -u USER -u LOGNAME \
+  XDG_CONFIG_HOME="$TMP/who-noxdg" HOME="$TMP/who-noxdg" \
+  python3 "$WHO" --root "$TMP/who-noid" --json > "$TMP/who-noid.json" 2>/dev/null || true
+python3 - "$TMP/who-noid.json" <<'PYNOID' >"$TMP/who-noid.out" 2>&1
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("unreadable"); raise SystemExit
+print("empty" if not d.get("observed") else "has")
+PYNOID
+[ "$(cat "$TMP/who-noid.out")" != "has" ] \
+  && ok "observed is legitimately EMPTY with no git identity and no \$USER (teammate.md must not index it)" \
+  || bad "observed was populated on a machine with no identity at all" "$(cat "$TMP/who-noid.out")"
 
 # (F) self-healing --bind: append the identity, pin tier 3, resolve forever after.
 printf 'schema_version: 1\n' > "$WI/.claude/config/connections.local.yaml"
@@ -3486,15 +3615,27 @@ ecp="$(env -u TICKETWRIGHT_PERSON USER=who-nobody XDG_CONFIG_HOME="$TMP/who-noxd
 
 hdr "34 · setup verb split by scope (team vs person) + teammate auto-route"
 # PROMPT 4: /setup's modes divide by WHO the config is about, not committed-vs-local. The canonical
-# team verb is `/setup tool <chat|docstore|warehouse|meetings>`; person config lives in the per-person flow.
+# team verb is `/setup tool <tracker|warehouse|chat|docstore|meetings|vcs>`; person config lives in the
+# per-person flow. tracker and vcs joined the list because they are never ABSENT (the interview always
+# fills them) but are routinely filled with the wrong transport detail — an MCP-only tracker whose
+# verify names a CLI it does not have had no documented repair command until they did.
 # These pin the stated invariant, the Phase-1 routing, the tier-3 versioned-document convention the
 # per-person flow WRITES (the resolver understands it: structural keys, stale fingerprint, and the
 # mode:defaults-with-overrides rejection are section 32's), and the honesty claim behind placeholders.
 SK=".claude/skills/setup/SKILL.md"; TM=".claude/skills/setup/teammate.md"
 skflat="$(tr '\n' ' ' < "$SK")"; tmflat="$(tr '\n' ' ' < "$TM")"
 # (A) the canonical verb, the deprecation window, and the retired seam-mode heading.
-grep -q 'Mode: `tool <chat|docstore|warehouse|meetings>`' "$SK" \
-  && ok "canonical team verb: /setup tool <chat|docstore|warehouse|meetings>" || bad "canonical tool verb missing"
+grep -q 'Mode: `tool <tracker|warehouse|chat|docstore|meetings|vcs>`' "$SK" \
+  && ok "canonical team verb: /setup tool <tracker|warehouse|chat|docstore|meetings|vcs>" \
+  || bad "canonical tool verb missing"
+# Every one of the six slots must be reachable, or a person stuck on that slot has no repair command.
+s34slots=""
+for s in tracker warehouse chat docstore meetings vcs; do
+  grep -qE "argument-hint:.*tool <[a-z|]*\\b$s\\b" "$SK" || s34slots="$s34slots $s"
+done
+[ -z "$s34slots" ] \
+  && ok "all six tool slots are advertised as /setup tool re-entry points" \
+  || bad "a tool slot has no documented re-entry command" "$s34slots"
 { grep -qi 'deprecated spelling' "$SK" && grep -q '/setup tool chat' "$SK" && grep -qi 'one release' "$SK"; } \
   && ok "old /setup <name> spellings keep working one release, with a deprecation line" \
   || bad "deprecation line for the old spelling missing"
@@ -3617,7 +3758,10 @@ for f in "$SK" "$TM"; do
   grep -q 'git rev-parse --show-toplevel' "$f" || p34miss="$p34miss $f(git)"
   grep -qi 'Download-ZIP' "$f" || p34miss="$p34miss $f(zip)"
   grep -q 'git clone' "$f" || p34miss="$p34miss $f(clone)"
-  grep -q 'bin/plugin_doctor.py' "$f" || p34miss="$p34miss $f(doctor)"
+  # Either invocation counts: the bootstrapper names the script path directly (it has no launcher
+  # yet), while every other flow goes through the project launcher as `bin/tw plugin_doctor.py`.
+  # The invariant is that the flow RUNS the doctor, not which spelling it uses to get there.
+  grep -qE 'bin/plugin_doctor\.py|bin/tw" plugin_doctor\.py' "$f" || p34miss="$p34miss $f(doctor)"
   grep -qi 'verbatim' "$f" || p34miss="$p34miss $f(verbatim)"
   for id in scope_supported repo_install install_payload yq_present; do
     grep -q "$id" "$f" || p34miss="$p34miss $f($id)"
@@ -4999,8 +5143,8 @@ RSK42=".claude/skills/review/SKILL.md"
 QCA42=".claude/agents/qc-reviewer.md"
 
 # --- the probe: capability KEYS through the kit CLI, launcher fallback intact --------------------
-grep -qE 'CLAUDE_PLUGIN_ROOT.*bin/tw" kit_paths\.py --json' "$RSK42" \
-  && ok "/review probes runtime capabilities via bin/tw kit_paths.py --json (fallback intact)" \
+grep -qE 'git rev-parse --show-toplevel.*bin/tw" kit_paths\.py --json' "$RSK42" \
+  && ok "/review probes runtime capabilities via bin/tw kit_paths.py --json (project launcher, no Claude token)" \
   || bad "/review lost the capability probe (kit_paths.py --json through the launcher)"
 { grep -q '`subagents`' "$RSK42" && grep -q '`subagent_isolation`' "$RSK42"; } \
   && ok "/review reads both capability keys (subagents + subagent_isolation)" \
@@ -8226,6 +8370,25 @@ printf '%s\n' "$rs51" > "$TMP/rs51.out"
 p51adj "$TMP/rs51.out" 'MCP-only: not checkable from the shell' 'posture[chat]: transport=mcp' \
   && ok "ADJACENT: the chat advisory is the very next line after the null-verify warning" \
   || bad "the chat advisory drifted from its null-verify terminal status" "$rs51"
+# --- (C2) a `both` seam with a null verify must NOT be told to "write a verify" -------------------
+# The branch used to test `$pt == "mcp"` exactly, so a dual-transport seam with no verify fell to the
+# generic "no verify command — NOT verified" message. That is the exact false lead an MCP-only Jira
+# user hit: the fix it names (write a verify) is not the fix they need (probe the MCP path).
+B51="$TMP/b51"; mkdir -p "$B51"
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: both\n    site: example.atlassian.net\n    cli: acli\n    mcp: atlassian\n    verify: null\n' > "$B51/stack.yaml"
+b51="$(safe_verify_stack "$B51/stack.yaml" --dry-run 2>&1)"; b51rc=$?
+printf '%s\n' "$b51" > "$TMP/b51.out"
+{ [ "$b51rc" -eq 0 ] \
+  && grep -q "transport is 'both', so the MCP path is still open" <<<"$b51" \
+  && ! grep -q 'no verify command — NOT verified' <<<"$b51" \
+  && grep -qF '0 OK, 1 unverified (tracker).' <<<"$b51"; } \
+  && ok "a 'both' seam with no verify is told to probe MCP in-session, and still counts as unverified" \
+  || bad "a 'both' seam with a null verify fell back to the shell-only message" "rc=$b51rc $b51"
+# The distinct glyph is the ROADMAP nit: ⚠ conflated "you forgot a verify" with "no shell can check this".
+grep -q '⊘ no verify command; transport' <<<"$b51" \
+  && ok "not-shell-checkable gets its own glyph, distinct from the you-forgot-one warning" \
+  || bad "the not-shell-checkable case still shares ⚠ with a missing verify" "$b51"
+
 { grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qF 'posture[docstore]' <<<"$rs51"; } \
   && ok "the cli docstore row keeps its unresolved warning and gains NO posture line" \
   || bad "the docstore row changed" "$rs51"

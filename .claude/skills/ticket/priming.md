@@ -15,7 +15,7 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
   notetaker) — work arriving outside the tracker arrives as files, not API calls, so this is the
   intake channel's entire consumer. Enumerate it rather than guessing at names:
   ```
-  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" scan_source_materials.py --ticket <ticket-dir> --intake
+  bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" scan_source_materials.py --ticket <ticket-dir> --intake
   ```
   It lists exactly the files to read and **omits raw transcripts on purpose** — a full transcript
   belongs in the ticket folder, not in your context. Meeting notes arrive as
@@ -25,7 +25,7 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
   `source_materials/YYYY-MM-DD-<slug>-meeting.md` stub (grammar in `stack.schema.md`). Enumerate
   them mechanically — never by guessing at frontmatter:
   ```
-  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" meeting_refs.py --ticket <ticket-dir> --json
+  bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" meeting_refs.py --ticket <ticket-dir> --json
   ```
   Exit family: 0 ok · 2 usage · 4 malformed-or-refused. Zero refs ⇒ do nothing (never fetch
   speculatively). Exit 4 ⇒ surface the named error — `refused-credential` means a URL/token was
@@ -45,7 +45,7 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
 
 - **Rank candidates** (deterministic, instant — no vector store):
   ```
-  bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" recall.py --for <owner>/<id>
+  bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" recall.py --for <owner>/<id>
   #  or: --query "<topic>"   |   --tags a,b   |   --object <NAME>   (add --json for structured)
   #  pass the qualified locator you resolved in Phase 0 — a bare id works while one owner has it,
   #  but an id under two owners hard-stops (equivalently: --for <id> --owner <owner>)

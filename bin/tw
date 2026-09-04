@@ -9,13 +9,29 @@
 # authority on where things are — but a skill has to FIND it before it can run it, and that is this
 # file's whole job.
 #
-# DO NOT "CLEAN UP" THE ${CLAUDE_PLUGIN_ROOT:-.} IN THE SKILLS THAT CALL THIS FILE. It looks like a
-# leftover Claude dependency and is not one. A Claude PLUGIN install puts no bin/ in the project at
-# all, so a bare `bash bin/tw` would break there, and in any fresh `git worktree` (which checks out
-# only tracked files), and for every repo that has not re-run /setup. The `:-.` half is what covers
-# every other install, and dropping $CLAUDE_PROJECT_DIR is the actual fix — it expanded to nothing
-# off Claude, silently turning the path into a bare relative one. Prompt 7 may tighten this to a
-# plain `bin/tw` once an installer guarantees the launcher is present and committed.
+# THE CALL SITES CARRY NO CLAUDE VARIABLE AT ALL:
+#   bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" <script>
+# That works because /setup step 5b copies THIS FILE and kit_paths.py into <project>/bin/ and commits
+# them, and the project-shim tier below resolves the real kit from installed_plugins.json.
+#
+# Two earlier shapes were bugs. Do not reintroduce either.
+# (1) ${CLAUDE_PLUGIN_ROOT:-...} — one expansion. The runtime substitutes only the EXACT token
+#     ${CLAUDE_PLUGIN_ROOT}, so a token carrying a `:-` default never matched and survived verbatim
+#     into the shell, where the variable is genuinely unset (confirmed: neither CLAUDE_PLUGIN_ROOT
+#     nor CLAUDE_PROJECT_DIR is in the Bash tool environment). Precisely: the `:-$CLAUDE_PROJECT_DIR`
+#     variant (setup/*) produced `/bin/…` because BOTH were unset, while `:-$(git rev-parse …)`
+#     produced `<project>/bin/tw` — a real path a Claude PLUGIN install never creates. Different
+#     error text, same dead end, which is part of why it read as intermittent. Teammates hit it as
+#     "No such file or directory" on the very first documented command; the dev repo never saw it,
+#     because its fallback lands on the repo root where bin/ really does live.
+# (2) TW_KIT="${CLAUDE_PLUGIN_ROOT}"; ... — correct shell, but it fixed only HALF the surface, and
+#     that half-fix is the subtler trap. Substitution fires ONLY in a SKILL.md body injected at skill
+#     launch. A file the model opens with Read — every references/ file, every template, the rendered
+#     AGENTS.md — gets raw bytes, so the token arrives verbatim and expands to empty. /setup's
+#     scaffolding and all of /refresh index live in exactly those files, so they stayed broken while
+#     the seven SKILL.md bodies started working, which reads as an intermittent bug rather than a
+#     structural one. No spelling of the token can serve a Read-only file; a project-owned launcher
+#     can. That is why this file gets copied into the repo.
 #
 # The git-toplevel half is not decoration either: a bare `./bin/tw` is CWD-RELATIVE, so a command run
 # from inside a ticket folder would miss the launcher entirely and `"$(tw --kit)"/templates/x` would
@@ -62,6 +78,18 @@ find_kit() {
   # 3. Claude plugin install — honored when present, never required
   if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && is_kit "$CLAUDE_PLUGIN_ROOT"; then
     printf '%s' "$CLAUDE_PLUGIN_ROOT"; return 0
+  fi
+  # 3b. PROJECT SHIM — this launcher was copied into a project by /setup, so it is NOT inside a kit
+  #     and no Claude variable is set (the Bash tool environment carries neither CLAUDE_PLUGIN_ROOT
+  #     nor CLAUDE_PROJECT_DIR). Its sibling kit_paths.py resolves a plugin install by READING
+  #     ~/.claude/plugins/installed_plugins.json — no env var, no glob, exact version per project.
+  #     This is the tier that makes reference files, templates and generated skills work: the token
+  #     substitution the kit used to lean on fires ONLY in a SKILL.md body injected at skill launch,
+  #     never in a file opened with Read, so no `${CLAUDE_PLUGIN_ROOT}` spelling can serve them.
+  cand="$(self_dir)/kit_paths.py"
+  if [ -f "$cand" ]; then
+    cand="$(python3 "$cand" --kit 2>/dev/null)"
+    if is_kit "$cand"; then printf '%s' "$cand"; return 0; fi
   fi
   # 4. installed wheel's bundled _kit. -P keeps cwd off sys.path: a plain import from a repo that HAS
   #    a ticketwright/ directory would import the source tree instead of the installed package.

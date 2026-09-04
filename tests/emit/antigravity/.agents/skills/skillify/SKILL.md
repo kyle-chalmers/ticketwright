@@ -29,7 +29,7 @@ Because this phase writes a **brand-new skill** into the repo — self-modifying
 first. **Print the plan, then stop and wait for the user** before any file is created: the skill
 name, its path (`.claude/skills/<name>/`), and the file list about to be written (`SKILL.md`,
 `sql/`, `templates/`, `bin/`, `golden/`). Only on explicit confirmation, stamp the files.
-1. `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then copy
+1. `KIT="$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)"`, then copy
    `"$KIT"/templates/generated-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).
 2. Render `SKILL.md.tmpl` with the interview answers into the canonical phase shape:

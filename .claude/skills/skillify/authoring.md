@@ -24,7 +24,7 @@ warehouse round-trip — cheap insurance. It asserts: zero leftover tokens · no
 balanced single-quotes / parens · flags an unquoted SQL literal. Halt on any error.
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" render_and_validate.sh sql/step.sql.tmpl asof=2026-06-30 src=T [--strict]
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render_and_validate.sh sql/step.sql.tmpl asof=2026-06-30 src=T [--strict]
 ```
 
 ## Export helpers — `bin/split_and_export.sh`

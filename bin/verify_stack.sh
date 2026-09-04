@@ -151,11 +151,17 @@ while IFS= read -r line; do
     # from the shell (write a verify) vs the case nobody can (MCP transport has no shell surface —
     # the agent must probe the server in-session). The transport is $pt — the resolved value the
     # posture advisory keyed off (configured unit first, adapter frontmatter as the fallback).
-    if [[ "$pt" == "mcp" ]]; then
-      echo "  ⚠ MCP-only: not checkable from the shell — the agent must probe the MCP server in-session"
-    else
-      echo "  ⚠ no verify command — NOT verified (skills will warn)"
-    fi
+    # `both` belongs here too: a dual-transport seam with no verify still HAS an MCP path, so
+    # sending its owner to "write a verify" misdirects the fix. Distinct glyph for the case nobody
+    # can check from a shell (ROADMAP nit: ⚠ conflated "you forgot" with "not shell-checkable").
+    case "$pt" in
+      mcp)
+        echo "  ⊘ MCP-only: not checkable from the shell — the agent must probe the MCP server in-session" ;;
+      both)
+        echo "  ⊘ no verify command; transport is 'both', so the MCP path is still open — the agent must probe it in-session" ;;
+      *)
+        echo "  ⚠ no verify command — NOT verified (skills will warn)" ;;
+    esac
     flush_posture
     count_warn "$label"; continue
   fi

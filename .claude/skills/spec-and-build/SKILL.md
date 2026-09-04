@@ -15,7 +15,7 @@ Reads `.claude/config/stack.yaml`. Front-loads decisions into a spec **before** 
 context-engineering core idea: AI fails from missing context, not weak models.
 
 **Ticket locator, both modes:** run
-`bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
 first (show the "Working as …" line). `<ticket-id>` is `owner/id` (exact) or a bare `id`, resolved
 against the resolved person's `tickets/<owner>/` first, then other owners — **a bare id two or more
 foreign owners share is a hard stop listing the `owner/id` choices, never a pick**.
@@ -34,7 +34,7 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
      `bin/recall.py --for <owner>/<id>`) and reuse their SQL/QC where it fits;
    - pull the business rules from the `documentation/` glossary (the domain slice).
    Research agents return findings only; **they do not write code.**
-3. **Write the spec** — `KIT="$(bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" --kit)"`, then render
+3. **Write the spec** — `KIT="$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)"`, then render
    `"$KIT"/templates/spec.md.tmpl` into the ticket's folder
    (`specs/<id>-<slug>.md` or `final_deliverables/`): operation type (new/alter), data grain,
    sources + join/cast rules, transformation logic, **validation gates** (the exact QC the build must
@@ -58,7 +58,7 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    lives in `/review` — put a human in the loop twice: hand the generated SQL over *before* its
    first warehouse run (a bad join is cheapest to catch before it costs a warehouse-minute), and
    hand the exported CSVs over after. Both via
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" handoff.sh <paths>`, then wait for
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <paths>`, then wait for
    sign-off before continuing. It exits 0 and stays silent when that user has no viewer config —
    note it once and carry on; this never blocks a build.
 9. **Any mutation** ⇒ policy `db_write_requires_approval` (`off` | `high_risk` | `all`). Under the

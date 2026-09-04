@@ -23,7 +23,7 @@ works regardless of the underlying tools.
 > invoked the skill; it is an instruction the agent follows, not a mechanical block.
 
 ## Phase A — Finalize (no separate approval when the user invoked `/ship`; internal to repo)
-1. **Resolve WHO first** — `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" whoami.py`
+1. **Resolve WHO first** — `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
    and show its one-line "Working as …" display; the resolved person is the shipper. Then resolve
    the **ticket locator**: `owner/id` is exact; a bare `<id>` resolves against the shipper's
    `tickets/<owner>/` first, then across other owners — **two or more foreign owners sharing it is a
@@ -54,7 +54,7 @@ works regardless of the underlying tools.
 
    **(a) Resolve routing before writing a word.** Who the message is for decides which recipient
    list it carries, so it cannot be settled after drafting:
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam chat`
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam chat`
    (add `--override <name>` when the user passed `--chat <target>` — that flag is **chat only**, and
    the CLI says so on the plan line when it contradicts the ticket; add `--self "<shipper>"` so an
    `include_self` target adds them). Same call with `--seam docstore`. Exit **7** = that slot isn't
@@ -95,7 +95,7 @@ works regardless of the underlying tools.
      — non-zero names each recipient the draft fails to carry. Fix any miss before continuing; these
      rails always win.
    - **Voice pass (only if a voice profile RESOLVES).** Resolve the shipper —
-     `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" resolve_user.py --json` — and if it
+     `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" resolve_user.py --json` — and if it
      returns a profile whose file exists, re-phrase the drafts to match that voice profile.
      Gate on the RESOLUTION, never on where the config lives: the map moved to `people/<id>.yaml`
      (tier 2), so a condition naming `project.voice_profiles` is permanently false in a migrated
@@ -110,7 +110,7 @@ works regardless of the underlying tools.
 Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
 THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong destination is a
 disclosure, not an inconvenience. Resolve each posting seam with
-`bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" effective_config.py --seam <name>`
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --seam <name>`
 and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
 and docstore, print the routing resolved in step 4(a)** — the same JSON, unedited, that steps 5 and
 7 execute from. Preview and execution are one resolution, not two readings of it; re-deriving either
@@ -150,7 +150,7 @@ execute — nothing the steps don't do may appear in it:
    Only on explicit authorization, execute in order:
 5. **Scan the source material first, then docstore.backup.** The backup copies the WHOLE ticket
    folder, so run
-   `bash "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/tw" scan_source_materials.py --ticket <ticket-dir>`
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" scan_source_materials.py --ticket <ticket-dir>`
    and **halt on a non-zero exit** — a raw meeting transcript is about to be copied out of the
    repo. The remedy here is NOT the `private/` folder: `.gitignore` has no bearing on the
    adapter's `cp -r`, so `private/` protects git and nothing else. Remove the file from the folder,

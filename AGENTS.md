@@ -114,15 +114,40 @@ frontmatter (`seam`, `tool`, `transport`, `requires`, `auth`), implement **every
 seam's contract lists, point a `stack.yaml` seam at it with a read-only `verify`, then run
 `verify_stack.sh` + `selftest.sh`. No skill edits.
 
-**Kit assets resolve through `bin/tw`, never through a raw env var.** `bin/kit_paths.py` is the one
-authority on where the kit is, where the project is, and what the running runtime can do
-(`--kit`/`--project`/`--runtime`/`--json`, no Claude variable required); `bin/tw` is the launcher that
-finds it. Skills call `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" <script>`. **That fallback is
-deliberate** — a plugin install has no project `bin/`, and a fresh worktree has no untracked files —
-so do not simplify it to a bare `bin/tw`. `.claude/skills/setup/` is exempt and still uses the old
-absolute form on purpose: it is the bootstrapper that installs the launcher, so it cannot depend on
-its own output. Runtime capabilities live in `adapters/runtime/*.md` frontmatter, with the sourced
-evidence in `docs/runtimes.md`.
+**Kit assets resolve through `bin/tw`, and `bin/tw` lives in the PROJECT.** `bin/kit_paths.py` is
+the one authority on where the kit is, where the project is, and what the running runtime can do
+(`--kit`/`--project`/`--runtime`/`--json`, no Claude variable required); `bin/tw` is the launcher
+that finds it. Every skill, reference file, template and generated skill calls it exactly one way:
+
+```bash
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" <script> [args]
+```
+
+**No Claude variable appears in that line, deliberately** (tiebreaker 5). `/setup` step 5b copies
+`bin/tw` + `bin/kit_paths.py` into `<project>/bin/` and commits them; `kit_paths.py` then resolves a
+plugin install by reading `~/.claude/plugins/installed_plugins.json` — the exact installed kit for
+THIS project, no environment variable, no glob, no guess — and `bin/tw`'s project-shim tier
+delegates to it.
+
+**Two earlier forms were bugs; do not reintroduce either.** `${CLAUDE_PLUGIN_ROOT:-...}` shipped for
+months and broke every documented `bin/` command on plugin installs: the runtime substitutes only
+the EXACT token `${CLAUDE_PLUGIN_ROOT}`, so a token carrying a `:-` default never matched and
+survived into the shell, where the variable is genuinely unset — `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}`
+then produced `/bin/…` and `${CLAUDE_PLUGIN_ROOT:-$(git …)}` produced `<project>/bin/…`, which a
+plugin install never creates. The dev repo never noticed because its fallback lands on the repo
+root, where `bin/` really does live. The replacement `TW_KIT="${CLAUDE_PLUGIN_ROOT}"; …` fixed only
+half the surface, which is subtler and worth stating: **substitution fires ONLY in a SKILL.md body
+injected at skill launch — never in a file opened with Read.** So it worked in the seven `SKILL.md`
+bodies and did nothing at all in `references/` files, templates, or the rendered `AGENTS.md`, which
+is where `/setup`'s scaffolding and all of `/refresh index` actually live. That is why the answer is
+a project-owned launcher rather than a cleverer spelling of the token.
+
+**`.claude/skills/setup/SKILL.md` is the one exemption**, and only in its own body: it is the
+bootstrapper that installs the launcher, so it cannot depend on its own output. Its body is
+substituted, so it may use `TW_KIT="${CLAUDE_PLUGIN_ROOT}"; …` — but `setup/`'s reference files
+(`scaffold.md`, `teammate.md`, `voice.md`) are read, not injected, and must use the project form
+like everything else. Runtime capabilities live in `adapters/runtime/*.md` frontmatter, with the
+sourced evidence in `docs/runtimes.md`.
 
 **Config is three tiers behind one resolver.** `.claude/config/stack.yaml` is TEAM config
 (committed); `people/<id>.yaml` is PERSON config (committed, portable — a cross-repo copy under

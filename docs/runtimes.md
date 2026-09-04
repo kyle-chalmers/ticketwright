@@ -394,7 +394,7 @@ documented way to inject context. On both, the banner's content belongs in the a
 file. Codex, Cursor and Devin all have a genuine `SessionStart` with context injection. The banner's
 update notice — the one line saying a newer release is sitting in the marketplace catalog unused —
 is a separate CLI for exactly this reason, so a runtime with no session-start hook can still surface
-it on demand: `bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" update_notice.py --root .`
+it on demand: `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" update_notice.py --root .`
 
 **`qc-reviewer` cannot be a user-defined subagent on Cline**, and context isolation is unestablished
 on OpenCode and Codex. Where an independent second context cannot be guaranteed, the review says so

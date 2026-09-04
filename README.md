@@ -273,7 +273,7 @@ python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
 That path names the `ticketwright` marketplace; a fork substitutes its own marketplace name. The
 doctor prints one line per check below, with the fix for each, and takes `--json` for a
 machine-readable report. Once the plugin is installed the same checks run as
-`bash "${CLAUDE_PLUGIN_ROOT:-.}/bin/tw" plugin_doctor.py`.
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" plugin_doctor.py` (the launcher `/setup` commits into the repo).
 
 The checks, in the order the doctor runs them:
 
