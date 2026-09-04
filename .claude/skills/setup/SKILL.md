@@ -96,8 +96,15 @@ bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit
 **Why this is not only a Track-1 concern:** a teammate joining a repo configured by an earlier
 Ticketwright finds no committed launcher, so without this step their very first `--teammate` command
 fails — the same "No such file or directory" this release exists to end, arriving through a
-different door. The final line must print a kit path; if it errors, stop and say so rather than
-continuing into commands that will all fail. Mention the two new files when you list what to commit.
+different door. Mention the two new files when you list what to commit.
+
+The final line must print a kit path. **If it instead says `cannot locate the ticketwright kit`, the
+copy succeeded and the RESOLUTION failed** — do not read it as a bad copy. On a plugin install
+`kit_paths.py` finds the kit through this repo's row in `~/.claude/plugins/installed_plugins.json`,
+so the usual cause is that the plugin is not installed *for this repo at project scope*: run the
+doctor's `repo_install` check (`bash "$(git rev-parse --show-toplevel)/bin/tw" plugin_doctor.py`) and
+follow its fix, then re-run the line above. Stop either way rather than continuing into step 6,
+whose commands all route through this launcher.
 
 ## Mode: `--teammate` — the per-person flow (person-scoped)
 Follow [teammate.md](teammate.md): resolve WHO this is (`whoami`, binding on a miss) → install
