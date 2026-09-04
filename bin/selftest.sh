@@ -2585,6 +2585,12 @@ bodytok="$(grep -rln 'CLAUDE_PLUGIN_ROOT' .claude/skills/*/SKILL.md 2>/dev/null 
   && grep -qE 'cp .*bin/tw' .claude/skills/setup/SKILL.md; } \
   && ok "/setup installs bin/tw + bin/kit_paths.py into the project (the launcher every other file assumes)" \
   || bad "/setup does not install the launcher, so <project>/bin/tw never exists on a plugin install"
+# …and it must run before ANY mode, not only the fresh-repo scaffold: a teammate joining a repo that
+# an earlier Ticketwright configured finds no committed launcher, so a person-flow that assumed one
+# would fail on its first command — the same error this release exists to end, via another door.
+grep -q 'Ensure the launcher — run this FIRST in every mode' .claude/skills/setup/SKILL.md \
+  && ok "/setup ensures the launcher before every mode (covers joiners on repos configured earlier)" \
+  || bad "the launcher install is scoped to one mode; a joiner on an older repo still has no bin/tw"
 
 # --- a failure must never become a filesystem path ------------------------------------------------
 # `"$(tw --kit)"/templates/x` is the idiom skills use, so an error on stdout would silently produce
@@ -3699,7 +3705,10 @@ for f in "$SK" "$TM"; do
   grep -q 'git rev-parse --show-toplevel' "$f" || p34miss="$p34miss $f(git)"
   grep -qi 'Download-ZIP' "$f" || p34miss="$p34miss $f(zip)"
   grep -q 'git clone' "$f" || p34miss="$p34miss $f(clone)"
-  grep -q 'bin/plugin_doctor.py' "$f" || p34miss="$p34miss $f(doctor)"
+  # Either invocation counts: the bootstrapper names the script path directly (it has no launcher
+  # yet), while every other flow goes through the project launcher as `bin/tw plugin_doctor.py`.
+  # The invariant is that the flow RUNS the doctor, not which spelling it uses to get there.
+  grep -qE 'bin/plugin_doctor\.py|bin/tw" plugin_doctor\.py' "$f" || p34miss="$p34miss $f(doctor)"
   grep -qi 'verbatim' "$f" || p34miss="$p34miss $f(verbatim)"
   for id in scope_supported repo_install install_payload yq_present; do
     grep -q "$id" "$f" || p34miss="$p34miss $f($id)"

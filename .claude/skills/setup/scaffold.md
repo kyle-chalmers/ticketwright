@@ -171,7 +171,7 @@ humans and agents can find what exists.
 ## Ticket index
 Seed an empty curated store — `tickets/index_data.json` with
 `{"schema_version": 1, "tickets": []}` — then run
-`python3 "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/build_ticket_index.py"` to write the
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py` to write the
 initial `tickets/INDEX.md`. From here it self-maintains (PostToolUse regen on folder changes,
 SessionStart surfacing, curated summaries at ship time). An existing backlog gets bootstrapped with
 `/refresh index --all`.

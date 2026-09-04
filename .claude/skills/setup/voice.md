@@ -36,7 +36,7 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
    `stack.yaml`, so this person-scoped flow must not write it. Point them at `/setup tool chat`,
    the team flow that owns that block.
 
-3. **Render the seed.** `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/render.sh"
+3. **Render the seed.** `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh
    templates/voice-profile.md.tmpl profile_id=<id> display_name="<name>" bootstrapped=<today>
    sources="<how built>"` → write to the resolved path. (Tracker-side enrichment — a display
    handle — happens here, once, via the tracker adapter if useful; write it into the frontmatter. Do

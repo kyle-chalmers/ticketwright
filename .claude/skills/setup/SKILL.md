@@ -79,6 +79,26 @@ person answers in chat: runtimes that render structured options show chips, ever
 shows a numbered list, and the interview means the same thing everywhere. Never author a question
 as a structured tool-call payload.
 
+## Ensure the launcher — run this FIRST in every mode, before opening any reference file
+Every reference file (`scaffold.md`, `teammate.md`, `voice.md`) and every rendered artifact invokes
+kit scripts as `bash "$(git rev-parse --show-toplevel)/bin/tw" <script>`. That resolves only if the
+project has the launcher. **This file's body is the one place the plugin token is substituted**, so
+this is the one place that can install it. Idempotent — run it every time:
+
+```bash
+if [ ! -f "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ]; then
+  TW_KIT="${CLAUDE_PLUGIN_ROOT}"; K="${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+  mkdir -p bin && cp "$K/bin/tw" "$K/bin/kit_paths.py" bin/ && chmod +x bin/tw
+fi
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit
+```
+
+**Why this is not only a Track-1 concern:** a teammate joining a repo configured by an earlier
+Ticketwright finds no committed launcher, so without this step their very first `--teammate` command
+fails — the same "No such file or directory" this release exists to end, arriving through a
+different door. The final line must print a kit path; if it errors, stop and say so rather than
+continuing into commands that will all fail. Mention the two new files when you list what to commit.
+
 ## Mode: `--teammate` — the per-person flow (person-scoped)
 Follow [teammate.md](teammate.md): resolve WHO this is (`whoami`, binding on a miss) → install
 checklist → per-tool auth walk-through → detect *their* machine and write their machine file →
