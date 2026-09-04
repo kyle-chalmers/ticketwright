@@ -19,8 +19,12 @@ Every question below is prose the person answers in chat, never a structured too
 ## 0 · Who is this?
 `!bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py --root . --json`
 - `resolved` → show the one-line "Working as …" display and continue.
-- `miss` → ask, in prose: "I don't recognize `<observed[0]>`. Who are you?" (`identity` is null on
-  a miss because nothing matched; `observed` is what we looked for) — offering every id under
+- `miss` → ask, in prose. When `observed` is non-empty, name what was looked for: "I don't
+  recognize `<observed[0]>`. Who are you?" When it is **empty** — a fresh machine with git
+  identity and `$USER` all unset, the very case step 0.5 below covers — do not invent one; ask
+  "I can't tell who you are on this machine. Who are you?" (`identity` is always null on a miss,
+  because nothing matched; `observed` is what was looked for, and it can legitimately be empty.)
+  Either way, offer every id under
   `people/` as a candidate plus "someone new" (the roster of placeholders exists for exactly this
   moment). **Before binding, run step 0.5** — on a fresh machine the git identity may be entirely
   unset, and binding first records a weaker identity than the one they are about to configure.

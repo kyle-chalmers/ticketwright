@@ -313,27 +313,19 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    interactive session, or create the `.claude/` files by hand from the printed plan (print their
    full contents on request); and that everything else is written on the next confirm. Never route
    around the guard.
-5b. **Install the launcher into the project — do this before step 6, and this step is why every
-   other file can stay Claude-neutral.** Copy `bin/tw` and `bin/kit_paths.py` from the kit into
-   `<project>/bin/`, `chmod +x bin/tw`, and commit both:
+5b. **Confirm the launcher is in the project, and add it to what gets committed.** The
+   "Ensure the launcher" preflight above already installed `bin/tw` + `bin/kit_paths.py` (it runs
+   first in every mode and is idempotent — do NOT re-run a bare `cp` here: on a vendored or `init`
+   install the kit root IS the project root, so `cp "$K/bin/tw" bin/` is a file onto itself, which
+   exits 1 and would halt the scaffold on the one install shape that already worked). Just verify
+   and carry both files into step 9's commit list:
 
    ```bash
-   TW_KIT="${CLAUDE_PLUGIN_ROOT}"; K="${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
-   mkdir -p bin && cp "$K/bin/tw" "$K/bin/kit_paths.py" bin/ && chmod +x bin/tw
-   bash bin/tw --kit    # must print a kit path, not an error
+   bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit
    ```
 
-   This SKILL.md body is the one place the `${CLAUDE_PLUGIN_ROOT}` token is actually substituted —
-   the runtime rewrites it at skill launch — which is exactly why `/setup` can bootstrap and nothing
-   else has to. A file opened with Read (every `references/` file, every template, the rendered
-   `AGENTS.md`) receives the token verbatim, so no spelling of it works there. The two shipped
-   files carry their own resolution: `kit_paths.py` reads
-   `~/.claude/plugins/installed_plugins.json` to find the exact installed kit for THIS project — no
-   environment variable, no glob, no guess — and `bin/tw` delegates to it. After this step every
-   other command in the kit is `bash "$(git rev-parse --show-toplevel)/bin/tw" <script>`, which
-   works on a plugin, vendored, pip or `init` install and under any agent.
-   *Check:* `bash bin/tw --kit` prints a path. If it errors, stop — step 6 renders commands that
-   would all fail.
+   *Check:* that prints a kit path. If it errors, stop — step 6 renders commands that all route
+   through this launcher.
 6. Scaffold the rest per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules), the human-facing `README.md`
    (rendered to `README.ticketwright.md` instead if a README already exists — never overwritten),
@@ -388,7 +380,10 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    Then the next step — `/ticket <id>` to start work, or `/setup --teammate` for a new person.
 9. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
-   index — plus, on a vendored install, the kit itself) is untracked; if it isn't committed, a later
+   index, **`bin/tw` + `bin/kit_paths.py`** — plus, on a vendored install, the kit itself) is untracked;
+   **the launcher pair is not optional**: every command in `AGENTS.md` and every reference file routes
+   through it, so a clone without those two files gives the next teammate "No such file or directory"
+   on their first command; if it isn't committed, a later
    ticket PR references rules/adapters absent from the repo's history. Offer a commit (e.g.
    `chore: initialize ticketwright workspace`). First flag that `stack.yaml` may hold internal
    identifiers (tracker site, warehouse project/dataset) — config, not secrets, but worth a glance

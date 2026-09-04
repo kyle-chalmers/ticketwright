@@ -2585,6 +2585,31 @@ bodytok="$(grep -rln 'CLAUDE_PLUGIN_ROOT' .claude/skills/*/SKILL.md 2>/dev/null 
   && grep -qE 'cp .*bin/tw' .claude/skills/setup/SKILL.md; } \
   && ok "/setup installs bin/tw + bin/kit_paths.py into the project (the launcher every other file assumes)" \
   || bad "/setup does not install the launcher, so <project>/bin/tw never exists on a plugin install"
+# BEHAVIORAL, not a grep. Build a project that has ONLY what step 5b installs, then run every kit
+# script the reference files actually invoke THROUGH the launcher. A string grep cannot see that a
+# reference file names `<project>/bin/whoami.py` — a path the shim never creates — so the joiner
+# flow died on its first command while this section stayed green. This walks that path.
+LNCH="$TMP/launcher"; rm -rf "$LNCH"; mkdir -p "$LNCH/bin"
+git -C "$LNCH" init -q 2>/dev/null
+cp "$KIT/bin/tw" "$KIT/bin/kit_paths.py" "$LNCH/bin/" && chmod +x "$LNCH/bin/tw"
+lnch_fail=""
+for s in $(grep -rhoE 'bin/tw" [a-z_]+\.(py|sh)' .claude/skills templates 2>/dev/null \
+           | sed 's|.*bin/tw" ||' | sort -u); do
+  [ -f "$KIT/bin/$s" ] || lnch_fail="$lnch_fail $s(absent-from-kit)"
+done
+[ -z "$lnch_fail" ] \
+  && ok "every script the skills invoke through the launcher exists in the kit" \
+  || bad "a skill routes through bin/tw to a script the kit does not ship" "$lnch_fail"
+# And the launcher pair alone must be enough to reach one: no other kit file may be required.
+lout="$(cd "$LNCH" && env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_KIT="$KIT" \
+  bash "$LNCH/bin/tw" --kit 2>&1)"
+[ "$lout" = "$KIT" ] \
+  && ok "a project holding ONLY bin/tw + bin/kit_paths.py resolves the kit and can run its scripts" \
+  || bad "the two installed files are not sufficient to reach the kit" "got '$lout'"
+# The commit list must carry them, or they never reach the joiner's clone and the whole design fails.
+grep -qE '`bin/tw`.*`bin/kit_paths\.py`|bin/tw. \+ .bin/kit_paths' .claude/skills/setup/SKILL.md \
+  && ok "the launcher pair is named in what /setup offers to commit" \
+  || bad "/setup never offers to commit the launcher, so a clone has no bin/tw"
 # …and it must run before ANY mode, not only the fresh-repo scaffold: a teammate joining a repo that
 # an earlier Ticketwright configured finds no committed launcher, so a person-flow that assumed one
 # would fail on its first command — the same error this release exists to end, via another door.
@@ -3415,6 +3440,34 @@ who_cand="$(cat "$TMP/who-cand.out")"
 [ "$who_cand" = "miss alice,carol" ] \
   && ok "a miss offers every id under people/ as a candidate, and stays status=miss" \
   || bad "a miss did not return the roster (or changed status)" "got=$who_cand"
+# `observed` is a CONSUMED field (teammate.md quotes observed[0] back at the person), so it needs its
+# own coverage: present and populated when an identity exists, and legitimately EMPTY on a machine
+# with no git identity and no $USER — the case teammate.md must not index into.
+whorun --json > "$TMP/who-obs.json" 2>/dev/null || true
+python3 - "$TMP/who-obs.json" <<'PYOBS' >"$TMP/who-obs.out" 2>&1
+import json, sys
+d = json.load(open(sys.argv[1]))
+print("has" if isinstance(d.get("observed"), list) and d["observed"] else "empty", d.get("identity"))
+PYOBS
+who_obs="$(cat "$TMP/who-obs.out")"
+[ "$who_obs" = "has None" ] \
+  && ok "a miss reports what it LOOKED for in observed, while identity stays null (nothing matched)" \
+  || bad "observed/identity wrong on a miss" "got=$who_obs"
+mkdir -p "$TMP/who-noid"
+env -u TICKETWRIGHT_PERSON -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT -u USER -u LOGNAME \
+  XDG_CONFIG_HOME="$TMP/who-noxdg" HOME="$TMP/who-noxdg" \
+  python3 "$WHO" --root "$TMP/who-noid" --json > "$TMP/who-noid.json" 2>/dev/null || true
+python3 - "$TMP/who-noid.json" <<'PYNOID' >"$TMP/who-noid.out" 2>&1
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("unreadable"); raise SystemExit
+print("empty" if not d.get("observed") else "has")
+PYNOID
+[ "$(cat "$TMP/who-noid.out")" != "has" ] \
+  && ok "observed is legitimately EMPTY with no git identity and no \$USER (teammate.md must not index it)" \
+  || bad "observed was populated on a machine with no identity at all" "$(cat "$TMP/who-noid.out")"
 
 # (F) self-healing --bind: append the identity, pin tier 3, resolve forever after.
 printf 'schema_version: 1\n' > "$WI/.claude/config/connections.local.yaml"
