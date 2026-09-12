@@ -11,6 +11,7 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: yes
+plan_mode: native          # Planning Mode on the desktop (Cascade) surface: a local plan markdown the agent maintains (docs.devin.ai/desktop/cascade/modes, 2026-09-11); the cloud agent plans before acting by default
 gate_ask_tier: no           # PreToolUse blocks via exit 2 only; PermissionRequest is approve/block — no ask
 gate_fail_mode: open        # documented design: any nonzero other than 2 is logged and does not block
 subagent_isolation: documented

@@ -772,14 +772,14 @@ roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/r
 { [ "$roles_ok" = 1 ] && grep -q '{{role_focus}}' templates/AGENTS.md.tmpl; } \
   && ok "role-mode snippets present + {{role_focus}} wired into AGENTS.md.tmpl" || bad "role modes incomplete"
 
-hdr "14b · v2 skill surface (7 skills; v1 alias stubs removed in v3)"
+hdr "14b · v2 skill surface (7 skills; v1 alias stubs removed in v3; spec-and-build renamed build)"
 sk_missing=""
-for s in setup ticket spec-and-build review ship skillify refresh; do
+for s in setup ticket build review ship skillify refresh; do
   [ -f ".claude/skills/$s/SKILL.md" ] || sk_missing="$sk_missing $s"
 done
-[ -z "$sk_missing" ] && ok "all 7 v2 skills present (setup ticket spec-and-build review ship skillify refresh)" \
+[ -z "$sk_missing" ] && ok "all 7 v2 skills present (setup ticket build review ship skillify refresh)" \
   || bad "v2 skill missing:$sk_missing"
-extra="$(ls -d .claude/skills/*/ | grep -Ev '/(setup|ticket|spec-and-build|review|ship|skillify|refresh)/$' || true)"
+extra="$(ls -d .claude/skills/*/ | grep -Ev '/(setup|ticket|build|review|ship|skillify|refresh)/$' || true)"
 [ -z "$extra" ] && ok "no stray skill folders beyond the 7" || bad "unexpected skill folder (v1 leftover?)" "$extra"
 al_bad=""
 for a in configure-workspace onboard-teammate start-ticket qc-review deliver-ticket productize-workflow \
@@ -2276,8 +2276,8 @@ fi
   && ok "human_review_handoff documented in stack.yaml + schema + AGENTS.md.tmpl" \
   || bad "the new policy is missing from a config/doc surface"
 { grep -q 'handoff.sh' .claude/skills/review/SKILL.md \
-  && grep -q 'handoff.sh' .claude/skills/spec-and-build/SKILL.md; } \
-  && ok "/review and /spec-and-build call bin/handoff.sh" || bad "a gate skill never invokes the handoff engine"
+  && grep -q 'handoff.sh' .claude/skills/build/SKILL.md; } \
+  && ok "/review and /build call bin/handoff.sh" || bad "a gate skill never invokes the handoff engine"
 appleak="$(grep -REn -i 'DataGrip|Microsoft Excel|open -a |xdg-open|explorer\.exe' \
             .claude/skills .claude/commands 2>/dev/null || true)"
 [ -z "$appleak" ] && ok "no application name or OS open-command leaked into a skill" \
@@ -2652,7 +2652,7 @@ rt_bad=""
 for f in adapters/runtime/*.md; do
   [ -f "$f" ] || continue
   for k in seam tool detect_env skills_root session_start tool_gate subagents structured_questions \
-           gate_ask_tier gate_fail_mode subagent_isolation reads_foreign_skills global_skills_root; do
+           gate_ask_tier gate_fail_mode subagent_isolation reads_foreign_skills global_skills_root plan_mode; do
     grep -q "^$k:" "$f" || rt_bad="$rt_bad $(basename "$f"):$k"
   done
   [ "$(grep -c '^## verb:' "$f")" = "0" ] || rt_bad="$rt_bad $(basename "$f"):has-verbs"
@@ -2690,7 +2690,7 @@ d = json.loads(sys.argv[1] or "{}")
 caps = d.get("capabilities", {})
 want = {"session_start": "no", "tool_gate": "no", "subagents": "no", "structured_questions": "no",
         "gate_ask_tier": "unknown", "gate_fail_mode": "unknown", "subagent_isolation": "unknown",
-        "global_skills_root": "unknown", "reads_foreign_skills": "none"}
+        "global_skills_root": "unknown", "reads_foreign_skills": "none", "plan_mode": "unknown"}
 sys.exit(0 if d.get("runtime_adapter") is None
          and all(caps.get(k) == v for k, v in want.items()) else 1)
 PY
@@ -3918,21 +3918,21 @@ grep -q '<owner>-<id>' "$tk" \
   && ok "assignee_dir survives in /ticket only as the documented no-people-map last resort" \
   || bad "/ticket's assignee_dir fallback lost its last-resort framing"
 sk35miss=""
-for s in ship review spec-and-build; do
+for s in ship review build; do
   f=".claude/skills/$s/SKILL.md"
   grep -q 'whoami.py' "$f" && grep -q 'owner/id' "$f" || sk35miss="$sk35miss $s"
   grep -q 'assignee_dir' "$f" && sk35miss="$sk35miss $s(assignee_dir)"
 done
 [ -z "$sk35miss" ] \
-  && ok "/ship, /review, /spec-and-build each resolve the locator via whoami (and never assignee_dir)" \
+  && ok "/ship, /review, /build each resolve the locator via whoami (and never assignee_dir)" \
   || bad "a lifecycle skill misses the locator wiring or reads assignee_dir:$sk35miss"
 # Locator PROPAGATION: a step's recommendation of the next step carries the qualified owner/id, so
 # a bare id can never be re-resolved to a different owner's ticket between steps (e.g. /review of
 # bob's ticket recommending a bare /ship that lands on the shipper's same-named one).
-{ grep -q 'spec <owner>/<id>' "$tk" && grep -q '/ship <owner>/<id>' "$tk" \
+{ grep -q '/build <owner>/<id>' "$tk" && grep -q '/ship <owner>/<id>' "$tk" \
   && grep -q 'refresh index <owner>/<id>' .claude/skills/ship/SKILL.md \
   && grep -q '/ship <owner>/<id>' .claude/skills/review/SKILL.md \
-  && grep -q '/review <owner>/<id>' .claude/skills/spec-and-build/SKILL.md \
+  && grep -q '/review <owner>/<id>' .claude/skills/build/SKILL.md \
   && grep -q 'recall.py --for <owner>/<id>' .claude/skills/ticket/priming.md; } \
   && ok "every cross-step handoff passes the QUALIFIED locator (routing, refresh, recall, verdicts)" \
   || bad "a cross-step handoff still passes a bare id — ownership drops between skills"
@@ -4754,6 +4754,7 @@ ENUMS = {
     "gate_ask_tier": {"yes", "no", "unknown"},
     "gate_fail_mode": {"open", "closed", "unknown"},
     "subagent_isolation": {"documented", "unestablished", "none"},
+    "plan_mode": {"native", "none", "unknown"},
 }
 bad = []
 for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
@@ -4800,6 +4801,13 @@ from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/$rt.md')
   [ "$got" = "$want" ] && ok "pinned: $rt gate_fail_mode=$want" \
     || bad "$rt's gate_fail_mode changed — re-cite the vendor docs before touching this row" "got '$got' want '$want'"
 done
+# plan_mode decides whether /ticket drafts the scoping package inside a native planning mode. It is a
+# UI feature, never an enforcement boundary — but claude-code's is the one this kit's own sessions
+# run under, so it is pinned; a flip to `none` would silently send /ticket down the guidance path.
+got="$(python3 -c "import sys; sys.path.insert(0,'bin'); from kit_paths import read_frontmatter; \
+from pathlib import Path; print(read_frontmatter(Path('adapters/runtime/claude-code.md')).get('plan_mode'))")"
+[ "$got" = "native" ] && ok "pinned: claude-code plan_mode=native" \
+  || bad "claude-code's plan_mode changed — /ticket's scoping phase depends on it" "got '$got'"
 # subagent_isolation decides whether /review --deep is an independent second context there.
 for pair in "cline:none" "codex-cli:unestablished" "opencode:unestablished"; do
   rt="${pair%%:*}"; want="${pair##*:}"
@@ -4878,9 +4886,9 @@ rows = {}
 for line in sect[1].splitlines():
     m = re.match(r"\|\s*\*\*(.+?)\*\*\s*\|(.+)\|", line)
     if m:
-        rows[m.group(1)] = [norm(c) for c in m.group(2).split("|")[:5]]
+        rows[m.group(1)] = [norm(c) for c in m.group(2).split("|")[:6]]
 KEYS = ("gate_ask_tier", "gate_fail_mode", "subagent_isolation",
-        "reads_foreign_skills", "global_skills_root")
+        "reads_foreign_skills", "global_skills_root", "plan_mode")
 bad = []
 for tool, name in DISPLAY.items():
     fm = read_frontmatter(pathlib.Path(f"adapters/runtime/{tool}.md"))
@@ -4890,7 +4898,7 @@ for tool, name in DISPLAY.items():
 print("\n".join(bad))
 PY
 mm_bad="$(cat "$TMP/hd4255.out")"
-[ -z "$mm_bad" ] && ok "runtimes.md's machine-readable table matches the adapter frontmatter (all 7 x 5 keys)" \
+[ -z "$mm_bad" ] && ok "runtimes.md's machine-readable table matches the adapter frontmatter (all 7 x 6 keys)" \
   || bad "runtimes.md's capability-key table drifted from the frontmatter it documents" "$mm_bad"
 
 hdr "41 · the emission matrix: all seven runtimes, metadata mapping, agent definitions (PROMPT 7 / U2)"
@@ -5745,7 +5753,17 @@ else:
 # (3) every emitted fixture artifact carrying an "unverified" label -> its in-project path
 emit_hits = 0
 for p in sorted(pathlib.Path('tests/emit').rglob('*')):
-    if p.is_file() and 'unverified' in p.read_text(encoding='utf-8', errors='ignore'):
+    if not p.is_file():
+        continue
+    # A skill's sibling reference file (priming.md, spec.md, teammate.md, …) is emitted VERBATIM from
+    # .claude/skills/<name>/<file>; a byte-identical copy makes no runtime-specific claim, so the
+    # word "unverified" in its prose (setup's posture checklist) is not a label this linkage owns.
+    # SKILL.md bodies, agent definitions and hook configs are never exempt.
+    if p.name != 'SKILL.md' and len(p.relative_to('tests/emit').parts) >= 4:
+        canon = pathlib.Path('.claude/skills') / p.parent.name / p.name
+        if canon.is_file() and canon.read_bytes() == p.read_bytes():
+            continue
+    if 'unverified' in p.read_text(encoding='utf-8', errors='ignore'):
         emit_hits += 1
         rel = p.relative_to('tests/emit')
         proj = str(pathlib.Path(*rel.parts[1:]))
@@ -9112,7 +9130,7 @@ grep -qiE 'never overwrite|do not overwrite|leave it untouched|never scaffold ov
 #     unverified: a rename could ship a template advertising a command that no longer exists, with
 #     a fully green suite. That is exactly what nearly happened at the productize→skillify rename.
 rm_cmd_bad=""
-for s54 in ticket spec-and-build review ship setup refresh skillify; do
+for s54 in ticket build review ship setup refresh skillify; do
   grep -q -- "/$s54" "$RM_TMPL" || rm_cmd_bad="$rm_cmd_bad $s54"
 done
 [ -z "$rm_cmd_bad" ] \
@@ -9137,6 +9155,14 @@ grep -q 'productize' docs/troubleshooting.md || rt_bad="$rt_bad troubleshooting"
 [ -z "$rt_bad" ] \
   && ok "both install paths + the docs name a retired skill dir an upgrade leaves behind" \
   || bad "a retired skill directory would survive an upgrade unannounced" "$rt_bad"
+# spec-and-build → build rides the same mechanism: both lists and the troubleshooting page.
+rt2_bad=""
+grep -q '"spec-and-build"' bin/emit_runtime.py || rt2_bad="$rt2_bad emit_runtime"
+grep -q '"spec-and-build"' ticketwright/cli.py || rt2_bad="$rt2_bad cli.py"
+grep -q 'spec-and-build' docs/troubleshooting.md || rt2_bad="$rt2_bad troubleshooting"
+[ -z "$rt2_bad" ] \
+  && ok "the spec-and-build → build rename is named as RETIRED in both installers and the docs" \
+  || bad "spec-and-build would survive an upgrade beside build/ unannounced" "$rt2_bad"
 
 hdr "55 · plugin doctor: every install state is NAMED, and no probe touches a real CLI"
 # The gap this exists for: registering a marketplace is not installing a plugin, and five distinct
@@ -9784,6 +9810,182 @@ PDPY
 [ "$(cat "$TMP/pd.advj")" = "restart" ] \
   && ok "…and in --json exactly one check carries it: restart, the check that decides when it applies" \
   || bad "the restart advisory is carried by the wrong number of checks in --json" "$(cat "$TMP/pd.advj")"
+
+hdr "56 · scope-first lifecycle: /ticket plans (+ specs), /build ends in /review, /ship gates the unreviewed"
+# Real sessions showed the old routing ("spec if non-trivial, else build directly") collapsing to
+# "build directly", /review never invoked by name, and tickets shipping with no verdict on file. The
+# fix makes the quality path the default path; this section pins its BEHAVIOR-BEARING tokens and the
+# orderings that matter, not prose. Skill-list, locator-propagation, capability-floor and
+# adapter-key coverage live in 14b / 35 / 31 and are not repeated here.
+tk56=".claude/skills/ticket/SKILL.md"; bd56=".claude/skills/build/SKILL.md"
+rv56=".claude/skills/review/SKILL.md"; sh56=".claude/skills/ship/SKILL.md"
+tr '\n' ' ' < "$tk56" | tr -s ' ' > "$TMP/tk56.flat"
+tr '\n' ' ' < "$bd56" | tr -s ' ' > "$TMP/bd56.flat"
+tr '\n' ' ' < "$sh56" | tr -s ' ' > "$TMP/sh56.flat"
+# (a) /ticket owns every read-only planning step, drafts first, writes only after approval
+{ grep -q 'templates/plan.md.tmpl' "$tk56" && grep -q '\[spec.md\](spec.md)' "$tk56" \
+  && grep -q 'capabilities.plan_mode' "$tk56"; } \
+  && ok "/ticket names the plan template, delegates spec authoring to spec.md, and probes plan_mode" \
+  || bad "/ticket lost the plan template, the spec.md reference, or the plan_mode probe"
+grep -q 'value only' "$TMP/tk56.flat" \
+  && ok "/ticket branches on the plan_mode VALUE, never the runtime name" || bad "/ticket branches on a runtime name"
+p4_l="$(grep -n '^## Phase 4' "$tk56" | head -1 | cut -d: -f1)"
+dr_l="$(grep -n 'compose it, do not write it yet' "$tk56" | head -1 | cut -d: -f1)"
+sp_l="$(grep -n 'draft it now, in this phase' "$tk56" | head -1 | cut -d: -f1)"
+ap_l="$(grep -n 'WAIT for one explicit approval' "$tk56" | head -1 | cut -d: -f1)"
+wr_l="$(grep -n 'Only after the human says go' "$tk56" | head -1 | cut -d: -f1)"
+st_l="$(grep -n '^## Stops here' "$tk56" | head -1 | cut -d: -f1)"
+{ [ -n "$p4_l" ] && [ -n "$dr_l" ] && [ -n "$sp_l" ] && [ -n "$ap_l" ] && [ -n "$wr_l" ] && [ -n "$st_l" ] \
+  && [ "$p4_l" -lt "$dr_l" ] && [ "$dr_l" -lt "$sp_l" ] && [ "$sp_l" -lt "$ap_l" ] \
+  && [ "$ap_l" -le "$wr_l" ] && [ "$wr_l" -lt "$st_l" ]; } \
+  && ok "/ticket Phase 4 order: draft plan → draft spec → approval → write → stop (nothing written before the go)" \
+  || bad "/ticket Phase 4 order broke (a write before the approval, or the spec after it)" "p4=$p4_l draft=$dr_l spec=$sp_l approve=$ap_l write=$wr_l stop=$st_l"
+{ grep -q 'never re-render over an approved plan' "$TMP/tk56.flat" && grep -q -- '--strict' "$tk56" \
+  && grep -q 'spec_required=' "$tk56"; } \
+  && ok "/ticket updates an existing plan.md in place, renders --strict, and names the tokens it fills" \
+  || bad "/ticket would re-render an approved plan, or render non-strict with unnamed tokens"
+grep -q "vcs adapter's \`commit\` verb" "$TMP/tk56.flat" \
+  && ok "/ticket commits the scoping package through the vcs adapter, not a bare git call" \
+  || bad "/ticket's plan commit bypasses the vcs adapter"
+if ! grep -q 'small change → build directly' "$tk56" && ! grep -q 'non-trivial work →' "$tk56"; then
+  ok "the retired spec-or-build-directly routing branch is gone from /ticket"
+else
+  bad "/ticket still carries the retired routing branch"
+fi
+grep -q 'No SQL beyond the describe/sample' "$tk56" \
+  && ok "/ticket's stop rule admits the describe/sample reads scoping needs, nothing more" \
+  || bad "/ticket's stop rule contradicts the spec research it now runs"
+{ [ -f .claude/skills/ticket/spec.md ] && grep -q 'spec.md.tmpl' .claude/skills/ticket/spec.md \
+  && grep -q 'Do not write or commit here' .claude/skills/ticket/spec.md \
+  && grep -qi 'read-only' .claude/skills/ticket/spec.md; } \
+  && ok "ticket/spec.md drafts from the spec template, is read-only, and leaves write + commit to /ticket" \
+  || bad "ticket/spec.md missing or incomplete"
+grep -q '`/build` executes' templates/spec.md.tmpl \
+  && ok "spec.md.tmpl names /build as its executor" || bad "spec.md.tmpl still names the retired skill"
+# (b) the plan template: every scoping section, the spec decision stated ONCE (header), stamps clean
+pl_miss=""
+for h in "## Goal" "## Scope" "## Deliverables expected" "## Approach" "## Validation strategy" \
+         "## Touched" "## Questions for the requester" "## Risks" "## Next step"; do
+  grep -q "^$h" templates/plan.md.tmpl || pl_miss="$pl_miss ${h// /_}"
+done
+[ -z "$pl_miss" ] && ok "plan.md.tmpl carries every scoping section" || bad "plan.md.tmpl lost a section" "$pl_miss"
+pl_err="$(bash bin/render.sh templates/plan.md.tmpl ticket_id=x title=x confidence=x goal=x \
+          spec_required=x owner=x --strict 2>&1 >/dev/null)"
+[ -z "$pl_err" ] && ok "plan.md.tmpl stamps --strict with the six tokens /ticket names" || bad "leftover tokens in plan.md.tmpl" "$pl_err"
+ns_l="$(grep -n '^## Next step' templates/plan.md.tmpl | cut -d: -f1)"
+tail -n +"$ns_l" templates/plan.md.tmpl > "$TMP/plan56.next"
+if grep -q 'persisted object' templates/plan.md.tmpl && grep -q 'after-root-cause' templates/plan.md.tmpl \
+   && ! grep -q 'persisted object\|after-root-cause\|not required' "$TMP/plan56.next"; then
+  ok "the spec: criteria live once, in the plan header — the rendered Next step carries only the value"
+else
+  bad "plan.md.tmpl states the spec: criteria in the Next step (a rendered plan would match every value)" "$(cat "$TMP/plan56.next")"
+fi
+# (c) /build: reads the spec: LINE, halts by name, handles the investigation lane, bounded review loop
+{ grep -q '^name: build' "$bd56" && grep -q 'No plan is on file' "$TMP/bd56.flat" \
+  && grep -q 'names a spec that is not on file' "$TMP/bd56.flat" && grep -q 'that line only' "$TMP/bd56.flat" \
+  && grep -q 'Anything else on that line' "$TMP/bd56.flat"; } \
+  && ok "/build reads the plan's spec: line (only), halts by name on a missing plan or spec, and fails closed on an unreadable value" \
+  || bad "/build lost a load-order halt or matches spec: values anywhere in the plan"
+{ grep -q 'after-root-cause' templates/plan.md.tmpl && grep -q 'after-root-cause' "$tk56" \
+  && grep -q 'after-root-cause' "$bd56" && grep -q 'route back to' "$TMP/bd56.flat" \
+  && grep -q 'the one condition this skill owns' "$TMP/bd56.flat"; } \
+  && ok "the investigation lane exists in template, /ticket and /build, and /build owns the return condition" \
+  || bad "an investigation-shaped ticket has no honest lane, or the return condition has no single owner"
+grep -qi 'no warehouse seam' "$bd56" \
+  && ok "/build verifies deliverables by their own check in a repo with no warehouse seam" \
+  || bad "/build is SQL-only; a document/report repo has no verification sentence"
+{ grep -q '/review <owner>/<id>' "$bd56" && grep -q 'no path from REQUEST-CHANGES to `/ship`' "$bd56" \
+  && grep -q 'Never write the verdict yourself' "$TMP/bd56.flat" && grep -q 'Two REQUEST-CHANGES rounds is the cap' "$TMP/bd56.flat" \
+  && grep -q 'never by re-entering `/build` from the top' "$TMP/bd56.flat"; } \
+  && ok "/build ends by running /review, never writes the verdict, caps the fix loop, and never nests a build" \
+  || bad "/build's built-in check is missing, unbounded, or recursive"
+grep -q 'return to that build' "$rv56" \
+  && ok "/review's REQUEST-CHANGES exit returns to the calling build instead of starting a new one" \
+  || bad "/review would re-enter /build from the top (mutual recursion)"
+# (d) the verdict file is one contract: name, lowercase key, numeric ordering — across writer and readers
+{ grep -q '_review_verdict.md' "$rv56" && grep -q 'verdict: APPROVE' "$rv56" && grep -q 'highest `<n>`' "$rv56" \
+  && grep -q '_review_verdict.md' .claude/agents/qc-reviewer.md && grep -q '^verdict: APPROVE | REQUEST-CHANGES' .claude/agents/qc-reviewer.md \
+  && grep -q '_review_verdict.md' "$sh56" && grep -q 'highest `<n>`' "$sh56" && grep -q 'compared' "$TMP/sh56.flat"; } \
+  && ok "/review, qc-reviewer and /ship agree: qc_queries/<n>_review_verdict.md, lowercase verdict:, highest <n> numerically" \
+  || bad "the verdict contract drifted between writer and readers (name, key case, or ordering)"
+if grep -q '^Verdict:' .claude/agents/qc-reviewer.md; then
+  bad "qc-reviewer still emits a capitalised Verdict: — /ship's lowercase read would call a real APPROVE 'missing'"
+else
+  ok "qc-reviewer's output block uses the lowercase verdict: key the readers match on"
+fi
+# (e) /ship: four cases + fail-closed default, typed through and recorded, never pre-answered, legacy reports honored
+{ grep -q 'ship unreviewed' "$sh56" && grep -q 'verdict: SKIPPED' "$sh56" \
+  && grep -q 'never counts as approval' "$sh56" && grep -q 'never pre-answers this gate' "$sh56" \
+  && grep -q 'hard stop' "$sh56" && grep -q 'shipped without an independent review' "$sh56" \
+  && grep -q 'Anything else' "$sh56" && grep -q 'never a pass' "$sh56" \
+  && grep -q 'never treat reviewed work as unreviewed' "$TMP/sh56.flat"; } \
+  && ok "/ship: missing/SKIPPED → warn + typed confirm + SKIPPED record; REQUEST-CHANGES → hard stop; unreadable → fails closed; legacy reports honored" \
+  || bad "/ship's verdict gate lost a load-bearing clause"
+if grep -q "If the verdict isn't APPROVE" "$sh56"; then
+  bad "/ship still carries the old wall that users routed around"
+else
+  ok "/ship's old 'isn't APPROVE → stop' wall is gone (replaced by the gate)"
+fi
+grep -q 'SKIPPED' templates/ticket-README.md.tmpl \
+  && ok "the ticket README template tells the reader an unreviewed ship is recorded as SKIPPED" \
+  || bad "ticket-README.md.tmpl does not mention the SKIPPED record"
+# (f) docs and banner carry the new flow; the retired name is gone from the adoption surface
+{ grep -q 'writes the plan' README.md && grep -q '^/build ' README.md && grep -q 'ship unreviewed' README.md; } \
+  && ok "README's 'How work flows' block carries plan-first /ticket, /build, and the unreviewed-ship gate" \
+  || bad "README's command block is stale"
+{ grep -q 'waits for your approval before anything is built' templates/AGENTS.md.tmpl \
+  && grep -q 'ship unreviewed' templates/AGENTS.md.tmpl && grep -q '`/build`' templates/AGENTS.md.tmpl; } \
+  && ok "AGENTS.md.tmpl carries the new flow, the built-in review, and the ship gate" \
+  || bad "AGENTS.md.tmpl is stale"
+{ grep -q '/build' .claude/hooks/session_context.py && grep -q 'runs `/review` itself' docs/architecture.md; } \
+  && ok "the session banner and architecture.md name /build and the built-in review" \
+  || bad "the banner or architecture.md still describes the old lifecycle"
+left56="$(grep -rl 'spec-and-build' --exclude-dir=.git --exclude-dir=emit --exclude-dir=__pycache__ \
+          --exclude-dir=.ai-friend-review . 2>/dev/null \
+          | grep -v 'CHANGELOG.md\|docs/troubleshooting.md\|bin/emit_runtime.py\|ticketwright/cli.py\|bin/selftest.sh\|ROADMAP.md' || true)"
+[ -z "$left56" ] && ok "spec-and-build survives only in history, the rename map, the RETIRED lists, and this suite" \
+  || bad "the retired skill name is still on the adoption surface" "$left56"
+if grep -rq 'v4\.1' docs README.md templates .claude bin --exclude=selftest.sh 2>/dev/null; then
+  bad "a speculative version stamp is written into docs or skills — the version has ONE source of truth" \
+      "$(grep -rn 'v4\.1' docs README.md templates .claude bin --exclude=selftest.sh | head -3)"
+else
+  ok "no speculative version stamp in docs, templates, skills or bin (ticketwright/__init__.py stays the only source)"
+fi
+# (g) plan_mode surfaces for the pinned runtime (the floor and the adapter-key coverage are §31's)
+pm56="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=claude-code \
+        python3 bin/kit_paths.py --json 2>/dev/null)"
+python3 - "$pm56" <<'PY56'
+import json, sys
+d = json.loads(sys.argv[1] or "{}")
+sys.exit(0 if d.get("capabilities", {}).get("plan_mode") == "native" and d.get("kit_root") else 1)
+PY56
+[ $? -eq 0 ] && ok "kit_paths --json surfaces plan_mode=native and kit_root for claude-code (the one probe /ticket Phase 4 needs)" \
+  || bad "kit_paths --json does not surface plan_mode (or kit_root)" "$pm56"
+grep -q 'plan_mode' docs/runtimes.md && grep -qi 'enforcement boundary' docs/runtimes.md \
+  && ok "runtimes.md documents plan_mode and states it is a UI feature, not an enforcement boundary" \
+  || bad "runtimes.md does not document plan_mode honestly"
+# the human-readable capability matrix must stay a well-formed table (§40 parses only the machine one)
+python3 - <<'PY56' >"$TMP/hd56.matrix"
+import pathlib
+doc = pathlib.Path("docs/runtimes.md").read_text(encoding="utf-8")
+sect = doc.split("## Capability matrix", 1)[1].split("## The matrix, machine-readable", 1)[0]
+rows = [l for l in sect.splitlines() if l.startswith("|")]
+widths = {l.count("|") for l in rows}
+print("" if len(widths) == 1 and len(rows) >= 9 else f"ragged table: pipe counts {sorted(widths)} over {len(rows)} rows")
+PY56
+[ -z "$(cat "$TMP/hd56.matrix")" ] && ok "runtimes.md's human-readable capability matrix is a well-formed table (every row the header's width)" \
+  || bad "runtimes.md's human-readable capability matrix is ragged" "$(cat "$TMP/hd56.matrix")"
+# (h) reference files travel to emitted runtimes — a body that says "follow spec.md" must find it
+{ [ -f tests/emit/codex-cli/.agents/skills/ticket/spec.md ] && [ -f tests/emit/codex-cli/.agents/skills/ticket/priming.md ] \
+  && [ -f tests/emit/antigravity/.agents/skills/ticket/spec.md ] && [ -f tests/emit/codex-cli/.agents/skills/setup/scaffold.md ]; } \
+  && ok "emitted skill trees carry the sibling reference files their bodies point at (spec.md, priming.md, scaffold.md)" \
+  || bad "an emitted SKILL.md points at a reference file that was never emitted"
+grep -q 'reference file, verbatim' bin/emit_runtime.py \
+  && ok "emit_runtime.py emits reference files verbatim alongside each SKILL.md" \
+  || bad "emit_runtime.py still emits SKILL.md alone"
+[ "$(grep -c 'warn_retired_skills(' bin/emit_runtime.py)" -ge 4 ] \
+  && ok "the retired-skill warning fires on the emit path AND both verify-only paths" \
+  || bad "a verify-only install can keep a retired skill directory beside the new one unannounced"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

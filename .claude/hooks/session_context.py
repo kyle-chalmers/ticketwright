@@ -417,7 +417,7 @@ def main() -> int:
         f"tracker={s['tracker']} · warehouse={s['warehouse']} · "
         f"chat={s['chat']} · docstore={s['docstore']} · vcs={s['vcs']} · "
         f"meetings={s['meetings']}{viewer_note}.",
-        "Lifecycle: /ticket (opens + auto-primes context) → /spec-and-build → /review → /ship.",
+        "Lifecycle: /ticket (opens + primes context, writes the plan) → /build (builds, then reviews) → /review → /ship.",
     ]
     lines[2:2] = whoami_lines(root)
     if skills:

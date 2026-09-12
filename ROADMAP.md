@@ -68,7 +68,7 @@ one-Jira-one-Snowflake?
   legacy spelling in `dev_key:` frontmatter.
 - **Two bugfixes surfaced by review**, both latent before this work: `db_write_guard` could harvest
   another seam's CLI and raise a spurious approval prompt on an ordinary tracker command, and
-  `spec-and-build` named a Snowflake-only config key inside a deliberately tool-neutral skill.
+  `spec-and-build` (now `build`) named a Snowflake-only config key inside a deliberately tool-neutral skill.
 - **Wrong-warehouse guard** — the hook prompts when the invoked CLI doesn't match the SQL's declared
   target, including for reads. `/review` is the authoritative half (no YAML parsing, and it works
   under agents where hooks don't run); the hook is the earlier, best-effort one.

@@ -6,6 +6,56 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **Every ticket is scoped before anything is built, and the quality path is now the default path.**
+  Real sessions showed the old routing ("spec if non-trivial, else build directly") resolving to
+  "build directly" nearly every time, `/review` never being invoked by name, and tickets shipping with
+  no verdict on file. Three changes, decided together:
+  - **`/ticket` ends in a Scope phase.** It drafts a one-page plan from `templates/plan.md.tmpl` (Goal,
+    Scope in/out, Deliverables, Approach, Validation strategy, Questions, Risks, Next step, Confidence)
+    and, when the plan says `spec: required` (a persisted object others depend on, two or more sources
+    reconciled, or confidence below 7), writes the full spec **in the same read-only phase** — spec
+    authoring moved into the ticket skill (`.claude/skills/ticket/spec.md`). One approval covers the
+    package; then both land and commit together (`commit_plan_before_implement`). Where the runtime
+    declares `plan_mode: native`, the drafting happens in its planning mode and leaving that mode is
+    the approval; elsewhere the phase is read-only by contract — guidance, stated as such. Investigation-
+    shaped tickets — where a fix cannot be blueprinted before the root cause is known — record
+    `spec: after-root-cause`: the plan scopes the investigation, `/build` runs it, and returns to
+    scoping for the spec before any fix to a persisted object is built (two surveyed sessions had
+    correctly skipped the spec for exactly this reason; the flow now has a lane for it).
+  - **`spec-and-build` is renamed `build`, and every build ends with the review.** `/build` loads the
+    spec, else the plan (neither on file is a named halt pointing at `/ticket`), executes it in small
+    loops, then runs `/review` on the ticket; APPROVE is the only exit toward `/ship`, REQUEST-CHANGES
+    loops fix → re-review. `/review` stays standalone for re-checks, `--deep`, and other people's
+    tickets, and now writes a fixed file — `qc_queries/<n>_review_verdict.md` with a `verdict:` line —
+    so downstream steps have something mechanical to read. No alias for the old name; both installers
+    (`ticketwright init`, `install --runtime`) warn about a leftover `spec-and-build/` directory, and
+    `docs/troubleshooting.md` carries the rename.
+  - **`/ship` warns and records instead of refusing when no review is on file.** The previous hard stop
+    was routed around — work shipped through other commands, leaving nothing in the record. Now: a
+    missing verdict, or a `SKIPPED` one, prints what the pyramid has not checked and waits for the typed
+    phrase `ship unreviewed`; on that phrase it writes a `SKIPPED` verdict (date, shipper, instruction
+    verbatim) and the PR body, the curated index row and the tracker comment say "shipped without an
+    independent review". The gate re-fires on every ship until a real review supersedes it; `--go`
+    never pre-answers it. A `REQUEST-CHANGES` verdict is still refused outright. This is a deliberate
+    trade against the "never make a check skippable" tiebreaker: the path is reachable only for work
+    built outside `/build` (which reviews itself), it is typed through rather than configured away,
+    and it always leaves a record — tiebreakers 3 and 6 are what make it acceptable.
+
+### Fixed
+- **Skill reference files now travel to emitted runtimes.** `emit_runtime.py` copied only each
+  skill's `SKILL.md`, so the bodies it emitted for Codex CLI and Antigravity pointed at
+  `ticket/priming.md`, `setup/scaffold.md` and the new `ticket/spec.md` in directories that never
+  received them. Sibling `*.md` reference files are now emitted verbatim alongside the body (they are
+  read, never injected, so a copy is exact), and both verify-only installer paths now print the
+  retired-skill warning too, since a `git pull` upgrade prunes nothing either.
+
+### Added
+- **`plan_mode` runtime capability** on every `adapters/runtime/*.md` (closed vocabulary `native` /
+  `none` / `unknown`, floor `unknown`), surfaced by `kit_paths.py --json`, documented with dated
+  citations in `docs/runtimes.md`. All seven researched runtimes declare a native planning mode; the
+  docs state plainly that it is a UI feature, not a sandbox.
+
 ### Fixed
 - **Every documented `bin/` command worked only on a vendored install — the plugin path was broken,
   and the kit could not see it.** Skills located kit assets through

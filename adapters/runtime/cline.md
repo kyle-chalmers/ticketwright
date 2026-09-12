@@ -10,6 +10,7 @@ session_start: unknown
 tool_gate: unknown
 subagents: no
 structured_questions: unknown
+plan_mode: native          # Plan mode: reads and searches, cannot modify files or run commands; Act mode executes (docs.cline.bot/features/plan-and-act, 2026-09-11)
 gate_ask_tier: unknown      # the gate API itself is in flux; no return schema documented
 gate_fail_mode: unknown
 subagent_isolation: none    # subagents exist but are not user-definable — nothing to isolate for the kit

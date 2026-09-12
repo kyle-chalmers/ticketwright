@@ -17,7 +17,10 @@ that guide an agent), versioned together. The AI layer has three tiers:
 The lifecycle the skills implement — plan → build → check → ship — descends from the PIV loop
 (Plan → Implement → Validate) in Cole Medin's "agentic engineering" / Archon material, which also
 supplied the AI-layer model and the context-engineering stance (AI fails from missing context, not
-weak models).
+weak models). The kit makes the quality path the default path: `/ticket` does every read-only
+planning step (the plan, and the spec when the plan calls for one) behind one approval, `/build`
+executes and then runs `/review` itself, and `/ship` warns, waits and records rather than silently
+letting unreviewed work leave — a `REQUEST-CHANGES` verdict it refuses outright.
 
 ## What the record is for
 
@@ -155,7 +158,7 @@ unbound teammate's work under that key lands it in a colleague's folder. `bin/re
 a thin shim over it that maps the resolved person to a voice profile, kept while `/ship` still
 calls it. The Claude SessionStart hook only *displays* the result ("Working as …") — it is never
 the resolver or the write path. Every ticket-opening and shipping workflow (`/ticket`, `/ship`,
-`/review`, `/spec-and-build`) calls it first: the resolved person is the owner new work is filed
+`/review`, `/build`) calls it first: the resolved person is the owner new work is filed
 under, and owner is part of ticket identity — the locator is `owner/id`, bare `id` while exactly
 one owner has it, a hard stop when two do (see `docs/ticket-index.md` § The ticket locator).
 
@@ -235,7 +238,7 @@ before it is paid.
 
 ## What's inside
 
-- **7 skills** (`.claude/skills/`): setup, ticket, spec-and-build, review, ship, skillify,
+- **7 skills** (`.claude/skills/`): setup, ticket, build, review, ship, skillify,
   refresh — each SKILL.md is short, with depth in per-skill reference files
   (`ticket/priming.md`, `setup/adopt.md`, `skillify/authoring.md`, …).
 - **1 sub-agent** (`.claude/agents/`): `qc-reviewer` — the independent-context reviewer `/review`

@@ -3,7 +3,7 @@
 # The persona: a team whose ticket work produces documents, models, and reports rather than SQL —
 # research briefs, ops analyses, evaluations. There is no database to query; the deliverable is the
 # written analysis itself. The `warehouse` seam is simply absent: /ticket priming skips warehouse
-# context, /spec-and-build writes code/analysis-only specs, /review runs the deliverable-level
+# context, /ticket writes code/analysis-only plans and specs, /review runs the deliverable-level
 # checks instead of the query layers, and the DB-write policy has nothing to guard.
 #
 # Tracker here is GitHub Issues (ids are bare numbers; `key_prefix` is a branch/display convention).

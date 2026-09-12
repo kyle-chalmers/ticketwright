@@ -73,17 +73,33 @@ protection a team is getting.
 
 Since wave F2 (2026-08-19) the load-bearing rows above also live as frontmatter keys on every
 `adapters/runtime/*.md`, read through `bin/kit_paths.py --json` — so installers and skills consume
-declared data, never a parse of this page. The five keys, with the shipped values:
+declared data, never a parse of this page. The six keys, with the shipped values:
 
-| Runtime | `gate_ask_tier` | `gate_fail_mode` ¹ | `subagent_isolation` | `reads_foreign_skills` ² | `global_skills_root` |
-|---|---|---|---|---|---|
-| **Claude Code** | yes | open | documented | none | `~/.claude/skills` |
-| **Codex CLI** | no | unknown ³ | unestablished | none | `~/.agents/skills` |
-| **Cursor** | yes | open | documented | `.claude/skills`, `.codex/skills` | `~/.cursor/skills` |
-| **Antigravity** | yes | unknown | documented | none | unknown ⁴ |
-| **OpenCode** | no | closed ⁵ | unestablished | `.claude/skills`, `.agents/skills` | `~/.config/opencode/skills` |
-| **Devin** | no | open | documented | `.claude/skills` ⁶ | `~/.config/devin/skills` |
-| **Cline** | unknown | unknown | none ⁷ | `.claude/skills` | `~/.cline/skills` ⁸ |
+| Runtime | `gate_ask_tier` | `gate_fail_mode` ¹ | `subagent_isolation` | `reads_foreign_skills` ² | `global_skills_root` | `plan_mode` ⁹ |
+|---|---|---|---|---|---|---|
+| **Claude Code** | yes | open | documented | none | `~/.claude/skills` | native |
+| **Codex CLI** | no | unknown ³ | unestablished | none | `~/.agents/skills` | native |
+| **Cursor** | yes | open | documented | `.claude/skills`, `.codex/skills` | `~/.cursor/skills` | native |
+| **Antigravity** | yes | unknown | documented | none | unknown ⁴ | native |
+| **OpenCode** | no | closed ⁵ | unestablished | `.claude/skills`, `.agents/skills` | `~/.config/opencode/skills` | native |
+| **Devin** | no | open | documented | `.claude/skills` ⁶ | `~/.config/devin/skills` | native |
+| **Cline** | unknown | unknown | none ⁷ | `.claude/skills` | `~/.cline/skills` ⁸ | native |
+⁸ macOS/Linux; Windows is `%USERPROFILE%\.cline\skills` (re-verified 2026-08-19 — this page
+previously recorded only the global *rules* path, `~/Documents/Cline/Rules`).
+⁹ `plan_mode` (added 2026-09-11): whether the runtime offers a read-only planning mode that `/ticket`
+can draft the scoping package in — `native` / `none` / `unknown`. It is a **UI / workflow feature, never
+an enforcement boundary**: most such modes let nothing but the runtime's own plan file be written, but that is an
+instruction to the model, not a sandbox, so `/ticket` treats the mode as where drafting happens and
+the human's approval — leaving the mode, or a reply — as the only thing that permits a ticket write. Every researched runtime documents one, and the docs of one of
+them say the quiet part aloud — OpenCode: "Plan mode is an instruction to the model, not a hard
+sandbox." Read every `native` that way. Citations, all read 2026-09-11: Claude Code — plan mode
+(Shift+Tab; the planning tool); Codex CLI — `/plan` / Shift+Tab collaboration mode, read-only until
+the plan is approved (openai/codex plan mode, PR #4769 and the CLI docs); Cursor —
+<https://cursor.com/docs/agent/plan-mode>; Antigravity — <https://antigravity.google/docs/cli/modes/>
+and <https://antigravity.google/docs/implementation-plan/>; OpenCode — <https://opencode.ai/docs/agents/>
+(the Plan agent: edits disabled except `.opencode/plans/*.md`); Devin — Planning Mode on the desktop
+(Cascade) surface, <https://docs.devin.ai/desktop/cascade/modes>, while the cloud agent plans before
+acting by default; Cline — <https://docs.cline.bot/features/plan-and-act>.
 
 ¹ The runtime's **native default** when a hook errors — not the installed state. Cursor is `open`
 here precisely because an installer must set `failClosed: true` to compensate; the key records what
@@ -98,8 +114,6 @@ that errors denies; what an entirely-failed plugin *load* does is undocumented.
 ⁶ Devin's reading of other vendors' formats is toggleable in its config.
 ⁷ Subagents exist and are isolated, but are not user-definable — there is no kit-defined subagent to
 isolate, so for the kit's purposes the answer is `none`.
-⁸ macOS/Linux; Windows is `%USERPROFILE%\.cline\skills` (re-verified 2026-08-19 — this page
-previously recorded only the global *rules* path, `~/Documents/Cline/Rules`).
 
 Two rules the encoding carries, stated here so nobody re-derives them wrongly:
 

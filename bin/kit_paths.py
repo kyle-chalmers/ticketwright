@@ -42,6 +42,10 @@ CAPABILITY_KEYS = (
     # failClosed: true to compensate).
     "gate_ask_tier", "gate_fail_mode", "subagent_isolation",
     "reads_foreign_skills", "global_skills_root",
+    # Whether the runtime offers a read-only planning mode /ticket can draft the scoping package
+    # in (`native`), documents that it has none (`none`), or is unresearched (`unknown`). A UI /
+    # workflow feature, never an enforcement boundary — leaving it is the approval step.
+    "plan_mode",
 )
 
 # Floors for a runtime we cannot identify, per key. A generic "no" is not a legal value for the
@@ -55,6 +59,7 @@ _FLOOR = {
     "gate_ask_tier": "unknown", "gate_fail_mode": "unknown",
     "subagent_isolation": "unknown", "global_skills_root": "unknown",
     "reads_foreign_skills": "none",
+    "plan_mode": "unknown",
 }
 
 
