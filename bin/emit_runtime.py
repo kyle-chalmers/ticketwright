@@ -402,7 +402,7 @@ def report_foreign(foreign: list[Path]) -> int:
 # next to the new one — same description, both model-invocable, and the stale copy points at a
 # template path that no longer exists, so it fails AFTER its hard halt has already been cleared.
 # We WARN and never delete: removing files a user may have edited is not this tool's call.
-RETIRED_SKILLS = ("productize",)
+RETIRED_SKILLS = ("productize", "spec-and-build")
 
 
 def warn_retired_skills(root: Path, label: str) -> None:

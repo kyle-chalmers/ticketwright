@@ -168,7 +168,7 @@ it on their behalf — and skipping it just means the gate prints paths instead 
 ## 6 · Read the map
 Point them at, in order: `AGENTS.md` (the rules — read end to end),
 `documentation/AI_LAYER_INDEX.md` (what exists), and the `documentation/` knowledge pack (built by
-`/refresh context`) for domain grounding. Summarize the lifecycle: **`/ticket` → `/spec-and-build`
+`/refresh context`) for domain grounding. Summarize the lifecycle: **`/ticket` → `/build`
 → `/review` → `/ship`** — context loads automatically inside `/ticket`.
 
 ## 7 · Guided first-ticket dry run

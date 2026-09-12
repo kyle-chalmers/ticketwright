@@ -164,7 +164,7 @@ name or a `private/` subfolder (both gitignored). If the tracker adapter ships a
 helper, copy it into `resources/`.
 
 ## AI-layer index (`documentation/AI_LAYER_INDEX.md`)
-A one-line-each inventory of the installed skills (`setup`, `ticket`, `spec-and-build`, `review`,
+A one-line-each inventory of the installed skills (`setup`, `ticket`, `build`, `review`,
 `ship`, `skillify`, `refresh`), the `qc-reviewer` agent, the hooks, and the adapters in use — so
 humans and agents can find what exists.
 

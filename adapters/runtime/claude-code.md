@@ -10,6 +10,7 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: yes
+plan_mode: native          # plan mode (Shift+Tab / the planning tool): only its own plan file is writable inside it; LEAVE it before writing ticket artifacts — leaving it is the approval
 gate_ask_tier: yes
 gate_fail_mode: open        # hooks fail open by design: a hook error never blocks a session
 subagent_isolation: documented

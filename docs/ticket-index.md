@@ -101,7 +101,7 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
 - **Prior-art recall** (engine `bin/recall.py`, surfaced as `/ticket --recall`) ranks prior tickets against a seed ticket (or
   `--query` / `--tags` / `--object`) by a transparent lexical score — **object match ×4, tag ×3,
   cross-ref link +5, keyword ×1**, recency as a tiebreak — then reads the top few READMEs and writes a
-  *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `spec-and-build`
+  *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `build`
   so prior art surfaces automatically in PLAN. Lexical + stdlib (no embeddings); the rank → read-top-K
   shape is the retrieval path that scales past the point where the whole `INDEX.md` fits in context.
 - **`tickets/OBJECTS.md`** — reverse map: each data object → tickets that touched it

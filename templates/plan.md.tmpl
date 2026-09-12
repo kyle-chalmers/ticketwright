@@ -1,22 +1,46 @@
 # Plan — {{ticket_id}}: {{title}}
 
-> Lightweight plan for work that doesn't need a full spec. Commit before implementing
-> (policy commit_plan_before_implement) for blame-free retry.
+> Written by `/ticket` for every ticket, before anything is built — the one-page scoping record.
+> On file before `/build` runs (committed when policy `commit_plan_before_implement` is on).
+> **Confidence (1–10): {{confidence}}** — below 7, the Next step requires a spec.
 
 ## Goal
-{{goal}} — the outcome and why it matters.
+{{goal}} — the outcome and why it matters to the requester.
+
+## Scope
+- **In:** …
+- **Explicitly out:** … (what this ticket will not answer, so nobody assumes it did)
+
+## Deliverables expected
+*Numbered in review order; each names its grain and carries its record count in the filename.*
+1. …
 
 ## Approach
 *Ordered steps. Keep build-and-check loops small — one object/change at a time.*
 1. …
 
 ## Validation strategy (defined BEFORE code)
-*How each step is verified; the success criteria.*
+*How each step is verified; the success criteria `/review` will check against.*
+- Duplicate detection on the grain key (primary test).
+- Record-count reconciliation (source vs output).
 - …
 
 ## Touched
 - **Objects/files:** …
 - **Tool slots:** tracker / warehouse / chat / docstore / meetings / vcs (which, for what)
 
-## Risks / open questions
+## Questions for the requester
+*Asked before approval (policy `reduce_assumptions`); the answers become README assumptions.*
 - …
+
+## Risks
+- …
+
+## Next step
+- **spec:** {{spec_required}}  (`required` when the work creates or alters a persisted object others
+  depend on — a warehouse object, a model, a published report — or reconciles two or more sources,
+  or confidence is below 7; `after-root-cause` when the ticket is an investigation whose fix cannot be
+  blueprinted before the root cause is known — the Approach then scopes the investigation, and
+  `/build` returns here for the spec once the cause is found; otherwise `not required`)
+- **spec path:** {{spec_path}}  (`specs/<id>-<slug>.md` once written; `—` when not required)
+- Then `/build {{owner}}/{{ticket_id}}` → `/ship {{owner}}/{{ticket_id}}` on APPROVE.

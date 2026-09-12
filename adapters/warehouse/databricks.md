@@ -18,7 +18,7 @@ note: |
 # Databricks adapter
 
 Maps the `warehouse` verb contract to Databricks (Unity Catalog, Spark SQL). Same verbs as Snowflake;
-only commands + `dialect_notes` differ, so `review` / `spec-and-build` / `refresh context` run
+only commands + `dialect_notes` differ, so `review` / `build` / `refresh context` run
 unchanged.
 
 ## Per-person setup notes (consumed by the onboarding flow; not verbs)

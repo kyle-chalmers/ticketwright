@@ -7,7 +7,9 @@ description: Independent quality review of a ticket's deliverables — re-runs q
 
 # /review
 
-The **check** step of the lifecycle. An *independent* second pass over a ticket's deliverables —
+The **check** step of the lifecycle. `/build` runs this at the end of every build; run it directly
+to re-check after a fix, for a `--deep` panel, or on someone else's ticket. An *independent* second
+pass over a ticket's deliverables —
 re-runs queries, walks a tiered validation pyramid, sweeps for anti-patterns, and returns an
 APPROVE / REQUEST-CHANGES verdict. Reads `.claude/config/stack.yaml`; warehouse specifics come from
 the resolved target's adapter `dialect_notes`, so the same review runs against any warehouse — or
@@ -28,7 +30,9 @@ pass gets its own context, and the verdict records which review the ticket actua
    (halt with that target's adapter auth notes if unreachable) — resolution order in
    `adapters/README.md` § Multi-target seams. Load each target's `dialect_notes`: the lint layer is
    parameterized **per file**, by the target its header names.
-2. Read the ticket README, the spec (if any), and list `final_deliverables/` + `qc_queries/`.
+2. Read the ticket README, the plan (`<ticket-dir>/plan.md` — its Validation strategy and
+   Deliverables are part of what this review checks against), the spec (if any), and list
+   `final_deliverables/` + `qc_queries/`.
 
 ## The validation pyramid (bottom = cheap/automated, top = human)
 
@@ -161,7 +165,11 @@ severity · verification queries run · **APPROVE** or **REQUEST-CHANGES**). The
 review this ticket actually got: `review_mode: independent-subagent` or
 `review_mode: inline-same-context`, each with the `subagent_isolation:` posture the capability
 probe returned — and an inline record carries the probe section's weaker-check sentence verbatim.
-An inline-degraded APPROVE must never read identically to an independent-subagent APPROVE. Save
-the report into the ticket's `qc_queries/` for the audit trail. APPROVE ⇒ recommend
-`/ship <owner>/<id>` — the qualified locator, so `/ship` cannot re-resolve a bare id to a
-different owner's ticket.
+An inline-degraded APPROVE must never read identically to an independent-subagent APPROVE.
+**Save the report as `qc_queries/<n>_review_verdict.md`** (`<n>` = the next number in that folder)
+with `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first line after the title, then
+`review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship` reads
+(newest file wins, so a later review supersedes an earlier one, including a `SKIPPED` record `/ship`
+wrote for an unreviewed ship). APPROVE ⇒ recommend `/ship <owner>/<id>` — the qualified locator, so
+`/ship` cannot re-resolve a bare id to a different owner's ticket. REQUEST-CHANGES ⇒ back to
+`/build <owner>/<id>`, which applies the remediation and runs this review again.

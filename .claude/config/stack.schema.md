@@ -175,7 +175,7 @@ targets". Fields of a single mapping:
 | `transport` | enum | `cli` \| `mcp` \| `both` — how the adapter talks to the tool. Drives the verify fallback. |
 | *(extra keys)* | any | Tool-specific config the adapter reads (site, warehouse, role, channel, base_path, …). |
 
-The `warehouse` slot may be `null`/omitted for non-data repos — `review`, `spec-and-build`, and
+The `warehouse` slot may be `null`/omitted for non-data repos — `review`, `build`, and
 `refresh context` degrade gracefully (skip warehouse steps) when it is. `chat` and `docstore` may
 likewise be omitted: `/ship` skips those artifacts and names the `/setup` command that would enable
 them rather than blocking. `stack.example.solo.yaml` omits both. `meetings` is optional the same
@@ -417,10 +417,10 @@ Two consequences worth knowing before you adopt it:
 | `hyperlink_everything` | bool | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
 | `skillify_everything` | bool | `true` | recurring work → a `/skillify` skill the agent can invoke, not a one-off. |
 | `reduce_assumptions` | bool | `true` | ask before building; still document every assumption in the ticket README. |
-| `commit_plan_before_implement` | bool | `true` | `spec-and-build` commits the spec/plan artifact before `build` (blame-free retry). |
+| `commit_plan_before_implement` | bool | `true` | `/ticket` commits the plan (and the spec, when the plan calls for one) before `/build` runs (blame-free retry). |
 | `system_evolution` | bool | `true` | `ship` retro: a failure fixes the AI layer (rule/context/command/adapter), not just the ticket. |
 | `deterministic_outputs` | bool | `true` | data exports use explicit `ORDER BY`; generated skills ship golden-replay diffs. |
-| `human_review_handoff` | enum | `review` | `review` layer ⑤ (and `spec-and-build` under `all`) — open deliverables in the user's own apps and wait for sign-off. See below. |
+| `human_review_handoff` | enum | `review` | `review` layer ⑤ (and `build` under `all`) — open deliverables in the user's own apps and wait for sign-off. See below. |
 
 All are booleans except `db_write_requires_approval` and `human_review_handoff`.
 
@@ -465,7 +465,7 @@ that can actually render it, before the verdict is written.
 |---|---|
 | `off` | Never hand files over automatically. |
 | `review` | **Default.** At `/review` layer ⑤ only: open `final_deliverables/` + `qc_queries/`, then wait for sign-off. |
-| `all` | Also in `spec-and-build build` — the generated SQL before its first warehouse run, and the CSVs after export. |
+| `all` | Also in `/build` — the generated SQL before its first warehouse run, and the CSVs after export. |
 
 Under `all` the earlier gates do **not** cancel the review gate: `/review` notes what was already
 signed off and focuses on what changed since. Skipping silently is how a deliverable reaches a

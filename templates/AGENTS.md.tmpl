@@ -16,9 +16,12 @@ Analysis tooling in use: {{analysis_tools}} — descriptive context only; tool c
 from the adapters, never from this line.
 
 ## How work flows (plan → build → check → ship)
-`/ticket <id>` (opens the ticket + auto-loads its context and prior art) → `/spec-and-build`
-(blueprint, then build) → `/review` (independent check) → `/ship` (gated delivery). Recurring work
-→ `/skillify`. Knowledge maintenance → `/refresh` (ticket catalog + domain pack).
+`/ticket <id>` (opens the ticket, auto-loads its context and prior art, **writes the plan — and the
+spec when the plan calls for one — and waits for your approval before anything is built**) →
+`/build` (executes the approved plan/spec in fresh context, then runs `/review` itself) → `/review`
+(the independent check; run it directly to re-check or go `--deep`) → `/ship` (gated delivery; warns
+and waits when no review verdict is on file). Recurring work → `/skillify`. Knowledge maintenance →
+`/refresh` (ticket catalog + domain pack).
 On a plugin install these names are namespaced — `/ticketwright:ticket <id>`, `/ticketwright:review`,
 … — the short names apply to vendored/pip installs.
 
@@ -317,7 +320,7 @@ is true.
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
 5. **skillify_everything** — when work recurs it becomes its own skill (`/skillify`), not another copy-paste.
 6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
-7. **commit_plan_before_implement** — `/spec-and-build` commits the spec before building (blame-free retry).
+7. **commit_plan_before_implement** — `/ticket` commits the plan (and the spec) before `/build` runs (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
 9. **deterministic_outputs** — explicit `ORDER BY` on exports; generated skills ship golden-replay diffs.
 10. **human_review_handoff** — `off` | `review` (default) | `all`; open the deliverables in the
@@ -358,7 +361,9 @@ cap, a hyperlink, or the include-list. No profile ⇒ drafting is unchanged. Bui
 Every deliverable: ① dialect lint → ② counts & dedup (duplicate detection is the primary test) →
 ③ cross-source reconciliation → ④ independent re-run + anti-pattern sweep → ⑤ human sign-off.
 No warehouse tool slot (or non-query deliverables): skip the layers with nothing to run; `/review` runs
-layer ⑤ plus a claims-vs-evidence walk instead. Run `/review` before `/ship`.
+layer ⑤ plus a claims-vs-evidence walk instead. `/build` runs `/review` for you at the end of every
+build; `/ship` warns, waits for a typed `ship unreviewed`, and records a `SKIPPED` verdict when no
+review is on file — a REQUEST-CHANGES verdict it refuses outright.
 
 ## Git
 Branch = ticket id off `{{default_branch}}`. Semantic commits/PRs (`feat|fix|docs|refactor|chore|

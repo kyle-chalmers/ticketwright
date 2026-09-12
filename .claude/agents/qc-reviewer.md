@@ -28,7 +28,8 @@ A same-context review is not the independent second pass the validation pyramid 
    deliverable. Load each target's adapter and its `dialect_notes`
    (function names, sizing model, dedup idiom, cast/filter rules, dialect anti-patterns). If no
    warehouse seam, review is code/output/doc only.
-2. Read the ticket README, the spec (if any), and list `final_deliverables/` + `qc_queries/`.
+2. Read the ticket README, the plan (`plan.md` — its Validation strategy is part of the checklist),
+   the spec (if any), and list `final_deliverables/` + `qc_queries/`.
 
 ## Walk the validation pyramid (cheap→expensive, automated→human)
 1. **Dialect lint** (per `dialect_notes`): `=NULL` vs `IS NULL`; unguarded division; `SELECT *` in
@@ -65,4 +66,5 @@ Verification queries run:
 ```
 Read-only: never edit code, never post anything, never approve a merge — that's the human's call.
 Spawned, this block is the tool result; walked inline, it is written directly into `/review`'s
-report — either way `review_mode` says which one happened.
+report — either way `review_mode` says which one happened. `/review` saves that report as
+`qc_queries/<n>_review_verdict.md` with the `verdict:` line first — the fixed name `/ship` reads.

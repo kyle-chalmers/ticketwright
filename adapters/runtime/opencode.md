@@ -10,6 +10,7 @@ session_start: no
 tool_gate: yes
 subagents: yes
 structured_questions: yes
+plan_mode: native          # Plan agent: edit disabled except .opencode/plans/*.md; the docs say it is an instruction to the model, NOT a sandbox (opencode.ai/docs/agents, 2026-09-11)
 gate_ask_tier: no           # permission.ask exists in SDK types but never fires (open upstream issue)
 gate_fail_mode: closed      # a thrown error prevents execution — deny IS the error path; see gotchas
 subagent_isolation: unestablished   # "own context window" appears only on unofficial mirrors

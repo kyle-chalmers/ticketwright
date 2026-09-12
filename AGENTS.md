@@ -213,5 +213,5 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 - Skill/command/adapter frontmatter must be valid, parseable YAML with a `description` — a broken
   flow-node silently drops all metadata when loaded as a plugin (selftest section 14 checks this).
 - The v1 command names (`/start-ticket`, `/qc-review`, …) were retired in v3; the surface is 7 skills
-  (`setup`, `ticket`, `spec-and-build`, `review`, `ship`, `skillify`, `refresh`). Don't reintroduce
+  (`setup`, `ticket`, `build`, `review`, `ship`, `skillify`, `refresh`). Don't reintroduce
   the old aliases (selftest section 14b fails on them).

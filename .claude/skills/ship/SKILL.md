@@ -7,7 +7,8 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
 
 # /ship
 
-Ships a ticket that has **passed `/review`**. Split into a safe Phase A (local, no approval) and a
+Ships a ticket that has **passed `/review`** — and warns, waits, and records it when one has not. Split
+into a safe Phase A (local, no approval) and a
 gated Phase B (every external side effect), honoring `hard_halt_before_external_posts`. Reads
 the **merged** config (`bin/effective_config.py`, never raw `stack.yaml` — a raw read misses every
 personal and machine override); routes through the docstore / tracker / chat / vcs adapters, so it
@@ -29,8 +30,29 @@ works regardless of the underlying tools.
    `tickets/<owner>/` first, then across other owners — **two or more foreign owners sharing it is a
    hard stop listing the `owner/id` choices, never a pick**. Shipping a ticket whose owner isn't the
    shipper is allowed — say so out loud before continuing.
-   Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the `/review` verdict. If the verdict isn't APPROVE,
-   **stop** and send the user back to `/review`.
+   Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the plan +
+   **the newest `qc_queries/*_review_verdict.md`** and its `verdict:` line. Four cases, exhaustive:
+   - **APPROVE** → proceed.
+   - **REQUEST-CHANGES** → **hard stop.** The review ran and found a defect (count mismatch, duplicate
+     gap, reconciliation break, a Critical anti-pattern). Send the user back to `/build <owner>/<id>`,
+     which applies the remediation and re-reviews. Not overridable here.
+   - **No verdict file at all, or the newest one says `SKIPPED`** → **WARN, then stop and wait.** A
+     SKIPPED record never counts as approval; this gate re-fires on every ship until a real review
+     supersedes it. Print, verbatim in shape:
+     > No independent `/review` verdict is recorded for `<owner>/<id>` (last: none | SKIPPED on
+     > <date>). The validation pyramid — dialect lint, counts & dedup, reconciliation, independent
+     > re-run, human sign-off — has not run on these deliverables. Shipping now delivers unreviewed
+     > work. Reply **`ship unreviewed`** to continue, or run `/review <owner>/<id>`.
+     Only on that exact phrase: write `qc_queries/<n>_review_verdict.md` with `verdict: SKIPPED`,
+     `review_mode: none`, the date, the shipper (from whoami), and the user's instruction verbatim —
+     the record shows what review this ticket actually got, the same honesty rule `/review` applies
+     to an inline pass. Carry it forward: the PR body's QC section and the curated index summary
+     (step 3) say **"shipped without an independent review"**, and the tracker comment claims no QC
+     that did not happen. `--go` authorizes Phase B only — it never pre-answers this gate — and a
+     model-initiated ship meets the confirm gate above first, then this one.
+   Why this is a gate and not a wall: a hard stop here was routed around (work shipped through other
+   commands, leaving no record). `/build` runs the review itself, so this path is reachable only for
+   work built outside the kit, and it leaves a record either way.
 2. If the stack has a warehouse seam, re-run the final deliverable queries once more; confirm
    **byte-identical** output to the committed files (`deterministic_outputs` — explicit `ORDER BY`).
    In a repo with no warehouse seam, re-verify each deliverable by its own check instead (the
@@ -39,7 +61,8 @@ works regardless of the underlying tools.
    carry record counts; confirm the README tells the full business + methodology + QC story. Then
    **refresh this ticket's index entry** so its `tickets/INDEX.md` row gets a curated one-line
    summary: use **`/refresh index <owner>/<id>`** (the qualified locator — a bare id two owners
-   share is a hard stop there), which writes the record from this session. You have already
+   share is a hard stop there), which writes the record from this session — and when the verdict on file is `SKIPPED`, the
+   curated summary says so ("shipped without an independent review"). You have already
    read this ticket — no second model call is needed, and this path works under every runtime.
    The PostToolUse hook already keeps the row present; this upgrades it from auto-derived (`▱`) to
    curated.
@@ -206,7 +229,8 @@ execute — nothing the steps don't do may appear in it:
    `source_materials/` is committed too, and a raw transcript whose filename gives nothing away
    (`notes.md`) is matched by no gitignore pattern. Here `private/` IS a valid remedy, alongside
    trimming the file to the curated `YYYY-MM-DD-<slug>-meeting.md` form. Then **vcs.open_pr** (semantic title; body =
-   Business Impact / Deliverables / Technical Notes / QC).
+   Business Impact / Deliverables / Technical Notes / QC — the QC section names the verdict on file,
+   and reads "shipped without an independent review" when it is `SKIPPED`).
 9. **transition** the ticket toward `project.terminal_status` if appropriate.
 
 ## Phase C — Post-ship (always, even on success)

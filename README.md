@@ -535,11 +535,15 @@ fully the repo is configured — `/setup` writes config, never skill folders.
 
 ```
 /ticket <id>        opens or resumes the ticket, auto-loads its context + closest prior work,
-                    and routes you to the right next step ↓
-/spec-and-build     spec mode writes the blueprint (committed first); build mode executes it
-/review [--deep]    independent QC pass: re-runs queries, walks the validation pyramid → APPROVE / REQUEST-CHANGES
+                    writes the plan (and the spec when the plan calls for one), and waits for
+                    your approval before anything is built ↓
+/build              executes the approved plan or spec in fresh context, then runs /review itself
+/review [--deep]    the independent QC pass /build runs for you: re-runs queries, walks the validation
+                    pyramid → APPROVE / REQUEST-CHANGES; run it directly to re-check or go --deep
                     …and at the top of that pyramid, opens the deliverables in YOUR apps and waits
-/ship [--go]        backup → tracker comment → chat draft → commit + PR — HARD HALT before anything external
+/ship [--go]        backup → tracker comment → chat draft → commit + PR — HARD HALT before anything
+                    external; warns, waits for a typed `ship unreviewed`, and records it when no
+                    review verdict is on file
 ```
 
 Three supporting skills you'll reach for occasionally:
@@ -658,7 +662,7 @@ Already have years of ticket folders and your own conventions? Run `/setup`. It:
 - **classifies your custom commands** against the plugin's skills as *shadows / extends / unrelated*
 - **writes a `MIGRATION.md` checklist** instead of overwriting anything
 
-Adoption is incremental: run one real ticket through `/ticket → /review → /ship` before you delete
+Adoption is incremental: run one real ticket through `/ticket → /build → /ship` before you delete
 anything custom.
 
 ## Installing without the plugin

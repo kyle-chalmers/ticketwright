@@ -40,7 +40,7 @@ One row per finding, with a recommendation:
 | Item | Classification | Recommendation |
 |---|---|---|
 | custom `start-work.md` command | shadows `/ticket` | **replace** — plugin covers it; delete after a trial ticket |
-| custom warehouse-specific spec/build flow | extends `/spec-and-build` | **keep** — domain-optimized; note it in AGENTS.md |
+| custom warehouse-specific spec/build flow | extends `/build` | **keep** — domain-optimized; note it in AGENTS.md |
 | hand-maintained rules file | overlaps rendered AGENTS.md | **merge** — adopt the stack table + policies block |
 | `README.ticketwright.md` | new human-facing intro (README already existed) | **merge** — fold the intro into your README, then delete the sibling |
 Include: what was auto-configured, what needs a human decision, and the suggested trial — run ONE

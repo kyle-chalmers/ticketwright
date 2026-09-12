@@ -88,7 +88,7 @@ def cmd_init(args) -> int:
     # same description, both model-invocable, and the stale copy points at a template that no
     # longer exists, so it fails after its hard halt has already been cleared. Name it; never
     # delete it, because the user may have edited it.
-    for retired in ("productize",):
+    for retired in ("productize", "spec-and-build"):
         stale = dest / ".claude" / "skills" / retired
         if stale.is_dir():
             print(f"  WARNING: {stale} is a RETIRED skill from an older version — renamed, not "

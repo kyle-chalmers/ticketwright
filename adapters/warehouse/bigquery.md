@@ -13,7 +13,7 @@ auth: |
 # BigQuery adapter (reference for the abstraction proof)
 
 Maps the `warehouse` verb contract to Google BigQuery via `bq`. Same verbs as Snowflake — only the
-commands and `dialect_notes` differ, so `review`/`spec-and-build`/`refresh context` run
+commands and `dialect_notes` differ, so `review`/`build`/`refresh context` run
 unchanged.
 
 ## verb: query

@@ -10,6 +10,7 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: no
+plan_mode: native          # /plan or Shift+Tab collaboration mode: read-only, drafts a plan, writes nothing until approved (openai/codex plan mode, 2026-09-11)
 gate_ask_tier: no           # permissionDecision "ask" is parsed but not supported yet
 gate_fail_mode: unknown     # docs state the deny paths, not what a crashing hook does
 subagent_isolation: unestablished   # separate agent threads documented, "own context window" is not

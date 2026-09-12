@@ -6,8 +6,8 @@ Just re-run it. Every skill is resume-safe by design:
 
 - **`/ticket <id>`** detects the existing folder/branch and continues from what's done (it reads
   the README, deliverables, and git log — "resume, don't restart").
-- **`/spec-and-build build`** re-loads the committed spec and picks up at the first unmet
-  validation gate.
+- **`/build`** re-loads the plan (and the spec, when one is on file) and picks up at the first unmet
+  validation gate; it ends by running `/review` again.
 - **`/review`** is read-only; re-running it is always safe.
 - **`/ship`** Phase A is idempotent (re-verify, tidy, drafts); Phase B halts before every external
   post, so a crash can't leave you half-posted — re-run and re-authorize.
@@ -244,6 +244,8 @@ The old names routed automatically through v2.x as deprecated aliases; they were
 old name is simply gone. Note that `templates/AGENTS.md.tmpl` was already rendered into existing
 repos naming `/productize`, and `/refresh` does **not** re-render `AGENTS.md`: to update an existing
 repo, re-run `/setup role` or edit that line in your own `AGENTS.md` by hand.
+
+**`spec-and-build` → `build` (v4.1).** Spec authoring moved into `/ticket` (its Phase 4 writes the plan, and the spec when the plan calls for one, behind a single approval), so the build skill no longer specs and was renamed to say what it does — and it now ends by running `/review` itself. There is no alias; the old name is simply gone. The same two caveats as the `productize` rename apply: an existing repo's rendered `AGENTS.md` still names `/spec-and-build` until you re-run `/setup role` or edit the line by hand, and a vendored or pip install keeps the old `.claude/skills/spec-and-build/` directory beside the new `build/` — both installers print a WARNING naming it; remove it with `rm -rf .claude/skills/spec-and-build`.
 
 **If you installed via `ticketwright init` or `ticketwright install --runtime <name>`, delete the old directory yourself.** Neither command prunes: both only ever write, so an upgrade leaves `.claude/skills/productize/` (or `.agents/skills/productize/` on a non-Claude runtime) sitting beside the new `skillify/`. Both carry the same description and both are model-invocable, and the stale one tries to copy `templates/productized-skill/`, which no longer exists — so it fails *after* its confirmation gate has already been cleared. Since v4.0.0 both commands print a WARNING naming the exact path; remove it with `rm -rf .claude/skills/productize`.
 
