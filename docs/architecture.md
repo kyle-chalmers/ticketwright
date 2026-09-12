@@ -186,6 +186,14 @@ Policies are only as good as the agent's memory unless something enforces them. 
 Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires them into a repo's
 `.claude/settings.json` for non-plugin installs):
 
+- **`review_verdict_guard.py`** (PreToolUse/Bash) — the review-before-ship gate at the command
+  layer. `bin/review_verdict.py` is the classifier (the highest-numbered
+  `qc_queries/<n>_review_verdict.md`, its lowercase `verdict:` line → `approve` / `request-changes`
+  / `skipped` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
+  `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create`, locating the ticket from the
+  command's paths, its cwd, or the checked-out branch, and asks when a ticket with deliverables has
+  anything but APPROVE on file. Silenced by `hard_halt_before_external_posts: false`. The three
+  lifecycle skills call the same classifier, so the read is one implementation, not three readings.
 - **`db_write_guard.py`** (PreToolUse/Bash) — makes `db_write_requires_approval` mechanical.
   The policy is a three-value enum (`off` | `high_risk` | `all`, default `high_risk`), so routine
   additive work doesn't cost a confirmation while irreversible work still does. Classification is

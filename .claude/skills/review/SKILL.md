@@ -171,7 +171,11 @@ with the lowercase `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first
 title, then `review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship`
 reads. **The current verdict is the file with the highest `<n>`, compared numerically** — `10_` is
 newer than `9_`; a lexical sort or a file mtime is not the rule — so a later review supersedes an
-earlier one, including a `SKIPPED` record `/ship` wrote for an unreviewed ship. Then route:
+earlier one, including a `SKIPPED` record `/ship` wrote for an unreviewed ship. **Confirm the record
+parses before routing:**
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir>`
+must report the status you just wrote — a file it calls `unreadable` is one `/ship` and the
+`review_verdict_guard` hook treat as missing. Then route:
 APPROVE ⇒ recommend `/ship <owner>/<id>` (the qualified locator, so `/ship` cannot re-resolve a bare
 id to a different owner's ticket). REQUEST-CHANGES ⇒ **if this review was run from inside `/build`
 (its Phase 3), return to that build's step 8 rather than starting a new `/build`** — re-entering the

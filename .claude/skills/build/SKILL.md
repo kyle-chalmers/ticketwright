@@ -89,7 +89,9 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    the instruction travels. `/review` decides on its own capability probe whether the second pass is
    an independent `qc-reviewer` subagent or an honestly-labelled inline walk; this skill never
    pre-judges that. Never write the verdict yourself.
-8. **Branch on the verdict `/review` wrote** (`qc_queries/<n>_review_verdict.md`, `verdict:` line):
+8. **Branch on the verdict `/review` wrote** — read it with
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
+   (the highest-numbered `qc_queries/<n>_review_verdict.md`, its `verdict:` line), never by eye:
    - **APPROVE** → stop and recommend `/ship <owner>/<id>`. Do not ship from here.
    - **REQUEST-CHANGES** → apply the remediation list, re-run the affected gates from Phase 2, and run
      `/review <owner>/<id>` again — from this step, never by re-entering `/build` from the top (a

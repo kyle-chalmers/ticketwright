@@ -645,6 +645,7 @@ past what your own rules allow.
 | Event | Script | What it does |
 |---|---|---|
 | PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying high-risk SQL (including SQL hidden in `-f` files / stdin redirects); auto-approves verifiably read-only SQL |
+| PreToolUse (Bash) | `.claude/hooks/review_verdict_guard.py` | Pauses for confirmation before `git push` / a PR is opened or merged for a ticket that has deliverables but no APPROVE review verdict on file (read by `bin/review_verdict.py`); silent on approved or not-yet-built tickets |
 | PostToolUse (Write\|Edit) | `.claude/hooks/regenerate_ticket_index.py` | Regenerates `tickets/INDEX.md` / `OBJECTS.md` when the curated store changes |
 | SessionStart | `.claude/hooks/session_context.py`, `ticket_index_context.py` | Emits a short repo/catalog banner inside a ticketwright repo; silent elsewhere |
 

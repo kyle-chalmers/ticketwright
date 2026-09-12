@@ -181,6 +181,9 @@ network calls, never write outside the repo, and **fail open** — a hook error 
 a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside a configured repo):
 - `db_write_guard.py` (PreToolUse/Bash) — asks before destructive warehouse SQL, *including SQL
   hidden in a `-f` file or stdin redirect*; read-only SELECT/DESCRIBE/SHOW pass through.
+- `review_verdict_guard.py` (PreToolUse/Bash) — asks before `git push` / a PR opens or merges for a
+  ticket that has deliverables but no APPROVE verdict on file; `bin/review_verdict.py` is the
+  classifier the skills call too (highest-numbered `qc_queries/<n>_review_verdict.md`, `verdict:` line).
 - `regenerate_ticket_index.py` (PostToolUse/Write·Edit) — re-renders the index when a ticket changes.
 - `session_context.py` + `ticket_index_context.py` (SessionStart) — prime the stack + catalog banner.
 

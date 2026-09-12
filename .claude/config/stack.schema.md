@@ -410,7 +410,7 @@ Two consequences worth knowing before you adopt it:
 
 | Policy | Type | Default | Enforced by |
 |---|---|---|---|
-| `hard_halt_before_external_posts` | bool | `true` | `ship`, every generated skill — pause for human go before any tracker/chat/docstore write. |
+| `hard_halt_before_external_posts` | bool | `true` | `ship`, every generated skill — pause for human go before any tracker/chat/docstore write; and the `review_verdict_guard` hook (Claude Code; shimmed elsewhere) — ask before `git push` / a PR for a ticket with deliverables and no APPROVE verdict on file. `false` silences the hook; a missing or unparseable value resolves to `true`. |
 | `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
 | `source_material_guard` | `on` \| `off` | `on` | Ask before a raw meeting transcript is staged for commit or copied into a docstore backup. Optional; **defaults to `on`**, and a missing or unparseable value resolves to `on` — unparseable config must never quietly widen what leaves the repo. Enforced by `.claude/hooks/source_material_guard.py` over `bin/scan_source_materials.py`; `/ship` calls the same classifier so the halt is visible where hooks are not wired. Matches filenames and document shape, **never meaning**. |
 | `chat_default_draft` | bool | `true` | `chat.draft` not `chat.send` unless the user says "send it". |

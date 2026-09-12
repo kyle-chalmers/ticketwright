@@ -84,7 +84,8 @@ APPROVE_TOKEN_MAX_AGE = 15 * 60             # seconds; a stale token DENIES and 
 
 GUARD = "db_write_guard"
 SM_GUARD = "source_material_guard"
-SHELL_GUARDS = "shell_guards"   # both of the above, in one invocation
+RV_GUARD = "review_verdict_guard"
+SHELL_GUARDS = "shell_guards"   # all three shell guards above, in one invocation
 SESSION_HOOKS = ("session_context", "ticket_index_context")
 REGEN = "regenerate_ticket_index"
 
@@ -317,13 +318,13 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
 
 
 def run_shell_guards(protocol: str, root_arg: str | None) -> int:
-    """Both PreToolUse shell guards, in ONE invocation, from ONE read of stdin.
+    """All three PreToolUse shell guards, in ONE invocation, from ONE read of stdin.
 
     Why this exists: a runtime's hooks config takes an ARRAY of entries, and whether every entry
     in that array is executed — or only the first — is undocumented for the runtimes the kit
     emits for. Emitting two entries would make each WIRED cell depend on that unverified
     assumption, which is precisely the overclaim the ENFORCEMENT/WIRED/GUIDANCE vocabulary exists
-    to prevent. One entry that runs both guards removes the assumption instead of documenting it.
+    to prevent. One entry that runs every guard removes the assumption instead of documenting it.
 
     The DB guard runs first (it gates the more immediately destructive action). If it EMITS a
     decision, that decision is the answer and the second guard does not run — a single hook
@@ -348,8 +349,52 @@ def run_shell_guards(protocol: str, root_arg: str | None) -> int:
         sys.stdout.write(out)
         return rc
     rc, out = with_stdin(run_source_material_guard)
+    if out.strip() or rc != 0:
+        sys.stdout.write(out)
+        return rc
+    rc, out = with_stdin(run_review_verdict_guard)
     sys.stdout.write(out)
     return rc
+
+
+def run_review_verdict_guard(protocol: str, root_arg: str | None) -> int:
+    """The review-before-ship guard, presented in `protocol`.
+
+    Same shape as the other two: the judgment is bin/review_verdict.py's, reached through the
+    Claude presenter's pure `assess()` so the jurisdiction (git push / gh pr create|merge / glab
+    mr / az repos pr create) and the message are decided in ONE place and mirrored nowhere.
+    """
+    hooks_dir = Path(__file__).resolve().parent.parent / ".claude" / "hooks"
+    sys.path.insert(0, str(hooks_dir))
+    import _stack  # noqa: E402
+    import review_verdict_guard as rvg  # noqa: E402
+
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("payload is not an object")
+    except ValueError:
+        payload = {}
+    command = (find_string(payload, ("command", "cmd", "script"), depth=3) or "").strip()
+    if not command or rvg.outbound_action(command) is None:
+        return present_pass()          # outside this guard's jurisdiction entirely
+    cwd = (find_string(payload, ("cwd",), depth=1) or root_arg or os.getcwd())
+    stack = _stack.find_stack(cwd)
+    if stack is None:
+        return present_pass()          # repo-gated
+    if _stack.hard_halt_mode(stack) == _stack.HH_OFF:
+        return present_pass()          # explicit operator instruction
+    repo = stack.parent.parent.parent
+    msg = rvg.assess(command, cwd, repo)
+    if msg is None:
+        return present_pass()
+    msg = "ticketwright " + msg
+    if ask_capable(protocol):
+        return present_gate(protocol, msg, "high_risk")
+    return present_gate(protocol, msg + " This runtime has no ask tier, so the command is DENIED "
+                                        "instead; run the review (or record the unreviewed ship "
+                                        "through /ship) and re-run.", "high_risk")
 
 
 def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
@@ -499,7 +544,7 @@ def main(argv=None) -> int:
         description="Adapt a kit hook's stdin/stdout to a runtime's hook protocol.")
     ap.add_argument("--runtime", required=True)
     ap.add_argument("--hook", required=True,
-                    choices=[GUARD, SM_GUARD, SHELL_GUARDS, *SESSION_HOOKS, REGEN])
+                    choices=[GUARD, SM_GUARD, RV_GUARD, SHELL_GUARDS, *SESSION_HOOKS, REGEN])
     ap.add_argument("--root", help="project repo (default: the payload's cwd, then $PWD)")
     args = ap.parse_args(argv)
 
@@ -531,15 +576,17 @@ def main(argv=None) -> int:
         return run_session(args.hook, args.root)
     if args.hook == REGEN:
         return run_regen(args.root)
-    if args.hook in (SM_GUARD, SHELL_GUARDS):
+    if args.hook in (SM_GUARD, RV_GUARD, SHELL_GUARDS):
         try:
-            runner = run_shell_guards if args.hook == SHELL_GUARDS else run_source_material_guard
+            runner = {SHELL_GUARDS: run_shell_guards, SM_GUARD: run_source_material_guard,
+                      RV_GUARD: run_review_verdict_guard}[args.hook]
             return runner(protocol, args.root)
         except Exception as e:  # noqa: BLE001 — same discipline as the DB guard below
-            msg = (f"ticketwright's source-material guard hit an internal error "
+            msg = (f"ticketwright's shell guard ({args.hook}) hit an internal error "
                    f"({e.__class__.__name__}: {e}) and refuses to guess allow. Fix the kit "
-                   f"install (bin/scan_source_materials.py + .claude/hooks/), or set "
-                   f"`policies.source_material_guard: off` to disable it explicitly.")
+                   f"install (bin/ + .claude/hooks/), or set the guard's policy "
+                   f"(`source_material_guard: off` / `hard_halt_before_external_posts: false`) "
+                   f"to disable it explicitly.")
             try:
                 if ask_capable(protocol):
                     return present_gate(protocol, msg, "high_risk")

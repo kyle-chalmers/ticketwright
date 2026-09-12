@@ -41,7 +41,7 @@ export const TicketwrightDbWriteGuard = async ({ directory }) => {
         tool_input: command === null ? {} : { command },
         cwd: root,
       })
-      // `shell_guards` runs BOTH PreToolUse guards in one invocation: db_write_guard for
+      // `shell_guards` runs all three PreToolUse shell guards in one invocation: db_write_guard for
       // destructive warehouse SQL, source_material_guard for a raw meeting transcript about to
       // be committed or copied into a docstore backup. One call, one verdict — the same shape
       // the emitted cursor/antigravity configs use, so no runtime depends on whether it

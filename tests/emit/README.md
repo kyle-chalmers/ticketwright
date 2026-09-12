@@ -15,7 +15,7 @@ What each tree holds mirrors the emission matrix (emit-vs-verify is decided by e
   kit's research, so the installer prints the manual wiring line instead of guessing a path.
 - `antigravity/` — the same `.agents/skills/` emission (one emission serves both runtimes; only
   the provenance header's re-run command differs), `.agents/agents/qc-reviewer.md`, and the hook
-  config `.agents/hooks.json` (PreToolUse guard + PostToolUse index regen).
+  config `.agents/hooks.json` (PreToolUse shell guards — db-write, source-material, review-verdict — + PostToolUse index regen).
 - `cursor/`, `devin/` — no skill files (these runtimes read the canonical `.claude/skills/` copy
   natively, so the installer verifies and emits no duplicate): cursor gets
   `.cursor/agents/qc-reviewer.md` plus `.cursor/hooks.json` (with `failClosed: true` — required

@@ -5454,7 +5454,7 @@ rm -f "$TOK"
 # --- (5) emitted wiring artifacts + the install report's collapse statements -----------------------
 E43="$TMP/e43"; mkdir -p "$E43/adapters" "$E43/templates" "$E43/bin" "$E43/.claude"
 cp bin/kit_paths.py "$E43/bin/"; cp -R .claude/skills "$E43/.claude/skills"
-# The emitted PreToolUse wiring is `--hook shell_guards` — ONE entry covering both shell guards
+# The emitted PreToolUse wiring is `--hook shell_guards` — ONE entry covering every shell guard
 # (db_write + source_material). It is deliberately not two array entries: whether a runtime
 # executes every element of a hook array is undocumented, and a WIRED cell resting on that
 # assumption would be an overclaim (see the enforcement table's vocabulary).
@@ -5544,20 +5544,20 @@ WANT = ["Claude Code", "Codex CLI", "Cursor", "Antigravity", "OpenCode", "Devin"
 bad = [f"missing row: {r}" for r in WANT if r not in rows]
 for name in WANT:
     cells = rows.get(name, [])
-    if len(cells) != 6:
-        bad.append(f"{name}: {len(cells)} cells, want 6 (5 hooks + malformed-input)")
+    if len(cells) != 7:
+        bad.append(f"{name}: {len(cells)} cells, want 7 (6 hooks + malformed-input)")
         continue
-    for i, c in enumerate(cells[:5]):
+    for i, c in enumerate(cells[:6]):
         if not c:
             bad.append(f"{name}: empty hook cell {i}")
         elif not re.match(r"^(ENFORCEMENT|WIRED|GUIDANCE|UNKNOWN)\b", c):
             bad.append(f"{name}: hook cell {i} outside the closed vocabulary: {c[:40]!r}")
-    if not cells[5]:
+    if not cells[6]:
         bad.append(f"{name}: empty malformed-input cell")
 # the malformed-input column must carry each runtime's DECLARED decision
 for name, frag in [("Codex CLI", "denies"), ("OpenCode", "denies"), ("Devin", "denies"),
                    ("Cursor", "ask"), ("Antigravity", "ask"), ("Cline", "UNKNOWN")]:
-    if name in rows and frag not in rows[name][5]:
+    if name in rows and frag not in rows[name][6]:
         bad.append(f"{name}: malformed-input cell does not state '{frag}'")
 # ENFORCEMENT is reserved for mechanisms proven in THIS repo's test contract (Claude Code);
 # an emitted-but-live-unverified mechanism is WIRED, and a live confirmation on the punch list
@@ -5565,16 +5565,16 @@ for name, frag in [("Codex CLI", "denies"), ("OpenCode", "denies"), ("Devin", "d
 # tiebreaker 6 forbids.
 for name in WANT:
     if name != "Claude Code":
-        for i, c in enumerate(rows.get(name, [])[:5]):
+        for i, c in enumerate(rows.get(name, [])[:6]):
             if c.startswith("ENFORCEMENT"):
                 bad.append(f"{name}: cell {i} claims ENFORCEMENT — only a live confirmation may promote WIRED")
-if "Claude Code" in rows and not all(c.startswith("ENFORCEMENT") for c in rows["Claude Code"][:5]):
-    bad.append("Claude Code: all five hook cells must be ENFORCEMENT (the proven native wiring)")
+if "Claude Code" in rows and not all(c.startswith("ENFORCEMENT") for c in rows["Claude Code"][:6]):
+    bad.append("Claude Code: all six hook cells must be ENFORCEMENT (the proven native wiring)")
 for name, wired in [("Cursor", ".cursor/hooks.json"), ("Antigravity", ".agents/hooks.json"),
                     ("OpenCode", ".opencode/plugins/")]:
     if name in rows and (not rows[name][0].startswith("WIRED") or wired not in rows[name][0]):
         bad.append(f"{name}: guard cell must be WIRED naming {wired}")
-if "Antigravity" in rows and not rows["Antigravity"][4].startswith("WIRED"):
+if "Antigravity" in rows and not rows["Antigravity"][5].startswith("WIRED"):
     bad.append("Antigravity: the regenerate cell must be WIRED (emitted PostToolUse entry)")
 # The source-material guard column follows the SAME wired/unwired sets as the db-write guard:
 # both are PreToolUse shell guards, so a runtime that wires one and not the other ships a gate
@@ -5588,7 +5588,7 @@ for name in ["Codex CLI", "Devin"]:
     if name in rows and not rows[name][0].startswith("GUIDANCE"):
         bad.append(f"{name}: guard cell must be GUIDANCE (config location unresearched — never claim wiring that does not exist)")
 if "Cline" in rows and not all(c.startswith("UNKNOWN") for c in rows["Cline"][:5]):
-    bad.append("Cline: all five hook cells must be UNKNOWN (the stated case)")
+    bad.append("Cline: all six hook cells must be UNKNOWN (the stated case)")
 if "**WIRED**" not in block:
     bad.append("the legend does not define WIRED")
 print("\n".join(bad))
@@ -5733,7 +5733,7 @@ else:
             continue
         cells = [c.strip() for c in line.strip().strip('|').split('|')]
         if cells[0] == 'Runtime':
-            header_hooks = [c.strip('`') for c in cells[1:5]]
+            header_hooks = [c.strip('`') for c in cells[1:6]]
             continue
         if not header_hooks:
             continue
@@ -5741,7 +5741,7 @@ else:
         if tool is None:
             bad.append(f'enforcement row {cells[0]!r} is not in section 44 runtime-name map — extend it')
             continue
-        for hook, cell in zip(header_hooks, cells[1:5]):
+        for hook, cell in zip(header_hooks, cells[1:6]):
             if cell.startswith('WIRED'):
                 need(f'{tool}.wired.{hook}', f'enforcement WIRED cell {cells[0]} x {hook}')
             if cell.startswith('ENFORCEMENT') and tool != 'claude-code':
@@ -6942,19 +6942,19 @@ IV48=".claude/skills/setup/interview.md"
 enf48=""
 for r in "Claude Code" "Codex CLI" "Cursor" "Antigravity" "OpenCode" "Devin" "Cline"; do
   line="$(grep "^| $r |" templates/AGENTS.md.tmpl || true)"
-  [ "$(awk -F'|' '{print NF}' <<<"$line")" -eq 9 ] || enf48="$enf48 ${r// /_}"
+  [ "$(awk -F'|' '{print NF}' <<<"$line")" -eq 10 ] || enf48="$enf48 ${r// /_}"
 done
 [ -z "$enf48" ] \
-  && ok "pin: every runtime row carries a source_material_guard cell" \
+  && ok "pin: every runtime row carries the source_material_guard and review_verdict_guard cells" \
   || bad "a runtime row is missing the new enforcement column" "$enf48"
 # Read the block as one flowed string: the honesty sentence wraps across lines, and a
 # line-oriented grep would pass or fail on where the author happened to break it.
 enf_flat="$(tr '\n' ' ' < templates/AGENTS.md.tmpl)"
-{ # A runtime whose wiring must be done BY HAND still has to be told to wire both guards; an
+{ # A runtime whose wiring must be done BY HAND still has to be told to wire every guard; an
 # instruction naming only db_write_guard leaves source-material staging silent for that user.
 mw48="$(grep -n 'hook_shim.py --runtime .* --hook db_write_guard' templates/AGENTS.md.tmpl || true)"
 [ -z "$mw48" ] \
-  && ok "the manual-wiring lines name --hook shell_guards (both guards), not just the DB guard" \
+  && ok "the manual-wiring lines name --hook shell_guards (every shell guard), not just the DB guard" \
   || bad "a manual-wiring instruction wires only db_write_guard" "$mw48"
 grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
   && grep -qi 'it sees \*\*Bash\*\*' <<<"$enf_flat" \
@@ -6975,14 +6975,14 @@ grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
   && grep -q '/ticketwright:ticket' templates/AGENTS.md.tmpl; } \
   && ok "pin: the template names the plugin-install command and the namespaced skill form" \
   || bad "the template lost the pre-install note or the /ticketwright: namespacing line"
-# Both shell guards must be wired wherever ONE of them is — a runtime with half the gate is worse
+# Every shell guard must be wired wherever ONE of them is — a runtime with part of the gate is worse
 # than one with none, because the table would read as protection.
-# The emitters must wire ONE entry covering both guards (`--hook shell_guards`), never two array
+# The emitters must wire ONE entry covering every guard (`--hook shell_guards`), never separate array
 # entries. Whether a runtime executes every element of a hook array is undocumented, and a WIRED
 # cell resting on that assumption would be an overclaim — one entry removes the assumption.
 for f in bin/emit_runtime.py bin/opencode_tool_gate.js; do
   grep -q 'shell_guards' "$f" \
-    && ok "$f wires both shell guards through one hook entry (no array-ordering assumption)" \
+    && ok "$f wires every shell guard through one hook entry (no array-ordering assumption)" \
     || bad "$f does not use the combined shell_guards hook"
   grep -q '"source_material_guard", tool' "$f" \
     && bad "$f still emits a SECOND array entry — the WIRED cells would rest on an assumption" \
@@ -9986,6 +9986,149 @@ grep -q 'reference file, verbatim' bin/emit_runtime.py \
 [ "$(grep -c 'warn_retired_skills(' bin/emit_runtime.py)" -ge 4 ] \
   && ok "the retired-skill warning fires on the emit path AND both verify-only paths" \
   || bad "a verify-only install can keep a retired skill directory beside the new one unannounced"
+
+hdr "57 · the review-before-ship gate is a mechanism: bin/review_verdict.py + review_verdict_guard (the raw-git bypass closed)"
+# Two real tickets shipped unreviewed through `git push` + `gh pr create`, never entering /ship —
+# a gate that is a paragraph in a skill cannot see a command that skips the skill. This section
+# drives the classifier and the hook against fixture tickets, the way 43 and 49 drive theirs.
+RV57="bin/review_verdict.py"; RVG57=".claude/hooks/review_verdict_guard.py"
+R57="$TMP/s57"; T57="$R57/tickets/alice/ENG-7"
+mkdir -p "$R57/.claude/config" "$T57/qc_queries" "$T57/final_deliverables"
+printf 'project:\n  key_prefix: ENG\npolicies:\n  db_write_requires_approval: high_risk\n' > "$R57/.claude/config/stack.yaml"
+( cd "$R57" && git init -q . && git symbolic-ref HEAD refs/heads/ENG-7 ) 2>/dev/null
+printf 'a,b\n1,2\n' > "$T57/final_deliverables/1_rows_2.csv"
+rv57() { env -u CLAUDE_PROJECT_DIR python3 "$RV57" --ticket "$T57" --json > "$TMP/rv57.out" 2>/dev/null; echo $?; }
+# --- (A) the classifier: statuses, exit codes, NUMERIC ordering, the exact key ------------------
+rc="$(rv57)"; grep -q '"status": "none"' "$TMP/rv57.out" && [ "$rc" = 3 ] \
+  && ok "classifier: no verdict file → status none, exit 3" || bad "classifier: empty qc_queries misreported" "rc=$rc $(cat "$TMP/rv57.out")"
+printf '# QC Review — ENG-7\nverdict: REQUEST-CHANGES\nreview_mode: inline-same-context\n' > "$T57/qc_queries/9_review_verdict.md"
+printf '# QC Review — ENG-7\nverdict: APPROVE\nreview_mode: independent-subagent\n' > "$T57/qc_queries/10_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "approve"' "$TMP/rv57.out" && grep -q '10_review_verdict.md' "$TMP/rv57.out" && [ "$rc" = 0 ] \
+  && ok "classifier: 10_ beats 9_ (numeric, not lexical) → the APPROVE is current, exit 0" \
+  || bad "classifier picked the wrong 'newest' verdict — a lexical sort would ship a REQUEST-CHANGES" "rc=$rc $(cat "$TMP/rv57.out")"
+printf '# QC Review\nVerdict: APPROVE\n' > "$T57/qc_queries/11_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "unreadable"' "$TMP/rv57.out" && [ "$rc" = 4 ] \
+  && ok "classifier: a capitalised Verdict: is unreadable (exit 4), never silently approve or missing" \
+  || bad "classifier accepted a key outside the contract" "rc=$rc $(cat "$TMP/rv57.out")"
+printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/12_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "skipped"' "$TMP/rv57.out" && [ "$rc" = 6 ] \
+  && ok "classifier: SKIPPED is its own status (exit 6) — an unreviewed ship is on record, not approval" \
+  || bad "classifier misreads SKIPPED" "rc=$rc $(cat "$TMP/rv57.out")"
+rm "$T57/qc_queries/12_review_verdict.md" "$T57/qc_queries/11_review_verdict.md" "$T57/qc_queries/10_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "request-changes"' "$TMP/rv57.out" && [ "$rc" = 5 ] \
+  && ok "classifier: REQUEST-CHANGES → exit 5" || bad "classifier misreads REQUEST-CHANGES" "rc=$rc"
+rm "$T57/qc_queries/9_review_verdict.md"
+printf '## QC Review\n**Verdict:** APPROVE\n' > "$T57/qc_queries/3_qc_review.md"
+rc="$(rv57)"; grep -q '"status": "none"' "$TMP/rv57.out" && grep -q '3_qc_review.md' "$TMP/rv57.out" && [ "$rc" = 3 ] \
+  && ok "classifier: a pre-4.1 report is LISTED as a legacy candidate and never honored as the verdict" \
+  || bad "classifier either honored or hid a legacy report" "rc=$rc $(cat "$TMP/rv57.out")"
+grep -q '"deliverables": 1' "$TMP/rv57.out" \
+  && ok "classifier reports the deliverable count the hook keys on" || bad "deliverable count missing/wrong"
+env -u CLAUDE_PROJECT_DIR python3 "$RV57" --ticket "$TMP/does-not-exist" >/dev/null 2>&1; [ $? -eq 2 ] \
+  && ok "classifier: a missing ticket dir is a usage error (exit 2), not a verdict" || bad "classifier exit code for a bad path"
+# --- (B) the hook, via its real stdin → stdout protocol ---------------------------------------------
+g57() { printf '%s' "$1" | env -u CLAUDE_PROJECT_DIR python3 "$RVG57" 2>/dev/null; }
+pay57() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"%s}' "$1" "$R57" "${2:-}"; }
+o="$(g57 "$(pay57 'git push -u origin ENG-7')")"
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'no review verdict' <<<"$o" \
+  && ok "hook ASKS on git push when the branch's ticket has deliverables and no verdict (the raw-git bypass closed)" \
+  || bad "a raw git push of an unreviewed ticket is not gated" "$o"
+for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7'; do
+  o="$(g57 "$(pay57 "$act")")"
+  grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook catches the outbound spelling: $act" \
+    || bad "an outbound spelling evades the guard: $act" "$o"
+done
+for ro in 'git status' 'git commit -m x' 'git log --grep=push' 'gh pr view 4' 'gh pr list' 'ls -la' 'git push-notes'; do
+  o="$(g57 "$(pay57 "$ro")")"
+  [ -z "$o" ] && ok "hook stays silent outside its jurisdiction: $ro" || bad "hook fires on a non-outbound command: $ro" "$o"
+done
+printf 'verdict: APPROVE\nreview_mode: independent-subagent\n' > "$T57/qc_queries/4_review_verdict.md"
+o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "hook is SILENT once an APPROVE is on file (no false prompt)" || bad "hook prompts on an approved ticket" "$o"
+printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/5_review_verdict.md"
+o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -qi 'SKIPPED' <<<"$o" \
+  && ok "hook re-fires on a SKIPPED record — an unreviewed ship on record is not approval" || bad "SKIPPED passes the hook" "$o"
+rm "$T57/qc_queries/5_review_verdict.md" "$T57/qc_queries/4_review_verdict.md"
+rm "$T57/final_deliverables/1_rows_2.csv"
+o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "hook is silent for a ticket with no deliverables yet (a WIP push costs no prompt)" \
+  || bad "hook prompts on an empty scaffold" "$o"
+printf 'a,b\n' > "$T57/final_deliverables/1_rows_1.csv"
+o="$(g57 "$(pay57 'git push' ',"permission_mode":"bypassPermissions"')")"
+grep -q '"systemMessage"' <<<"$o" && ! grep -q 'permissionDecision' <<<"$o" \
+  && ok "under bypassPermissions the hook notes instead of asking (visible, not silent)" || bad "bypassPermissions handling drifted" "$o"
+o="$(g57 '{"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":"'"$TMP"'"}')"
+[ -z "$o" ] && ok "hook is repo-gated: silent outside a configured ticketwright repo" || bad "hook fires outside a configured repo" "$o"
+printf 'policies:\n  hard_halt_before_external_posts: false\n' > "$R57/.claude/config/stack.yaml"
+o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "hard_halt_before_external_posts: false silences the hook (explicit operator instruction)" \
+  || bad "the policy off-switch does not silence the hook" "$o"
+printf 'policies:\n  hard_halt_before_external_posts: {broken\n' > "$R57/.claude/config/stack.yaml"
+o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" \
+  && ok "an unparseable policy value resolves to ON — unreadable config never widens what leaves the repo" \
+  || bad "an unparseable policy silenced the hook" "$o"
+printf 'project:\n  key_prefix: ENG\n' > "$R57/.claude/config/stack.yaml"
+printf 'garbage' | env -u CLAUDE_PROJECT_DIR python3 "$RVG57" >"$TMP/rv57.g" 2>/dev/null; [ $? -eq 0 ] && [ ! -s "$TMP/rv57.g" ] \
+  && ok "hook exits 0 with no output on unreadable stdin (a nonzero PreToolUse exit would BLOCK)" || bad "hook misbehaves on garbage stdin"
+# a broken classifier gates MORE, never less — mirror of 43(2)
+BK57="$TMP/s57-broken"; mkdir -p "$BK57"; cp -R bin .claude adapters templates "$BK57/" 2>/dev/null; rm "$BK57/bin/review_verdict.py"
+o="$(printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 "$BK57/.claude/hooks/review_verdict_guard.py" 2>/dev/null)"
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'review_verdict.py' <<<"$o" \
+  && ok "classifier DELETED: an outbound command still asks and names the broken module" || bad "a deleted classifier weakened the hook" "$o"
+# the ticket is found from a PATH argument too, not only the branch
+( cd "$R57" && git symbolic-ref HEAD refs/heads/unrelated ) 2>/dev/null
+o="$(g57 "$(pay57 "gh pr create --title x --body-file tickets/alice/ENG-7/README.md")")"
+touch "$T57/README.md"; o="$(g57 "$(pay57 "gh pr create --title x --body-file tickets/alice/ENG-7/README.md")")"
+grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook locates the ticket from a path argument when the branch is unrelated" \
+  || bad "hook cannot find a ticket named only by a path argument" "$o"
+o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "an unrelated branch with no ticket path is none of the hook's business" \
+  || bad "hook prompts with no ticket in scope" "$o"
+( cd "$R57" && git symbolic-ref HEAD refs/heads/ENG-7 ) 2>/dev/null
+# --- (B2) the tokenizer: shell shapes the review found evading or false-firing ---------------------
+for act in '(cd tickets/alice/ENG-7 && git push)' 'command git push' '{ git push; }' 'git commit -am x && git push' 'git push --force-with-lease origin HEAD' 'az --output json repos pr create --source-branch ENG-7' 'FOO=1 git push 2>&1'; do
+  o="$(g57 "$(pay57 "$act")")"
+  grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook sees the outbound command inside: $act" \
+    || bad "a shell shape evades the guard: $act" "$o"
+done
+for quiet in 'git commit -m "a && git push origin"' 'echo "x; git push origin"' "bash -c 'git push'"; do
+  o="$(g57 "$(pay57 "$quiet")")"
+  [ -z "$o" ] && ok "hook stays silent (quotes respected / opaque wrapper, stated in its docstring): $quiet" \
+    || bad "hook false-fires on quoted text or claims a wrapper it cannot see: $quiet" "$o"
+done
+# --- (A2) classifier edge cases the review found -------------------------------------------------
+printf '\xef\xbb\xbfverdict: APPROVE\nreview_mode: independent-subagent\n' > "$T57/qc_queries/20_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "approve"' "$TMP/rv57.out" && [ "$rc" = 0 ] \
+  && ok "classifier: a UTF-8 BOM does not hide the verdict: key" || bad "a BOM made an APPROVE unreadable" "$(cat "$TMP/rv57.out")"
+printf '# T\n```\nverdict: REQUEST-CHANGES\n```\nverdict: APPROVE\n' > "$T57/qc_queries/21_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "approve"' "$TMP/rv57.out" \
+  && ok "classifier: a verdict: quoted inside a code fence is an example, not the record" || bad "a fenced example was read as the verdict" "$(cat "$TMP/rv57.out")"
+printf 'verdict: REQUEST-CHANGES\n' > "$T57/qc_queries/022_review_verdict.md"; printf 'verdict: APPROVE\n' > "$T57/qc_queries/22_review_verdict.md"
+rc="$(rv57)"; grep -q '22_review_verdict.md' "$TMP/rv57.out" && ! grep -q '022_review_verdict.md' "$TMP/rv57.out" \
+  && ok "classifier: an 022_ vs 22_ tie is broken deterministically by name, never by directory order" || bad "numeric tie is nondeterministic" "$(cat "$TMP/rv57.out")"
+rm "$T57/qc_queries/20_review_verdict.md" "$T57/qc_queries/21_review_verdict.md" "$T57/qc_queries/022_review_verdict.md" "$T57/qc_queries/22_review_verdict.md"
+# --- (C) the shim presents the same judgment in the other runtimes' protocols ------------------------
+o="$(printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook shell_guards 2>/dev/null)"
+grep -q '"permission": "ask"' <<<"$o" && grep -q 'review_verdict_guard' <<<"$o" \
+  && ok "shim: the single shell_guards entry reaches the review-verdict guard and asks in cursor-json" \
+  || bad "the shell_guards shim does not run the third guard" "$o"
+printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook review_verdict_guard >"$TMP/rv57.d" 2>/dev/null; rd=$?
+[ "$rd" -eq 2 ] && grep -q 'DENIED' "$TMP/rv57.d" \
+  && ok "shim: on a runtime with no ask tier the guard denies with the reason (exit 2), never exits anything else" \
+  || bad "devin shim exit/decision drifted for the review guard" "rc=$rd $(cat "$TMP/rv57.d")"
+printf '%s' "$(pay57 'git status')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook review_verdict_guard >"$TMP/rv57.c" 2>/dev/null; rc57=$?
+[ "$rc57" -eq 0 ] && [ ! -s "$TMP/rv57.c" ] && ok "shim: outside the jurisdiction the guard passes silently" || bad "shim guard fires on git status" "$(cat "$TMP/rv57.c")"
+# --- (D) wiring + the skills consume the classifier ------------------------------------------------
+grep -q 'review_verdict_guard.py' .claude-plugin/plugin.json && grep -q 'review_verdict_guard.py' .claude/settings.json.tmpl \
+  && ok "the hook is wired natively in plugin.json and the settings template" || bad "review_verdict_guard is not wired for Claude Code"
+for sk in ship build review; do
+  grep -q 'review_verdict.py --ticket' ".claude/skills/$sk/SKILL.md" || bad "/$sk does not call bin/review_verdict.py — it would read the folder by eye"
+done
+grep -q 'review_verdict.py --ticket' .claude/skills/ship/SKILL.md && grep -q 'review_verdict.py --ticket' .claude/skills/build/SKILL.md \
+  && grep -q 'review_verdict.py --ticket' .claude/skills/review/SKILL.md \
+  && ok "/ship, /build and /review all read the verdict through bin/review_verdict.py (one implementation)"
+grep -q '`review_verdict_guard`' templates/AGENTS.md.tmpl && grep -q 'review_verdict_guard' docs/architecture.md \
+  && grep -q 'review_verdict_guard' README.md && grep -q 'review_verdict_guard' .claude/config/stack.schema.md \
+  && ok "the enforcement table, architecture, README hooks table and policy row all name the new guard" \
+  || bad "a doc surface is missing the review_verdict_guard"
+grep -q 'git commit' "$RVG57" && grep -qi 'deliberately NOT' "$RVG57" \
+  && ok "the hook states plainly that git commit is outside its jurisdiction and why" || bad "the hook's jurisdiction limits are not stated"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
