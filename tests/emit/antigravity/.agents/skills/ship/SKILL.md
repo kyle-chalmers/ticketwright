@@ -31,9 +31,13 @@ works regardless of the underlying tools.
    hard stop listing the `owner/id` choices, never a pick**. Shipping a ticket whose owner isn't the
    shipper is allowed — say so out loud before continuing.
    Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the plan +
-   **the current verdict: the `qc_queries/*_review_verdict.md` with the highest `<n>`, compared
-   numerically** (`10_` beats `9_`; never a lexical sort or an mtime), and its lowercase `verdict:`
-   line. A review report saved under another name by an earlier kit version still counts: read it,
+   **the current verdict, read mechanically:**
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
+   — it picks the `qc_queries/*_review_verdict.md` with the highest `<n>` (compared numerically:
+   `10_` beats `9_`; never a lexical sort or an mtime), reads its lowercase `verdict:` line, and
+   returns `status`: `approve` · `request-changes` · `skipped` · `none` · `unreadable`, plus any
+   `legacy_candidates`. Branch on that `status`, never on your own reading of the folder. A review
+   report saved under another name by an earlier kit version still counts: read it,
    and if it states APPROVE or REQUEST-CHANGES plainly, re-save it under the fixed name with the
    `verdict:` line first, then branch on it — never treat reviewed work as unreviewed. Four cases:
    - **APPROVE** → proceed.
@@ -58,8 +62,9 @@ works regardless of the underlying tools.
      a truncated report — is **the missing case above, never a pass.** The gate fails closed: an
      unreadable verdict is not a verdict.
    Why this is a gate and not a wall: a hard stop here was routed around (work shipped through other
-   commands, leaving no record). `/build` runs the review itself, so this path is reachable only for
-   work built outside the kit, and it leaves a record either way.
+   commands, leaving no record). `/build` runs the review itself, and the `review_verdict_guard` hook
+   asks the same question at `git push` / PR time — so a ship that never enters this skill still
+   meets the gate, and every path leaves a record.
 2. If the stack has a warehouse seam, re-run the final deliverable queries once more; confirm
    **byte-identical** output to the committed files (`deterministic_outputs` — explicit `ORDER BY`).
    In a repo with no warehouse seam, re-verify each deliverable by its own check instead (the

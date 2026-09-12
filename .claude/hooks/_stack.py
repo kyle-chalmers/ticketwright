@@ -193,3 +193,30 @@ def source_material_mode(stack: Path | None) -> str:
     if raw is None:
         return SM_ON
     return _SM_ALIASES.get(raw.strip().lower(), SM_ON)
+
+
+# ---- the hard_halt_before_external_posts policy (the review_verdict_guard) ---------
+
+HH_ON = "on"
+HH_OFF = "off"
+
+HH_POLICY_KEY = "hard_halt_before_external_posts"
+
+# The same asymmetry as the two guards above: only an explicit, recognized "false/off" silences
+# the review_verdict_guard; a missing, malformed, or unrecognized value resolves to `on`, because
+# unparseable config must never quietly widen what leaves the repo unprompted. The key already
+# exists (it gates /ship's Phase B), so no stack.yaml in the wild needs a new line.
+_HH_ALIASES = {
+    "off": HH_OFF, "false": HH_OFF, "no": HH_OFF, "none": HH_OFF, "null": HH_OFF,
+    "on": HH_ON, "true": HH_ON, "yes": HH_ON, "all": HH_ON, "strict": HH_ON,
+}
+
+
+def hard_halt_mode(stack: Path | None) -> str:
+    text = read_text(stack)
+    if not text:
+        return HH_ON
+    raw = _scalar(_block_lines(text, "policies"), HH_POLICY_KEY)
+    if raw is None:
+        return HH_ON
+    return _HH_ALIASES.get(raw.strip().lower(), HH_ON)

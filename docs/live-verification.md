@@ -218,7 +218,8 @@ shipped it (fan-out permitted, isolation recorded verbatim as `unestablished`).
 ### 3. Cursor — the deny path, failClosed, and copy precedence
 
 Status: OPEN
-Covers: `cursor.wired.db_write_guard` `cursor.wired.source_material_guard` — artifact
+Covers: `cursor.wired.db_write_guard` `cursor.wired.source_material_guard`
+`cursor.wired.review_verdict_guard` — artifact
 `.cursor/hooks.json`
 
 **Claim to verify.** Four claims the emitted wiring makes that only a live Cursor can prove:
@@ -266,7 +267,7 @@ SQL one), which is what makes the `source_material_guard` cell WIRED rather than
 Status: OPEN
 Covers: `antigravity.gate_fail_mode` `antigravity.global_skills_root`
 `antigravity.structured_questions` `antigravity.wired.db_write_guard`
-`antigravity.wired.source_material_guard`
+`antigravity.wired.source_material_guard` `antigravity.wired.review_verdict_guard`
 `antigravity.wired.regenerate_ticket_index` — artifact `.agents/hooks.json`
 
 **Claim to verify.** Five axes the docs leave open on the richest-gated runtime (each
@@ -360,7 +361,7 @@ caveat re-dated; `docs/runtimes.md` re-dated.
 
 Status: OPEN
 Covers: `opencode.wired.db_write_guard` `opencode.wired.source_material_guard`
-`opencode.agents_root`
+`opencode.wired.review_verdict_guard` `opencode.agents_root`
 
 **Claim to verify.** (a) The emitted `.opencode/plugins/ticketwright-db-write-guard.js` wrapper
 is actually **loaded**, and throwing from `tool.execute.before` actually prevents execution;

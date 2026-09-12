@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **The review-before-ship gate is now a mechanism, not a paragraph.** `bin/review_verdict.py` is
+  the one classifier of a ticket's review record (the highest-numbered
+  `qc_queries/<n>_review_verdict.md`, its lowercase `verdict:` line → `approve` · `request-changes`
+  · `skipped` · `none` · `unreadable`, plus the deliverable count and any legacy report it will
+  not honor by itself); `/ship`, `/build` and `/review` call it instead of reading the folder by
+  eye. `.claude/hooks/review_verdict_guard.py` presents it on `git push`, `gh pr create|merge`,
+  `glab mr create|merge` and `az repos pr create` — locating the ticket from the command's paths,
+  its cwd, or the checked-out branch without spawning git — and asks when a ticket with files in
+  `final_deliverables/` has anything but APPROVE on file. It only ever adds a confirmation, is
+  silenced by `hard_halt_before_external_posts: false`, and a missing or unparseable policy value
+  resolves to on. Wired natively for Claude Code; the `shell_guards` shim entry now runs all three
+  shell guards, so the emitted Cursor / Antigravity / OpenCode configs carry it unchanged (WIRED,
+  with punch-list entries). Motivation: two surveyed tickets shipped unreviewed through raw git,
+  never entering `/ship`; the skill gate could not see them. Jurisdiction stated plainly: Bash only.
+
 ### Changed
 - **Every ticket is scoped before anything is built, and the quality path is now the default path.**
   Real sessions showed the old routing ("spec if non-trivial, else build directly") resolving to

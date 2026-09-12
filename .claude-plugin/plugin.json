@@ -37,6 +37,11 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/source_material_guard.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/.claude/hooks/review_verdict_guard.py\"",
+            "timeout": 10
           }
         ]
       }
