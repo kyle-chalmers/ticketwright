@@ -167,9 +167,13 @@ review this ticket actually got: `review_mode: independent-subagent` or
 probe returned — and an inline record carries the probe section's weaker-check sentence verbatim.
 An inline-degraded APPROVE must never read identically to an independent-subagent APPROVE.
 **Save the report as `qc_queries/<n>_review_verdict.md`** (`<n>` = the next number in that folder)
-with `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first line after the title, then
-`review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship` reads
-(newest file wins, so a later review supersedes an earlier one, including a `SKIPPED` record `/ship`
-wrote for an unreviewed ship). APPROVE ⇒ recommend `/ship <owner>/<id>` — the qualified locator, so
-`/ship` cannot re-resolve a bare id to a different owner's ticket. REQUEST-CHANGES ⇒ back to
-`/build <owner>/<id>`, which applies the remediation and runs this review again.
+with the lowercase `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first line after the
+title, then `review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship`
+reads. **The current verdict is the file with the highest `<n>`, compared numerically** — `10_` is
+newer than `9_`; a lexical sort or a file mtime is not the rule — so a later review supersedes an
+earlier one, including a `SKIPPED` record `/ship` wrote for an unreviewed ship. Then route:
+APPROVE ⇒ recommend `/ship <owner>/<id>` (the qualified locator, so `/ship` cannot re-resolve a bare
+id to a different owner's ticket). REQUEST-CHANGES ⇒ **if this review was run from inside `/build`
+(its Phase 3), return to that build's step 8 rather than starting a new `/build`** — re-entering the
+skill from the top would nest a build inside a build; otherwise recommend `/build <owner>/<id>`,
+which applies the remediation and runs this review again.

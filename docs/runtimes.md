@@ -58,14 +58,14 @@ protection a team is getting.
 
 | Runtime | Skills root | Session start | Pre-exec gate | Subagents | Structured questions |
 |---|---|---|---|---|---|
-| **Claude Code** | `.claude/skills/<n>/SKILL.md` | ✅ `SessionStart` | ✅ deny · allow · **ask** | ✅ own context window | ✅ `AskUserQuestion` | native |
-| **Codex CLI** | `.agents/skills/<n>/SKILL.md` | ✅ `SessionStart` | ✅ deny · allow (**no ask**) | ✅ agent threads | ⚠ protocol-only, experimental | native |
-| **Cursor** | `.cursor/skills/<n>/SKILL.md` | ✅ `sessionStart` | ⚠ deny · allow · ask, **fails open** | ✅ own context window | ⚠ external clients only | native |
-| **Antigravity** | `.agents/skills/<n>/SKILL.md` | ❌ none in the CLI | ✅ deny · allow · **ask · force_ask** | ✅ own context window | ❓ docs silent | native |
-| **OpenCode** | `.opencode/skills/<n>/SKILL.md` | ⚠ event only, no context injection | ✅ deny by throwing | ✅ mechanism documented | ✅ `question` tool | native |
-| **Devin** | `.devin/skills/<n>/SKILL.md` | ✅ `SessionStart` | ⚠ block only, **fails open** | ✅ own context window | ⚠ schema unverified | native |
+| **Claude Code** | `.claude/skills/<n>/SKILL.md` | ✅ `SessionStart` | ✅ deny · allow · **ask** | ✅ own context window | ✅ `AskUserQuestion` |
+| **Codex CLI** | `.agents/skills/<n>/SKILL.md` | ✅ `SessionStart` | ✅ deny · allow (**no ask**) | ✅ agent threads | ⚠ protocol-only, experimental |
+| **Cursor** | `.cursor/skills/<n>/SKILL.md` | ✅ `sessionStart` | ⚠ deny · allow · ask, **fails open** | ✅ own context window | ⚠ external clients only |
+| **Antigravity** | `.agents/skills/<n>/SKILL.md` | ❌ none in the CLI | ✅ deny · allow · **ask · force_ask** | ✅ own context window | ❓ docs silent |
+| **OpenCode** | `.opencode/skills/<n>/SKILL.md` | ⚠ event only, no context injection | ✅ deny by throwing | ✅ mechanism documented | ✅ `question` tool |
+| **Devin** | `.devin/skills/<n>/SKILL.md` | ✅ `SessionStart` | ⚠ block only, **fails open** | ✅ own context window | ⚠ schema unverified |
 | **Cline** | `.cline/skills/<n>/SKILL.md` | ⚠ SDK only | ⚠ API in flux | ⚠ not user-definable | ⚠ undocumented |
- native |
+
 ✅ documented and unambiguous · ⚠ available with a caveat that changes its meaning · ❌ absent ·
 ❓ docs neither confirm nor deny
 
@@ -84,6 +84,22 @@ declared data, never a parse of this page. The six keys, with the shipped values
 | **OpenCode** | no | closed ⁵ | unestablished | `.claude/skills`, `.agents/skills` | `~/.config/opencode/skills` | native |
 | **Devin** | no | open | documented | `.claude/skills` ⁶ | `~/.config/devin/skills` | native |
 | **Cline** | unknown | unknown | none ⁷ | `.claude/skills` | `~/.cline/skills` ⁸ | native |
+⁸ macOS/Linux; Windows is `%USERPROFILE%\.cline\skills` (re-verified 2026-08-19 — this page
+previously recorded only the global *rules* path, `~/Documents/Cline/Rules`).
+⁹ `plan_mode` (added 2026-09-11): whether the runtime offers a read-only planning mode that `/ticket`
+can draft the scoping package in — `native` / `none` / `unknown`. It is a **UI / workflow feature, never
+an enforcement boundary**: most such modes let nothing but the runtime's own plan file be written, but that is an
+instruction to the model, not a sandbox, so `/ticket` treats the mode as where drafting happens and
+the human's approval — leaving the mode, or a reply — as the only thing that permits a ticket write. Every researched runtime documents one, and the docs of one of
+them say the quiet part aloud — OpenCode: "Plan mode is an instruction to the model, not a hard
+sandbox." Read every `native` that way. Citations, all read 2026-09-11: Claude Code — plan mode
+(Shift+Tab; the planning tool); Codex CLI — `/plan` / Shift+Tab collaboration mode, read-only until
+the plan is approved (openai/codex plan mode, PR #4769 and the CLI docs); Cursor —
+<https://cursor.com/docs/agent/plan-mode>; Antigravity — <https://antigravity.google/docs/cli/modes/>
+and <https://antigravity.google/docs/implementation-plan/>; OpenCode — <https://opencode.ai/docs/agents/>
+(the Plan agent: edits disabled except `.opencode/plans/*.md`); Devin — Planning Mode on the desktop
+(Cascade) surface, <https://docs.devin.ai/desktop/cascade/modes>, while the cloud agent plans before
+acting by default; Cline — <https://docs.cline.bot/features/plan-and-act>.
 
 ¹ The runtime's **native default** when a hook errors — not the installed state. Cursor is `open`
 here precisely because an installer must set `failClosed: true` to compensate; the key records what
@@ -98,22 +114,6 @@ that errors denies; what an entirely-failed plugin *load* does is undocumented.
 ⁶ Devin's reading of other vendors' formats is toggleable in its config.
 ⁷ Subagents exist and are isolated, but are not user-definable — there is no kit-defined subagent to
 isolate, so for the kit's purposes the answer is `none`.
-⁹ `plan_mode` (added 2026-09-11): whether the runtime offers a read-only planning mode that `/ticket`
-can draft the scoping package in — `native` / `none` / `unknown`. It is a **UI / workflow feature, never
-an enforcement boundary**: inside such a mode the runtime lets nothing but its own plan file be
-written, so `/ticket` drafts there, the human approves by leaving the mode, and only then are the
-plan and spec written to the ticket. Every researched runtime documents one, and the docs of one of
-them say the quiet part aloud — OpenCode: "Plan mode is an instruction to the model, not a hard
-sandbox." Read every `native` that way. Citations, all read 2026-09-11: Claude Code — plan mode
-(Shift+Tab; the planning tool); Codex CLI — `/plan` / Shift+Tab collaboration mode, read-only until
-the plan is approved (openai/codex plan mode, PR #4769 and the CLI docs); Cursor —
-<https://cursor.com/docs/agent/plan-mode>; Antigravity — <https://antigravity.google/docs/cli/modes/>
-and <https://antigravity.google/docs/implementation-plan/>; OpenCode — <https://opencode.ai/docs/agents/>
-(the Plan agent: edits disabled except `.opencode/plans/*.md`); Devin — Planning Mode on the desktop
-(Cascade) surface, <https://docs.devin.ai/desktop/cascade/modes>, while the cloud agent plans before
-acting by default; Cline — <https://docs.cline.bot/features/plan-and-act>.
-⁸ macOS/Linux; Windows is `%USERPROFILE%\.cline\skills` (re-verified 2026-08-19 — this page
-previously recorded only the global *rules* path, `~/Documents/Cline/Rules`).
 
 Two rules the encoding carries, stated here so nobody re-derives them wrongly:
 

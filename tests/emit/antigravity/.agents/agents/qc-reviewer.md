@@ -57,7 +57,7 @@ Warn: performance/style → list, don't block. Info: distributions → record.
 ## Output (return this; it is the tool result, not a chat message)
 ```
 ## QC Review — <TICKET-ID>
-Verdict: APPROVE | REQUEST-CHANGES
+verdict: APPROVE | REQUEST-CHANGES
 review_mode: independent-subagent | inline-same-context
 subagent_isolation: <the runtime adapter's declared posture, verbatim — from the spawning prompt or the probe>
 Pyramid: lint <ok/n> · counts&dedup <ok/n> · reconcile <ok/n> · re-run-diff <ok/n> · output&docs <ok/n>
@@ -69,4 +69,6 @@ Verification queries run:
 Read-only: never edit code, never post anything, never approve a merge — that's the human's call.
 Spawned, this block is the tool result; walked inline, it is written directly into `/review`'s
 report — either way `review_mode` says which one happened. `/review` saves that report as
-`qc_queries/<n>_review_verdict.md` with the `verdict:` line first — the fixed name `/ship` reads.
+`qc_queries/<n>_review_verdict.md` — `<n>` the next number in the folder, the lowercase `verdict:`
+line first. `/ship` reads the file with the highest `<n>` (numeric, never lexical), so the key's
+exact spelling and case are the contract.

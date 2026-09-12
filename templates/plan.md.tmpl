@@ -1,8 +1,17 @@
 # Plan — {{ticket_id}}: {{title}}
 
 > Written by `/ticket` for every ticket, before anything is built — the one-page scoping record.
-> On file before `/build` runs (committed when policy `commit_plan_before_implement` is on).
+> Drafted first, written to the ticket only after the human approves it; on file before `/build`
+> runs (committed when policy `commit_plan_before_implement` is on).
 > **Confidence (1–10): {{confidence}}** — below 7, the Next step requires a spec.
+>
+> **The `spec:` decision, decided here and read by `/build`:** `not required` (the plan is the
+> build's blueprint) · `specs/<id>-<slug>.md` (a spec was required and is on file at that path —
+> required when the work creates or alters a persisted object others depend on: a warehouse object,
+> a model, a published report; or reconciles two or more sources; or confidence is below 7) ·
+> `after-root-cause` (an investigation whose fix cannot be blueprinted before the cause is known:
+> the Approach scopes the investigation, and `/build` returns to `/ticket` for the spec once the
+> cause is found — its Phase 1 states the exact condition).
 
 ## Goal
 {{goal}} — the outcome and why it matters to the requester.
@@ -37,10 +46,5 @@
 - …
 
 ## Next step
-- **spec:** {{spec_required}}  (`required` when the work creates or alters a persisted object others
-  depend on — a warehouse object, a model, a published report — or reconciles two or more sources,
-  or confidence is below 7; `after-root-cause` when the ticket is an investigation whose fix cannot be
-  blueprinted before the root cause is known — the Approach then scopes the investigation, and
-  `/build` returns here for the spec once the cause is found; otherwise `not required`)
-- **spec path:** {{spec_path}}  (`specs/<id>-<slug>.md` once written; `—` when not required)
+- **spec:** {{spec_required}}
 - Then `/build {{owner}}/{{ticket_id}}` → `/ship {{owner}}/{{ticket_id}}` on APPROVE.

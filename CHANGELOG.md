@@ -42,6 +42,14 @@ All notable changes to this project are documented here. Format loosely follows
     built outside `/build` (which reviews itself), it is typed through rather than configured away,
     and it always leaves a record — tiebreakers 3 and 6 are what make it acceptable.
 
+### Fixed
+- **Skill reference files now travel to emitted runtimes.** `emit_runtime.py` copied only each
+  skill's `SKILL.md`, so the bodies it emitted for Codex CLI and Antigravity pointed at
+  `ticket/priming.md`, `setup/scaffold.md` and the new `ticket/spec.md` in directories that never
+  received them. Sibling `*.md` reference files are now emitted verbatim alongside the body (they are
+  read, never injected, so a copy is exact), and both verify-only installer paths now print the
+  retired-skill warning too, since a `git pull` upgrade prunes nothing either.
+
 ### Added
 - **`plan_mode` runtime capability** on every `adapters/runtime/*.md` (closed vocabulary `native` /
   `none` / `unknown`, floor `unknown`), surfaced by `kit_paths.py --json`, documented with dated

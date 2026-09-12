@@ -31,7 +31,11 @@ works regardless of the underlying tools.
    hard stop listing the `owner/id` choices, never a pick**. Shipping a ticket whose owner isn't the
    shipper is allowed — say so out loud before continuing.
    Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the plan +
-   **the newest `qc_queries/*_review_verdict.md`** and its `verdict:` line. Four cases, exhaustive:
+   **the current verdict: the `qc_queries/*_review_verdict.md` with the highest `<n>`, compared
+   numerically** (`10_` beats `9_`; never a lexical sort or an mtime), and its lowercase `verdict:`
+   line. A review report saved under another name by an earlier kit version still counts: read it,
+   and if it states APPROVE or REQUEST-CHANGES plainly, re-save it under the fixed name with the
+   `verdict:` line first, then branch on it — never treat reviewed work as unreviewed. Four cases:
    - **APPROVE** → proceed.
    - **REQUEST-CHANGES** → **hard stop.** The review ran and found a defect (count mismatch, duplicate
      gap, reconciliation break, a Critical anti-pattern). Send the user back to `/build <owner>/<id>`,
@@ -50,6 +54,9 @@ works regardless of the underlying tools.
      (step 3) say **"shipped without an independent review"**, and the tracker comment claims no QC
      that did not happen. `--go` authorizes Phase B only — it never pre-answers this gate — and a
      model-initiated ship meets the confirm gate above first, then this one.
+   - **Anything else** — a `verdict:` value that is none of the three, a file with no `verdict:` line,
+     a truncated report — is **the missing case above, never a pass.** The gate fails closed: an
+     unreadable verdict is not a verdict.
    Why this is a gate and not a wall: a hard stop here was routed around (work shipped through other
    commands, leaving no record). `/build` runs the review itself, so this path is reachable only for
    work built outside the kit, and it leaves a record either way.

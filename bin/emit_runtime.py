@@ -448,6 +448,16 @@ def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
             print(f"  emitted   {out}")
             if name in gated:
                 warned.append(name)
+        # Reference files a skill body points at (`ticket/priming.md`, `ticket/spec.md`,
+        # `setup/scaffold.md`, …) travel with it, verbatim: they are Read, never injected, so
+        # substitution never applied to them and a copy is exact. Without this the emitted
+        # SKILL.md instructs the agent to "follow spec.md" in a directory that has no spec.md.
+        for ref in sorted(src.parent.glob("*.md")):
+            if ref.name == "SKILL.md":
+                continue
+            ref_out = emit_root / name / ref.name
+            if write_emitted(ref_out, ref.read_text(encoding="utf-8"), foreign):
+                print(f"  emitted   {ref_out}  (reference file, verbatim)")
     for name in warned:
         print(f"  warned    {name} — user-invocable-only (disable-model-invocation: true) cannot be "
               f"expressed on {tool}; emitted with a topmost warning block "
@@ -561,6 +571,9 @@ def verify_native(project: Path, tool: str) -> int:
               f"present; {len(skills)} SKILL.md files under .claude/skills/).")
         print("  hooks     native — the Claude Code wiring is untouched; this installer never "
               "emits anything under .claude/.")
+        # A vendored copy is upgraded by git pull, which prunes nothing: the retired-skill warning
+        # has to fire on the verify path too, or a native reader keeps both copies unannounced.
+        warn_retired_skills(project / ".claude" / "skills", f"canonical copy read by {tool}")
         return 0
     plugin = kit_paths._plugin_kit(project)
     if plugin:
@@ -600,6 +613,7 @@ def verify_foreign(kit: Path, project: Path, fm: dict, tool: str, version: str) 
     print(f"{tool}: verify-only — {tool} reads the canonical {CANONICAL_SKILLS}/ copy natively; "
           f"found {len(skills)} skills at {project / '.claude' / 'skills'}. Emitting a translated "
           f"duplicate could silently shadow the canonical copy, so nothing is emitted.")
+    warn_retired_skills(project / ".claude" / "skills", f"canonical copy read by {tool}")
     caveat = fm.get("foreign_skills_caveat", "")
     if caveat:
         print(f"  caveat    {caveat}")

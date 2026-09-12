@@ -25,20 +25,26 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
 
 ## Phase 1 — Load what was approved
 
-1. **Find the blueprint, in this order:** the spec path given as an argument → the newest
-   `<ticket-dir>/specs/<id>-*.md` → `<ticket-dir>/plan.md`. A spec, when present, is the executable
-   detail; the plan is always read too (its Scope, Deliverables and Validation strategy are the
-   acceptance criteria). Two halts, both by name:
-   - **Neither on file** → stop: "No plan or spec is on file for `<owner>/<id>` — run
-     `/ticket <owner>/<id>` first; every ticket is scoped before it is built."
-   - **The plan says `spec: required` and no spec exists** → stop: "`plan.md` for `<owner>/<id>`
-     requires a spec and none is on file — run `/ticket <owner>/<id>` to finish scoping."
-   - **The plan says `spec: after-root-cause`** → run only the plan's investigation steps (read-only
-     against the warehouse, plus QC queries that reproduce the problem). When the root cause is known:
-     if the fix creates or alters a persisted object others depend on, **stop and route back to
-     `/ticket <owner>/<id>`** — scoping resumes, the spec is written from the real cause, approved, and
-     `/build` runs again from Phase 2. If the fix touches nothing persisted (a corrected export, a
-     documented answer), record the cause in the README and continue.
+1. **Find the blueprint.** Read `<ticket-dir>/plan.md` first — its Scope, Deliverables and Validation
+   strategy are the acceptance criteria — and take the value on the **`spec:` line of its Next step
+   section** (that line only; the template's header explains the values and must not be matched).
+   Then branch, halting by name:
+   - **No `plan.md`** → stop: "No plan is on file for `<owner>/<id>` — run `/ticket <owner>/<id>`
+     first; every ticket is scoped before it is built." (A spec passed as an argument does not
+     substitute: the plan is the approval record.)
+   - **`spec:` names a path** → that spec is the executable detail; load it (the argument path wins
+     if one was given). If the named file does not exist → stop: "`plan.md` for `<owner>/<id>` names
+     a spec that is not on file — run `/ticket <owner>/<id>` to finish scoping."
+   - **`spec: not required`** → the plan is the blueprint.
+   - **`spec: after-root-cause`** → run only the plan's investigation steps (read-only against the
+     warehouse, plus QC queries that reproduce the problem). When the root cause is known, apply the
+     one condition this skill owns: **if the fix creates or alters a persisted object others depend on
+     (a warehouse object, a model, a published report), stop and route back to `/ticket <owner>/<id>`**
+     — scoping resumes, the spec is written from the real cause, approved, and `/build` runs again
+     from Phase 2. If the fix touches nothing persisted (a corrected export, a documented answer),
+     record the cause in the README and continue.
+   - **Anything else on that line** (blank, a `{{token}}`, a value not listed) → stop and name it; a
+     plan the build cannot read is not an approved plan.
    Treat the blueprint as the source of truth, but **validate each step independently** — don't
    blindly follow; a plan or spec can be wrong, and finding that out here is what the small loops
    below are for.
@@ -86,9 +92,12 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
 8. **Branch on the verdict `/review` wrote** (`qc_queries/<n>_review_verdict.md`, `verdict:` line):
    - **APPROVE** → stop and recommend `/ship <owner>/<id>`. Do not ship from here.
    - **REQUEST-CHANGES** → apply the remediation list, re-run the affected gates from Phase 2, and run
-     `/review <owner>/<id>` again. The loop ends only on APPROVE, or on the human saying stop — in
-     which case say plainly that the ticket carries a REQUEST-CHANGES verdict and `/ship` will refuse
-     it. **There is no path from REQUEST-CHANGES to `/ship`.**
+     `/review <owner>/<id>` again — from this step, never by re-entering `/build` from the top (a
+     build inside a build re-resolves everything and never returns here). **Two REQUEST-CHANGES rounds
+     is the cap:** after the second, stop and hand the findings to the human rather than looping — a
+     defect the build cannot clear is a scoping problem or a data problem, not a retry problem. When
+     the human says stop, say plainly that the ticket carries a REQUEST-CHANGES verdict and `/ship`
+     will refuse it. **There is no path from REQUEST-CHANGES to `/ship`.**
 
 ## Pattern
 Plan and spec are authored in `/ticket` (read-only, approved once); this skill executes them in fresh

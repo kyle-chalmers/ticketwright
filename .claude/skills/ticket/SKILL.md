@@ -99,8 +99,8 @@ this before?", "which tickets touched VW_X?").
    - **Warehouse slice** — schemas/samples/lineage for the specific objects in play (skip cleanly
      if no warehouse is configured).
    Keep the whole brief tight (≤ ~300 words) — slices, not the whole knowledge base.
-7b. **Meeting references** — the complete rule, stated here because emitted runtimes carry this
-   file without priming.md. When `seams.meetings` is configured, enumerate the ticket's meeting
+7b. **Meeting references** — the complete rule, stated here in full because it is load-bearing
+   even for a reader who skips the reference file. When `seams.meetings` is configured, enumerate the ticket's meeting
    references:
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" meeting_refs.py --ticket <ticket-dir> --json`.
    Zero refs ⇒ do nothing — never fetch speculatively. An invalid ref (exit 4) is a NAMED error to
@@ -120,52 +120,53 @@ Every ticket gets a plan, every time — there is no "small change, build direct
 context brief (including the reuse brief) first, then:
 
 8. **Probe the runtime** the same way `/review` does:
-   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json` → read
-   `capabilities.plan_mode` and branch on the **value only**, never on the runtime's name:
-   - `native` → **draft in the runtime's planning mode, and leave it before writing anything.** A
-     native planning mode is a UI / workflow feature: inside it, only the runtime's own plan file is
-     writable, and leaving it IS the approval step 11 asks for. So the order is: draft the plan (and
-     the spec) in planning mode → present the package → the human approves by leaving planning mode →
-     write `plan.md` (+ spec) → commit. The runtime adapter (`adapters/runtime/<tool>.md`) carries
-     the mechanism note.
-   - anything else (`none`, `unknown`, a failed probe) → the same steps, with the approval as an
-     explicit reply. In plain terms: **this phase writes nothing except the plan and the spec; no
-     runtime mode is required.** Read-only here is GUIDANCE the agent follows, not a gate the runtime
-     enforces — say so if asked; never imply parity with a native mode.
-9. **Draft the plan** — `KIT="$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)"`,
-   then render `"$KIT"/templates/plan.md.tmpl` → `<ticket-dir>/plan.md` (one canonical path;
-   `/build`, `/review` and `/ship` read it from there). Inputs: the priming brief + the reuse brief.
-   Fill every section — Goal, Scope (in / explicitly out), Deliverables expected, Approach,
-   Validation strategy, Touched, Questions for the requester, Risks, Next step, Confidence. The
-   **Next step** records `spec: required` when ANY of: the work creates or alters a **persisted object
-   others depend on** (a warehouse object, a model, a published report); it reconciles two or more
-   sources; the plan's own confidence is below 7. Otherwise `spec: not required` — the plan is the
-   build's blueprint. **Investigation-shaped tickets** ("where is this error coming from", "why did this
-   number drift") get a third answer: `spec: after-root-cause`. You cannot blueprint a fix you have not
-   root-caused, and a spec written from the ticket's own hypothesis specifies a fix to the wrong place.
-   The plan then scopes the **investigation** — hypotheses, the evidence to gather, what "found it"
-   looks like — and `/build` runs that investigation and comes back here for the spec before any fix
-   to a persisted object is built. Scoping is still first; it is just scoped to what can honestly be
-   planned.
-9b. **When `spec: required`, write the spec now, in this phase** — follow [spec.md](spec.md):
-   research in parallel (describe, samples, 2–4 prior tickets, glossary), render
-   `"$KIT"/templates/spec.md.tmpl` → `<ticket-dir>/specs/<id>-<slug>.md`, record the path in the
-   plan's Next step. Spec authoring is read-only by design, which is why it belongs here and not in
-   `/build`. Nothing about planning is left for the build stage.
-10. **Reduce assumptions** (policy `reduce_assumptions`): gather the open questions from the plan and
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json` — keep
+   its `kit_root` (it resolves the templates below; no second launcher call is needed) and read
+   `capabilities.plan_mode`, branching on the **value only**, never on the runtime's name:
+   - `native`, **and you can enter that mode from where you are** → draft steps 9–11 inside the
+     runtime's planning mode and leave it only at step 12, because leaving it IS the approval. Most
+     such modes let nothing but their own plan file be written; that is an instruction to the model,
+     not a sandbox (the adapter, `adapters/runtime/<tool>.md`, carries the mechanism note), so the
+     rule below still binds inside it.
+   - anything else (`none`, `unknown`, a failed probe, or a native mode you cannot enter mid-skill) →
+     the same steps in the current context, with the approval as an explicit reply. In plain terms:
+     **nothing is written to the ticket until step 12; no runtime mode is required.** Read-only here
+     is GUIDANCE the agent follows, not a gate the runtime enforces — say so if asked.
+9. **Draft the plan — compose it, do not write it yet.** Its shape is `templates/plan.md.tmpl` under
+   `kit_root`: Goal, Scope (in / explicitly out), Deliverables expected, Approach, Validation
+   strategy, Touched, Questions for the requester, Risks, Next step, Confidence. Inputs: the priming
+   brief + the reuse brief. Decide the **`spec:` value** by the criteria in the template's header —
+   `not required`, or a spec path (required when the work creates or alters a persisted object others
+   depend on, reconciles two or more sources, or confidence is below 7), or `after-root-cause` for an
+   **investigation-shaped ticket** ("where is this error coming from", "why did this number drift"):
+   you cannot blueprint a fix you have not root-caused, and a spec written from the ticket's own
+   hypothesis specifies a fix to the wrong place, so the Approach scopes the investigation and
+   `/build` returns here for the spec once the cause is found (its Phase 1 owns that condition).
+   Scoping is still first; it is scoped to what can honestly be planned.
+10. **When a spec is required, draft it now, in this phase** — follow [spec.md](spec.md) (it consumes
+    the Phase 3 brief and researches only the delta). Spec authoring is read-only by design, which is
+    why it belongs here and not in `/build`. Nothing about planning is left for the build stage.
+11. **Reduce assumptions** (policy `reduce_assumptions`): gather the open questions from the plan and
     the spec and **ask them now**, in one round — scoping is where an answer is cheapest.
-11. **Present the scoping package and WAIT for one explicit approval** — by leaving planning mode on
-    a `native` runtime, by a reply everywhere else. Nothing is built before the human says go. On
-    approval, write the artifacts and **commit them together** — `docs: <id> plan for <thing>`, or
-    `docs: <id> plan + spec for <thing>` — when `commit_plan_before_implement` is on; write them
-    uncommitted when it is off. Either way they are **on file**, which is what `/build` requires.
-12. **Route, always forward, with the qualified `<owner>/<id>` locator** (so the next step can never
+12. **Present the scoping package and WAIT for one explicit approval** — by leaving planning mode on
+    a `native` runtime, by a reply everywhere else. **Only after the human says go** do the artifacts
+    touch the ticket: render the plan with
+    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$kit_root/templates/plan.md.tmpl" ticket_id=… title=… confidence=… goal=… spec_required=… owner=… --strict`
+    (all six tokens; `--strict` so a missing one is an error, not a `{{token}}` committed into the
+    record) into `<ticket-dir>/plan.md` — **if a `plan.md` already exists (a resumed or re-scoped
+    ticket), update it in place; never re-render over an approved plan** — then write the spec
+    (`<ticket-dir>/specs/<id>-<slug>.md`) when one was drafted, and commit them together **through
+    the vcs adapter's `commit` verb** — `docs: <id> plan for <thing>`, or `docs: <id> plan + spec for
+    <thing>` — when `commit_plan_before_implement` is on; leave them uncommitted when it is off.
+    Either way they are now **on file**, which is what `/build` requires. A rejected package writes
+    nothing: revise and present again.
+13. **Route, always forward, with the qualified `<owner>/<id>` locator** (so the next step can never
     re-resolve a bare id to a different owner's ticket): `/build <owner>/<id>` — it executes the spec
     when one exists, else the plan, and ends by running `/review` itself. Then `/ship <owner>/<id>`
     on APPROVE.
 
 ## Stops here
 No SQL beyond the describe/sample reads priming and spec research already make, no analysis, no
-deliverables, no external posts. The plan and the spec are the only files this skill writes, and it
-waits for approval before routing. If the request is ambiguous, state your interpretation and ask
-before scaffolding heavy structure (`reduce_assumptions`).
+deliverables, no external posts. In Phase 4 the plan and the spec are the only files written, and
+only after approval. If the request is ambiguous, state your interpretation and ask before
+scaffolding heavy structure (`reduce_assumptions`).

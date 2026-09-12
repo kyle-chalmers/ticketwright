@@ -772,7 +772,7 @@ roles_ok=1; for r in generalist analyst engineer scientist; do [ -f "templates/r
 { [ "$roles_ok" = 1 ] && grep -q '{{role_focus}}' templates/AGENTS.md.tmpl; } \
   && ok "role-mode snippets present + {{role_focus}} wired into AGENTS.md.tmpl" || bad "role modes incomplete"
 
-hdr "14b · v2 skill surface (7 skills; v1 alias stubs removed in v3; spec-and-build → build in v4.1)"
+hdr "14b · v2 skill surface (7 skills; v1 alias stubs removed in v3; spec-and-build renamed build)"
 sk_missing=""
 for s in setup ticket build review ship skillify refresh; do
   [ -f ".claude/skills/$s/SKILL.md" ] || sk_missing="$sk_missing $s"
@@ -5753,7 +5753,17 @@ else:
 # (3) every emitted fixture artifact carrying an "unverified" label -> its in-project path
 emit_hits = 0
 for p in sorted(pathlib.Path('tests/emit').rglob('*')):
-    if p.is_file() and 'unverified' in p.read_text(encoding='utf-8', errors='ignore'):
+    if not p.is_file():
+        continue
+    # A skill's sibling reference file (priming.md, spec.md, teammate.md, …) is emitted VERBATIM from
+    # .claude/skills/<name>/<file>; a byte-identical copy makes no runtime-specific claim, so the
+    # word "unverified" in its prose (setup's posture checklist) is not a label this linkage owns.
+    # SKILL.md bodies, agent definitions and hook configs are never exempt.
+    if p.name != 'SKILL.md' and len(p.relative_to('tests/emit').parts) >= 4:
+        canon = pathlib.Path('.claude/skills') / p.parent.name / p.name
+        if canon.is_file() and canon.read_bytes() == p.read_bytes():
+            continue
+    if 'unverified' in p.read_text(encoding='utf-8', errors='ignore'):
         emit_hits += 1
         rel = p.relative_to('tests/emit')
         proj = str(pathlib.Path(*rel.parts[1:]))
@@ -9145,7 +9155,7 @@ grep -q 'productize' docs/troubleshooting.md || rt_bad="$rt_bad troubleshooting"
 [ -z "$rt_bad" ] \
   && ok "both install paths + the docs name a retired skill dir an upgrade leaves behind" \
   || bad "a retired skill directory would survive an upgrade unannounced" "$rt_bad"
-# spec-and-build → build (v4.1) rides the same mechanism: both lists and the troubleshooting page.
+# spec-and-build → build rides the same mechanism: both lists and the troubleshooting page.
 rt2_bad=""
 grep -q '"spec-and-build"' bin/emit_runtime.py || rt2_bad="$rt2_bad emit_runtime"
 grep -q '"spec-and-build"' ticketwright/cli.py || rt2_bad="$rt2_bad cli.py"
@@ -9804,42 +9814,55 @@ PDPY
 hdr "56 · scope-first lifecycle: /ticket plans (+ specs), /build ends in /review, /ship gates the unreviewed"
 # Real sessions showed the old routing ("spec if non-trivial, else build directly") collapsing to
 # "build directly", /review never invoked by name, and tickets shipping with no verdict on file. The
-# fix makes the quality path the default path; this section pins its shape so it cannot drift back.
+# fix makes the quality path the default path; this section pins its BEHAVIOR-BEARING tokens and the
+# orderings that matter, not prose. Skill-list, locator-propagation, capability-floor and
+# adapter-key coverage live in 14b / 35 / 31 and are not repeated here.
 tk56=".claude/skills/ticket/SKILL.md"; bd56=".claude/skills/build/SKILL.md"
 rv56=".claude/skills/review/SKILL.md"; sh56=".claude/skills/ship/SKILL.md"
-# (a) /ticket owns every read-only planning step
-{ grep -q 'templates/plan.md.tmpl' "$tk56" && grep -q '\[spec.md\](spec.md)' "$tk56"; } \
-  && ok "/ticket renders the plan template and delegates spec authoring to its spec.md reference" \
-  || bad "/ticket lost the plan template or the spec.md reference"
-{ grep -q 'capabilities.plan_mode' "$tk56" && grep -q 'leave it before writing anything' "$tk56" \
-  && grep -q 'value only' "$tk56"; } \
-  && ok "/ticket probes plan_mode by VALUE and leaves a native planning mode before writing ticket files" \
-  || bad "/ticket's plan_mode branch is missing the probe, the leave-before-write ordering, or the value-only rule"
+tr '\n' ' ' < "$tk56" | tr -s ' ' > "$TMP/tk56.flat"
+tr '\n' ' ' < "$bd56" | tr -s ' ' > "$TMP/bd56.flat"
+tr '\n' ' ' < "$sh56" | tr -s ' ' > "$TMP/sh56.flat"
+# (a) /ticket owns every read-only planning step, drafts first, writes only after approval
+{ grep -q 'templates/plan.md.tmpl' "$tk56" && grep -q '\[spec.md\](spec.md)' "$tk56" \
+  && grep -q 'capabilities.plan_mode' "$tk56"; } \
+  && ok "/ticket names the plan template, delegates spec authoring to spec.md, and probes plan_mode" \
+  || bad "/ticket lost the plan template, the spec.md reference, or the plan_mode probe"
+grep -q 'value only' "$TMP/tk56.flat" \
+  && ok "/ticket branches on the plan_mode VALUE, never the runtime name" || bad "/ticket branches on a runtime name"
 p4_l="$(grep -n '^## Phase 4' "$tk56" | head -1 | cut -d: -f1)"
-sp_l="$(grep -n 'write the spec now, in this phase' "$tk56" | head -1 | cut -d: -f1)"
+dr_l="$(grep -n 'compose it, do not write it yet' "$tk56" | head -1 | cut -d: -f1)"
+sp_l="$(grep -n 'draft it now, in this phase' "$tk56" | head -1 | cut -d: -f1)"
 ap_l="$(grep -n 'WAIT for one explicit approval' "$tk56" | head -1 | cut -d: -f1)"
+wr_l="$(grep -n 'Only after the human says go' "$tk56" | head -1 | cut -d: -f1)"
 st_l="$(grep -n '^## Stops here' "$tk56" | head -1 | cut -d: -f1)"
-{ [ -n "$p4_l" ] && [ -n "$sp_l" ] && [ -n "$ap_l" ] && [ -n "$st_l" ] \
-  && [ "$p4_l" -lt "$sp_l" ] && [ "$sp_l" -lt "$ap_l" ] && [ "$ap_l" -lt "$st_l" ]; } \
-  && ok "/ticket writes the spec INSIDE Phase 4, before the single approval, before it stops" \
-  || bad "/ticket's spec step is not between Phase 4's start and the approval" "p4=$p4_l spec=$sp_l approve=$ap_l stop=$st_l"
-if grep -q '/build <owner>/<id>' "$tk56" && ! grep -q 'small change → build directly' "$tk56" \
-   && ! grep -q 'non-trivial work →' "$tk56" && ! grep -q 'spec-and-build' "$tk56"; then
-  ok "/ticket routes only forward to /build <owner>/<id>; the old spec-or-build-directly branch is gone"
+{ [ -n "$p4_l" ] && [ -n "$dr_l" ] && [ -n "$sp_l" ] && [ -n "$ap_l" ] && [ -n "$wr_l" ] && [ -n "$st_l" ] \
+  && [ "$p4_l" -lt "$dr_l" ] && [ "$dr_l" -lt "$sp_l" ] && [ "$sp_l" -lt "$ap_l" ] \
+  && [ "$ap_l" -le "$wr_l" ] && [ "$wr_l" -lt "$st_l" ]; } \
+  && ok "/ticket Phase 4 order: draft plan → draft spec → approval → write → stop (nothing written before the go)" \
+  || bad "/ticket Phase 4 order broke (a write before the approval, or the spec after it)" "p4=$p4_l draft=$dr_l spec=$sp_l approve=$ap_l write=$wr_l stop=$st_l"
+{ grep -q 'never re-render over an approved plan' "$TMP/tk56.flat" && grep -q -- '--strict' "$tk56" \
+  && grep -q 'spec_required=' "$tk56"; } \
+  && ok "/ticket updates an existing plan.md in place, renders --strict, and names the tokens it fills" \
+  || bad "/ticket would re-render an approved plan, or render non-strict with unnamed tokens"
+grep -q "vcs adapter's \`commit\` verb" "$TMP/tk56.flat" \
+  && ok "/ticket commits the scoping package through the vcs adapter, not a bare git call" \
+  || bad "/ticket's plan commit bypasses the vcs adapter"
+if ! grep -q 'small change → build directly' "$tk56" && ! grep -q 'non-trivial work →' "$tk56"; then
+  ok "the retired spec-or-build-directly routing branch is gone from /ticket"
 else
-  bad "/ticket still carries the retired routing branch or never routes to /build"
+  bad "/ticket still carries the retired routing branch"
 fi
 grep -q 'No SQL beyond the describe/sample' "$tk56" \
   && ok "/ticket's stop rule admits the describe/sample reads scoping needs, nothing more" \
   || bad "/ticket's stop rule contradicts the spec research it now runs"
 { [ -f .claude/skills/ticket/spec.md ] && grep -q 'spec.md.tmpl' .claude/skills/ticket/spec.md \
-  && grep -q 'Do not commit here' .claude/skills/ticket/spec.md \
+  && grep -q 'Do not write or commit here' .claude/skills/ticket/spec.md \
   && grep -qi 'read-only' .claude/skills/ticket/spec.md; } \
-  && ok "ticket/spec.md carries the spec steps, is read-only by design, and leaves the commit to /ticket" \
+  && ok "ticket/spec.md drafts from the spec template, is read-only, and leaves write + commit to /ticket" \
   || bad "ticket/spec.md missing or incomplete"
 grep -q '`/build` executes' templates/spec.md.tmpl \
   && ok "spec.md.tmpl names /build as its executor" || bad "spec.md.tmpl still names the retired skill"
-# (b) the plan template: every scoping section present, and it stamps clean
+# (b) the plan template: every scoping section, the spec decision stated ONCE (header), stamps clean
 pl_miss=""
 for h in "## Goal" "## Scope" "## Deliverables expected" "## Approach" "## Validation strategy" \
          "## Touched" "## Questions for the requester" "## Risks" "## Next step"; do
@@ -9847,52 +9870,66 @@ for h in "## Goal" "## Scope" "## Deliverables expected" "## Approach" "## Valid
 done
 [ -z "$pl_miss" ] && ok "plan.md.tmpl carries every scoping section" || bad "plan.md.tmpl lost a section" "$pl_miss"
 pl_err="$(bash bin/render.sh templates/plan.md.tmpl ticket_id=x title=x confidence=x goal=x \
-          spec_required=x spec_path=x owner=x 2>&1 >/dev/null)"
-[ -z "$pl_err" ] && ok "plan.md.tmpl stamps with zero leftover tokens" || bad "leftover tokens in plan.md.tmpl" "$pl_err"
-grep -q 'spec_required' templates/plan.md.tmpl && grep -q 'persisted object' templates/plan.md.tmpl \
-  && ok "the plan's Next step records the spec decision with tool-neutral criteria" \
-  || bad "plan.md.tmpl lost the spec: required rule"
-# Investigation-shaped tickets cannot blueprint a fix before the root cause is known (two surveyed
-# sessions skipped the spec for exactly this reason): the lane must exist in all three places.
+          spec_required=x owner=x --strict 2>&1 >/dev/null)"
+[ -z "$pl_err" ] && ok "plan.md.tmpl stamps --strict with the six tokens /ticket names" || bad "leftover tokens in plan.md.tmpl" "$pl_err"
+ns_l="$(grep -n '^## Next step' templates/plan.md.tmpl | cut -d: -f1)"
+tail -n +"$ns_l" templates/plan.md.tmpl > "$TMP/plan56.next"
+if grep -q 'persisted object' templates/plan.md.tmpl && grep -q 'after-root-cause' templates/plan.md.tmpl \
+   && ! grep -q 'persisted object\|after-root-cause\|not required' "$TMP/plan56.next"; then
+  ok "the spec: criteria live once, in the plan header — the rendered Next step carries only the value"
+else
+  bad "plan.md.tmpl states the spec: criteria in the Next step (a rendered plan would match every value)" "$(cat "$TMP/plan56.next")"
+fi
+# (c) /build: reads the spec: LINE, halts by name, handles the investigation lane, bounded review loop
+{ grep -q '^name: build' "$bd56" && grep -q 'No plan is on file' "$TMP/bd56.flat" \
+  && grep -q 'names a spec that is not on file' "$TMP/bd56.flat" && grep -q 'that line only' "$TMP/bd56.flat" \
+  && grep -q 'Anything else on that line' "$TMP/bd56.flat"; } \
+  && ok "/build reads the plan's spec: line (only), halts by name on a missing plan or spec, and fails closed on an unreadable value" \
+  || bad "/build lost a load-order halt or matches spec: values anywhere in the plan"
 { grep -q 'after-root-cause' templates/plan.md.tmpl && grep -q 'after-root-cause' "$tk56" \
-  && grep -q 'after-root-cause' "$bd56" && grep -q 'route back to' "$bd56"; } \
-  && ok "the investigation lane exists: spec: after-root-cause in the template, /ticket, and /build's return-to-scoping" \
-  || bad "an investigation-shaped ticket has no honest lane — the flow would demand a spec before the root cause"
-# (c) /build: loads plan-or-spec with named halts, verifies without a warehouse, and ends in /review
-{ grep -q '^name: build' "$bd56" && [ ! -d .claude/skills/spec-and-build ]; } \
-  && ok "the build skill is named build and the spec-and-build directory is gone" \
-  || bad "the rename is incomplete (name: or a leftover directory)"
-{ grep -q 'No plan or spec is on file' "$bd56" && grep -q 'requires a spec and none is on file' "$bd56" \
-  && grep -q 'plan.md' "$bd56"; } \
-  && ok "/build loads the spec, else plan.md, and halts by name when neither (or a required spec) is on file" \
-  || bad "/build lost a load-order halt"
+  && grep -q 'after-root-cause' "$bd56" && grep -q 'route back to' "$TMP/bd56.flat" \
+  && grep -q 'the one condition this skill owns' "$TMP/bd56.flat"; } \
+  && ok "the investigation lane exists in template, /ticket and /build, and /build owns the return condition" \
+  || bad "an investigation-shaped ticket has no honest lane, or the return condition has no single owner"
 grep -qi 'no warehouse seam' "$bd56" \
   && ok "/build verifies deliverables by their own check in a repo with no warehouse seam" \
   || bad "/build is SQL-only; a document/report repo has no verification sentence"
 { grep -q '/review <owner>/<id>' "$bd56" && grep -q 'no path from REQUEST-CHANGES to `/ship`' "$bd56" \
-  && grep -q 'Never write the verdict yourself' "$bd56"; } \
-  && ok "/build ends by running /review, never writes the verdict itself, and has no REQUEST-CHANGES → /ship path" \
-  || bad "/build's built-in check is missing or has a leak toward /ship"
-# (d) the verdict file is a pinned convention shared by /review, the qc-reviewer agent, and /ship
-{ grep -q '_review_verdict.md' "$rv56" && grep -q 'verdict: APPROVE' "$rv56" \
-  && grep -q '_review_verdict.md' .claude/agents/qc-reviewer.md && grep -q '_review_verdict.md' "$sh56"; } \
-  && ok "/review, qc-reviewer and /ship all name qc_queries/<n>_review_verdict.md with a verdict: line" \
-  || bad "the verdict filename is not pinned across review / agent / ship"
-# (e) /ship: the gate, typed through and recorded, never pre-answered; the wall is gone
+  && grep -q 'Never write the verdict yourself' "$TMP/bd56.flat" && grep -q 'Two REQUEST-CHANGES rounds is the cap' "$TMP/bd56.flat" \
+  && grep -q 'never by re-entering `/build` from the top' "$TMP/bd56.flat"; } \
+  && ok "/build ends by running /review, never writes the verdict, caps the fix loop, and never nests a build" \
+  || bad "/build's built-in check is missing, unbounded, or recursive"
+grep -q 'return to that build' "$rv56" \
+  && ok "/review's REQUEST-CHANGES exit returns to the calling build instead of starting a new one" \
+  || bad "/review would re-enter /build from the top (mutual recursion)"
+# (d) the verdict file is one contract: name, lowercase key, numeric ordering — across writer and readers
+{ grep -q '_review_verdict.md' "$rv56" && grep -q 'verdict: APPROVE' "$rv56" && grep -q 'highest `<n>`' "$rv56" \
+  && grep -q '_review_verdict.md' .claude/agents/qc-reviewer.md && grep -q '^verdict: APPROVE | REQUEST-CHANGES' .claude/agents/qc-reviewer.md \
+  && grep -q '_review_verdict.md' "$sh56" && grep -q 'highest `<n>`' "$sh56" && grep -q 'compared' "$TMP/sh56.flat"; } \
+  && ok "/review, qc-reviewer and /ship agree: qc_queries/<n>_review_verdict.md, lowercase verdict:, highest <n> numerically" \
+  || bad "the verdict contract drifted between writer and readers (name, key case, or ordering)"
+if grep -q '^Verdict:' .claude/agents/qc-reviewer.md; then
+  bad "qc-reviewer still emits a capitalised Verdict: — /ship's lowercase read would call a real APPROVE 'missing'"
+else
+  ok "qc-reviewer's output block uses the lowercase verdict: key the readers match on"
+fi
+# (e) /ship: four cases + fail-closed default, typed through and recorded, never pre-answered, legacy reports honored
 { grep -q 'ship unreviewed' "$sh56" && grep -q 'verdict: SKIPPED' "$sh56" \
   && grep -q 'never counts as approval' "$sh56" && grep -q 'never pre-answers this gate' "$sh56" \
-  && grep -q 'hard stop' "$sh56" && grep -q 'shipped without an independent review' "$sh56"; } \
-  && ok "/ship: missing/SKIPPED → warn + typed confirm + SKIPPED record; REQUEST-CHANGES → hard stop; --go never pre-answers" \
+  && grep -q 'hard stop' "$sh56" && grep -q 'shipped without an independent review' "$sh56" \
+  && grep -q 'Anything else' "$sh56" && grep -q 'never a pass' "$sh56" \
+  && grep -q 'never treat reviewed work as unreviewed' "$TMP/sh56.flat"; } \
+  && ok "/ship: missing/SKIPPED → warn + typed confirm + SKIPPED record; REQUEST-CHANGES → hard stop; unreadable → fails closed; legacy reports honored" \
   || bad "/ship's verdict gate lost a load-bearing clause"
 if grep -q "If the verdict isn't APPROVE" "$sh56"; then
   bad "/ship still carries the old wall that users routed around"
 else
-  ok "/ship's old 'isn't APPROVE → stop' wall is gone (replaced by the four-case gate)"
+  ok "/ship's old 'isn't APPROVE → stop' wall is gone (replaced by the gate)"
 fi
 grep -q 'SKIPPED' templates/ticket-README.md.tmpl \
   && ok "the ticket README template tells the reader an unreviewed ship is recorded as SKIPPED" \
   || bad "ticket-README.md.tmpl does not mention the SKIPPED record"
-# (f) the docs and the banner carry the new flow; the retired name is gone from the adoption surface
+# (f) docs and banner carry the new flow; the retired name is gone from the adoption surface
 { grep -q 'writes the plan' README.md && grep -q '^/build ' README.md && grep -q 'ship unreviewed' README.md; } \
   && ok "README's 'How work flows' block carries plan-first /ticket, /build, and the unreviewed-ship gate" \
   || bad "README's command block is stale"
@@ -9903,37 +9940,52 @@ grep -q 'SKIPPED' templates/ticket-README.md.tmpl \
 { grep -q '/build' .claude/hooks/session_context.py && grep -q 'runs `/review` itself' docs/architecture.md; } \
   && ok "the session banner and architecture.md name /build and the built-in review" \
   || bad "the banner or architecture.md still describes the old lifecycle"
-left56="$(grep -rl 'spec-and-build' --exclude-dir=.git --exclude-dir=emit --exclude-dir=__pycache__ . 2>/dev/null \
+left56="$(grep -rl 'spec-and-build' --exclude-dir=.git --exclude-dir=emit --exclude-dir=__pycache__ \
+          --exclude-dir=.ai-friend-review . 2>/dev/null \
           | grep -v 'CHANGELOG.md\|docs/troubleshooting.md\|bin/emit_runtime.py\|ticketwright/cli.py\|bin/selftest.sh\|ROADMAP.md' || true)"
 [ -z "$left56" ] && ok "spec-and-build survives only in history, the rename map, the RETIRED lists, and this suite" \
   || bad "the retired skill name is still on the adoption surface" "$left56"
-# (g) plan_mode: declared per adapter, surfaced by kit_paths, floored to unknown
+if grep -rq 'v4\.1' docs README.md templates .claude bin --exclude=selftest.sh 2>/dev/null; then
+  bad "a speculative version stamp is written into docs or skills — the version has ONE source of truth" \
+      "$(grep -rn 'v4\.1' docs README.md templates .claude bin --exclude=selftest.sh | head -3)"
+else
+  ok "no speculative version stamp in docs, templates, skills or bin (ticketwright/__init__.py stays the only source)"
+fi
+# (g) plan_mode surfaces for the pinned runtime (the floor and the adapter-key coverage are §31's)
 pm56="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=claude-code \
         python3 bin/kit_paths.py --json 2>/dev/null)"
 python3 - "$pm56" <<'PY56'
 import json, sys
-c = json.loads(sys.argv[1] or "{}").get("capabilities", {})
-sys.exit(0 if c.get("plan_mode") == "native" else 1)
+d = json.loads(sys.argv[1] or "{}")
+sys.exit(0 if d.get("capabilities", {}).get("plan_mode") == "native" and d.get("kit_root") else 1)
 PY56
-[ $? -eq 0 ] && ok "kit_paths --json surfaces plan_mode=native for claude-code" \
-  || bad "kit_paths --json does not surface plan_mode" "$pm56"
-pm56u="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=not-a-real-runtime \
-        python3 bin/kit_paths.py --json 2>/dev/null)"
-python3 - "$pm56u" <<'PY56'
-import json, sys
-c = json.loads(sys.argv[1] or "{}").get("capabilities", {})
-sys.exit(0 if c.get("plan_mode") == "unknown" else 1)
-PY56
-[ $? -eq 0 ] && ok "an unknown runtime floors plan_mode to unknown (never optimistic)" \
-  || bad "plan_mode has no honest floor for an unknown runtime" "$pm56u"
-pm_doc=""
-for rt in claude-code codex-cli cursor antigravity opencode devin cline; do
-  grep -q "^plan_mode:" "adapters/runtime/$rt.md" || pm_doc="$pm_doc $rt"
-done
-[ -z "$pm_doc" ] && ok "every runtime adapter declares plan_mode" || bad "a runtime adapter lacks plan_mode" "$pm_doc"
+[ $? -eq 0 ] && ok "kit_paths --json surfaces plan_mode=native and kit_root for claude-code (the one probe /ticket Phase 4 needs)" \
+  || bad "kit_paths --json does not surface plan_mode (or kit_root)" "$pm56"
 grep -q 'plan_mode' docs/runtimes.md && grep -qi 'enforcement boundary' docs/runtimes.md \
   && ok "runtimes.md documents plan_mode and states it is a UI feature, not an enforcement boundary" \
   || bad "runtimes.md does not document plan_mode honestly"
+# the human-readable capability matrix must stay a well-formed table (§40 parses only the machine one)
+python3 - <<'PY56' >"$TMP/hd56.matrix"
+import pathlib
+doc = pathlib.Path("docs/runtimes.md").read_text(encoding="utf-8")
+sect = doc.split("## Capability matrix", 1)[1].split("## The matrix, machine-readable", 1)[0]
+rows = [l for l in sect.splitlines() if l.startswith("|")]
+widths = {l.count("|") for l in rows}
+print("" if len(widths) == 1 and len(rows) >= 9 else f"ragged table: pipe counts {sorted(widths)} over {len(rows)} rows")
+PY56
+[ -z "$(cat "$TMP/hd56.matrix")" ] && ok "runtimes.md's human-readable capability matrix is a well-formed table (every row the header's width)" \
+  || bad "runtimes.md's human-readable capability matrix is ragged" "$(cat "$TMP/hd56.matrix")"
+# (h) reference files travel to emitted runtimes — a body that says "follow spec.md" must find it
+{ [ -f tests/emit/codex-cli/.agents/skills/ticket/spec.md ] && [ -f tests/emit/codex-cli/.agents/skills/ticket/priming.md ] \
+  && [ -f tests/emit/antigravity/.agents/skills/ticket/spec.md ] && [ -f tests/emit/codex-cli/.agents/skills/setup/scaffold.md ]; } \
+  && ok "emitted skill trees carry the sibling reference files their bodies point at (spec.md, priming.md, scaffold.md)" \
+  || bad "an emitted SKILL.md points at a reference file that was never emitted"
+grep -q 'reference file, verbatim' bin/emit_runtime.py \
+  && ok "emit_runtime.py emits reference files verbatim alongside each SKILL.md" \
+  || bad "emit_runtime.py still emits SKILL.md alone"
+[ "$(grep -c 'warn_retired_skills(' bin/emit_runtime.py)" -ge 4 ] \
+  && ok "the retired-skill warning fires on the emit path AND both verify-only paths" \
+  || bad "a verify-only install can keep a retired skill directory beside the new one unannounced"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
