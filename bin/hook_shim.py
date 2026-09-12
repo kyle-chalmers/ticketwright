@@ -318,13 +318,13 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
 
 
 def run_shell_guards(protocol: str, root_arg: str | None) -> int:
-    """Both PreToolUse shell guards, in ONE invocation, from ONE read of stdin.
+    """All three PreToolUse shell guards, in ONE invocation, from ONE read of stdin.
 
     Why this exists: a runtime's hooks config takes an ARRAY of entries, and whether every entry
     in that array is executed — or only the first — is undocumented for the runtimes the kit
     emits for. Emitting two entries would make each WIRED cell depend on that unverified
     assumption, which is precisely the overclaim the ENFORCEMENT/WIRED/GUIDANCE vocabulary exists
-    to prevent. One entry that runs both guards removes the assumption instead of documenting it.
+    to prevent. One entry that runs every guard removes the assumption instead of documenting it.
 
     The DB guard runs first (it gates the more immediately destructive action). If it EMITS a
     decision, that decision is the answer and the second guard does not run — a single hook

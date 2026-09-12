@@ -224,7 +224,7 @@ Covers: `cursor.wired.db_write_guard` `cursor.wired.source_material_guard`
 
 **Claim to verify.** Four claims the emitted wiring makes that only a live Cursor can prove:
 (a) the deny path actually blocks (unofficial reports of uneven deny reliability exist);
-(a2) the single emitted entry (`--hook shell_guards`) gates on BOTH guards — it is one command
+(a2) the single emitted entry (`--hook shell_guards`) gates on all three shell guards — it is one command
 so that nothing depends on whether Cursor executes every element of a hook array; confirm a
 source-material hit asks, not just a SQL one;
 (b) `failClosed: true` actually fails closed on a broken hook — the emitted config sets it as
@@ -261,7 +261,7 @@ enforcement table.
 ### 4. Antigravity — failure mode, global root, ask/force_ask, regen, questions
 
 _Also covers: the emitted `PreToolUse` entry is a single `--hook shell_guards` command covering
-both guards, deliberately not two array entries. Confirm a source-material hit asks (not only a
+every shell guard, deliberately not separate array entries. Confirm a source-material hit asks (not only a
 SQL one), which is what makes the `source_material_guard` cell WIRED rather than GUIDANCE._
 
 Status: OPEN
@@ -365,7 +365,7 @@ Covers: `opencode.wired.db_write_guard` `opencode.wired.source_material_guard`
 
 **Claim to verify.** (a) The emitted `.opencode/plugins/ticketwright-db-write-guard.js` wrapper
 is actually **loaded**, and throwing from `tool.execute.before` actually prevents execution;
-(a2) the wrapper's single `--hook shell_guards` call covers both guards — confirm a
+(a2) the wrapper's single `--hook shell_guards` call covers all three shell guards — confirm a
 source-material hit reaches the throw when the SQL guard passes, and denies the same way;
 (b) the two failure boundaries, separately — they are different claims: what a plugin that fails
 to **load** does (undocumented — the adapter's `gate_fail_mode: closed` covers a thrown error,

@@ -99,19 +99,29 @@ def verdict_files(ticket_dir: Path) -> list[tuple[int, Path]]:
         m = VERDICT_FILE_RE.match(p.name)
         if m and p.is_file():
             out.append((int(m.group(1)), p))
-    return sorted(out, key=lambda t: t[0])
+    return sorted(out, key=lambda t: (t[0], t[1].name))   # `010_` vs `10_` tie → deterministic by name
 
 
 def _read(path: Path) -> str:
     with path.open("rb") as fh:
-        return fh.read(READ_BYTES).decode("utf-8", errors="replace")
+        return fh.read(READ_BYTES).decode("utf-8-sig", errors="replace")   # -sig: a BOM never hides the key
 
 
 def read_verdict(path: Path) -> dict:
     """Parse one verdict file: the first `verdict:` line decides; `review_mode:` is carried along."""
-    text = _read(path)
+    try:
+        text = _read(path)
+    except OSError as e:
+        return {"status": STATUS_UNREADABLE, "value": None, "review_mode": None,
+                "reason": f"cannot read the file ({e.__class__.__name__}: {e})"}
     value = review_mode = None
+    in_fence = False
     for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence      # a `verdict:` quoted inside a code fence is an example, not the record
+            continue
+        if in_fence:
+            continue
         if value is None:
             m = VERDICT_LINE_RE.match(line)
             if m:

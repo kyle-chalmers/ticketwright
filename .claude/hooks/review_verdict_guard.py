@@ -35,15 +35,18 @@ the guard; a missing or unparseable value resolves to `true` — unparseable con
 what leaves the repo unprompted.
 
 WHAT IT CANNOT DO — stated plainly (tiebreaker 6). Its jurisdiction is Bash: a push from a git
-client, an IDE button, or a browser never reaches it. It reads the record, not the work: an
-APPROVE typed by hand is an APPROVE here.
+client, an IDE button, or a browser never reaches it. Within Bash it tokenizes the command the way
+the shell does (quotes respected; `&&`, `;`, `|`, `(`, `)` split segments; a leading `command`,
+`exec`, `time`, `nohup` or `{` is stepped over), so `(cd <ticket> && git push)` is seen and
+`git commit -m "a && git push"` is not — but a command wrapped in `bash -c '…'`, `sudo`, `env`
+with flags, an alias, or a script file is opaque to it and passes. It reads the record, not the
+work: an APPROVE typed by hand is an APPROVE here.
 
 Repo-gated: with no project `stack.yaml`, no output at all. Stdlib only. Always exits 0.
 """
 from __future__ import annotations
 
 import json
-import re
 import shlex
 import sys
 from pathlib import Path
@@ -59,7 +62,8 @@ try:
 except Exception as _e:  # noqa: BLE001 — any import failure maps to gating MORE, below
     _rv, _RV_IMPORT_ERROR = None, _e
 
-_SEGMENT_SPLIT_RE = re.compile(r"(?:\|\||&&|[;|&\n])")
+_PUNCT = "();<>|&"
+_WRAPPERS = {"command", "exec", "time", "nohup", "{", "}"}
 _GIT_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
                     "--config-env"}
 # binary -> (value-taking global flags, the bare-token sequences that count as outbound)
@@ -67,8 +71,38 @@ _OUTBOUND = {
     "git": (_GIT_VALUE_FLAGS, {("push",)}),
     "gh": ({"-R", "--repo"}, {("pr", "create"), ("pr", "merge")}),
     "glab": ({"-R", "--repo"}, {("mr", "create"), ("mr", "merge")}),
-    "az": (set(), {("repos", "pr", "create")}),
+    "az": ({"-o", "--output", "--subscription", "--query"}, {("repos", "pr", "create")}),
 }
+
+
+def _segments(command: str) -> list[list[str]]:
+    """Shell-tokenize, then split into command segments on operators and parentheses.
+
+    `shlex` with punctuation_chars honors quotes BEFORE it sees an operator, so `-m "a && git
+    push"` stays one word and never becomes a segment (a plain regex split fired on exactly that),
+    while `(cd x && git push)` yields `(`, `cd x`, `&&`, `git push`, `)` — the subshell shape an
+    agent uses to push from a ticket folder, which a regex split anchored on tokens[0] missed.
+    Unbalanced quotes fall back to whitespace splitting: this guard only ever adds a prompt, so
+    erring toward seeing a command costs a confirmation, never a silent pass.
+    """
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=_PUNCT)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        tokens = command.replace("\n", " ; ").split()
+    segments: list[list[str]] = []
+    cur: list[str] = []
+    for tok in tokens:
+        if tok and all(c in _PUNCT for c in tok):
+            if cur:
+                segments.append(cur)
+            cur = []
+            continue
+        cur.append(tok)
+    if cur:
+        segments.append(cur)
+    return segments
 
 
 def _bare_tokens(tokens: list[str], value_flags: set[str], limit: int = 3) -> list[str]:
@@ -89,13 +123,9 @@ def _bare_tokens(tokens: list[str], value_flags: set[str], limit: int = 3) -> li
 
 def outbound_action(command: str) -> str | None:
     """The outbound vcs action a command performs ('git push', 'gh pr create', …), or None."""
-    for segment in _SEGMENT_SPLIT_RE.split(command):
-        try:
-            tokens = shlex.split(segment)
-        except ValueError:
-            tokens = segment.split()
-        while tokens and ("=" in tokens[0] and not tokens[0].startswith("-")):
-            tokens = tokens[1:]
+    for tokens in _segments(command):
+        while tokens and (tokens[0] in _WRAPPERS or ("=" in tokens[0] and not tokens[0].startswith("-"))):
+            tokens = tokens[1:]           # wrappers and leading VAR=value assignments
         if not tokens:
             continue
         binary = Path(tokens[0]).name.strip("'\"")

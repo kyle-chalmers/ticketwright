@@ -5454,7 +5454,7 @@ rm -f "$TOK"
 # --- (5) emitted wiring artifacts + the install report's collapse statements -----------------------
 E43="$TMP/e43"; mkdir -p "$E43/adapters" "$E43/templates" "$E43/bin" "$E43/.claude"
 cp bin/kit_paths.py "$E43/bin/"; cp -R .claude/skills "$E43/.claude/skills"
-# The emitted PreToolUse wiring is `--hook shell_guards` — ONE entry covering both shell guards
+# The emitted PreToolUse wiring is `--hook shell_guards` — ONE entry covering every shell guard
 # (db_write + source_material). It is deliberately not two array entries: whether a runtime
 # executes every element of a hook array is undocumented, and a WIRED cell resting on that
 # assumption would be an overclaim (see the enforcement table's vocabulary).
@@ -5565,11 +5565,11 @@ for name, frag in [("Codex CLI", "denies"), ("OpenCode", "denies"), ("Devin", "d
 # tiebreaker 6 forbids.
 for name in WANT:
     if name != "Claude Code":
-        for i, c in enumerate(rows.get(name, [])[:5]):
+        for i, c in enumerate(rows.get(name, [])[:6]):
             if c.startswith("ENFORCEMENT"):
                 bad.append(f"{name}: cell {i} claims ENFORCEMENT — only a live confirmation may promote WIRED")
 if "Claude Code" in rows and not all(c.startswith("ENFORCEMENT") for c in rows["Claude Code"][:6]):
-    bad.append("Claude Code: all five hook cells must be ENFORCEMENT (the proven native wiring)")
+    bad.append("Claude Code: all six hook cells must be ENFORCEMENT (the proven native wiring)")
 for name, wired in [("Cursor", ".cursor/hooks.json"), ("Antigravity", ".agents/hooks.json"),
                     ("OpenCode", ".opencode/plugins/")]:
     if name in rows and (not rows[name][0].startswith("WIRED") or wired not in rows[name][0]):
@@ -5588,7 +5588,7 @@ for name in ["Codex CLI", "Devin"]:
     if name in rows and not rows[name][0].startswith("GUIDANCE"):
         bad.append(f"{name}: guard cell must be GUIDANCE (config location unresearched — never claim wiring that does not exist)")
 if "Cline" in rows and not all(c.startswith("UNKNOWN") for c in rows["Cline"][:5]):
-    bad.append("Cline: all five hook cells must be UNKNOWN (the stated case)")
+    bad.append("Cline: all six hook cells must be UNKNOWN (the stated case)")
 if "**WIRED**" not in block:
     bad.append("the legend does not define WIRED")
 print("\n".join(bad))
@@ -6950,11 +6950,11 @@ done
 # Read the block as one flowed string: the honesty sentence wraps across lines, and a
 # line-oriented grep would pass or fail on where the author happened to break it.
 enf_flat="$(tr '\n' ' ' < templates/AGENTS.md.tmpl)"
-{ # A runtime whose wiring must be done BY HAND still has to be told to wire both guards; an
+{ # A runtime whose wiring must be done BY HAND still has to be told to wire every guard; an
 # instruction naming only db_write_guard leaves source-material staging silent for that user.
 mw48="$(grep -n 'hook_shim.py --runtime .* --hook db_write_guard' templates/AGENTS.md.tmpl || true)"
 [ -z "$mw48" ] \
-  && ok "the manual-wiring lines name --hook shell_guards (both guards), not just the DB guard" \
+  && ok "the manual-wiring lines name --hook shell_guards (every shell guard), not just the DB guard" \
   || bad "a manual-wiring instruction wires only db_write_guard" "$mw48"
 grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
   && grep -qi 'it sees \*\*Bash\*\*' <<<"$enf_flat" \
@@ -6975,14 +6975,14 @@ grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
   && grep -q '/ticketwright:ticket' templates/AGENTS.md.tmpl; } \
   && ok "pin: the template names the plugin-install command and the namespaced skill form" \
   || bad "the template lost the pre-install note or the /ticketwright: namespacing line"
-# Both shell guards must be wired wherever ONE of them is — a runtime with half the gate is worse
+# Every shell guard must be wired wherever ONE of them is — a runtime with part of the gate is worse
 # than one with none, because the table would read as protection.
-# The emitters must wire ONE entry covering both guards (`--hook shell_guards`), never two array
+# The emitters must wire ONE entry covering every guard (`--hook shell_guards`), never separate array
 # entries. Whether a runtime executes every element of a hook array is undocumented, and a WIRED
 # cell resting on that assumption would be an overclaim — one entry removes the assumption.
 for f in bin/emit_runtime.py bin/opencode_tool_gate.js; do
   grep -q 'shell_guards' "$f" \
-    && ok "$f wires both shell guards through one hook entry (no array-ordering assumption)" \
+    && ok "$f wires every shell guard through one hook entry (no array-ordering assumption)" \
     || bad "$f does not use the combined shell_guards hook"
   grep -q '"source_material_guard", tool' "$f" \
     && bad "$f still emits a SECOND array entry — the WIRED cells would rest on an assumption" \
@@ -10081,6 +10081,28 @@ grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook locates the ticket fro
 o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "an unrelated branch with no ticket path is none of the hook's business" \
   || bad "hook prompts with no ticket in scope" "$o"
 ( cd "$R57" && git symbolic-ref HEAD refs/heads/ENG-7 ) 2>/dev/null
+# --- (B2) the tokenizer: shell shapes the review found evading or false-firing ---------------------
+for act in '(cd tickets/alice/ENG-7 && git push)' 'command git push' '{ git push; }' 'git commit -am x && git push' 'git push --force-with-lease origin HEAD' 'az --output json repos pr create --source-branch ENG-7' 'FOO=1 git push 2>&1'; do
+  o="$(g57 "$(pay57 "$act")")"
+  grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook sees the outbound command inside: $act" \
+    || bad "a shell shape evades the guard: $act" "$o"
+done
+for quiet in 'git commit -m "a && git push origin"' 'echo "x; git push origin"' "bash -c 'git push'"; do
+  o="$(g57 "$(pay57 "$quiet")")"
+  [ -z "$o" ] && ok "hook stays silent (quotes respected / opaque wrapper, stated in its docstring): $quiet" \
+    || bad "hook false-fires on quoted text or claims a wrapper it cannot see: $quiet" "$o"
+done
+# --- (A2) classifier edge cases the review found -------------------------------------------------
+printf '\xef\xbb\xbfverdict: APPROVE\nreview_mode: independent-subagent\n' > "$T57/qc_queries/20_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "approve"' "$TMP/rv57.out" && [ "$rc" = 0 ] \
+  && ok "classifier: a UTF-8 BOM does not hide the verdict: key" || bad "a BOM made an APPROVE unreadable" "$(cat "$TMP/rv57.out")"
+printf '# T\n```\nverdict: REQUEST-CHANGES\n```\nverdict: APPROVE\n' > "$T57/qc_queries/21_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "approve"' "$TMP/rv57.out" \
+  && ok "classifier: a verdict: quoted inside a code fence is an example, not the record" || bad "a fenced example was read as the verdict" "$(cat "$TMP/rv57.out")"
+printf 'verdict: REQUEST-CHANGES\n' > "$T57/qc_queries/022_review_verdict.md"; printf 'verdict: APPROVE\n' > "$T57/qc_queries/22_review_verdict.md"
+rc="$(rv57)"; grep -q '22_review_verdict.md' "$TMP/rv57.out" && ! grep -q '022_review_verdict.md' "$TMP/rv57.out" \
+  && ok "classifier: an 022_ vs 22_ tie is broken deterministically by name, never by directory order" || bad "numeric tie is nondeterministic" "$(cat "$TMP/rv57.out")"
+rm "$T57/qc_queries/20_review_verdict.md" "$T57/qc_queries/21_review_verdict.md" "$T57/qc_queries/022_review_verdict.md" "$T57/qc_queries/22_review_verdict.md"
 # --- (C) the shim presents the same judgment in the other runtimes' protocols ------------------------
 o="$(printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook shell_guards 2>/dev/null)"
 grep -q '"permission": "ask"' <<<"$o" && grep -q 'review_verdict_guard' <<<"$o" \
