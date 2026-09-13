@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [4.1.0] — 2026-09-12
 
 ### Added
 - **The review-before-ship gate is now a mechanism, not a paragraph.** `bin/review_verdict.py` is

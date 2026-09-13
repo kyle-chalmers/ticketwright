@@ -3,7 +3,7 @@ name: build
 description: Execute the plan or spec on file in fresh context, in small build-and-check loops, then run the independent review before handing off to ship. The IMPLEMENT + CHECK phase — every build ends with a /review verdict.
 ---
 
-<!-- emitted by ticketwright install v4.0.3 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v4.1.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /build
 
