@@ -353,9 +353,10 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                                             f"this target's own" if inherited not in (None, "")
                                             else " — this target has no destination")))
                 elif _unsafe(dest):
+                    folder = "rename the target folder or " if seam_name == "docstore" else ""
                     out.append(("error", f"{label}: `{dkey}` value contains {ec.offending_chars(dest)} — "
-                                         f"shell metacharacters are refused in a routed destination; rename the "
-                                         f"target folder or change `{dkey}` in the tool slot config"))
+                                         f"shell metacharacters are refused in a routed destination; "
+                                         f"{folder}change `{dkey}` in the tool slot config"))
                 else:
                     ident = (str(vals.get("tool") or "?"), str(dest))
                     if ident in seen_dest:

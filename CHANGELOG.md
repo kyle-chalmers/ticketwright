@@ -17,7 +17,9 @@ All notable changes to this project are documented here. Format loosely follows
   (`mount_root` / `remote`), or, for a tool-only chat slot, `chat.channel:` / `chat.recipients:`
   in the ticket's delivery plan. A folder name such as `Reports & Analysis` is the common trigger. What is refused is unchanged — the same
   values still halt; they are now explained. `effective_config.offending_chars()` is the one
-  helper behind every message.
+  helper behind every message. One path is deliberately unchanged and noted for a follow-up: the
+  `verify:`-template refusal in `bin/verify_stack.sh` (a `{base_path}` token whose machine-local
+  half is unsafe) still names only the token, not the character.
 
 
 ## [4.1.0] — 2026-09-12

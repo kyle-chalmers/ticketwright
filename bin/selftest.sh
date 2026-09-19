@@ -5885,6 +5885,13 @@ AOUT="$(python3 "$DP" --stack "$D45M/.claude/config/stack.yaml" --audit --quiet 
 printf '%s' "$AOUT" | grep -q "'&'" \
   && ok "the --audit advisory (what verify_stack prints) names the character too" \
   || bad "the audit path still hides which character was refused" "$AOUT"
+# the audit's folder advice is a docstore remedy — a chat destination is never told to rename a folder
+D45A="$TMP/route45a"; mkdir -p "$D45A/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    default: internal\n    default_mode: draft\n    targets:\n      internal: {audience: internal, tool: slack, adapter: adapters/chat/slack.md, default_channel: "#ops&risk", always_include: [Alice], verify: null}\n      client: {audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, always_include: [Dana], verify: null}\n' > "$D45A/.claude/config/stack.yaml"
+AOUT2="$(python3 "$DP" --stack "$D45A/.claude/config/stack.yaml" --audit --quiet 2>/dev/null)"
+{ printf '%s' "$AOUT2" | grep -q "'&'" && printf '%s' "$AOUT2" | grep -q 'default_channel' && ! printf '%s' "$AOUT2" | grep -q "rename the target folder"; } \
+  && ok "a chat destination refused at audit names default_channel and is not told to rename a folder" \
+  || bad "chat audit refusal gives docstore folder advice" "$AOUT2"
 
 # --- (B3) the remedy names the value's REAL source, not one guess -----------------------------
 # Three places can carry a refused value: the tool slot config, the machine-local half of a composed
