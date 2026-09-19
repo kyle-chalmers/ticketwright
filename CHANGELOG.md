@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
-## [Unreleased]
+## [4.1.1] — 2026-09-18
 
 ### Fixed
 - **A refused delivery destination now says which character was refused, and what to do.** The

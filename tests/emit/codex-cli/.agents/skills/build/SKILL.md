@@ -3,7 +3,7 @@ name: build
 description: Execute the plan or spec on file in fresh context, in small build-and-check loops, then run the independent review before handing off to ship. The IMPLEMENT + CHECK phase — every build ends with a /review verdict.
 ---
 
-<!-- emitted by ticketwright install v4.1.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.1.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /build
 
