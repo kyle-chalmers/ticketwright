@@ -5927,6 +5927,31 @@ UOUT="$(python3 "$DP" --root "$D45U" --plan "$D45U/tk/delivery-plan.yaml" --seam
 { [ "$URC" -eq 4 ] && printf '%s' "$UOUT" | grep -q -- "--self" && ! printf '%s' "$UOUT" | grep -q "chat.recipients"; } \
   && ok "under a tool-only chat slot with include_self, a bad --self name is attributed to --self, not to chat.recipients" \
   || bad "tool-only + include_self misattributes the shipper's name to the plan" "rc=$URC out=$UOUT"
+# a LITERAL base_path pinned in the tool slot (legacy form, still supported) was never composed —
+# the refusal must blame base_path itself, not a half that was never joined. printf, not sed: BSD
+# sed (stock macOS, where CI runs this) does not honor \n in a replacement.
+D45L="$TMP/route45l"; mkdir -p "$D45L/.claude/config" "$D45L/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive:\n        classification: internal_archive\n        sharing_scope: team\n        tool: gdrive\n        adapter: adapters/docstore/gdrive.md\n        transport: cli\n        drive_folder: "Shared drives/Tickets"\n        base_path: "/mnt/shared/Team & Co/Tickets"\n        verify: null\n' > "$D45L/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45L/tk/delivery-plan.yaml"
+LOUT="$(python3 "$DP" --root "$D45L" --plan "$D45L/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; LRC=$?
+{ [ "$LRC" -eq 4 ] && printf '%s' "$LOUT" | grep -q "'&'" && printf '%s' "$LOUT" | grep -q '`base_path`' && ! printf '%s' "$LOUT" | grep -q "composed path"; } \
+  && ok "a literal base_path carrying & is blamed on base_path itself, never reported as composed" \
+  || bad "literal base_path refusal misreports its source" "rc=$LRC out=$LOUT"
+# rclone: the composed form names remote + remote_path and blames the dirty half; the literal form names base_path
+D45R="$TMP/route45r"; mkdir -p "$D45R/.claude/config" "$D45R/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets & docs"\n    target_sentinel: t\n    verify: null\n' > "$D45R/.claude/config/stack.yaml"
+printf 'seams:\n  docstore:\n    remote: gdrv\n' > "$D45R/.claude/config/connections.local.yaml"
+printf 'schema_version: 1\n' > "$D45R/tk/delivery-plan.yaml"
+ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; RRC2=$?
+{ [ "$RRC2" -eq 4 ] && printf '%s' "$ROUT2" | grep -q '`remote` + `remote_path`' && printf '%s' "$ROUT2" | grep -q 'fix `remote_path`'; } \
+  && ok "an rclone destination composed from remote + remote_path blames the remote_path half" \
+  || bad "rclone composed-path refusal misnames its halves" "rc=$RRC2 out=$ROUT2"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets"\n    target_sentinel: t\n    base_path: "gdrv:tickets & docs"\n    verify: null\n' > "$D45R/.claude/config/stack.yaml"
+rm -f "$D45R/.claude/config/connections.local.yaml"
+ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; RRC2=$?
+{ [ "$RRC2" -eq 4 ] && printf '%s' "$ROUT2" | grep -q '`base_path`' && ! printf '%s' "$ROUT2" | grep -q "composed path"; } \
+  && ok "an rclone literal base_path carrying & is blamed on base_path, never on remote_path" \
+  || bad "rclone literal base_path refusal misreports its source" "rc=$RRC2 out=$ROUT2"
 # vocabulary guard: user-facing prose says "tool slot"; `seam` is the internal word (AGENTS.md)
 [ "$(grep -c 'seam config' "$DP")" -eq 0 ] \
   && ok "no user-facing message in delivery_plan.py says 'seam config' (tool slot is the public word)" \

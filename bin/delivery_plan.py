@@ -114,6 +114,15 @@ def _unsafe(value: Any) -> bool:
     return bool(value is not None and set(str(value)) & ec.SHELL_METACHARS)
 
 
+def _composed_base_path(res: "ec.Resolution", unit: dict) -> bool:
+    """True when this unit's `base_path` was COMPOSED by the resolver (team half + machine half),
+    read from its provenance record — never inferred from which components look unsafe. A literal
+    `base_path:` pinned in config (the legacy form, still supported) leaves no such record."""
+    key = f"seams.{unit['seam']}" + (f".targets.{unit['target']}" if unit.get("target") else "")
+    src = (res.provenance.get(f"{key}.base_path") or {}).get("source", "")
+    return str(src).startswith("composed from")
+
+
 def _str_list(value: Any) -> list[str] | None:
     if not isinstance(value, list) or not value:
         return None
@@ -620,8 +629,7 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         if tool_only:
             what = "the `chat.channel:` value"
             where = "it is declared in the ticket's delivery-plan.yaml — change it there"
-        elif (seam_name == "docstore" and isinstance(vals.get("base_path"), str)
-              and dest == vals.get("base_path")):
+        elif seam_name == "docstore" and dest == vals.get("base_path") and _composed_base_path(res, unit):
             # A composed path has a team half and a machine half; blame the one(s) that carry it.
             # The halves are the keys _compose_paths joins — not `dkey`, which a single mapping may lack.
             tk, mk = (("drive_folder", "mount_root") if vals.get("drive_folder") else ("remote_path", "remote"))
@@ -633,6 +641,10 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
             if not parts:
                 parts.append(f"`{tk}` in the tool slot config")
             what, where = f"the composed path (`{mk}` + `{tk}`)", "fix " + " and ".join(parts)
+        elif seam_name == "docstore" and dest == vals.get("base_path"):
+            # A literal `base_path:` pinned in the tool slot config was never composed, so neither
+            # half is to blame — the value itself is.
+            what, where = "the `base_path` value", "change `base_path` in the tool slot config"
         else:
             what = f"the `{dkey or 'destination'}` value"
             where = (("rename the target folder or " if seam_name == "docstore" else "")
