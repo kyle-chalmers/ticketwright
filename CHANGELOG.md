@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Fixed
+- **A refused delivery destination now says which character was refused, and what to do.** The
+  delivery resolver's shell-metacharacter refusal (`bin/delivery_plan.py`) named only the key —
+  "the `drive_folder` value carries shell metacharacters" — and left the reader to find the
+  offending character themselves. Every refusal (destination, recipients, sender; both the routing
+  halt `/ship` acts on and the `--audit` advisory `verify_stack` prints) now names the character(s)
+  and the remedy: rename the target folder, or change the value in the seam config. A folder name
+  such as `Reports & Analysis` is the common trigger. What is refused is unchanged — the same
+  values still halt; they are now explained. `effective_config.offending_chars()` is the one
+  helper behind every message.
+
+
 ## [4.1.0] — 2026-09-12
 
 ### Added

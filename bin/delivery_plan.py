@@ -344,8 +344,9 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                                             f"this target's own" if inherited not in (None, "")
                                             else " — this target has no destination")))
                 elif _unsafe(dest):
-                    out.append(("error", f"{label}: `{dkey}` value carries shell metacharacters — "
-                                         f"refusing to route to it"))
+                    out.append(("error", f"{label}: `{dkey}` value contains {ec.offending_chars(dest)} — "
+                                         f"shell metacharacters are refused in a routed destination; rename the "
+                                         f"target folder or change `{dkey}` in the seam config"))
                 else:
                     ident = (str(vals.get("tool") or "?"), str(dest))
                     if ident in seen_dest:
@@ -373,8 +374,10 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                     else:
                         bad = [n for n in names if _unsafe(n)]
                         if bad:
+                            shown = ", ".join(f"{n} ({ec.offending_chars(n)})" for n in bad)
                             out.append(("error", f"{label}: recipient(s) carry shell "
-                                                 f"metacharacters: {', '.join(bad)}"))
+                                                 f"metacharacters: {shown} — remove them from the recipient list in the "
+                                                 f"seam config"))
                 # 3b) the sender, when this adapter declares one (`sender_key:` — the email
                 #     adapters name `identity`, the shared mailbox mail goes out AS). Route time
                 #     enforces the same rule; the audit just names it earlier. Inheritable on
@@ -393,8 +396,9 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                                              f"whoever the transport happens to be authenticated "
                                              f"as"))
                     elif _unsafe(sender):
-                        out.append(("error", f"{label}: the `{skey}` value carries shell "
-                                             f"metacharacters — refusing to emit it as a sender"))
+                        out.append(("error", f"{label}: the `{skey}` value contains "
+                                             f"{ec.offending_chars(sender)} — shell metacharacters are refused in a "
+                                             f"sender; change `{skey}` in the seam config"))
                 # 3c) `bcc:` is a key the kit deliberately maps to NOTHING — a hidden recipient
                 #     would make the delivered audience differ from what every reader sees, which
                 #     is why the email adapters document a no-bcc position. But a key someone
@@ -613,8 +617,10 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         dest = base_path
     if _unsafe(dest):
         out["unsafe"] = [dkey or "destination"]
-        err = _err("malformed", f"{unit['label']}: the `{dkey}` value carries shell "
-                                f"metacharacters — refusing to emit it as a destination")
+        err = _err("malformed", f"{unit['label']}: the `{dkey}` value contains "
+                                f"{ec.offending_chars(dest)} — shell metacharacters are refused in a "
+                                f"routed destination; rename the target folder or change `{dkey}` in "
+                                f"the seam config")
         return _fail(out, err)
     out["destination"], out["destination_key"] = dest, dkey
 
@@ -645,8 +651,9 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         bad = [n for n in names if _unsafe(n)]
         if bad:
             out["unsafe"] = bad
+            shown = ", ".join(f"{n} ({ec.offending_chars(n)})" for n in bad)
             err = _err("malformed", f"{unit['label']}: recipient(s) carry shell metacharacters: "
-                                    f"{', '.join(bad)}")
+                                    f"{shown} — remove them from the recipient list in the seam config")
             return _fail(out, err)
         out["recipients"] = names
         out["include_self"] = bool(str(vals.get("include_self")).lower() in ("true", "1"))
@@ -682,8 +689,9 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                                        f"add it to the seam config")
             elif _unsafe(sender):
                 out["unsafe"] = [skey]
-                err = _err("malformed", f"{unit['label']}: the `{skey}` value carries shell "
-                                        f"metacharacters — refusing to emit it as a sender")
+                err = _err("malformed", f"{unit['label']}: the `{skey}` value contains "
+                                        f"{ec.offending_chars(sender)} — shell metacharacters are refused in a "
+                                        f"sender; change `{skey}` in the seam config")
                 return _fail(out, err)
             else:
                 out["sender"], out["sender_key"] = sender.strip(), skey

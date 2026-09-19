@@ -963,6 +963,12 @@ def interpolate(template: str, tokens: dict) -> tuple[str, list[str]]:
 SHELL_METACHARS = set(";|&$`<>()\n\r\\")
 
 
+def offending_chars(value: Any) -> str:
+    """The shell metacharacters present in `value`, quoted and sorted — for a refusal message
+    that names what was refused rather than only which key carried it. Same set, one place."""
+    return ", ".join(repr(c) for c in sorted(set(str(value)) & SHELL_METACHARS))
+
+
 def unsafe_tokens(template: str, tokens: dict) -> list[str]:
     """Token names whose value would inject shell syntax into `template`."""
     bad = []

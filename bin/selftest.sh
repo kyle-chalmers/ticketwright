@@ -5867,6 +5867,25 @@ route --seam chat
 [ "$RRC" -eq 4 ] && ok "a plan written to another schema_version is malformed, not read anyway" \
   || bad "an unsupported plan schema_version was read" "rc=$RRC"
 
+# --- (B2) a refused destination names the offending CHARACTER, not just the key ----------------
+# The refusal is a halt the human must act on; a message that names only `drive_folder` sends them
+# hunting. A SEPARATE fixture dir: $D45's stack.yaml is shared state read further down (route() is
+# bound to it), so it is never mutated here. sed without -i (macOS + GNU); `\&` is a literal ampersand.
+D45M="$TMP/route45m"; mkdir -p "$D45M/.claude/config" "$D45M/tk"
+sed 's#drive_folder: "Shared drives/Tickets"#drive_folder: "Shared drives/Tickets \& Reports"#' \
+  "$KIT/.claude/config/stack.example.multi-audience.yaml" > "$D45M/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45M/tk/delivery-plan.yaml"
+MOUT="$(python3 "$DP" --root "$D45M" --plan "$D45M/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; MRC=$?
+{ [ "$MRC" -eq 4 ] && printf '%s' "$MOUT" | grep -q "'&'" && printf '%s' "$MOUT" | grep -q "metacharacters"; } \
+  && ok "a destination carrying & is refused (exit 4) and the message NAMES the character" \
+  || bad "the metachar refusal does not name the offending character" "rc=$MRC out=$MOUT"
+printf '%s' "$MOUT" | grep -qi "rename the target folder" \
+  && ok "the refusal states the remedy" || bad "the refusal names no remedy" "$MOUT"
+AOUT="$(python3 "$DP" --stack "$D45M/.claude/config/stack.yaml" --audit --quiet 2>/dev/null)"
+printf '%s' "$AOUT" | grep -q "'&'" \
+  && ok "the --audit advisory (what verify_stack prints) names the character too" \
+  || bad "the audit path still hides which character was refused" "$AOUT"
+
 # --- (C) the explicit override, and its honesty about not being recorded ------------------------
 printf 'schema_version: 1\naudience: client\n' > "$PLAN45"
 route --seam chat --override internal
