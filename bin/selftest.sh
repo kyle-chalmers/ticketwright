@@ -5886,6 +5886,52 @@ printf '%s' "$AOUT" | grep -q "'&'" \
   && ok "the --audit advisory (what verify_stack prints) names the character too" \
   || bad "the audit path still hides which character was refused" "$AOUT"
 
+# --- (B3) the remedy names the value's REAL source, not one guess -----------------------------
+# Three places can carry a refused value: the tool slot config, the machine-local half of a composed
+# docstore path (tier 3), and — for a TOOL-ONLY chat slot — the ticket's own delivery-plan.yaml. A
+# remedy naming the wrong one sends the reader to a file that does not contain the value.
+D45T="$TMP/route45t"; mkdir -p "$D45T/.claude/config" "$D45T/tk"
+cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$D45T/.claude/config/stack.yaml"   # tool-only chat
+printf 'schema_version: 1\nchat:\n  channel: "#ops&risk"\n  recipients: [Alice]\n' > "$D45T/tk/delivery-plan.yaml"
+TOUT="$(python3 "$DP" --root "$D45T" --plan "$D45T/tk/delivery-plan.yaml" --seam chat --quiet 2>/dev/null)"; TRC=$?
+{ [ "$TRC" -eq 4 ] && printf '%s' "$TOUT" | grep -q "'&'" && printf '%s' "$TOUT" | grep -q "chat.channel" && printf '%s' "$TOUT" | grep -q "delivery-plan.yaml"; } \
+  && ok "a plan-declared chat.channel carrying & is refused and the remedy names the DELIVERY PLAN, not the tool slot" \
+  || bad "tool-only chat channel refusal misnames its source" "rc=$TRC out=$TOUT"
+printf 'schema_version: 1\nchat:\n  channel: "#ops"\n  recipients: ["Alice&Bob"]\n' > "$D45T/tk/delivery-plan.yaml"
+TOUT="$(python3 "$DP" --root "$D45T" --plan "$D45T/tk/delivery-plan.yaml" --seam chat --quiet 2>/dev/null)"; TRC=$?
+{ [ "$TRC" -eq 4 ] && printf '%s' "$TOUT" | grep -q "'&'" && printf '%s' "$TOUT" | grep -q "chat.recipients"; } \
+  && ok "a plan-declared chat.recipients entry carrying & is refused and the remedy names chat.recipients" \
+  || bad "tool-only chat recipient refusal misnames its source" "rc=$TRC out=$TOUT"
+# the machine half: a clean team key, the & in this machine's tier-3 mount_root
+D45N="$TMP/route45n"; mkdir -p "$D45N/.claude/config" "$D45N/tk"
+cp "$KIT/.claude/config/stack.example.multi-audience.yaml" "$D45N/.claude/config/stack.yaml"
+printf 'seams:\n  docstore:\n    targets:\n      archive:\n        mount_root: "/mnt/drive&sync"\n' > "$D45N/.claude/config/connections.local.yaml"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45N/tk/delivery-plan.yaml"
+NOUT="$(python3 "$DP" --root "$D45N" --plan "$D45N/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; NRC=$?
+{ [ "$NRC" -eq 4 ] && printf '%s' "$NOUT" | grep -q "'&'" && printf '%s' "$NOUT" | grep -q "mount_root" && ! printf '%s' "$NOUT" | grep -q "rename the target folder"; } \
+  && ok "a & in the machine-local mount_root blames mount_root, never the team's drive_folder" \
+  || bad "composed-path refusal blames the wrong half" "rc=$NRC out=$NOUT"
+# the shipper's own name: appended only under include_self, so the source is --self / person config
+D45S="$TMP/route45s"; mkdir -p "$D45S/.claude/config" "$D45S/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    default: internal\n    default_mode: draft\n    targets:\n      internal: {audience: internal, tool: slack, adapter: adapters/chat/slack.md, default_channel: C1, always_include: [Alice], include_self: true, verify: null}\n' > "$D45S/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: internal\n' > "$D45S/tk/delivery-plan.yaml"
+SOUT="$(python3 "$DP" --root "$D45S" --plan "$D45S/tk/delivery-plan.yaml" --seam chat --self 'Kai$(id)' --quiet 2>/dev/null)"; SRC=$?
+{ [ "$SRC" -eq 4 ] && printf '%s' "$SOUT" | grep -q "'\$'" && printf '%s' "$SOUT" | grep -q -- "--self" && ! printf '%s' "$SOUT" | grep -q "always_include"; } \
+  && ok "a metacharacter in the shipper's own --self name is refused and attributed to --self, not to always_include" \
+  || bad "self-name refusal misattributes its source" "rc=$SRC out=$SOUT"
+# tool-only chat WITH include_self: a bad --self name is still the shipper's, never the plan's
+D45U="$TMP/route45u"; mkdir -p "$D45U/.claude/config" "$D45U/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_mode: draft\n    include_self: true\n    verify: null\n' > "$D45U/.claude/config/stack.yaml"
+printf 'schema_version: 1\nchat:\n  channel: "#ops"\n  recipients: [Alice]\n' > "$D45U/tk/delivery-plan.yaml"
+UOUT="$(python3 "$DP" --root "$D45U" --plan "$D45U/tk/delivery-plan.yaml" --seam chat --self 'Kai$(id)' --quiet 2>/dev/null)"; URC=$?
+{ [ "$URC" -eq 4 ] && printf '%s' "$UOUT" | grep -q -- "--self" && ! printf '%s' "$UOUT" | grep -q "chat.recipients"; } \
+  && ok "under a tool-only chat slot with include_self, a bad --self name is attributed to --self, not to chat.recipients" \
+  || bad "tool-only + include_self misattributes the shipper's name to the plan" "rc=$URC out=$UOUT"
+# vocabulary guard: user-facing prose says "tool slot"; `seam` is the internal word (AGENTS.md)
+[ "$(grep -c 'seam config' "$DP")" -eq 0 ] \
+  && ok "no user-facing message in delivery_plan.py says 'seam config' (tool slot is the public word)" \
+  || bad "'seam config' leaked into a user-facing message" "$(grep -n 'seam config' "$DP")"
+
 # --- (C) the explicit override, and its honesty about not being recorded ------------------------
 printf 'schema_version: 1\naudience: client\n' > "$PLAN45"
 route --seam chat --override internal

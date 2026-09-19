@@ -346,7 +346,7 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                 elif _unsafe(dest):
                     out.append(("error", f"{label}: `{dkey}` value contains {ec.offending_chars(dest)} — "
                                          f"shell metacharacters are refused in a routed destination; rename the "
-                                         f"target folder or change `{dkey}` in the seam config"))
+                                         f"target folder or change `{dkey}` in the tool slot config"))
                 else:
                     ident = (str(vals.get("tool") or "?"), str(dest))
                     if ident in seen_dest:
@@ -376,8 +376,8 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                         if bad:
                             shown = ", ".join(f"{n} ({ec.offending_chars(n)})" for n in bad)
                             out.append(("error", f"{label}: recipient(s) carry shell "
-                                                 f"metacharacters: {shown} — remove them from the recipient list in the "
-                                                 f"seam config"))
+                                                 f"metacharacters: {shown} — remove them from "
+                                                 f"`always_include` in the tool slot config"))
                 # 3b) the sender, when this adapter declares one (`sender_key:` — the email
                 #     adapters name `identity`, the shared mailbox mail goes out AS). Route time
                 #     enforces the same rule; the audit just names it earlier. Inheritable on
@@ -398,7 +398,7 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                     elif _unsafe(sender):
                         out.append(("error", f"{label}: the `{skey}` value contains "
                                              f"{ec.offending_chars(sender)} — shell metacharacters are refused in a "
-                                             f"sender; change `{skey}` in the seam config"))
+                                             f"sender; change `{skey}` in the tool slot config"))
                 # 3c) `bcc:` is a key the kit deliberately maps to NOTHING — a hidden recipient
                 #     would make the delivered audience differ from what every reader sees, which
                 #     is why the email adapters document a no-bcc position. But a key someone
@@ -617,10 +617,28 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         dest = base_path
     if _unsafe(dest):
         out["unsafe"] = [dkey or "destination"]
-        err = _err("malformed", f"{unit['label']}: the `{dkey}` value contains "
-                                f"{ec.offending_chars(dest)} — shell metacharacters are refused in a "
-                                f"routed destination; rename the target folder or change `{dkey}` in "
-                                f"the seam config")
+        if tool_only:
+            what = "the `chat.channel:` value"
+            where = "it is declared in the ticket's delivery-plan.yaml — change it there"
+        elif (seam_name == "docstore" and isinstance(vals.get("base_path"), str)
+              and dest == vals.get("base_path")):
+            # A composed path has a team half and a machine half; blame the one(s) that carry it.
+            # The halves are the keys _compose_paths joins — not `dkey`, which a single mapping may lack.
+            tk, mk = (("drive_folder", "mount_root") if vals.get("drive_folder") else ("remote_path", "remote"))
+            parts = []
+            if _unsafe(vals.get(tk)):
+                parts.append(f"`{tk}` in the tool slot config (rename the target folder or change the key)")
+            if _unsafe(vals.get(mk)):
+                parts.append(f"`{mk}` in your machine-local config (connections.local.yaml)")
+            if not parts:
+                parts.append(f"`{tk}` in the tool slot config")
+            what, where = f"the composed path (`{mk}` + `{tk}`)", "fix " + " and ".join(parts)
+        else:
+            what = f"the `{dkey or 'destination'}` value"
+            where = (("rename the target folder or " if seam_name == "docstore" else "")
+                     + f"change `{dkey or 'destination'}` in the tool slot config")
+        err = _err("malformed", f"{unit['label']}: {what} contains {ec.offending_chars(dest)} — "
+                                f"shell metacharacters are refused in a routed destination; {where}")
         return _fail(out, err)
     out["destination"], out["destination_key"] = dest, dkey
 
@@ -645,6 +663,7 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                 err = _err("malformed", f"{unit['label']}: declares no non-empty `always_include:` — "
                                         f"refusing to route a message with no stakeholder list")
                 return _fail(out, err)
+        team_names = list(names)   # before the shipper is appended: which names the CONFIG supplied
         if self_name and str(vals.get("include_self")).lower() in ("true", "1"):
             if self_name not in names:
                 names = names + [self_name]
@@ -652,8 +671,13 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         if bad:
             out["unsafe"] = bad
             shown = ", ".join(f"{n} ({ec.offending_chars(n)})" for n in bad)
+            # Source per name: config-supplied names (team_names) came from the plan under a tool-only
+            # slot, else from always_include; anything else was appended from --self.
+            srcs = {(("`chat.recipients:` in the ticket's delivery-plan.yaml" if tool_only
+                      else "`always_include` in the tool slot config") if n in team_names
+                     else "your own display name (`--self`, person config)") for n in bad}
             err = _err("malformed", f"{unit['label']}: recipient(s) carry shell metacharacters: "
-                                    f"{shown} — remove them from the recipient list in the seam config")
+                                    f"{shown} — remove them from {'; '.join(sorted(srcs))}")
             return _fail(out, err)
         out["recipients"] = names
         out["include_self"] = bool(str(vals.get("include_self")).lower() in ("true", "1"))
@@ -686,12 +710,12 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                 out["warnings"] = out.get("warnings") or []
                 out["warnings"].append(f"adapter declares `sender_key: {skey}` but `{skey}:` is "
                                        f"unset — the sender cannot be shown on the plan line; "
-                                       f"add it to the seam config")
+                                       f"add it to the tool slot config")
             elif _unsafe(sender):
                 out["unsafe"] = [skey]
                 err = _err("malformed", f"{unit['label']}: the `{skey}` value contains "
                                         f"{ec.offending_chars(sender)} — shell metacharacters are refused in a "
-                                        f"sender; change `{skey}` in the seam config")
+                                        f"sender; change `{skey}` in the tool slot config")
                 return _fail(out, err)
             else:
                 out["sender"], out["sender_key"] = sender.strip(), skey

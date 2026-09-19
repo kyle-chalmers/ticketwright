@@ -12,8 +12,10 @@ All notable changes to this project are documented here. Format loosely follows
   "the `drive_folder` value carries shell metacharacters" — and left the reader to find the
   offending character themselves. Every refusal (destination, recipients, sender; both the routing
   halt `/ship` acts on and the `--audit` advisory `verify_stack` prints) now names the character(s)
-  and the remedy: rename the target folder, or change the value in the seam config. A folder name
-  such as `Reports & Analysis` is the common trigger. What is refused is unchanged — the same
+  and the remedy — pointing at the value's actual source: the tool slot config, the machine-local
+  half of a composed docstore path (`mount_root` / `remote`), or, for a tool-only chat slot,
+  `chat.channel:` / `chat.recipients:` in the ticket's delivery plan. A folder name such as
+  `Reports & Analysis` is the common trigger. What is refused is unchanged — the same
   values still halt; they are now explained. `effective_config.offending_chars()` is the one
   helper behind every message.
 
