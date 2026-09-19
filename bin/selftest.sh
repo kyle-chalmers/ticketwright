@@ -5867,6 +5867,103 @@ route --seam chat
 [ "$RRC" -eq 4 ] && ok "a plan written to another schema_version is malformed, not read anyway" \
   || bad "an unsupported plan schema_version was read" "rc=$RRC"
 
+# --- (B2) a refused destination names the offending CHARACTER, not just the key ----------------
+# The refusal is a halt the human must act on; a message that names only `drive_folder` sends them
+# hunting. A SEPARATE fixture dir: $D45's stack.yaml is shared state read further down (route() is
+# bound to it), so it is never mutated here. sed without -i (macOS + GNU); `\&` is a literal ampersand.
+D45M="$TMP/route45m"; mkdir -p "$D45M/.claude/config" "$D45M/tk"
+sed 's#drive_folder: "Shared drives/Tickets"#drive_folder: "Shared drives/Tickets \& Reports"#' \
+  "$KIT/.claude/config/stack.example.multi-audience.yaml" > "$D45M/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45M/tk/delivery-plan.yaml"
+MOUT="$(python3 "$DP" --root "$D45M" --plan "$D45M/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; MRC=$?
+{ [ "$MRC" -eq 4 ] && printf '%s' "$MOUT" | grep -q "'&'" && printf '%s' "$MOUT" | grep -q "metacharacters"; } \
+  && ok "a destination carrying & is refused (exit 4) and the message NAMES the character" \
+  || bad "the metachar refusal does not name the offending character" "rc=$MRC out=$MOUT"
+printf '%s' "$MOUT" | grep -qi "rename the target folder" \
+  && ok "the refusal states the remedy" || bad "the refusal names no remedy" "$MOUT"
+AOUT="$(python3 "$DP" --stack "$D45M/.claude/config/stack.yaml" --audit --quiet 2>/dev/null)"
+printf '%s' "$AOUT" | grep -q "'&'" \
+  && ok "the --audit advisory (what verify_stack prints) names the character too" \
+  || bad "the audit path still hides which character was refused" "$AOUT"
+# the audit's folder advice is a docstore remedy — a chat destination is never told to rename a folder
+D45A="$TMP/route45a"; mkdir -p "$D45A/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    default: internal\n    default_mode: draft\n    targets:\n      internal: {audience: internal, tool: slack, adapter: adapters/chat/slack.md, default_channel: "#ops&risk", always_include: [Alice], verify: null}\n      client: {audience: client, tool: teams, adapter: adapters/chat/teams.md, channel: X9, always_include: [Dana], verify: null}\n' > "$D45A/.claude/config/stack.yaml"
+AOUT2="$(python3 "$DP" --stack "$D45A/.claude/config/stack.yaml" --audit --quiet 2>/dev/null)"
+{ printf '%s' "$AOUT2" | grep -q "'&'" && printf '%s' "$AOUT2" | grep -q 'default_channel' && ! printf '%s' "$AOUT2" | grep -q "rename the target folder"; } \
+  && ok "a chat destination refused at audit names default_channel and is not told to rename a folder" \
+  || bad "chat audit refusal gives docstore folder advice" "$AOUT2"
+
+# --- (B3) the remedy names the value's REAL source, not one guess -----------------------------
+# Three places can carry a refused value: the tool slot config, the machine-local half of a composed
+# docstore path (tier 3), and — for a TOOL-ONLY chat slot — the ticket's own delivery-plan.yaml. A
+# remedy naming the wrong one sends the reader to a file that does not contain the value.
+D45T="$TMP/route45t"; mkdir -p "$D45T/.claude/config" "$D45T/tk"
+cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$D45T/.claude/config/stack.yaml"   # tool-only chat
+printf 'schema_version: 1\nchat:\n  channel: "#ops&risk"\n  recipients: [Alice]\n' > "$D45T/tk/delivery-plan.yaml"
+TOUT="$(python3 "$DP" --root "$D45T" --plan "$D45T/tk/delivery-plan.yaml" --seam chat --quiet 2>/dev/null)"; TRC=$?
+{ [ "$TRC" -eq 4 ] && printf '%s' "$TOUT" | grep -q "'&'" && printf '%s' "$TOUT" | grep -q "chat.channel" && printf '%s' "$TOUT" | grep -q "delivery-plan.yaml"; } \
+  && ok "a plan-declared chat.channel carrying & is refused and the remedy names the DELIVERY PLAN, not the tool slot" \
+  || bad "tool-only chat channel refusal misnames its source" "rc=$TRC out=$TOUT"
+printf 'schema_version: 1\nchat:\n  channel: "#ops"\n  recipients: ["Alice&Bob"]\n' > "$D45T/tk/delivery-plan.yaml"
+TOUT="$(python3 "$DP" --root "$D45T" --plan "$D45T/tk/delivery-plan.yaml" --seam chat --quiet 2>/dev/null)"; TRC=$?
+{ [ "$TRC" -eq 4 ] && printf '%s' "$TOUT" | grep -q "'&'" && printf '%s' "$TOUT" | grep -q "chat.recipients"; } \
+  && ok "a plan-declared chat.recipients entry carrying & is refused and the remedy names chat.recipients" \
+  || bad "tool-only chat recipient refusal misnames its source" "rc=$TRC out=$TOUT"
+# the machine half: a clean team key, the & in this machine's tier-3 mount_root
+D45N="$TMP/route45n"; mkdir -p "$D45N/.claude/config" "$D45N/tk"
+cp "$KIT/.claude/config/stack.example.multi-audience.yaml" "$D45N/.claude/config/stack.yaml"
+printf 'seams:\n  docstore:\n    targets:\n      archive:\n        mount_root: "/mnt/drive&sync"\n' > "$D45N/.claude/config/connections.local.yaml"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45N/tk/delivery-plan.yaml"
+NOUT="$(python3 "$DP" --root "$D45N" --plan "$D45N/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; NRC=$?
+{ [ "$NRC" -eq 4 ] && printf '%s' "$NOUT" | grep -q "'&'" && printf '%s' "$NOUT" | grep -q "mount_root" && ! printf '%s' "$NOUT" | grep -q "rename the target folder"; } \
+  && ok "a & in the machine-local mount_root blames mount_root, never the team's drive_folder" \
+  || bad "composed-path refusal blames the wrong half" "rc=$NRC out=$NOUT"
+# the shipper's own name: appended only under include_self, so the source is --self / person config
+D45S="$TMP/route45s"; mkdir -p "$D45S/.claude/config" "$D45S/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    default: internal\n    default_mode: draft\n    targets:\n      internal: {audience: internal, tool: slack, adapter: adapters/chat/slack.md, default_channel: C1, always_include: [Alice], include_self: true, verify: null}\n' > "$D45S/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: internal\n' > "$D45S/tk/delivery-plan.yaml"
+SOUT="$(python3 "$DP" --root "$D45S" --plan "$D45S/tk/delivery-plan.yaml" --seam chat --self 'Kai$(id)' --quiet 2>/dev/null)"; SRC=$?
+{ [ "$SRC" -eq 4 ] && printf '%s' "$SOUT" | grep -q "'\$'" && printf '%s' "$SOUT" | grep -q -- "--self" && ! printf '%s' "$SOUT" | grep -q "always_include"; } \
+  && ok "a metacharacter in the shipper's own --self name is refused and attributed to --self, not to always_include" \
+  || bad "self-name refusal misattributes its source" "rc=$SRC out=$SOUT"
+# tool-only chat WITH include_self: a bad --self name is still the shipper's, never the plan's
+D45U="$TMP/route45u"; mkdir -p "$D45U/.claude/config" "$D45U/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_mode: draft\n    include_self: true\n    verify: null\n' > "$D45U/.claude/config/stack.yaml"
+printf 'schema_version: 1\nchat:\n  channel: "#ops"\n  recipients: [Alice]\n' > "$D45U/tk/delivery-plan.yaml"
+UOUT="$(python3 "$DP" --root "$D45U" --plan "$D45U/tk/delivery-plan.yaml" --seam chat --self 'Kai$(id)' --quiet 2>/dev/null)"; URC=$?
+{ [ "$URC" -eq 4 ] && printf '%s' "$UOUT" | grep -q -- "--self" && ! printf '%s' "$UOUT" | grep -q "chat.recipients"; } \
+  && ok "under a tool-only chat slot with include_self, a bad --self name is attributed to --self, not to chat.recipients" \
+  || bad "tool-only + include_self misattributes the shipper's name to the plan" "rc=$URC out=$UOUT"
+# a LITERAL base_path pinned in the tool slot (legacy form, still supported) was never composed —
+# the refusal must blame base_path itself, not a half that was never joined. printf, not sed: BSD
+# sed (stock macOS, where CI runs this) does not honor \n in a replacement.
+D45L="$TMP/route45l"; mkdir -p "$D45L/.claude/config" "$D45L/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive:\n        classification: internal_archive\n        sharing_scope: team\n        tool: gdrive\n        adapter: adapters/docstore/gdrive.md\n        transport: cli\n        drive_folder: "Shared drives/Tickets"\n        base_path: "/mnt/shared/Team & Co/Tickets"\n        verify: null\n' > "$D45L/.claude/config/stack.yaml"
+printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45L/tk/delivery-plan.yaml"
+LOUT="$(python3 "$DP" --root "$D45L" --plan "$D45L/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; LRC=$?
+{ [ "$LRC" -eq 4 ] && printf '%s' "$LOUT" | grep -q "'&'" && printf '%s' "$LOUT" | grep -q '`base_path`' && ! printf '%s' "$LOUT" | grep -q "composed path"; } \
+  && ok "a literal base_path carrying & is blamed on base_path itself, never reported as composed" \
+  || bad "literal base_path refusal misreports its source" "rc=$LRC out=$LOUT"
+# rclone: the composed form names remote + remote_path and blames the dirty half; the literal form names base_path
+D45R="$TMP/route45r"; mkdir -p "$D45R/.claude/config" "$D45R/tk"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets & docs"\n    target_sentinel: t\n    verify: null\n' > "$D45R/.claude/config/stack.yaml"
+printf 'seams:\n  docstore:\n    remote: gdrv\n' > "$D45R/.claude/config/connections.local.yaml"
+printf 'schema_version: 1\n' > "$D45R/tk/delivery-plan.yaml"
+ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; RRC2=$?
+{ [ "$RRC2" -eq 4 ] && printf '%s' "$ROUT2" | grep -q '`remote` + `remote_path`' && printf '%s' "$ROUT2" | grep -q 'fix `remote_path`'; } \
+  && ok "an rclone destination composed from remote + remote_path blames the remote_path half" \
+  || bad "rclone composed-path refusal misnames its halves" "rc=$RRC2 out=$ROUT2"
+printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets"\n    target_sentinel: t\n    base_path: "gdrv:tickets & docs"\n    verify: null\n' > "$D45R/.claude/config/stack.yaml"
+rm -f "$D45R/.claude/config/connections.local.yaml"
+ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; RRC2=$?
+{ [ "$RRC2" -eq 4 ] && printf '%s' "$ROUT2" | grep -q '`base_path`' && ! printf '%s' "$ROUT2" | grep -q "composed path"; } \
+  && ok "an rclone literal base_path carrying & is blamed on base_path, never on remote_path" \
+  || bad "rclone literal base_path refusal misreports its source" "rc=$RRC2 out=$ROUT2"
+# vocabulary guard: user-facing prose says "tool slot"; `seam` is the internal word (AGENTS.md)
+[ "$(grep -c 'seam config' "$DP")" -eq 0 ] \
+  && ok "no user-facing message in delivery_plan.py says 'seam config' (tool slot is the public word)" \
+  || bad "'seam config' leaked into a user-facing message" "$(grep -n 'seam config' "$DP")"
+
 # --- (C) the explicit override, and its honesty about not being recorded ------------------------
 printf 'schema_version: 1\naudience: client\n' > "$PLAN45"
 route --seam chat --override internal
