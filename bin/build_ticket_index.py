@@ -430,6 +430,40 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
     return list(out.values())
 
 
+# A folder name carrying a tracker key, whatever the configured prefixes. Used only to notice keyed
+# folders that slug mode is hiding; it never decides what counts as a ticket.
+KEY_SHAPED = re.compile(r"[A-Z][A-Z0-9]+-\d+")
+
+
+def hidden_keyed_folders(root: Path, cfg: dict | None = None) -> list[str]:
+    """`owner/folder` for every folder slug mode skips although its name carries a tracker key.
+
+    Switching a repo that already has keyed folders (`tickets/alice/ENG-14`) to `id_mode: slug` drops
+    them from INDEX.md, OBJECTS.md and the graph, because a slug id must be lowercase. Nothing else
+    says so, and `--prune` then treats their curated records as orphans. Empty in keyed mode.
+    """
+    cfg = cfg if cfg is not None else load_config(root)
+    tickets = root / "tickets"
+    if cfg.get("id_mode") != "slug" or not tickets.is_dir():
+        return []
+    hidden = []
+    for owner_dir in sorted(p for p in tickets.iterdir() if p.is_dir()):
+        for d in sorted(p for p in owner_dir.iterdir() if p.is_dir()):
+            bare, _ = strip_status_emoji(d.name)
+            if not SLUG_ID.match(bare) and KEY_SHAPED.search(d.name):
+                hidden.append(f"{owner_dir.name}/{d.name}")
+    return hidden
+
+
+def hidden_keyed_warning(hidden: list[str]) -> str:
+    """The one wording for the CLI and the session banner, so they cannot drift."""
+    shown = ", ".join(hidden[:5]) + (f", and {len(hidden) - 5} more" if len(hidden) > 5 else "")
+    return (f"WARNING: project.id_mode is slug, so {len(hidden)} ticket folder(s) named with a tracker "
+            f"key are NOT in INDEX.md, OBJECTS.md or the graph: {shown}. Set project.id_mode back to "
+            "keyed, or rename them to lowercase slug ids. Do not run --prune until then: it would "
+            "delete their curated records.")
+
+
 def split_ref(ref: str) -> tuple[str | None, str]:
     """Normalize one cross-ref string against the ticket locator grammar: `owner/id` → (owner, id);
     a bare `id` → (None, id). The single authority on the qualified form — recall.py imports it,
@@ -1000,7 +1034,17 @@ def main() -> int:
     if cfg.get("graph_notes", True):
         fresh.update(render_graph_layer(rows, root, key_re))
 
+    hidden = hidden_keyed_folders(root, cfg)
+    if hidden:
+        print("build_ticket_index: " + hidden_keyed_warning(hidden), file=sys.stderr)
+
     if args.prune:
+        if hidden:
+            # Their records look orphaned only because slug mode cannot see their folders. Pruning now
+            # would destroy curated summaries for tickets that still exist on disk.
+            print("build_ticket_index: --prune refused: the records of the folders above would be "
+                  "deleted although the folders exist.", file=sys.stderr)
+            return 1
         orph = find_orphans(root, rows)
         store_path = tickets_dir / "index_data.json"
         if not store_path.is_file():

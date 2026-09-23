@@ -60,8 +60,23 @@ def discovered_total(root: Path) -> int | None:
         return None
 
 
+def hidden_keyed(root: Path) -> list[str]:
+    """Keyed folders slug mode is hiding (see build_ticket_index.hidden_keyed_folders). Fails open."""
+    try:
+        import sys
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        sys.path.insert(0, str(bindir))
+        from build_ticket_index import hidden_keyed_folders, hidden_keyed_warning  # type: ignore
+        hidden = hidden_keyed_folders(root)
+        return [hidden_keyed_warning(hidden)] if hidden else []
+    except Exception:
+        return []
+
+
 def main() -> int:
     root = project_root()
+    warn = hidden_keyed(root)
     data_file = root / "tickets" / "index_data.json"
     index_file = root / "tickets" / "INDEX.md"
 
@@ -79,6 +94,10 @@ def main() -> int:
         if index_file.is_file():
             print("## Ticket index\nCatalog of prior ticket work: `tickets/INDEX.md` — grep it before "
                   "starting related work (same object / stakeholder / report).")
+            if warn:
+                print(warn[0])
+        elif warn:
+            print("## Ticket index\n" + warn[0])
         return 0
 
     total = discovered_total(root) or len(tickets)
@@ -106,8 +125,11 @@ def main() -> int:
         lines.append(f"- {t.get('owner')}/{t.get('id')} ({d}) — {title}")
     if total > len(tickets):
         lines.append(f"({total - len(tickets)} newer ticket(s) on disk not yet enriched — run the index workflow.)")
-    elif len(tickets) > total:
+    elif len(tickets) > total and not warn:
+        # Not while slug mode is hiding keyed folders: those records DO have folders, and pruning
+        # would delete them. The warning below says what to do instead.
         lines.append(f"({len(tickets) - total} record(s) have no folder on disk — run /refresh index --prune.)")
+    lines += warn
     print("\n".join(lines))
     return 0
 

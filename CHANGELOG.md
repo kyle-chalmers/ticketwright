@@ -50,6 +50,15 @@ All notable changes to this project are documented here. Format loosely follows
   told a person "I've opened the note and the checklist for you to read". It now says on stderr that
   nothing was opened and why (stdout stays empty), and `/review` and `/build` claim a file opened
   only when handoff printed an `opened:` line for it.
+- **Switching a keyed repo to `id_mode: slug` no longer loses tickets silently.** A slug id must be
+  lowercase, so folders named with a tracker key (`tickets/alice/ENG-14`) stopped being tickets and
+  dropped out of `INDEX.md`, `OBJECTS.md` and the graph with no message (an audit saw `OBJECTS.md`
+  go from 3 objects to 0). Worse, their curated records then looked orphaned: the session banner
+  recommended `/refresh index --prune`, and `--prune` deleted them. `bin/build_ticket_index.py` now
+  prints a `WARNING` naming the hidden folders on every run (render, `--check`, `--stats`,
+  `--prune`); `--check` keeps its staleness exit code. `--prune` refuses while any are hidden, and
+  the session banner shows the warning instead of recommending a prune. Slug discovery itself is
+  unchanged.
 - **A spec has one home: its ticket folder.** `/ticket` wrote the spec to `<ticket-dir>/specs/`,
   but the plan's `spec:` line (the path `/build` loads) read a bare `specs/<id>-<slug>.md`, and
   `/setup` also created an empty repo-root `specs/` that nothing ever wrote to. The same path
