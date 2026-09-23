@@ -2183,6 +2183,12 @@ YAML
 VOFF="$(cat "$TMP/hd1921.out")"
 o="$(hoff "$VOFF" --dry-run "$VOFF/tickets/q.sql")"
 [ -z "$o" ] && ok "enabled: false is honored (opt-out never re-prompts)" || bad "enabled:false still opened files" "$o"
+# Empty stdout is not enough for an agent to report honestly: one once told a person "I've opened the
+# files for you" after exactly this. stderr must SAY nothing opened, in both off states.
+e="$(CLAUDE_PROJECT_DIR="$VOFF" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/noxdg" \
+     bash bin/handoff.sh "$VOFF/tickets/q.sql" 2>&1 >/dev/null)"
+grep -q 'viewer turned off (enabled: false); nothing opened' <<<"$e" \
+  && ok "enabled: false says on stderr that nothing was opened" || bad "enabled:false is silent on stderr too" "$e"
 # The opt-out must survive a trailing YAML comment, and the SessionStart banner has to agree with
 # the engine — a banner advertising `viewer=…` for a config that opens nothing is a lie about state.
 printf 'enabled: false # do not ask again\ntool: macos-open\n' > "$VOFF/.claude/config/viewer.local.yaml"
@@ -2203,6 +2209,10 @@ printf 'SELECT 1;\n' > "$VNONE/tickets/q.sql"
 o="$(hoff "$VNONE" "$VNONE/tickets/q.sql")"; rc=$?
 { [ -z "$o" ] && [ "$rc" -eq 0 ]; } \
   && ok "no viewer config → silent, exit 0 (feature is off, nothing blocks)" || bad "unconfigured repo was not silent" "$o rc=$rc"
+e="$(CLAUDE_PROJECT_DIR="$VNONE" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/noxdg" \
+     bash bin/handoff.sh "$VNONE/tickets/q.sql" 2>&1 >/dev/null)"
+grep -q 'no viewer configured; nothing opened' <<<"$e" \
+  && ok "no viewer config says on stderr that nothing was opened" || bad "unconfigured handoff is silent on stderr" "$e"
 
 # Resolution order: the per-user repo file must win over a team-wide seams.viewer in stack.yaml.
 vproj order <<'YAML' >"$TMP/hd1955.out"
@@ -2287,6 +2297,12 @@ fi
 { grep -q 'handoff.sh' .claude/skills/review/SKILL.md \
   && grep -q 'handoff.sh' .claude/skills/build/SKILL.md; } \
   && ok "/review and /build call bin/handoff.sh" || bad "a gate skill never invokes the handoff engine"
+{ grep -q 'opened:` line' .claude/skills/review/SKILL.md \
+  && grep -q 'opened:` line' .claude/skills/build/SKILL.md \
+  && grep -qE 'nothing (was )?opened' .claude/skills/review/SKILL.md \
+  && grep -qE 'nothing (was )?opened' .claude/skills/build/SKILL.md; } \
+  && ok "/review and /build claim a file opened only on handoff's opened: line" \
+  || bad "a gate skill can claim files opened that handoff never opened"
 appleak="$(grep -REn -i 'DataGrip|Microsoft Excel|open -a |xdg-open|explorer\.exe' \
             .claude/skills .claude/commands 2>/dev/null || true)"
 [ -z "$appleak" ] && ok "no application name or OS open-command leaked into a skill" \
@@ -2964,7 +2980,8 @@ ecrun "$D"
 { [ "$ECRC" -eq 6 ] && grep -q 'not mergeable at any tier' <<<"$(ecerr)"; } \
   && ok "a machine file carrying \`policies:\` is REJECTED, not ignored" \
   || bad "a gitignored file was allowed to touch policy" "rc=$ECRC $(ecerr)"
-grep -q '"db_write_requires_approval": true' <<<"$ECOUT" \
+# The fixture's team value (stack.example.multi-warehouse.yaml) is `high_risk`; `off` must not win.
+grep -q '"db_write_requires_approval": "high_risk"' <<<"$ECOUT" \
   && ok "…and the team's db_write policy is untouched" || bad "policy overlay leaked through" "$ECOUT"
 
 printf 'person: alice\nproject:\n  key_prefix: HACK\n' > "$D/.claude/config/connections.local.yaml"
@@ -9737,6 +9754,56 @@ done
 [ -z "$pd_leak" ] \
   && ok "across every install state, in BOTH modes, no projectPath, installPath or installLocation is printed — only --root" \
   || bad "a value read from installed_plugins.json / known_marketplaces.json leaked out of the doctor" "$pd_leak"
+
+# --- marketplace_source: a user-level declaration that makes `marketplace add` fail ----------------
+# Seen live: user settings declared the marketplace with the GitHub shorthand, and the README's
+# git-URL `marketplace add` failed with "its network source differs from the one declared for it in
+# settings". The check must name that, stay quiet when there is nothing to conflict, and never print
+# the value it read from user settings (the target below is a sentinel that must not appear).
+PD_USER_SECRET="user-private-fork-7c1e"
+pd_user() {  # pd_user <config-root> <none|github|git-same|git-other>
+  case "$2" in
+    none)      rm -f "$1/settings.json" ;;
+    github)    printf '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"github","repo":"acme-org/%s"}}}}' "$PD_USER_SECRET" > "$1/settings.json" ;;
+    git-same)  printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"}}}}' > "$1/settings.json" ;;
+    git-other) printf '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://%s.example/acme.git"}}}}' "$PD_USER_SECRET" > "$1/settings.json" ;;
+    oddkind)   printf '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"%s"}}}}' "$PD_USER_SECRET" > "$1/settings.json" ;;
+  esac
+}
+pd_repo "$PDR" git git-source; pd_cfg "$PDC" "$PDR" project
+ms_bad=""
+for want in "none ok" "git-same ok" "github warn" "git-other warn" "oddkind warn"; do
+  read -r ms_st ms_want <<<"$want"
+  pd_user "$PDC" "$ms_st"
+  pd_case "marketplace_source/$ms_st" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+    && { pd_is marketplace_source "$ms_want" || ms_bad="$ms_bad $ms_st:not-$ms_want"; }
+  grep -qF "$PD_USER_SECRET" "$TMP/pd.out" && ms_bad="$ms_bad $ms_st:leaked-json"
+  pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --no-probe
+  grep -qF "$PD_USER_SECRET" "$TMP/pd.out" && ms_bad="$ms_bad $ms_st:leaked-human"
+done
+[ -z "$ms_bad" ] \
+  && ok "marketplace_source: a differing user-level source warns, a matching or absent one is ok, and no user-settings value is printed" \
+  || bad "marketplace_source misjudged a user-level declaration, or leaked its value" "$ms_bad"
+pd_user "$PDC" github
+pd_case "marketplace_source fix" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe
+{ grep -q 'network source differs' "$TMP/pd.out" && grep -q 'https://acme.example/acme.git' "$TMP/pd.out"; } \
+  && ok "marketplace_source names the CLI's error and spells out the repo's own declared source as the fix" \
+  || bad "marketplace_source does not name the error or the repo's source" "$(cat "$TMP/pd.out")"
+# First install: the repo declares nothing yet, so the only reference is the documented git-URL add.
+pd_repo "$PDR" git none; pd_cfg "$PDC" "$PDR" none
+ms_bad=""
+for want in "github warn" "git-same ok" "none ok"; do
+  read -r ms_st ms_want <<<"$want"
+  pd_user "$PDC" "$ms_st"
+  pd_case "marketplace_source/first-install/$ms_st" "$PD_MODERN" --root "$PDR" --config-root "$PDC" \
+      --plugin acme --marketplace acmehub --json --no-probe \
+    && { pd_is marketplace_source "$ms_want" || ms_bad="$ms_bad $ms_st:not-$ms_want"; }
+  grep -qF "$PD_USER_SECRET" "$TMP/pd.out" && ms_bad="$ms_bad $ms_st:leaked"
+done
+[ -z "$ms_bad" ] \
+  && ok "marketplace_source on a first install: a GitHub-shorthand user entry warns before the documented git-URL add fails" \
+  || bad "marketplace_source misjudged the first-install case" "$ms_bad"
+pd_user "$PDC" none; pd_repo "$PDR" git git-source; pd_cfg "$PDC" "$PDR" project
 # The one tilde path the doctor DOES print is a documentation template built from the marketplace
 # NAME, not a location read from either manifest — so it must carry the fixture's name and no real
 # home directory, and the docstring must say that is deliberate.
@@ -9973,11 +10040,19 @@ grep -q '`/build` executes' templates/spec.md.tmpl \
   && ok "spec.md.tmpl names /build as its executor" || bad "spec.md.tmpl still names the retired skill"
 # (b) the plan template: every scoping section, the spec decision stated ONCE (header), stamps clean
 pl_miss=""
-for h in "## Goal" "## Scope" "## Deliverables expected" "## Approach" "## Validation strategy" \
-         "## Touched" "## Questions for the requester" "## Risks" "## Next step"; do
+for h in "## Goal" "## Scope" "## Builds on" "## Deliverables expected" "## Approach" \
+         "## Validation strategy" "## Touched" "## Questions for the requester" "## Risks" "## Next step"; do
   grep -q "^$h" templates/plan.md.tmpl || pl_miss="$pl_miss ${h// /_}"
 done
 [ -z "$pl_miss" ] && ok "plan.md.tmpl carries every scoping section" || bad "plan.md.tmpl lost a section" "$pl_miss"
+# Recall legibility: a plan that builds on prior work must say WHICH ticket and WHY it matched. recall.py
+# already prints the reason beside each candidate; without this rule it was the model's choice whether
+# the reason ever reached the person, and a match with no stated reason reads as staged.
+{ grep -q 'say why it matched' .claude/skills/ticket/priming.md \
+  && grep -q 'keyword overlap only' .claude/skills/ticket/priming.md \
+  && grep -q 'why it matched' .claude/skills/ticket/SKILL.md; } \
+  && ok "the reuse brief and the plan name each prior ticket and why recall matched it" \
+  || bad "/ticket can build on prior work without saying why it matched"
 pl_err="$(bash bin/render.sh templates/plan.md.tmpl ticket_id=x title=x confidence=x goal=x \
           spec_required=x owner=x --strict 2>&1 >/dev/null)"
 [ -z "$pl_err" ] && ok "plan.md.tmpl stamps --strict with the six tokens /ticket names" || bad "leftover tokens in plan.md.tmpl" "$pl_err"

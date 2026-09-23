@@ -12,7 +12,7 @@
 #   --dry-run  resolve routes and print the commands; never launch anything
 #   --reveal   show each path in the OS file manager instead of opening it
 #
-# Config (first hit wins; none = feature off, exit 0 silently):
+# Config (first hit wins; none = feature off: exit 0, empty stdout, one stderr line):
 #   1. <project>/.claude/config/viewer.local.yaml                  you, this repo   (gitignored)
 #   2. ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml  you, every repo
 #   2b. people/<id>.yaml (globs->categories) + connections.local.yaml (categories->apps)
@@ -89,13 +89,16 @@ sys.stdout.write("" if v is None else str(v))' "$PLAN" "$1" 2>/dev/null
 
 source_cfg="$(field source)"
 if [ -z "$source_cfg" ]; then
-  # Not configured = the feature is off. Silent on stdout so a gate never nags; under --dry-run
-  # the whole point is to explain, so say where config would go.
-  [ $dry -eq 1 ] && note "no viewer config found — see .claude/config/viewer.example.yaml"
+  # Not configured = the feature is off. Silent on stdout so a gate never nags, but one line on
+  # stderr says nothing was opened: an agent reading an empty stdout once told a person "I've
+  # opened the files for you" when nothing had opened. Under --dry-run, also say where config goes.
+  note "no viewer configured; nothing opened"
+  [ $dry -eq 1 ] && note "see .claude/config/viewer.example.yaml to configure one"
   exit 0
 fi
-# `enabled: false` is "configured to stay quiet"; never prompts again.
-[ "$(field enabled)" = "True" ] || exit 0
+# `enabled: false` is "configured to stay quiet"; never prompts again. Still says, on stderr, that
+# nothing opened, for the same reason as above.
+[ "$(field enabled)" = "True" ] || { note "viewer turned off (enabled: false); nothing opened"; exit 0; }
 
 open_cmd="$(field open_cmd)"; default_cmd="$(field default_cmd)"; reveal_cmd="$(field reveal_cmd)"
 [ -n "$default_cmd" ] || default_cmd="$open_cmd"

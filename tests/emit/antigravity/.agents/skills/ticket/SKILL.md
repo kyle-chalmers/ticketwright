@@ -133,8 +133,9 @@ context brief (including the reuse brief) first, then:
      **nothing is written to the ticket until step 12; no runtime mode is required.** Read-only here
      is GUIDANCE the agent follows, not a gate the runtime enforces — say so if asked.
 9. **Draft the plan — compose it, do not write it yet.** Its shape is `templates/plan.md.tmpl` under
-   `kit_root`: Goal, Scope (in / explicitly out), Deliverables expected, Approach, Validation
-   strategy, Touched, Questions for the requester, Risks, Next step, Confidence. Inputs: the priming
+   `kit_root`: Goal, Scope (in / explicitly out), Builds on (each prior ticket from the reuse brief and
+   why it matched), Deliverables expected, Approach, Validation strategy, Touched, Questions for
+   the requester, Risks, Next step, Confidence. Inputs: the priming
    brief + the reuse brief. Decide the **`spec:` value** by the criteria in the template's header —
    `not required`, or a spec path (required when the work creates or alters a persisted object others
    depend on, reconciles two or more sources, or confidence is below 7), or `after-root-cause` for an

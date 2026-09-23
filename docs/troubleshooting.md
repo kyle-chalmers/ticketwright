@@ -118,6 +118,16 @@ The first path names the `ticketwright` marketplace; a fork substitutes its own 
 The full checklist behind these checks, written for the agent helping someone install, is in
 [getting-started.md](getting-started.md) under Track 2.
 
+### `marketplace add` fails: "its network source differs from the one declared for it in settings"
+
+Your user-level `~/.claude/settings.json` already declares a `ticketwright` marketplace, with a
+different source from the one you are adding. The usual cause is an older install that used the
+GitHub shorthand (`{"source": "github", "repo": "owner/repo"}`), while the documented command adds
+the marketplace by git URL. Claude Code treats those as two different sources even when they point
+at the same repo. The doctor's `marketplace_source` check names this case. Fix it by setting that
+entry's `source` to `{"source": "git", "url": "https://github.com/kyle-chalmers/ticketwright.git"}`
+(a fork uses its own URL), or by deleting the user-level entry, then run the `marketplace add` again.
+
 ## "Tool slot unreachable" / auth errors
 
 `bin/verify_stack.sh` (run by `/setup`, and by skills at preflight) names the failing tool slot.
@@ -207,7 +217,7 @@ project `stack.yaml` it does nothing at all.
 
 | Install method | Upgrade | Notes |
 |---|---|---|
-| Claude Code plugin (project scope) | the committed `autoUpdate` is meant to pick up each tagged release | the catalog refreshes but the installed plugin is not yet swapped (claude-code #61854) — to pull manually: `claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project` (`claude plugin update` does not work at project scope) |
+| Claude Code plugin (project scope) | uninstall, install, relaunch: `claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project`, then `/reload-plugins` or a full quit and relaunch | the committed `autoUpdate` refreshes the marketplace catalog only and never upgrades the installed plugin (claude-code #61854); `claude plugin update` does not work at project scope |
 | Claude Code plugin (user scope) | `claude plugin update ticketwright` | defaults to `--scope user`, matching a no-`--scope` install |
 | Claude Code plugin (local scope) | reinstall at project scope | a per-person override in `.claude/settings.local.json`, written by the desktop app or by `--scope local`; it takes precedence over the committed project declaration, so removing it restores what the team declared |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |

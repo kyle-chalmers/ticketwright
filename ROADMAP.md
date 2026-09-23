@@ -119,9 +119,15 @@ artifact it touches:
 - **Out of scope here (sibling `git-ship` skill, not this repo)** — squash-merge branch cleanup edges
   (`git branch -D` after a squash; stash/restore an unrelated dirty tree before `checkout main`), and
   its stale co-author trailer.
-- **Upstream caveat to verify** — GitHub-repo marketplaces reportedly don't always `autoUpdate`
-  (anthropics/claude-code#44276); confirm the "self-updates on release" promise holds, else document the
-  manual `/plugin marketplace update`.
+- **Upstream caveat, resolved: `autoUpdate` does not deliver plugin updates.** #44276 was closed as a
+  duplicate, and the live family ([#61854](https://github.com/anthropics/claude-code/issues/61854),
+  [#52218](https://github.com/anthropics/claude-code/issues/52218),
+  [#49410](https://github.com/anthropics/claude-code/issues/49410),
+  [#17361](https://github.com/anthropics/claude-code/issues/17361)) confirms it: `autoUpdate`
+  refreshes the marketplace's git clone and stops there. Reproduced locally: a machine whose
+  marketplace clone had advanced still had 3.0.0 installed against a 3.3.0 repo. The "self-updates on
+  release" promise is false, so the docs now say upgrading is uninstall, install, relaunch, and every
+  release note must say the same until the upstream gap closes.
 
 ## Next — v1.4+ (harden the tracker contract)
 

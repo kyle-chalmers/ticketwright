@@ -64,8 +64,8 @@ layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
 agent to "run verify_stack" (on a plugin install the script lives in the plugin, and the skills
 resolve it; in a vendored or pip repo you can run `bash bin/verify_stack.sh` directly).
 
-**4 · Turn on release pick-up.** Add one key by hand to the `"ticketwright"` marketplace entry in
-`.claude/settings.json` — no CLI flag sets this one — so teammates pick up tagged releases:
+**4 · Turn on the catalog refresh, and know that upgrades are manual.** Add one key by hand to the
+`"ticketwright"` marketplace entry in `.claude/settings.json` (no CLI flag sets this one):
 
 ```json
 "autoUpdate": true
@@ -74,21 +74,27 @@ resolve it; in a vendored or pip repo you can run `bash bin/verify_stack.sh` dir
 `/ticketwright:setup` adds that key for you if you'd rather not hand-edit; see
 [Project-scoped by default](#project-scoped-by-default) for the finished file.
 
-One honest caveat while the gap reported in
-[claude-code#61854](https://github.com/anthropics/claude-code/issues/61854) persists (verified live
-2026-08-23): `autoUpdate` refreshes the marketplace CATALOG on session start, but Claude Code does not
-yet re-install a project-scoped plugin from it - so a new release reaches every teammate's machine
-without being swapped in. Sessions announce it rather than leaving it silent: when the catalog is
-ahead of what this repo is running, the session-start banner ends with one line naming both versions
-and the command pair below. Until the gap lands upstream, picking up a release is that one command
-pair, run from the repo:
+**`autoUpdate` does not deliver plugin updates.** It refreshes the marketplace catalog on session
+start and stops there: Claude Code does not re-install the plugin from the refreshed catalog, so a
+new release reaches every teammate's machine without being swapped in. This is a known upstream gap
+([claude-code#61854](https://github.com/anthropics/claude-code/issues/61854),
+[#52218](https://github.com/anthropics/claude-code/issues/52218),
+[#49410](https://github.com/anthropics/claude-code/issues/49410),
+[#17361](https://github.com/anthropics/claude-code/issues/17361)), and it was reproduced here: a
+machine whose marketplace clone had advanced to a newer release still ran the older installed
+version. Sessions announce it rather than leaving it silent: when the catalog is ahead of what this
+repo is running, the session-start banner ends with one line naming both versions and the command
+pair below.
+
+Upgrading is three steps, run from the repo: uninstall, install, then relaunch.
 
 ```bash
 claude plugin uninstall ticketwright@ticketwright --scope project && claude plugin install ticketwright@ticketwright --scope project
 ```
 
-(It may reorder keys in `.claude/settings.json`; the content is identical - `git checkout` the file
-if you want zero diff.)
+Then run `/reload-plugins`, or fully quit the Claude app and relaunch; a new chat is not a restart.
+(The pair may reorder keys in `.claude/settings.json`; the content is identical, so `git checkout`
+the file if you want zero diff.)
 
 **5 · Commit the scaffold** (`/setup` offers to), and Ticketwright travels with the repo.
 
@@ -185,31 +191,37 @@ The checks, in the order the doctor runs them:
 7. **The marketplace is registered.** <!-- doctor-check: marketplace_registered -->
    A `ticketwright` entry in `~/.claude/plugins/known_marketplaces.json` whose `installLocation`
    exists on disk. Missing: the first command of the pair below.
-8. **This repo has an install record.** <!-- doctor-check: repo_install -->
+8. **Your user settings do not declare a different source for it.** <!-- doctor-check: marketplace_source -->
+   If `~/.claude/settings.json` declares a `ticketwright` marketplace with a different source (most
+   often the GitHub shorthand, `{"source": "github", ...}`, from an older install), the git-URL
+   `marketplace add` in the pair below fails with "its network source differs from the one declared for it in
+   settings". Fix: set that entry's `source` to `{"source": "git", "url": "https://….git"}` with the
+   URL you install from, or delete the user-level entry, then run the add again.
+9. **This repo has an install record.** <!-- doctor-check: repo_install -->
    A row in `~/.claude/plugins/installed_plugins.json` whose `projectPath` is this repo.
    Registration never creates one. Fix: the pair below, from the repository root, then restart.
-9. **The install record points at files that exist.** <!-- doctor-check: install_payload -->
-   The recorded `installPath` holds a `.claude-plugin/plugin.json`. Seen on Claude Code 2.0.22:
-   install prints "Successfully installed" and the directory is never created, so re-running install
-   is a no-op. Fix: update the CLI, then
-   `claude plugin uninstall ticketwright@ticketwright --scope <the recorded scope>` and install
-   again; if uninstall answers "not found", copy the marketplace clone into the recorded path —
-   recipe in [`docs/troubleshooting.md`](troubleshooting.md).
-10. **No machine-wide install nobody meant.** <!-- doctor-check: user_install -->
+10. **The install record points at files that exist.** <!-- doctor-check: install_payload -->
+    The recorded `installPath` holds a `.claude-plugin/plugin.json`. Seen on Claude Code 2.0.22:
+    install prints "Successfully installed" and the directory is never created, so re-running install
+    is a no-op. Fix: update the CLI, then
+    `claude plugin uninstall ticketwright@ticketwright --scope <the recorded scope>` and install
+    again; if uninstall answers "not found", copy the marketplace clone into the recorded path;
+    recipe in [`docs/troubleshooting.md`](troubleshooting.md).
+11. **No machine-wide install nobody meant.** <!-- doctor-check: user_install -->
     A row with `scope: "user"` turns Ticketwright on for every repo on the machine. If you meant
     this repo only: `claude plugin uninstall ticketwright@ticketwright --scope user`, then the pair
     below.
-11. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
+12. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
     Behind means a tagged release has not been picked up; the fix is the uninstall-and-install pair
     the session banner names, at the scope the install record carries.
-12. **`yq` is installed.** <!-- doctor-check: yq_present -->
+13. **`yq` is installed.** <!-- doctor-check: yq_present -->
     `command -v yq`. Needed only by `bin/selftest.sh`, where its absence fails a dozen-plus checks
     from one cause. macOS: `brew install yq`. Linux: your distribution's package. Windows:
     `winget install MikeFarah.yq`.
-13. **Git identity is set.** <!-- doctor-check: git_identity -->
+14. **Git identity is set.** <!-- doctor-check: git_identity -->
     `git config --get user.name` and `git config --get user.email`. Unset, the first commit fails:
     `git config user.name "…"` and `git config user.email "…"`.
-14. **Restart the right way.** <!-- doctor-check: restart -->
+15. **Restart the right way.** <!-- doctor-check: restart -->
     Printed whenever an install check above is not clean. Run `/reload-plugins` or start a new
     session. If the skills still do not appear, fully quit the Claude app (Cmd+Q on macOS,
     File → Exit on Windows/Linux) and relaunch. A new chat inside the running app is not a restart.
@@ -351,7 +363,8 @@ config plus a punch-list entry naming the command that finishes it later (`/setu
   slot" is the same thing, internally called a seam), optional ones as commented blocks, each
   policy with a one-line "when to change this" note.
 - **`autoUpdate: true` on the marketplace entry** — the one key no CLI flag can set, so running `setup`
-  is how auto-update gets turned on at all. It *merges*: an existing entry keeps the `source` you have
+  is how the catalog refresh gets turned on at all (it refreshes the catalog only; upgrading the
+  plugin is still uninstall, install, relaunch, as in Track 1 step 4). It *merges*: an existing entry keeps the `source` you have
   (forks edit that URL), and a deliberate `false` is left alone.
 - **`AGENTS.md`** (rules, tuned to your role) and a one-line **`CLAUDE.md`** that imports it.
 - **`.claude/settings.json`** — read-only CLI allows, plus the hooks on a vendored install (omitted on a
@@ -397,12 +410,12 @@ Three details in that block are deliberate:
   shorthand instead — `claude plugin marketplace add owner/repo` — the CLI writes
   `{"source": "github", "repo": "owner/repo"}`; both forms are valid, and setup's merge keeps whichever
   one is already there rather than rewriting it.)
-- **`autoUpdate` is scoped to formal releases.** The version only moves in a tagged release commit —
-  so day-to-day commits to `main` never put teammates onto un-released work. Neither install command
-  writes this key (no flag sets it); `/ticketwright:setup` adds it, or add it by hand. What it does
-  today: it refreshes the marketplace *catalog*; Claude Code does not yet swap the installed
-  project-scoped plugin to the new version (the release pick-up caveat in Track 1 has the command pair,
-  and `claude plugin marketplace update ticketwright` refreshes the catalog by hand).
+- **`autoUpdate` is scoped to formal releases, and refreshes the catalog only.** The version only
+  moves in a tagged release commit, so day-to-day commits to `main` never put teammates onto
+  un-released work. Neither install command writes this key (no flag sets it); `/ticketwright:setup`
+  adds it, or add it by hand. It refreshes the marketplace *catalog* and does not upgrade the
+  installed plugin: that takes uninstall, install and relaunch (Track 1 step 4 has the commands, and
+  `claude plugin marketplace update ticketwright` refreshes the catalog by hand).
 
 Installing without `--scope project` puts Ticketwright in your own `~/.claude/settings.json` instead —
 right for personal, cross-repo use, but your teammates get nothing. Use the committed block when you

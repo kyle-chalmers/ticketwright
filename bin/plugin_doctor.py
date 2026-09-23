@@ -38,6 +38,10 @@ any output, in either mode, other than the caller's own `--root`. Versions, scop
 reported; every `installPath`, `projectPath` and `installLocation` is JUDGED and then discarded —
 named as a field where a fix has to talk about it, never printed as a value.
 
+The user-level `settings.json` is read for ONE key, `extraKnownMarketplaces.<marketplace>.source`,
+and only its KIND (a GitHub shorthand or a git URL) is reported. The value it holds is never printed;
+the fix spells out the repo's own declared source, which is the caller's repo, not a foreign one.
+
 The one `~/…` path that does appear, in the `install_payload` fix, is not an exception to that rule:
 it is a documentation template built from the marketplace NAME the caller supplied (a `--marketplace`
 flag, the repo's own settings, or the clone's own manifest), never a location read from either config
@@ -103,6 +107,7 @@ CHECK_IDS = [
     "scope_supported",
     "install_channel",
     "marketplace_registered",
+    "marketplace_source",
     "repo_install",
     "install_payload",
     "user_install",
@@ -114,7 +119,7 @@ CHECK_IDS = [
 
 # "Restart" was read as "new chat" on three machines in a row, and a new chat inside the running app
 # loads nothing. Said once, here, so every surface quotes the same words — and
-# docs/getting-started.md's check 14 carries this string VERBATIM, pinned by selftest 55, so the tool
+# docs/getting-started.md's check 15 carries this string VERBATIM, pinned by selftest 55, so the tool
 # and the page cannot drift apart.
 RESTART_ADVISORY = (
     "Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit "
@@ -184,6 +189,34 @@ def _run(cmd: list) -> tuple:
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except (OSError, subprocess.SubprocessError, ValueError):
         return None, "", ""
+
+
+def source_key(entry: object) -> tuple | None:
+    """`(kind, target)` for an `extraKnownMarketplaces` entry's `source`, or None when it has none.
+
+    Compared LITERALLY on purpose. `{"source":"github","repo":"o/r"}` and a git URL for the same repo
+    point at the same code, but Claude Code treats them as different sources: declaring one in user
+    settings and running `marketplace add` with the other fails with "its network source differs
+    from the one declared for it in settings". Normalizing them to one URL would hide exactly the
+    mismatch this exists to name.
+    """
+    if not isinstance(entry, dict):
+        return None
+    src = entry.get("source")
+    if isinstance(src, str):
+        return ("path-or-url", src)
+    if not isinstance(src, dict) or not isinstance(src.get("source"), str):
+        return None
+    kind = src["source"]
+    target = src.get("url") if kind in ("git", "url") else src.get("repo")
+    return (kind, target if isinstance(target, str) else None)
+
+
+def source_kind(key: tuple) -> str:
+    """A reader's name for a source KIND. Never the value: see the privacy note up top."""
+    return {"github": "the GitHub shorthand (`\"source\": \"github\"`)",
+            "git": "a git URL (`\"source\": \"git\"`)",
+            "url": "a URL (`\"source\": \"url\"`)"}.get(key[0], "an unrecognized source kind")
 
 
 def manifest_pair(manifest: Path) -> tuple | None:
@@ -451,6 +484,64 @@ class Doctor:
                 [add, "then restart the session so the clone is re-fetched"])
 
     # -- 8 --
+    def c_marketplace_source(self) -> tuple:
+        if not self.marketplace:
+            return self._no_names()
+        user = _json(self.config_root / "settings.json")
+        user_markets = user.get("extraKnownMarketplaces") if isinstance(user, dict) else None
+        user_key = (source_key(user_markets.get(self.marketplace))
+                    if isinstance(user_markets, dict) else None)
+        if user_key is None:
+            return ("ok", f"your user settings declare no `{self.marketplace}` marketplace, so no "
+                          "source can conflict with this repo's", [])
+        repo = _json(self.root / ".claude" / "settings.json")
+        repo_markets = repo.get("extraKnownMarketplaces") if isinstance(repo, dict) else None
+        repo_entry = repo_markets.get(self.marketplace) if isinstance(repo_markets, dict) else None
+        repo_key = source_key(repo_entry)
+        if repo_key is not None:
+            wanted, repo_desc = repo_entry["source"], f"this repo declares {source_kind(repo_key)}"
+        elif self.url:
+            # No committed declaration: compare against what `marketplace add <url>` would write.
+            repo_key = ("git", self.url)
+            wanted = {"source": "git", "url": self.url}
+            repo_desc = "the install adds it by git URL"
+        if repo_key is None:
+            # Nothing declared yet: the first-install case. The documented install is always
+            # `marketplace add <https://….git URL>`, which writes a git source, so any other KIND in
+            # user settings is the conflict that command will hit.
+            if user_key[0] == "git":
+                return ("ok", f"your user settings declare `{self.marketplace}` as a git URL, the "
+                              "form the documented `marketplace add` writes (a DIFFERENT git URL "
+                              "would still fail with \"source differs\"; this repo declares none "
+                              "to compare against)", [])
+            return ("warn",
+                    f"your user settings declare the `{self.marketplace}` marketplace with "
+                    f"{source_kind(user_key)}, but the documented install adds it by git URL; "
+                    "`claude plugin marketplace add <url>` then fails with \"its network source "
+                    "differs from the one declared for it in settings\"",
+                    [f"in your user settings.json (~/.claude/settings.json, or $CLAUDE_CONFIG_DIR's), "
+                     f"set extraKnownMarketplaces.{self.marketplace}.source to "
+                     '{"source": "git", "url": "<the https://….git URL you install from>"}',
+                     "or delete that user-level entry",
+                     "then run the marketplace add again"])
+        if user_key == repo_key:
+            return ("ok", f"your user settings declare `{self.marketplace}` with the same source as "
+                          "this repo", [])
+        same_kind = user_key[0] == repo_key[0]
+        detail = (f"your user settings declare the `{self.marketplace}` marketplace with "
+                  + ("a different target of the same kind" if same_kind
+                     else source_kind(user_key))
+                  + f", but {repo_desc}; "
+                  "`claude plugin marketplace add` then fails with \"its network source differs "
+                  "from the one declared for it in settings\"")
+        return ("warn", detail,
+                [f"in your user settings.json (~/.claude/settings.json, or $CLAUDE_CONFIG_DIR's), "
+                 f"set extraKnownMarketplaces.{self.marketplace}.source to "
+                 + json.dumps(wanted, separators=(", ", ": ")),
+                 "or delete that user-level entry: the repo's own declaration is enough",
+                 "then run the marketplace add again"])
+
+    # -- 9 --
     def c_repo_install(self) -> tuple:
         if not self.ref:
             return self._no_names()
@@ -481,7 +572,7 @@ class Doctor:
                  f"claude plugin uninstall {self.ref} --scope local",
                  f"then install once: claude plugin install {self.ref} --scope project"])
 
-    # -- 9 --
+    # -- 10 --
     def c_install_payload(self) -> tuple:
         if not self.ref:
             return self._no_names()
@@ -518,7 +609,7 @@ class Doctor:
                     "marketplace entry uses \"source\": \"./\"",
                 ])
 
-    # -- 10 --
+    # -- 11 --
     def c_user_install(self) -> tuple:
         if not self.ref:
             return self._no_names()
@@ -535,7 +626,7 @@ class Doctor:
                 [f"if you meant this repo only: claude plugin uninstall {self.ref} --scope user"]
                 + self._track2()[:2])
 
-    # -- 11 --
+    # -- 12 --
     def c_catalog_current(self) -> tuple:
         if not self.ref:
             return self._no_names()
@@ -555,7 +646,7 @@ class Doctor:
                     [pair_fn(self.ref, scope)])
         return "ok", f"this repo runs {installed}; the catalog offers {catalog}", []
 
-    # -- 12 --
+    # -- 13 --
     def c_yq_present(self) -> tuple:
         if shutil.which("yq"):
             return "ok", "yq is on PATH", []
@@ -564,7 +655,7 @@ class Doctor:
                 "failures from this one cause",
                 [yq_install_command()])
 
-    # -- 13 --
+    # -- 14 --
     def c_git_identity(self) -> tuple:
         missing = []
         for key in ("user.name", "user.email"):
@@ -579,7 +670,7 @@ class Doctor:
                 ["git config --global user.name \"Your Name\"",
                  "git config --global user.email \"you@example.com\""])
 
-    # -- 14 --
+    # -- 15 --
     def c_restart(self) -> tuple:
         # THE one carrier of RESTART_ADVISORY. Every check whose remedy changes what is installed
         # used to append the advisory to its own fix list, so a single broken install printed the

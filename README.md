@@ -4,7 +4,7 @@
 [![release](https://img.shields.io/github/v/tag/kyle-chalmers/ticketwright?label=release&sort=semver&color=blue)](https://github.com/kyle-chalmers/ticketwright/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
-![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20git-success)
+![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20meetings%20%C2%B7%20git-success)
 
 ## Mission
 
@@ -137,7 +137,8 @@ claude plugin install ticketwright@ticketwright --scope project
 Run `/reload-plugins` (or fully quit the app; a new chat is not a restart), then
 `/ticketwright:setup`, which detects your tools and interviews you before writing anything. First
 person in a repo (Track 1) or joining one (Track 2): [docs/getting-started.md](docs/getting-started.md)
-has both, with a prompt to paste to your agent.
+has both, with a prompt to paste to your agent. `autoUpdate` never upgrades the plugin:
+[uninstall, install, relaunch](docs/troubleshooting.md#upgrading).
 
 ## Safety rails
 

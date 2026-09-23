@@ -71,8 +71,10 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    first warehouse run (a bad join is cheapest to catch before it costs a warehouse-minute), and
    hand the exported CSVs over after. Both via
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <paths>`, then wait for
-   sign-off before continuing. It exits 0 and stays silent when that user has no viewer config —
-   note it once and carry on; this never blocks a build.
+   sign-off before continuing. Say a file was opened only when handoff printed an `opened:` line
+   for it. With no viewer config, `enabled: false`, or only `would run:` lines, nothing opened: say
+   so once, with the reason handoff gave (for example "No viewer is configured, so nothing was
+   opened"), list the paths, and carry on. This never blocks a build.
 5. **Any mutation** ⇒ policy `db_write_requires_approval` (`off` | `high_risk` | `all`). Under the
    default `high_risk`: show the exact SQL, explain the change, and wait for explicit `yes` before
    anything irreversible or access-changing (DROP/DELETE/UPDATE/TRUNCATE/MERGE/GRANT/
