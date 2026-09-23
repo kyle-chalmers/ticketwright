@@ -29,6 +29,19 @@ Open a ticket node and you see its objects plus its cross-referenced prior work;
 node and you see the full history of work against it — the reverse lookup `tickets/OBJECTS.md`
 gives you as a table, drawn as a picture.
 
+## One relationship model, two renderings
+
+The graph and the catalog are two renderings of one relationship model. The same cross-reference
+resolution in `bin/build_ticket_index.py` writes both in a single pass: `tickets/INDEX.md` and
+`tickets/OBJECTS.md` are how an agent queries the relationships, and the graph is how a person
+sees the shape of the corpus at a glance - which analyses cluster, which objects are load-bearing
+across many tickets, where the orphans are. Generated together, they cannot drift apart.
+
+`/ship` stages the graph layer with the catalog — `tickets/graph/` and `tickets/objects/` alongside
+`tickets/INDEX.md`, `tickets/OBJECTS.md` and `tickets/index_data.json` — so the graph a teammate
+opens is the graph you see. Nothing ignores the nodes, and the same `--check` gate covers them, so
+a node left out surfaces as index drift in CI instead of a graph only your clone has.
+
 ## Zero manual setup
 
 The index renderer also seeds `.obsidian/graph.json` with a tickets↔objects filter and color
