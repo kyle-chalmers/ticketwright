@@ -115,8 +115,8 @@ python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py --json
 ```
 
 The first path names the `ticketwright` marketplace; a fork substitutes its own marketplace name.
-The full checklist behind these checks, written for the agent helping someone install, is in the
-project README under Track 2.
+The full checklist behind these checks, written for the agent helping someone install, is in
+[getting-started.md](getting-started.md) under Track 2.
 
 ## "Tool slot unreachable" / auth errors
 

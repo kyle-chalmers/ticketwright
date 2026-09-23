@@ -91,9 +91,10 @@ except ImportError:                        # pragma: no cover - exercised by sel
 SCHEMA = 1
 TIMEOUT = 10
 
-# THE PINNED ORDER. This list is the contract shared with README.md and templates/AGENTS.md.tmpl,
-# whose install checklists tag each line with `<!-- doctor-check: <id> -->`; selftest section 55(k)
-# asserts the three lists are equal, in order. Renaming or reordering an id means editing all three.
+# THE PINNED ORDER. This list is the contract shared with docs/getting-started.md and
+# templates/AGENTS.md.tmpl, whose install checklists tag each line with `<!-- doctor-check: <id> -->`;
+# selftest section 55(k) asserts the three lists are equal, in order. Renaming or reordering an id
+# means editing all three.
 CHECK_IDS = [
     "git_clone",
     "cwd_is_root",
@@ -112,8 +113,9 @@ CHECK_IDS = [
 ]
 
 # "Restart" was read as "new chat" on three machines in a row, and a new chat inside the running app
-# loads nothing. Said once, here, so every surface quotes the same words — and README.md's check 14
-# carries this string VERBATIM, pinned by selftest 55, so the tool and the page cannot drift apart.
+# loads nothing. Said once, here, so every surface quotes the same words — and
+# docs/getting-started.md's check 14 carries this string VERBATIM, pinned by selftest 55, so the tool
+# and the page cannot drift apart.
 RESTART_ADVISORY = (
     "Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit "
     "the Claude app (Cmd+Q on macOS, File → Exit on Windows/Linux) and relaunch. A new chat inside "

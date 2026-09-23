@@ -6,7 +6,8 @@
 > **Confidence (1–10): {{confidence}}** — below 7, the Next step requires a spec.
 >
 > **The `spec:` decision, decided here and read by `/build`:** `not required` (the plan is the
-> build's blueprint) · `specs/<id>-<slug>.md` (a spec was required and is on file at that path —
+> build's blueprint) · `<ticket-dir>/specs/<id>-<slug>.md`, spelled out from the repo root (a spec
+> was required and is on file at that path —
 > required when the work creates or alters a persisted object others depend on: a warehouse object,
 > a model, a published report; or reconciles two or more sources; or confidence is below 7) ·
 > `after-root-cause` (an investigation whose fix cannot be blueprinted before the cause is known:

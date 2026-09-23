@@ -27,8 +27,8 @@ letting unreviewed work leave — a `REQUEST-CHANGES` verdict it refuses outrigh
 Ticketwright's product is the record: a corpus of tickets carrying the business context, the
 assumptions, the QC verdict and the deliverables of every analysis the team ships. The record has
 two readers - every artifact is consumed by a person *and* by an agent - and each mechanism on
-this page states which reader it serves rather than implying it serves both. The README's
-[team-brain section](../README.md#what-it-builds-a-team-brain) walks what that record buys a team;
+this page states which reader it serves rather than implying it serves both. The
+[team-brain section](how-it-works.md#what-it-builds-a-team-brain) of how-it-works.md walks what that record buys a team;
 this page maps the machinery that delivers it.
 
 ## The lifecycle is the primary map

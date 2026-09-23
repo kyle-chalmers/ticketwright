@@ -33,7 +33,9 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
      first; every ticket is scoped before it is built." (A spec passed as an argument does not
      substitute: the plan is the approval record.)
    - **`spec:` names a path** → that spec is the executable detail; load it (the argument path wins
-     if one was given). If the named file does not exist → stop: "`plan.md` for `<owner>/<id>` names
+     if one was given). The path is repo-root-relative (`<ticket-dir>/specs/<id>-<slug>.md`); a bare
+     `specs/<id>-<slug>.md` from an older plan resolves inside `<ticket-dir>`, never at the repo
+     root. If the named file does not exist → stop: "`plan.md` for `<owner>/<id>` names
      a spec that is not on file — run `/ticket <owner>/<id>` to finish scoping."
    - **`spec: not required`** → the plan is the blueprint.
    - **`spec: after-root-cause`** → run only the plan's investigation steps (read-only against the

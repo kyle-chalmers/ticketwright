@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish versioning.
 
 
+## [Unreleased]
+
+### Changed
+- **The README is a two-minute read.** It dropped from about 7,300 words to under 600 words of
+  prose, and now shows how the system works as two diagrams (the ticket lifecycle, and how skills
+  reach your tools through adapters) and what a working team repo looks like as a folder tree:
+  one folder per person, one per ticket, each file labeled with the step that writes it. Nothing was cut: the install tracks, the doctor
+  checklist, the committed settings block, adoption and non-plugin installs moved verbatim to
+  [docs/getting-started.md](docs/getting-started.md); the team-brain mechanisms, lifecycle detail,
+  voice profiles, safety rails and the full hooks table moved to
+  [docs/how-it-works.md](docs/how-it-works.md). Every selftest pin on that text follows it to its
+  new home, and a new section 58 holds the README to a 600-word prose budget, requires the
+  visuals, and checks that every relative link resolves.
+- **The hooks table now lists every hook, and the DB guard's reach is stated honestly.** The old
+  README's "Hooks, in full" table left out `source_material_guard.py`; it is listed now. The
+  safety-rails line said the DB guard inspects "every warehouse command", but it sees only CLI
+  commands run through Bash, and SQL sent through an MCP tool never reaches it. Both surfaces now
+  say so.
+
+### Fixed
+- **A spec has one home: its ticket folder.** `/ticket` wrote the spec to `<ticket-dir>/specs/`,
+  but the plan's `spec:` line (the path `/build` loads) read a bare `specs/<id>-<slug>.md`, and
+  `/setup` also created an empty repo-root `specs/` that nothing ever wrote to. The same path
+  therefore named two places, depending on where it was resolved. `/setup` no longer creates the
+  root folder; the plan template and `spec.md` now write the full `<ticket-dir>/specs/<id>-<slug>.md`
+  path; and `/build` resolves a bare `specs/` path from an older plan inside the ticket folder, so
+  plans already on file keep working. A repo that already has an empty root `specs/` can delete it.
+
+
 ## [4.1.1] — 2026-09-18
 
 ### Fixed

@@ -156,7 +156,8 @@ project-relative `.claude/statusline.sh`, so on a plugin install **copy
 vendored install it's already there).
 
 ## Folders + `.gitignore`
-Create `tickets/{assignee_dir}/`, `documentation/`, `resources/`, `specs/` (and `ci/` if wanted).
+Create `tickets/{assignee_dir}/`, `documentation/`, `resources/` (and `ci/` if wanted). No repo-root
+`specs/`: a spec lives with its ticket, at `<ticket-dir>/specs/`, written by `/ticket`.
 Render `<KIT>/templates/gitignore.tmpl` → `.gitignore` (merge if
 one exists). Deliverable exports (`final_deliverables/*.csv` etc.) are **committed by default** so
 results live with the ticket and show in the PR; PII/customer data opts out via a `*.private.csv`

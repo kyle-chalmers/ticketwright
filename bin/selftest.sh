@@ -1105,6 +1105,9 @@ grep -qi 'Obsidian' README.md \
 
 hdr "21b · project-scoped enablement is the default on plugin installs"
 sc=".claude/skills/setup/scaffold.md"
+# The install detail (both tracks, the doctor checklist, the committed settings block) lives in
+# docs/getting-started.md; the README keeps a two-minute overview plus the install pair.
+GS="docs/getting-started.md"
 scflat="$(tr '\n' ' ' < "$sc")"   # flatten so word-wrapped phrases still match
 { grep -q 'extraKnownMarketplaces' "$sc" && grep -q 'enabledPlugins' "$sc" \
   && grep -q '"ticketwright@ticketwright": true' "$sc" && grep -q '"autoUpdate": true' "$sc" \
@@ -1115,7 +1118,7 @@ scflat="$(tr '\n' ' ' < "$sc")"   # flatten so word-wrapped phrases still match
   && grep -qi 'keep its .source. exactly as written' <<<"$scflat"; } \
   && ok "setup/scaffold.md tells setup to MERGE the enablement (preserve an existing source, not overwrite)" \
   || bad "setup/scaffold.md must tell setup to merge (preserve existing source/autoUpdate), never overwrite"
-python3 - "$sc" README.md <<'PY' && ok "enablement snippet is valid JSON, source is the CLI-written git form, autoUpdate on, README block agrees" || bad "enablement snippet malformed / wrong source discriminator / README block disagrees with scaffold.md"
+python3 - "$sc" "$GS" <<'PY' && ok "enablement snippet is valid JSON, source is the CLI-written git form, autoUpdate on, getting-started block agrees" || bad "enablement snippet malformed / wrong source discriminator / getting-started block disagrees with scaffold.md"
 import json, re, sys
 
 # The canonical marketplace source: exactly what `claude plugin marketplace add <https://...git>`
@@ -1145,9 +1148,9 @@ def enablement_block(path, fence, after=None):
 
 scaffold = enablement_block(sys.argv[1], "json")
 # Anchored to the section that documents the committed block, so an unrelated json fence
-# elsewhere in the README can never stand in for it.
+# elsewhere in the doc can never stand in for it.
 readme = enablement_block(sys.argv[2], "json", after="### Project-scoped by default")
-for label, d in (("scaffold.md", scaffold), ("README.md", readme)):
+for label, d in (("scaffold.md", scaffold), ("getting-started.md", readme)):
     mk = d["extraKnownMarketplaces"]["ticketwright"]
     if mk["source"] != CANON:
         print("%s: marketplace source is %s, expected %s" % (label, mk["source"], CANON), file=sys.stderr)
@@ -1160,10 +1163,15 @@ grep -qi 'project-scoped' README.md \
   && ok "README documents the project-scoped install as the team default" || bad "README missing the project-scoped section"
 # Getting-started Track 1 must actually PRODUCE a project-scoped install. Match the two specific command
 # lines, not incidental occurrences of the flag elsewhere in the file.
-{ grep -qE '^claude plugin marketplace add https://github\.com/kyle-chalmers/ticketwright\.git --scope project$' README.md \
-  && grep -qE '^claude plugin install ticketwright@ticketwright --scope project$' README.md; } \
-  && ok "README Track 1 installs at project scope (--scope project on both commands)" \
-  || bad "README Track 1 must pass --scope project to BOTH marketplace add and plugin install (both default to user scope)"
+# Both the README's short install and the full Track 1 must carry it.
+s21p=""
+for f in README.md "$GS"; do
+  { grep -qE '^claude plugin marketplace add https://github\.com/kyle-chalmers/ticketwright\.git --scope project$' "$f" \
+    && grep -qE '^claude plugin install ticketwright@ticketwright --scope project$' "$f"; } || s21p="$s21p $f"
+done
+[ -z "$s21p" ] \
+  && ok "README and getting-started Track 1 install at project scope (--scope project on both commands)" \
+  || bad "an install must pass --scope project to BOTH marketplace add and plugin install (both default to user scope)" "$s21p"
 
 # --- (21b, cont.) Track 2 — the JOINER install is project-scoped, from a clone, at the repo root ---
 # Everything below is bounded by heading or by step marker. A global grep would let Track 1's
@@ -1175,10 +1183,10 @@ s21sec() {  # $1 = file, $2 = heading regex. Prints that heading's section; `###
 s21step() { # $1 = file, $2 = opening step marker, $3 = closing step marker
   awk -v a="$2" -v b="$3" 'BEGIN{f=0} index($0,b)==1{ if (f) exit } index($0,a)==1{f=1} f' "$1"
 }
-T2="$TMP/s21b-track2.md"; s21sec README.md '^### Track 2 —' > "$T2"
-T1="$TMP/s21b-track1.md"; s21sec README.md '^### Track 1 —' > "$T1"
+T2="$TMP/s21b-track2.md"; s21sec "$GS" '^### Track 2 —' > "$T2"
+T1="$TMP/s21b-track1.md"; s21sec "$GS" '^### Track 1 —' > "$T1"
 [ -s "$T2" ] && [ -s "$T1" ] \
-  && ok "README Track 1 and Track 2 sections both extract by heading" \
+  && ok "getting-started Track 1 and Track 2 sections both extract by heading" \
   || bad "a Getting-started track heading was renamed — the Track-2 pins below cannot bind"
 
 # (a) the joiner pair itself: BOTH commands, BOTH with --scope project, inside ONE fenced block in
@@ -1200,12 +1208,12 @@ hit = [b for b in blocks if any(l.strip() == MK for l in b) and any(l.strip() ==
 print("OK" if hit else "MISSING (%d fenced blocks scanned)" % len(blocks))
 PY
 [ "$(cat "$TMP/s21b-pair.out")" = "OK" ] \
-  && ok "README Track 2 gives the install pair with --scope project in one fenced block" \
+  && ok "getting-started Track 2 gives the install pair with --scope project in one fenced block" \
   || bad "Track 2's fenced install block must carry BOTH --scope project commands (both default to user scope)" "$(cat "$TMP/s21b-pair.out")"
 
 # (b) negative: no RUNNABLE bare install anywhere in the two docs a joiner copy-pastes from. Code
 #     fences only — prose that quotes the bare command while explaining the bug must stay legal.
-python3 - README.md docs/troubleshooting.md <<'PY' >"$TMP/s21b-bare.out" 2>&1
+python3 - README.md "$GS" docs/troubleshooting.md <<'PY' >"$TMP/s21b-bare.out" 2>&1
 import sys
 bad = []
 for path in sys.argv[1:]:
@@ -1219,12 +1227,12 @@ for path in sys.argv[1:]:
 print(" ".join(bad))
 PY
 [ -z "$(cat "$TMP/s21b-bare.out")" ] \
-  && ok "no fenced bare 'plugin install' (which silently installs at user scope) in README or troubleshooting" \
+  && ok "no fenced bare 'plugin install' (which silently installs at user scope) in README, getting-started or troubleshooting" \
   || bad "a copy-pasteable install command is missing --scope" "$(cat "$TMP/s21b-bare.out")"
 
 # (c) the false claim is gone from all four surfaces that carried it. Registration clones the
 #     marketplace; it has never installed the plugin, and no prompt appears.
-p21="$(grep -rli 'prompted to install' README.md .claude/skills/setup/scaffold.md \
+p21="$(grep -rli 'prompted to install' README.md "$GS" .claude/skills/setup/scaffold.md \
         .claude/settings.json.tmpl templates/AGENTS.md.tmpl 2>/dev/null || true)"
 [ -z "$p21" ] \
   && ok "the 'teammates are prompted to install' claim is gone from README/scaffold/settings.tmpl/AGENTS.tmpl" \
@@ -1235,20 +1243,21 @@ p21="$(grep -rli 'prompted to install' README.md .claude/skills/setup/scaffold.m
 #     long string, not prose).
 CANON21="Registering the marketplace is not installing the plugin — a teammate who opens and trusts the repo gets the marketplace clone, then runs the install themselves (Track 2)."
 c21=""
-for f in README.md .claude/skills/setup/scaffold.md templates/AGENTS.md.tmpl docs/troubleshooting.md; do
+for f in "$GS" .claude/skills/setup/scaffold.md templates/AGENTS.md.tmpl docs/troubleshooting.md; do
   tr '\n' ' ' < "$f" | tr -s ' ' | grep -qF "$CANON21" || c21="$c21 $f"
 done
 grep -q 'not installing the plugin' .claude/settings.json.tmpl || c21="$c21 settings.json.tmpl"
 [ -z "$c21" ] \
-  && ok "the registration-is-not-installation sentence is verbatim in README, scaffold.md, AGENTS.md.tmpl and troubleshooting" \
+  && ok "the registration-is-not-installation sentence is verbatim in getting-started, scaffold.md, AGENTS.md.tmpl and troubleshooting" \
   || bad "a surface lost (or reworded) the canonical registration-vs-installation sentence" "$c21"
 
 # (e) "restart" was read as "new chat" by every teammate who hit this. Each restart instruction must
 #     name a full QUIT, bounded to the step that carries it.
 q21=""
-s21step "$T1" '**2 · ' '**3 · ' | grep -qi 'quit' || q21="$q21 README-track1-step2"
-s21step "$T2" '**3 · ' '**4 · ' | grep -qi 'quit' || q21="$q21 README-track2-step3"
+s21step "$T1" '**2 · ' '**3 · ' | grep -qi 'quit' || q21="$q21 getting-started-track1-step2"
+s21step "$T2" '**3 · ' '**4 · ' | grep -qi 'quit' || q21="$q21 getting-started-track2-step3"
 s21step docs/troubleshooting.md '**1 · ' '**2 · ' | grep -qi 'quit' || q21="$q21 troubleshooting-cause1"
+sed -n '/^## Get started/,/^## /p' README.md | grep -qi 'quit' || q21="$q21 README-get-started"
 [ -z "$q21" ] \
   && ok "every restart instruction names a full quit (a new chat inside the running app is not one)" \
   || bad "a restart instruction says only 'restart', which teammates read as 'new chat'" "$q21"
@@ -1256,7 +1265,7 @@ s21step docs/troubleshooting.md '**1 · ' '**2 · ' | grep -qi 'quit' || q21="$q
 # (f) Track 2 step 1 must say `git clone`: a "Download ZIP" folder has no .git, so the repo can
 #     never branch, commit, or open a PR, and the failure surfaces much later.
 s21step "$T2" '**1 · ' '**2 · ' | grep -q 'git clone' \
-  && ok "README Track 2 step 1 says git clone (not 'download')" \
+  && ok "getting-started Track 2 step 1 says git clone (not 'download')" \
   || bad "Track 2 step 1 must tell the joiner to git clone — a Download-ZIP folder has no .git"
 
 # (g) the paste-able install prompts. A person who has just cloned has no plugin, so no skill and no
@@ -1265,7 +1274,7 @@ s21step "$T2" '**1 · ' '**2 · ' | grep -q 'git clone' \
 # restated them would be a second copy to drift. What the prompt must carry is the part no tool
 # enforces — "this repo only" (an agent that runs the bare install goes global) and, for Track 1,
 # that the interview belongs to the person (an agent inferring the stack writes it wrong).
-python3 - README.md templates/AGENTS.md.tmpl >"$TMP/s21b-prompts.out" 2>&1 <<'PYPROMPT'
+python3 - "$GS" templates/AGENTS.md.tmpl >"$TMP/s21b-prompts.out" 2>&1 <<'PYPROMPT'
 import sys
 def blocks(path):
     out, cur, infence = [], [], False
@@ -1282,8 +1291,8 @@ readme, tmpl = blocks(sys.argv[1]), blocks(sys.argv[2])
 bad = []
 t1 = [b for b in readme if b.startswith("Set up Ticketwright in this repo")]
 t2 = [b for b in readme if b.startswith("Install the Ticketwright plugin for this repo")]
-if len(t1) != 1: bad.append("README has %d Track 1 prompt blocks, want 1" % len(t1))
-if len(t2) != 1: bad.append("README has %d Track 2 prompt blocks, want 1" % len(t2))
+if len(t1) != 1: bad.append("getting-started has %d Track 1 prompt blocks, want 1" % len(t1))
+if len(t2) != 1: bad.append("getting-started has %d Track 2 prompt blocks, want 1" % len(t2))
 if t1 and "put its questions to me" not in t1[0]:
     bad.append("the Track 1 prompt no longer keeps the interview with the person")
 if t2:
@@ -1292,14 +1301,14 @@ if t2:
     if "plugin_doctor.py" not in t2[0]:
         bad.append("the Track 2 prompt no longer starts at the doctor")
     if not [b for b in tmpl if b.strip() == t2[0].strip()]:
-        bad.append("templates/AGENTS.md.tmpl's joiner prompt is not byte-identical to README's")
+        bad.append("templates/AGENTS.md.tmpl's joiner prompt is not byte-identical to getting-started's")
 for name, b in (("Track 1", t1), ("Track 2", t2)):
     if b and len(b[0].splitlines()) > 8:
         bad.append("%s prompt is %d lines — keep it short enough to paste" % (name, len(b[0].splitlines())))
 print(" | ".join(bad))
 PYPROMPT
 [ -z "$(cat "$TMP/s21b-prompts.out")" ] \
-  && ok "both paste-able install prompts are present, short, and identical across README and the AGENTS template" \
+  && ok "both paste-able install prompts are present, short, and identical across getting-started and the AGENTS template" \
   || bad "an install prompt drifted, grew, or lost the rule no tool enforces" "$(cat "$TMP/s21b-prompts.out")"
 
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
@@ -4304,7 +4313,8 @@ IV=".claude/skills/setup/interview.md"; SK38=".claude/skills/setup/SKILL.md"
   || bad "interview.md missing"
 iflat="$(tr '\n' ' ' < "$IV")"; skflat38="$(tr '\n' ' ' < "$SK38")"
 # (A) the cap is retired — SCOPED: SKILL.md's frontmatter description + its default-mode section,
-# interview.md, adopt.md and README.md. Deliberately NOT scanned: SKILL.md's --voice summary and
+# interview.md, adopt.md, README.md and docs/getting-started.md (which carries "What setup actually
+# does"). Deliberately NOT scanned: SKILL.md's --voice summary and
 # voice.md (the voice interview's own ≤5 cap is a KEPT feature) and CHANGELOG.md (history is never
 # rewritten). The pattern tolerates the hyphenated "≤5-question" form.
 capre='≤[[:space:]]*5|at most (5|five)|(5|five)[- ]question'
@@ -4312,7 +4322,7 @@ dm38="$TMP/s38-scope.txt"
 { grep '^description:' "$SK38"; sed -n '/^## Default mode/,$p' "$SK38"; } > "$dm38"
 cap38=""
 grep -EIiq "$capre" "$dm38" && cap38="$cap38 SKILL.md(description/default-mode)"
-for f in "$IV" .claude/skills/setup/adopt.md README.md; do
+for f in "$IV" .claude/skills/setup/adopt.md README.md docs/getting-started.md; do
   grep -EIiq "$capre" "$f" && cap38="$cap38 $f"
 done
 [ -z "$cap38" ] && ok "no question-count promise survives on the repo-interview surfaces" \
@@ -4459,7 +4469,7 @@ grep -q '/setup tool chat' "$SK38" \
   && ok "the canonical /setup tool chat spelling is present" \
   || bad "the canonical /setup tool chat spelling is missing"
 old38=""
-for f in $(grep -rlE '/setup (chat|docstore|warehouse)' .claude/skills README.md 2>/dev/null); do
+for f in $(grep -rlE '/setup (chat|docstore|warehouse)' .claude/skills README.md docs/getting-started.md docs/how-it-works.md 2>/dev/null); do
   grep -qiE 'deprecated spelling|old spelling' "$f" || old38="$old38 $f"
 done
 [ -z "$old38" ] && ok "every surviving old /setup <slot> spelling carries a deprecation line" \
@@ -6668,13 +6678,15 @@ rl_brain="$(grep -n '^## What it builds: a team brain' README.md | head -1 | cut
 grep -q 'no slot of its own' README.md && grep -q 'no slot of its own' docs/architecture.md \
   && ok "phase 3's 'no slot of its own' statement present in README and architecture.md" \
   || bad "phase 3 lost its 'no slot of its own' statement (PROMPT 9 precision requirement)"
-# The slot-to-phase matrix names all five phases, in both files.
+# All five phases are named in the README's lifecycle diagram, and in the slot-to-phase matrix
+# (architecture.md, and docs/how-it-works.md, where the README's matrix moved).
 pmiss=""
 for ph in "Open the work" "Do the work" "Quality-check" "Deliver" "Announce"; do
   grep -q "$ph" README.md || pmiss="$pmiss README:${ph// /_}"
   grep -q "$ph" docs/architecture.md || pmiss="$pmiss architecture:${ph// /_}"
+  grep -q "| .*$ph" docs/how-it-works.md || pmiss="$pmiss how-it-works-matrix:${ph// /_}"
 done
-[ -z "$pmiss" ] && ok "all five lifecycle phases are named in README and architecture.md" \
+[ -z "$pmiss" ] && ok "all five lifecycle phases are named in README, architecture.md and the how-it-works matrix" \
   || bad "a lifecycle phase is missing from the slot-to-phase matrix" "$pmiss"
 # Voice audit: marketing filler stays out of user-facing docs. Scope is README + docs/ prose;
 # docs/PROMPT-*.md are planning documents and exempt (PLANNED-CHANGES.md, the original planning
@@ -6772,7 +6784,7 @@ grep -q 'repo-wide' .claude/skills/ship/SKILL.md \
   || bad "/ship stages whole rendered directories without naming the unrelated-diff risk"
 
 # --- (C) the retired asymmetry does not creep back into the docs --------------------------------
-a48="$(grep -niE 'staging asymmetry|asymmetry to know' README.md docs/architecture.md || true)"
+a48="$(grep -niE 'staging asymmetry|asymmetry to know' README.md docs/architecture.md docs/obsidian.md || true)"
 [ -z "$a48" ] && ok "README + architecture.md no longer document /ship skipping the graph layer" \
   || bad "a doc still describes the retired staging asymmetry" "$a48"
 { grep -q 'tickets/graph/' README.md && grep -q 'tickets/graph/' docs/architecture.md; } \
@@ -9752,7 +9764,7 @@ diff -q "$TMP/pd.tree.before" "$TMP/pd.tree.after" >/dev/null \
   || bad "the tripwire fired during the read-only assertions"
 
 # --- (k) the marker list is the SAME list, in all three places ------------------------------------
-# README.md and templates/AGENTS.md.tmpl carry the same checklist a person reads; each line is
+# docs/getting-started.md and templates/AGENTS.md.tmpl carry the same checklist a person reads; each line is
 # tagged `<!-- doctor-check: <id> -->`. If those drift from CHECK_IDS, the person and the tool are
 # giving different advice — which is worse than either alone.
 pd_markers() {   # pd_markers <file> <heading>
@@ -9774,11 +9786,11 @@ for line in lines[start + 1:]:
 print(" ".join(ids) if ids else "NO_MARKERS")
 PDPY
 }
-pd_markers README.md '#### If you are the agent helping someone install — read this first'
+pd_markers docs/getting-started.md '#### If you are the agent helping someone install — read this first'
 pd_rm="$(cat "$TMP/pd.markers")"
 [ "$pd_rm" = "$pd_ids" ] \
-  && ok "README's install checklist tags every doctor check, in the doctor's order" \
-  || bad "README's doctor-check markers do not match CHECK_IDS" "got: $pd_rm"
+  && ok "getting-started's install checklist tags every doctor check, in the doctor's order" \
+  || bad "docs/getting-started.md's doctor-check markers do not match CHECK_IDS" "got: $pd_rm"
 pd_markers templates/AGENTS.md.tmpl '## Installing this plugin (read this if you are the agent helping someone install)'
 pd_tm="$(cat "$TMP/pd.markers")"
 [ "$pd_tm" = "$pd_ids" ] \
@@ -9885,10 +9897,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))
 print(importlib.import_module("plugin_doctor").RESTART_ADVISORY)
 PDPY
 pd_adv="$(cat "$TMP/pd.advisory")"
-tr '\n' ' ' < README.md | tr -s ' ' > "$TMP/pd.readme.flat"
+tr '\n' ' ' < docs/getting-started.md | tr -s ' ' > "$TMP/pd.readme.flat"
 { [ -n "$pd_adv" ] && grep -qF "$pd_adv" "$TMP/pd.readme.flat"; } \
-  && ok "the doctor's restart advisory appears VERBATIM in README.md (the tool and the page cannot drift)" \
-  || bad "README.md does not carry the doctor's restart advisory word for word" "$pd_adv"
+  && ok "the doctor's restart advisory appears VERBATIM in docs/getting-started.md (the tool and the page cannot drift)" \
+  || bad "docs/getting-started.md does not carry the doctor's restart advisory word for word" "$pd_adv"
 # Said once in the human report: the footer is where it prints, and no check repeats it above.
 pd_cfg "$PDC" "$PDR" none
 pd_run "$PD_MODERN" --root "$PDR" --config-root "$PDC" --no-probe
@@ -10083,6 +10095,22 @@ grep -q 'reference file, verbatim' bin/emit_runtime.py \
 [ "$(grep -c 'warn_retired_skills(' bin/emit_runtime.py)" -ge 4 ] \
   && ok "the retired-skill warning fires on the emit path AND both verify-only paths" \
   || bad "a verify-only install can keep a retired skill directory beside the new one unannounced"
+# (i) a spec lives WITH its ticket, and its path says so. /ticket writes <ticket-dir>/specs/, but the
+# plan's `spec:` line once read a bare `specs/<id>-<slug>.md` while /setup also created an empty
+# repo-root specs/, so the same path named two places depending on where /build resolved it.
+{ ! grep -qE '^Create .*`specs/`' .claude/skills/setup/scaffold.md \
+  && grep -q '<ticket-dir>/specs/<id>-<slug>.md' .claude/skills/ticket/SKILL.md \
+  && grep -q '<ticket-dir>/specs/<id>-<slug>.md' .claude/skills/ticket/spec.md \
+  && grep -q '<ticket-dir>/specs/<id>-<slug>.md' templates/plan.md.tmpl \
+  && grep -q '<ticket-dir>/specs/<id>-<slug>.md' .claude/skills/build/SKILL.md; } \
+  && ok "setup creates no repo-root specs/, and /ticket, spec.md, the plan template and /build all name <ticket-dir>/specs/" \
+  || bad "a spec path is ambiguous again (repo-root specs/ created, or a surface lost <ticket-dir>/specs/)"
+# A bare `specs/<id>-<slug>.md` may appear only in /build's fallback for plans written before the fix.
+bare56="$(grep -n '`specs/<id>-<slug>.md`' .claude/skills/ticket/SKILL.md .claude/skills/ticket/spec.md \
+            templates/plan.md.tmpl .claude/skills/build/SKILL.md | grep -v 'older plan' || true)"
+{ [ -z "$bare56" ] && grep -q 'older plan resolves inside `<ticket-dir>`' .claude/skills/build/SKILL.md; } \
+  && ok "a bare specs/ path survives only as /build's resolve-inside-the-ticket fallback for older plans" \
+  || bad "a bare specs/<id>-<slug>.md path is back outside /build's legacy fallback" "$bare56"
 
 hdr "57 · the review-before-ship gate is a mechanism: bin/review_verdict.py + review_verdict_guard (the raw-git bypass closed)"
 # Two real tickets shipped unreviewed through `git push` + `gh pr create`, never entering /ship —
@@ -10221,11 +10249,72 @@ grep -q 'review_verdict.py --ticket' .claude/skills/ship/SKILL.md && grep -q 're
   && grep -q 'review_verdict.py --ticket' .claude/skills/review/SKILL.md \
   && ok "/ship, /build and /review all read the verdict through bin/review_verdict.py (one implementation)"
 grep -q '`review_verdict_guard`' templates/AGENTS.md.tmpl && grep -q 'review_verdict_guard' docs/architecture.md \
-  && grep -q 'review_verdict_guard' README.md && grep -q 'review_verdict_guard' .claude/config/stack.schema.md \
-  && ok "the enforcement table, architecture, README hooks table and policy row all name the new guard" \
+  && grep -q 'review_verdict_guard' docs/how-it-works.md && grep -q 'review_verdict_guard' .claude/config/stack.schema.md \
+  && ok "the enforcement table, architecture, how-it-works hooks table and policy row all name the new guard" \
   || bad "a doc surface is missing the review_verdict_guard"
 grep -q 'git commit' "$RVG57" && grep -qi 'deliberately NOT' "$RVG57" \
   && ok "the hook states plainly that git commit is outside its jurisdiction and why" || bad "the hook's jurisdiction limits are not stated"
+
+hdr "58 · the README is a two-minute read: a prose budget, the two visuals, and links that resolve"
+# The README is the overview; the detail lives in docs/getting-started.md and docs/how-it-works.md.
+# Without a budget it regrows one caveat at a time (it reached 7,300 words that way). PROSE is what
+# a person reads line by line, so fenced blocks (the diagram, the scaffold tree, commands), HTML
+# comments, badge lines and link URLs do not count; link text does.
+README_BUDGET=600
+cat > "$TMP/s58-wc.py" <<'PY'
+import re, sys
+t = open(sys.argv[1], encoding="utf-8").read()
+t = re.sub(r'(?ms)^(```|~~~).*?^\1[^\n]*$', ' ', t)
+t = re.sub(r'(?s)<!--.*?-->', ' ', t)
+t = re.sub(r'(?m)^\s*\[?!\[.*$', ' ', t)
+t = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', t)
+print(len([w for w in re.split(r'\s+', t) if re.search(r'[A-Za-z0-9]', w)]))
+PY
+python3 "$TMP/s58-wc.py" README.md > "$TMP/s58.n"; n58="$(cat "$TMP/s58.n")"
+[ -n "$n58" ] && [ "$n58" -le "$README_BUDGET" ] \
+  && ok "README prose is $n58 words (budget $README_BUDGET)" \
+  || bad "README prose is over its $README_BUDGET-word budget: move detail into docs/ and link it" "words=$n58"
+# The counter must bite on prose and ignore fenced content, or the budget above certifies nothing.
+{ cat README.md; printf '\n```\n'; python3 -c "print('tree ' * 900)"; printf '```\n'; } > "$TMP/s58-fenced.md"
+{ cat README.md; printf '\n'; python3 -c "print('word ' * ($README_BUDGET + 1))"; } > "$TMP/s58-padded.md"
+python3 "$TMP/s58-wc.py" "$TMP/s58-fenced.md" > "$TMP/s58.f"; python3 "$TMP/s58-wc.py" "$TMP/s58-padded.md" > "$TMP/s58.p"
+{ [ "$(cat "$TMP/s58.f")" = "$n58" ] && [ "$(cat "$TMP/s58.p")" -gt "$README_BUDGET" ]; } \
+  && ok "the word counter ignores fenced blocks and counts added prose (the budget can fail)" \
+  || bad "the README word counter is miscounting" "fenced=$(cat "$TMP/s58.f") padded=$(cat "$TMP/s58.p")"
+# The visuals are why the README can be short: the system diagrams and the working-repo tree,
+# which must show the team scale (more than one owner) and a ticket folder labeled by phase.
+{ grep -q '^```mermaid' README.md && grep -q '^your-repo/' README.md && grep -q 'stack.yaml' README.md \
+  && [ "$(LC_ALL=C grep -cE '^ {4}[^ ]+ [a-z]+/$' README.md)" -ge 2 ] \
+  && grep -qE 'README\.md +/ticket' README.md && grep -qE 'qc_queries/ +/build' README.md; } \
+  && ok "README carries the diagrams and the team-scale repo tree, with ticket files labeled by phase" \
+  || bad "README lost its system diagram or its scaffold tree"
+# Every relative link in the README and the two docs it hands off to resolves: the file exists, and
+# a #fragment matches a heading under GitHub's slug rule. A dead link here is a dead end for a reader.
+python3 - README.md docs/getting-started.md docs/how-it-works.md > "$TMP/s58.links" 2>&1 <<'PY'
+import os, re, sys
+def slugs(path):
+    out = set(); infence = False
+    for l in open(path, encoding="utf-8").read().splitlines():
+        if l.startswith("```"): infence = not infence; continue
+        if infence or not l.startswith("#"): continue
+        h = l.lstrip("#").strip().lower()
+        out.add(re.sub(r"[^\w\- ]", "", h).replace(" ", "-"))
+    return out
+bad = []
+for src in sys.argv[1:]:
+    text = re.sub(r'(?ms)^```.*?^```[^\n]*$', ' ', open(src, encoding="utf-8").read())
+    for url in re.findall(r'\]\(([^)\s]+)\)', text):
+        if re.match(r'(https?:|mailto:)', url): continue
+        path, _, frag = url.partition("#")
+        target = os.path.normpath(os.path.join(os.path.dirname(src), path)) if path else src
+        if not os.path.exists(target): bad.append("%s -> %s (no file)" % (src, url)); continue
+        if frag and target.endswith(".md") and frag not in slugs(target):
+            bad.append("%s -> %s (no heading)" % (src, url))
+print(" | ".join(bad))
+PY
+[ -z "$(cat "$TMP/s58.links")" ] \
+  && ok "every relative link in README, getting-started and how-it-works resolves (file and heading)" \
+  || bad "a README or handoff-doc link is dead" "$(cat "$TMP/s58.links")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
