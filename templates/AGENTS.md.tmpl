@@ -92,26 +92,30 @@ The checks, in the order the doctor runs them:
 7. **The marketplace is registered.** <!-- doctor-check: marketplace_registered -->
    An entry in `~/.claude/plugins/known_marketplaces.json` whose `installLocation` exists. Missing:
    the first command of the pair below.
-8. **This repo has an install record.** <!-- doctor-check: repo_install -->
+8. **User settings do not declare a different source for it.** <!-- doctor-check: marketplace_source -->
+   A `ticketwright` entry in `~/.claude/settings.json` with another source (often the GitHub
+   shorthand from an older install) makes `marketplace add` fail with "its network source differs".
+   Fix: set that entry's `source` to the git URL form, or delete it, then add again.
+9. **This repo has an install record.** <!-- doctor-check: repo_install -->
    A row in `~/.claude/plugins/installed_plugins.json` whose `projectPath` is this repo.
    Registration never creates one. Fix: the pair below, from the repository root, then restart.
-9. **The install record points at files that exist.** <!-- doctor-check: install_payload -->
-   The recorded `installPath` holds a `.claude-plugin/plugin.json`. Seen on Claude Code 2.0.22:
-   install reports success, the directory is never created, and re-installing is a no-op. Fix:
-   update the CLI, then uninstall at the recorded scope and install again; if uninstall answers
-   "not found", copy the marketplace clone into the recorded path (see troubleshooting).
-10. **No machine-wide install nobody meant.** <!-- doctor-check: user_install -->
+10. **The install record points at files that exist.** <!-- doctor-check: install_payload -->
+    The recorded `installPath` holds a `.claude-plugin/plugin.json`. Seen on Claude Code 2.0.22:
+    install reports success, the directory is never created, and re-installing is a no-op. Fix:
+    update the CLI, then uninstall at the recorded scope and install again; if uninstall answers
+    "not found", copy the marketplace clone into the recorded path (see troubleshooting).
+11. **No machine-wide install nobody meant.** <!-- doctor-check: user_install -->
     A `scope: "user"` row turns the plugin on for every repo on the machine. For this repo only:
     `claude plugin uninstall ticketwright@ticketwright --scope user`, then the pair below.
-11. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
+12. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
     Behind means a tagged release was not picked up; the fix is the uninstall-and-install pair the
     session banner names, at the scope the record carries.
-12. **`yq` is installed.** <!-- doctor-check: yq_present -->
+13. **`yq` is installed.** <!-- doctor-check: yq_present -->
     `command -v yq`. Needed only by the kit's self-test. macOS `brew install yq`; Linux your
     distribution's package; Windows `winget install MikeFarah.yq`.
-13. **Git identity is set.** <!-- doctor-check: git_identity -->
+14. **Git identity is set.** <!-- doctor-check: git_identity -->
     `git config --get user.name` / `--get user.email`, else the first commit fails.
-14. **Restart the right way.** <!-- doctor-check: restart -->
+15. **Restart the right way.** <!-- doctor-check: restart -->
     Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit the
     Claude app (Cmd+Q on macOS, File → Exit on Windows/Linux) and relaunch. A new chat inside the
     running app is not a restart.

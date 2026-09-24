@@ -56,6 +56,11 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
   listings). Many candidates → spawn read-only Explore agents in parallel (findings only).
 - **Write the reuse brief** (≤ ~200 words): the closest prior work, **what to copy** (which SQL/QC
   artifact + path), known **gotchas** those tickets carried, and **what's different** this time.
+  **Name every prior ticket you build on by `<owner>/<id>` and say why it matched**, translating the
+  bracketed reasons recall printed beside it into plain words: `obj:` → "shares the object `X`",
+  `tag:` → "shares the tag `t`", `ref` → "the two tickets cross-reference each other", `kw:` alone →
+  "keyword overlap only" (the weakest signal; say so). A match with no stated reason reads as
+  staged, and the reason is what lets a reader check it.
 
 ## 3 · Domain slice (business meaning)
 

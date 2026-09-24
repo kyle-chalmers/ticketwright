@@ -22,8 +22,34 @@ All notable changes to this project are documented here. Format loosely follows
   safety-rails line said the DB guard inspects "every warehouse command", but it sees only CLI
   commands run through Bash, and SQL sent through an MCP tool never reaches it. Both surfaces now
   say so.
+- **Upgrades are stated as manual, because they are.** `autoUpdate` refreshes the marketplace
+  catalog and never upgrades the installed plugin (claude-code #61854, #52218, #49410, #17361). The
+  README, `docs/getting-started.md` (Track 1 step 4, "What setup writes", the committed-settings
+  notes) and the troubleshooting upgrade table now say so plainly, and name the upgrade as
+  uninstall, install, relaunch. ROADMAP's open question on this is closed with the finding.
+- **A plan names the prior work it builds on, and why recall matched it.** The reuse brief now names
+  each prior ticket by `owner/id` with the reason `recall.py` already prints (a shared object, a
+  shared tag, a cross-reference, or keyword overlap only), and `templates/plan.md.tmpl` gains a
+  `## Builds on` section to carry it into the approved plan.
+- **The example configs spell the write policy out.** `stack.example.solo.yaml` and
+  `stack.example.multi-warehouse.yaml` used the legacy `db_write_requires_approval: true`; they now
+  say `high_risk`, which is what `true` already meant.
+
+### Added
+- **`plugin_doctor` names the "network source differs" install failure.** A new check,
+  `marketplace_source`, reads your user-level `settings.json` for the marketplace's declared source.
+  When it differs from what this repo declares (most often the GitHub shorthand left by an older
+  install), `claude plugin marketplace add` fails with "its network source differs from the one
+  declared for it in settings". The check says so before you hit it and gives the fix. Only the
+  source's kind is reported, never the value. The install checklists in `docs/getting-started.md`
+  and `templates/AGENTS.md.tmpl` gain the matching line (now fifteen checks).
 
 ### Fixed
+- **The review hand-off no longer lets an agent claim it opened files it did not.** With no viewer
+  configured, or `enabled: false`, `bin/handoff.sh` opened nothing and printed nothing, and an agent
+  told a person "I've opened the note and the checklist for you to read". It now says on stderr that
+  nothing was opened and why (stdout stays empty), and `/review` and `/build` claim a file opened
+  only when handoff printed an `opened:` line for it.
 - **A spec has one home: its ticket folder.** `/ticket` wrote the spec to `<ticket-dir>/specs/`,
   but the plan's `spec:` line (the path `/build` loads) read a bare `specs/<id>-<slug>.md`, and
   `/setup` also created an empty repo-root `specs/` that nothing ever wrote to. The same path
