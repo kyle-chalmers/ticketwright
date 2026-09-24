@@ -23,11 +23,11 @@ docs lead with — is the refresh skill (index mode), where the host agent write
 pipes it to `ingest_index_records.py --from-json -`. This script is the accelerated convenience.
 
 Usage:
-  enrich_ticket.py ENG-123 [ENG-124 ...]         # enrich specific ticket(s)
-  enrich_ticket.py alice/ENG-123                 # owner-qualified locator, when an id is shared
+  enrich_ticket.py TEST-123 [TEST-124 ...]       # enrich specific ticket(s)
+  enrich_ticket.py alice/TEST-123                # owner-qualified locator, when an id is shared
   enrich_ticket.py --branch                      # enrich the ticket named in the current git branch
-  enrich_ticket.py ENG-123 --model opus          # override the model
-  enrich_ticket.py ENG-123 --model-cmd 'x {prompt}'   # override the whole model command
+  enrich_ticket.py TEST-123 --model opus         # override the model
+  enrich_ticket.py TEST-123 --model-cmd 'x {prompt}'  # override the whole model command
 
 Owner is part of ticket identity: a bare id that exists under more than one `tickets/<owner>/`
 folder is a HARD STOP (exit 3) naming every owner — pass the `owner/id` locator to pick one.
@@ -238,7 +238,7 @@ def enrich_one(loc: dict, template: str, model: str | None) -> dict | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Refresh curated index summaries for ticket(s)")
-    ap.add_argument("ids", nargs="*", help="ticket ids, e.g. ENG-123")
+    ap.add_argument("ids", nargs="*", help="ticket ids, e.g. TEST-123")
     ap.add_argument("--branch", action="store_true", help="use the ticket id in the current git branch")
     ap.add_argument("--model", default=None,
                     help="model for the summary (default: whatever the runtime adapter declares)")
@@ -275,8 +275,8 @@ def main() -> int:
             loc = next((c for c in cands if c in known), None)
         else:
             # A branch that IS a key resolves as that key; otherwise fall through to the collision
-            # shape below before the loose in-string search, so `bob-ENG-12` names bob's ticket
-            # rather than an ambiguous bare ENG-12.
+            # shape below before the loose in-string search, so `bob-TEST-12` names bob's ticket
+            # rather than an ambiguous bare TEST-12.
             kre = key_regex(cfg["prefixes"])
             loc = next((c for c in cands if kre.fullmatch(c)), None)
         if loc is None:

@@ -563,11 +563,11 @@ hdr "7 · session_context hook (SessionStart priming)"
 # ~/.claude/plugins manifest when pointed at one. Section 50 exercises that footer on purpose.
 out="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" \
   CLAUDE_CONFIG_DIR="$TMP/no-config" python3 .claude/hooks/session_context.py 2>&1)"
-grep -q "ENG" <<<"$out" && grep -qi "Lifecycle" <<<"$out" && ok "emits stack + lifecycle summary" || bad "session context missing/empty" "$out"
+grep -q "TEST-tickets" <<<"$out" && grep -qi "Lifecycle" <<<"$out" && ok "emits stack + lifecycle summary" || bad "session context missing/empty" "$out"
 
 hdr "8 · statusline renders"
 out="$(echo '{}' | CLAUDE_PROJECT_DIR="$KIT" bash .claude/statusline.sh 2>&1)"
-grep -q "ENG" <<<"$out" && ok "statusline: $out" || bad "statusline empty/broken" "$out"
+grep -q "⛭ TEST" <<<"$out" && ok "statusline: $out" || bad "statusline empty/broken" "$out"
 
 hdr "9 · skillify stamp smoke (SKILL.md.tmpl → 0 leftover tokens)"
 err="$(bash bin/render.sh templates/generated-skill/SKILL.md.tmpl \
@@ -1890,7 +1890,7 @@ o="$(echo '{}' | CLAUDE_PROJECT_DIR="$SB" bash .claude/statusline.sh 2>&1)"
   || bad "statusline shows '?' on a trackerless repo" "$o"
 # Keyed banner unchanged.
 o="$(echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$KIT" python3 .claude/hooks/session_context.py 2>&1)"
-grep -q 'Stack (ENG-tickets)' <<<"$o" \
+grep -q 'Stack (TEST-tickets)' <<<"$o" \
   && ok "keyed banner still reads '<PREFIX>-tickets'" || bad "keyed banner changed" "$o"
 # A keyed repo may configure ONLY the plural key_prefixes; it must still read as keyed rather than
 # falling through to the directory name (which is the trackerless signal).

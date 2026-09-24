@@ -4,8 +4,8 @@
 # Try it: bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run
 
 project:
-  key_prefix: ENG                       # branch/index display convention (ADO ids are bare integers)
-  key_prefixes: [ENG]
+  key_prefix: TEST                      # branch/index display convention (ADO ids are bare integers)
+  key_prefixes: [TEST]
   assignee_dir: dana
   ticket_path: "tickets/{assignee}/{id}"
   ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]

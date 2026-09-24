@@ -111,13 +111,13 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 
 | Field | Type | Example | Meaning |
 |---|---|---|---|
-| `key_prefix` | string | `ENG` | Ticket-ID prefix. Branch names = `{key_prefix}-NNNN`. Omit it when `id_mode: slug` — there are no keys to prefix. |
+| `key_prefix` | string | `TEST` | Ticket-ID prefix. Branch names = `{key_prefix}-NNNN`. Omit it when `id_mode: slug` — there are no keys to prefix. |
 | `id_mode` | enum | `keyed` | `keyed` (default) = folder names carry a tracker key; `slug` = the folder name **is** the id. See "Trackerless work". |
-| `key_prefixes` | list | `[ENG]` | Prefixes the ticket index recognizes in folder names. Optional; defaults to `[key_prefix]`. Use when one repo holds tickets from several trackers (e.g. `[ENG, OPS]`). |
+| `key_prefixes` | list | `[TEST]` | Prefixes the ticket index recognizes in folder names. Optional; defaults to `[key_prefix]`. Use when one repo holds tickets from several trackers (e.g. `[TEST, OPS]`). |
 | `assignee_dir` | string | `alice` | Last-resort owner subdir under `tickets/`, used only when **no people map exists at all** (`bin/whoami.py` returns `miss` and there are no `people/*.yaml`). With a people map, the whoami-resolved person is the owner, and an unresolved person is a **hard stop** — never this key, which would file a new teammate's work in a colleague's folder. `effective_config.py` reports which case applies as `owner_source` (`resolved` / `unbound` / `assignee_dir_fallback` / `none`) and the answer as `owner`. |
 | `ticket_path` | template | `tickets/{assignee}/{id}` | Where a ticket folder lives. `{assignee}` `{id}` tokens; `{assignee}` is the ticket's **owner** — the whoami-resolved person for new work, or the locator's owner (`owner/id`) when named explicitly. |
 | `ticket_subdirs` | list | `[source_materials, final_deliverables, qc_queries, exploratory_analysis]` | Scaffolded per ticket. |
-| `default_epic` | string \| null | `ENG-100` | Parent epic for newly created tickets (null if tracker has no epics). |
+| `default_epic` | string \| null | `TEST-100` | Parent epic for newly created tickets (null if tracker has no epics). |
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
 | `intake` | list | `[tracker, email]` | Where work arrives; any of `tracker`, `email`, `chat`, `meetings`. Optional; **defaults to `[tracker]`** — the example shows email intake *added* (a "email carries work in" answer in the setup interview), not the default. Consumer: when `email`/`chat`/`meetings` is listed, `/ticket`'s priming step reads `source_materials/` for material a human dropped in — intake beyond the tracker arrives as files, not API calls. **`meetings`** names the AI-notetaker channel: export the notes or a curated transcript excerpt as `source_materials/YYYY-MM-DD-<slug>-meeting.md`. That name is the **committed, curated form** — trimmed to decisions and action items. Raw full transcripts stay out of git by default (`templates/gitignore.tmpl`) and are gated before any commit or docstore copy by `source_material_guard`, whose classifier (`bin/scan_source_materials.py`) matches filenames and document shape, **never meaning** — a curated summary quoting confidential material verbatim passes, so this is a gate against the bulk artifact, not a confidentiality review. |
@@ -386,10 +386,10 @@ What changes:
 
 | | `keyed` (default) | `slug` |
 |---|---|---|
-| A folder is a ticket when | its name contains a tracker key (`ENG-12`) | its whole name, after an optional leading status emoji, matches `[a-z0-9][a-z0-9_-]*` |
+| A folder is a ticket when | its name contains a tracker key (`TEST-12`) | its whole name, after an optional leading status emoji, matches `[a-z0-9][a-z0-9_-]*` |
 | The id is | the matched key | the whole folder name |
 | `key_prefix` | conventional (absent, the index falls back to matching any `LETTERS-digits`) | omit it — the banner and statusline label the repo by its directory |
-| Cross-references come from | any `ENG-1234` in the README prose | **only** `[[wiki-links]]` |
+| Cross-references come from | any `TEST-1234` in the README prose | **only** `[[wiki-links]]` |
 | Ordering | date, then ticket number, then id | date, then id (every slug scores 0 on the number) |
 
 Two consequences worth knowing before you adopt it:

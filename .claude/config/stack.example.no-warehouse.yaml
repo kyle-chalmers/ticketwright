@@ -13,8 +13,8 @@
 # Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml
 
 project:
-  key_prefix: ENG                       # display/branch convention; GitHub issue ids are bare numbers
-  key_prefixes: [ENG]
+  key_prefix: TEST                      # display/branch convention; GitHub issue ids are bare numbers
+  key_prefixes: [TEST]
   assignee_dir: ana
   ticket_path: "tickets/{assignee}/{id}"
   ticket_subdirs: [source_materials, final_deliverables, qc_queries, working_notes]
@@ -34,7 +34,7 @@ seams:
     transport: cli
     repo: "acme/analysis-repo"
     verify: "gh auth status"
-    # Folder/branch ids read ENG-<number> locally; adapter verbs take the bare issue number —
+    # Folder/branch ids read TEST-<number> locally; adapter verbs take the bare issue number —
     # see the adapter's note (key_prefix is a display/branch convention for GitHub Issues).
 
   # warehouse is deliberately omitted — this team's analysis work doesn't run through a database.

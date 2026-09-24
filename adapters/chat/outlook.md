@@ -98,7 +98,7 @@ gitignored `.claude/config/posture.local.yaml`.
 
 ## verb: draft   (the default — policy chat_default_draft, and `default_mode: draft` set explicitly)
 ```
-mcp__{mcp}__create_draft(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[ENG-123] summary>, body=<HTML body>)
+mcp__{mcp}__create_draft(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<HTML body>)
 ```
 Body rules: Outlook renders HTML — **hyperlink everything** with `<a href="URL">text</a>`: ticket
 IDs, docstore files, PRs. Honor `word_limits.chat` (<100). Name every routed recipient in the body
@@ -107,7 +107,7 @@ folder for a human to open and send.
 
 ## verb: send    (ONLY on explicit "send it"/"post it" — treat every send as final)
 ```
-mcp__{mcp}__send_mail(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[ENG-123] summary>, body=<HTML body>)
+mcp__{mcp}__send_mail(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<HTML body>)
 ```
 
 ## verb: lookup_user

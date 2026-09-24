@@ -53,7 +53,7 @@ app (Cmd+Q on macOS, File → Exit on Windows/Linux) and relaunch — a new chat
 
 ```
 /ticketwright:setup          # detects your tools, interviews you in rounds, writes the config — once per repo
-/ticketwright:ticket ENG-123 # start working
+/ticketwright:ticket TEST-123 # start working
 ```
 
 `setup` also handles repos that **already have** ticket history — it maps onto your existing
@@ -444,9 +444,9 @@ deterministic engines from a shell or CI.
 pip install ticketwright                 # zero runtime dependencies; stdlib only
 ticketwright init                        # vendor the kit into a repo (no plugin required)
 ticketwright install --runtime codex-cli # translate the skills for a non-Claude runtime
-ticketwright recall --for ENG-123        # prior-art ranking      — no Claude Code needed
+ticketwright recall --for TEST-123       # prior-art ranking      — no Claude Code needed
 ticketwright index --stats               # catalog coverage       — no Claude Code needed
-ticketwright enrich ENG-123              # curated index summary  — needs a model CLI on PATH
+ticketwright enrich TEST-123             # curated index summary  — needs a model CLI on PATH
 ```
 
 - **`recall` and `index`** are pure stdlib and run anywhere.

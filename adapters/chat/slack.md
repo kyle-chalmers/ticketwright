@@ -68,7 +68,7 @@ settings surface (app UI / server config / its owner) — record the outcome in 
 mcp__{mcp}__slack_send_message_draft(channel_id=<id or {default_channel}>, message=<body>, thread_ts=<optional>)
 ```
 Body rules: standard Markdown (the MCP tools accept markdown); **hyperlink everything** with
-`[text](URL)` — ticket IDs (`[ENG-123](https://<site>/browse/ENG-123)`), doc files, PRs. Honor `word_limits.chat` (<100).
+`[text](URL)` — ticket IDs (`[TEST-123](https://<site>/browse/TEST-123)`), doc files, PRs. Honor `word_limits.chat` (<100).
 Include `{always_include}` mentions. Resolve mentions/channels via the lookups below.
 
 ## verb: send    (ONLY on explicit "send it"/"post it")

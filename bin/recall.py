@@ -7,8 +7,8 @@ ones) against a query built from a seed ticket and/or free text / tags / object,
 score breakdown. The `/ticket --recall` command runs this, then reads the top hits and writes a reuse brief.
 
 Usage:
-  recall.py --for ENG-12 [--top 5] [--min-score N] [--json]   # query = that ticket's fields
-  recall.py --for alice/ENG-12                     # owner-qualified locator == --for ENG-12 --owner alice
+  recall.py --for TEST-12 [--top 5] [--min-score N] [--json]  # query = that ticket's fields
+  recall.py --for alice/TEST-12                    # owner-qualified locator == --for TEST-12 --owner alice
   recall.py --query "orders feed latency" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
   recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
