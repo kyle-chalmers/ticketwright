@@ -51,7 +51,7 @@ All notable changes to this project are documented here. Format loosely follows
   nothing was opened and why (stdout stays empty), and `/review` and `/build` claim a file opened
   only when handoff printed an `opened:` line for it.
 - **Switching a keyed repo to `id_mode: slug` no longer loses tickets silently.** A slug id must be
-  lowercase, so folders named with a tracker key (`tickets/alice/ENG-14`) stopped being tickets and
+  lowercase, so folders named with a tracker key (`tickets/alice/TEST-14`) stopped being tickets and
   dropped out of `INDEX.md`, `OBJECTS.md` and the graph with no message (an audit saw `OBJECTS.md`
   go from 3 objects to 0). Worse, their curated records then looked orphaned: the session banner
   recommended `/refresh index --prune`, and `--prune` deleted them. `bin/build_ticket_index.py` now

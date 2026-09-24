@@ -1786,14 +1786,14 @@ grep -q 'signup-funnel-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
 # Switching a repo that already has KEYED folders to slug mode hid them from the catalog with no word
 # said (audit: OBJECTS.md went from 3 objects to 0), and --prune then deleted their curated records as
 # "orphans" while the session banner recommended exactly that. Every surface must now say so.
-HK="$TMP/slug-hidden-keyed"; mkdir -p "$HK/.claude/config" "$HK/tickets/alice/ENG-14" "$HK/tickets/alice/notes"
+HK="$TMP/slug-hidden-keyed"; mkdir -p "$HK/.claude/config" "$HK/tickets/alice/TEST-14" "$HK/tickets/alice/notes"
 : > "$HK/.git"
-printf '# ENG-14: returns\n' > "$HK/tickets/alice/ENG-14/README.md"
+printf '# TEST-14: returns\n' > "$HK/tickets/alice/TEST-14/README.md"
 printf 'project:\n  assignee_dir: alice\n  id_mode: slug\n' > "$HK/.claude/config/stack.yaml"
-printf '{"schema_version":1,"tickets":[{"owner":"alice","id":"ENG-14","title":"returns","summary":"curated","status":"Completed"}]}\n' \
+printf '{"schema_version":1,"tickets":[{"owner":"alice","id":"TEST-14","title":"returns","summary":"curated","status":"Completed"}]}\n' \
   > "$HK/tickets/index_data.json"
 CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py >/dev/null 2>"$TMP/hk.err"
-grep -q 'WARNING: project.id_mode is slug, so 1 ticket folder(s).*alice/ENG-14' "$TMP/hk.err" \
+grep -q 'WARNING: project.id_mode is slug, so 1 ticket folder(s).*alice/TEST-14' "$TMP/hk.err" \
   && ok "slug mode names the keyed folders it hides from the catalog (stderr WARNING)" \
   || bad "slug mode hid a keyed folder without saying so" "$(cat "$TMP/hk.err")"
 CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py --check >/dev/null 2>"$TMP/hk.err"; hk_rc=$?
@@ -1811,7 +1811,7 @@ CLAUDE_PROJECT_DIR="$HK" python3 .claude/hooks/ticket_index_context.py >"$TMP/hk
   && ! grep -q 'run /refresh index --prune' "$TMP/hk.banner"; } \
   && ok "the session banner carries the warning and stops recommending --prune" \
   || bad "the session banner hides the loss or still recommends --prune" "$(cat "$TMP/hk.banner")"
-printf 'project:\n  assignee_dir: alice\n  key_prefix: ENG\n' > "$HK/.claude/config/stack.yaml"
+printf 'project:\n  assignee_dir: alice\n  key_prefix: TEST\n' > "$HK/.claude/config/stack.yaml"
 CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py >/dev/null 2>"$TMP/hk.err"
 ! grep -q 'WARNING' "$TMP/hk.err" \
   && ok "keyed mode prints no hidden-folder warning" \

@@ -438,7 +438,7 @@ KEY_SHAPED = re.compile(r"[A-Z][A-Z0-9]+-\d+")
 def hidden_keyed_folders(root: Path, cfg: dict | None = None) -> list[str]:
     """`owner/folder` for every folder slug mode skips although its name carries a tracker key.
 
-    Switching a repo that already has keyed folders (`tickets/alice/ENG-14`) to `id_mode: slug` drops
+    Switching a repo that already has keyed folders (`tickets/alice/TEST-14`) to `id_mode: slug` drops
     them from INDEX.md, OBJECTS.md and the graph, because a slug id must be lowercase. Nothing else
     says so, and `--prune` then treats their curated records as orphans. Empty in keyed mode.
     """
