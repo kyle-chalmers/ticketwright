@@ -1783,6 +1783,40 @@ grep -q 'signup-funnel-lift-analysis' "$K/tickets/INDEX.md" 2>/dev/null \
   && bad "keyed mode catalogued a keyless folder (scratch dirs would flood INDEX.md)" \
   || ok "keyed mode still skips keyless folders (default behavior unchanged)"
 
+# Switching a repo that already has KEYED folders to slug mode hid them from the catalog with no word
+# said (audit: OBJECTS.md went from 3 objects to 0), and --prune then deleted their curated records as
+# "orphans" while the session banner recommended exactly that. Every surface must now say so.
+HK="$TMP/slug-hidden-keyed"; mkdir -p "$HK/.claude/config" "$HK/tickets/alice/TEST-14" "$HK/tickets/alice/notes"
+: > "$HK/.git"
+printf '# TEST-14: returns\n' > "$HK/tickets/alice/TEST-14/README.md"
+printf 'project:\n  assignee_dir: alice\n  id_mode: slug\n' > "$HK/.claude/config/stack.yaml"
+printf '{"schema_version":1,"tickets":[{"owner":"alice","id":"TEST-14","title":"returns","summary":"curated","status":"Completed"}]}\n' \
+  > "$HK/tickets/index_data.json"
+CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py >/dev/null 2>"$TMP/hk.err"
+grep -q 'WARNING: project.id_mode is slug, so 1 ticket folder(s).*alice/TEST-14' "$TMP/hk.err" \
+  && ok "slug mode names the keyed folders it hides from the catalog (stderr WARNING)" \
+  || bad "slug mode hid a keyed folder without saying so" "$(cat "$TMP/hk.err")"
+CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py --check >/dev/null 2>"$TMP/hk.err"; hk_rc=$?
+{ [ "$hk_rc" -eq 0 ] && grep -q 'WARNING' "$TMP/hk.err"; } \
+  && ok "--check warns about hidden keyed folders but keeps its staleness exit code" \
+  || bad "--check did not warn, or changed its exit code" "rc=$hk_rc $(cat "$TMP/hk.err")"
+cp "$HK/tickets/index_data.json" "$TMP/hk.store.before"
+CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py --prune >/dev/null 2>"$TMP/hk.err"; hk_rc=$?
+{ [ "$hk_rc" -eq 1 ] && grep -q -- '--prune refused' "$TMP/hk.err" \
+  && cmp -s "$TMP/hk.store.before" "$HK/tickets/index_data.json"; } \
+  && ok "--prune refuses while slug mode hides keyed folders, and the curated store is untouched" \
+  || bad "--prune deleted (or would delete) curated records of tickets that exist on disk" "rc=$hk_rc $(cat "$TMP/hk.err")"
+CLAUDE_PROJECT_DIR="$HK" python3 .claude/hooks/ticket_index_context.py >"$TMP/hk.banner" 2>/dev/null
+{ grep -q 'WARNING: project.id_mode is slug' "$TMP/hk.banner" \
+  && ! grep -q 'run /refresh index --prune' "$TMP/hk.banner"; } \
+  && ok "the session banner carries the warning and stops recommending --prune" \
+  || bad "the session banner hides the loss or still recommends --prune" "$(cat "$TMP/hk.banner")"
+printf 'project:\n  assignee_dir: alice\n  key_prefix: TEST\n' > "$HK/.claude/config/stack.yaml"
+CLAUDE_PROJECT_DIR="$HK" python3 bin/build_ticket_index.py >/dev/null 2>"$TMP/hk.err"
+! grep -q 'WARNING' "$TMP/hk.err" \
+  && ok "keyed mode prints no hidden-folder warning" \
+  || bad "keyed mode warned about hidden keyed folders" "$(cat "$TMP/hk.err")"
+
 hdr "26 · slug ids: ordering, branch resolution, prefix-free banner"
 # ticket_number must require the id to BE a tracker key. `search` grabbed digits from anywhere, so a
 # slug ending in a year sorted as that ticket number.

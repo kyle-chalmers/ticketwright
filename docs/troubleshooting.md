@@ -159,6 +159,12 @@ name becomes the id. See `stack.example.solo.yaml` for a full config.
 Conversely, if a folder you meant as scratch work **is** appearing, you are in `slug` mode, where
 nothing is skipped for lacking a key — move it out of `tickets/`.
 
+**Switched to `slug` and your keyed tickets vanished?** A slug id must be lowercase, so folders named
+like `TEST-14` are not tickets in slug mode and drop out of `INDEX.md`, `OBJECTS.md` and the graph.
+The index build now prints a `WARNING` naming them (the session banner repeats it), and `--prune`
+refuses to run, because it would delete their curated records although the folders still exist.
+Either set `project.id_mode` back to `keyed`, or rename those folders to lowercase slug ids.
+
 ## A slug ticket's related-work links are missing
 
 In `slug` mode, cross-references come only from `[[wiki-links]]`, never from prose. Writing
