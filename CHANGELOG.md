@@ -7,6 +7,12 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- **Example tickets use the `TEST` project key.** The README's team-repo tree, the docs, the shipped
+  `stack.yaml` and every stack example, the adapter docs, the setup interview's sample config, the
+  example index store, the golden-replay template and the CLI help all showed `ENG-` (and one
+  `DEMO-`) keys; they now use `TEST-` with the same numbers, so cross-references in the examples
+  still line up. Test fixtures keep their existing keys, and `ENG-`/`DEMO-`/`TEST-`/`SAMPLE-` all
+  stay legal fixture prefixes.
 - **The README is a two-minute read.** It dropped from about 7,300 words to under 600 words of
   prose, and now shows how the system works as two diagrams (the ticket lifecycle, and how skills
   reach your tools through adapters) and what a working team repo looks like as a folder tree:

@@ -12,7 +12,7 @@ What counts as a "ticket" depends on `project.id_mode` in `.claude/config/stack.
 
   keyed (default) — any immediate sub-folder of `tickets/<owner>/` whose name contains a tracker
     key; the prefixes come from `key_prefixes`, else `key_prefix` (default: any `LETTERS-digits`).
-    Emoji-prefixed names like "☑️ ENG-12_thing" work too. Folders with no tracker key (adhoc-*,
+    Emoji-prefixed names like "☑️ TEST-12_thing" work too. Folders with no tracker key (adhoc-*,
     scratch-*, ℹ️ …) are reference/scratch work and are skipped.
   slug — the folder NAME is the id, for repos with no tracker at all. Cross-references are then
     only `[[wiki-links]]`, never bare prose (see resolve_cross_refs).
@@ -176,7 +176,7 @@ def _load_config_regex(root: Path) -> dict:
     if m:
         cfg["prefixes"] = [p.strip().strip("\"'") for p in m.group(1).split(",") if p.strip()]
     if not cfg["prefixes"]:
-        # block-list form:  key_prefixes:\n  - ENG\n  - OPS
+        # block-list form:  key_prefixes:\n  - TEST\n  - OPS
         lines = text.splitlines()
         for i, ln in enumerate(lines):
             if re.match(r"^\s*key_prefixes:\s*$", ln):
@@ -207,7 +207,7 @@ def _load_config_regex(root: Path) -> dict:
     if m and m.group(1).strip().strip("\"'").lower() in ("false", "no", "off", "0"):
         cfg["graph_config"] = False
     cfg["ticket_subdirs"] = _yaml_list(text, "ticket_subdirs")
-    # id_mode: `keyed` (default) = folder names carry a tracker key like ENG-1234.
+    # id_mode: `keyed` (default) = folder names carry a tracker key like TEST-1234.
     #          `slug`            = the folder name IS the id, for repos with no tracker at all.
     m = re.search(r"^\s*id_mode:\s*[\"']?([A-Za-z_-]+)", text, re.MULTILINE)
     if m and m.group(1).strip().lower() == "slug":
@@ -296,7 +296,7 @@ def title_prefix_regex(prefixes: list[str]) -> re.Pattern:
 
 
 def ticket_url(template: str | None, tid: str, key_re: re.Pattern | None = None) -> str | None:
-    # {id} = full key (e.g. ENG-12); {number} = trailing integer (e.g. 12), for trackers whose
+    # {id} = full key (e.g. TEST-12); {number} = trailing integer (e.g. 12), for trackers whose
     # native id is a bare number (Azure Boards, GitHub Issues) even when folders use a prefix.
     if not template:
         return None
@@ -324,7 +324,7 @@ def ticket_number(tid: str, key_re: re.Pattern | None = None) -> int:
 
 
 def ref_key(tid: str, key_re: re.Pattern | None = None):
-    """Total order for ids: tracker number first (so ENG-12 vs OPS-12 is stable), then the id
+    """Total order for ids: tracker number first (so TEST-12 vs OPS-12 is stable), then the id
     itself — which is what orders slug ids, since they all score 0."""
     return (ticket_number(tid, key_re), tid)
 
@@ -386,7 +386,7 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
     """Every ticket folder, one level under tickets/<owner>/. Cheap (few file reads).
 
     In `keyed` mode a folder qualifies by containing a tracker key, and the *matched key* is the id
-    (so `☑️ ENG-12 signup lift` → `ENG-12`). In `slug` mode the whole folder name is the id, so a repo
+    (so `☑️ TEST-12 signup lift` → `TEST-12`). In `slug` mode the whole folder name is the id, so a repo
     with no tracker at all still gets a catalog.
     """
     if key_re is None or subdirs is None or id_mode is None:
@@ -417,7 +417,7 @@ def discover(root: Path, key_re: re.Pattern | None = None, subdirs: list[str] | 
             # Two folders can reduce to one id — `foo` and `☑️ foo`. The later one wins
             # (deterministic by sort order), but say so, or a ticket that exists on disk just isn't in
             # the catalog with nothing to explain why. Slug mode only: keyed mode has always collapsed
-            # `ENG-12 a` / `ENG-12 b` silently and this change promises keyed behaviour is untouched.
+            # `TEST-12 a` / `TEST-12 b` silently and this change promises keyed behaviour is untouched.
             prior = out.get((owner, tid))
             if prior is not None and id_mode == "slug":
                 print(f"build_ticket_index: {owner}/{tid}: two folders map to one id — "
@@ -487,12 +487,12 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
                        id_mode: str = "keyed", known_ids: set[str] | None = None,
                        self_owner: str | None = None,
                        known_pairs: set[tuple[str, str]] | None = None) -> list[str]:
-    """The ticket ids a README references — bare (`ENG-12`) or owner-qualified (`alice/ENG-12`).
+    """The ticket ids a README references — bare (`TEST-12`) or owner-qualified (`alice/TEST-12`).
 
     Discovery and cross-reference resolution look like one job and are not — this is the one place
     where sharing a pattern between them is actively wrong.
 
-    A tracker key (`ENG-1234`) is self-evidently a reference wherever it appears, so `keyed` mode
+    A tracker key (`TEST-1234`) is self-evidently a reference wherever it appears, so `keyed` mode
     pattern-matches the prose and can legitimately name a ticket that has no folder here.
 
     A slug has no such shape. Any pattern loose enough to match a folder called `signup-funnel-lift` also
@@ -505,14 +505,14 @@ def resolve_cross_refs(text: str, self_id: str, key_re: re.Pattern,
     to require.
 
     OWNER-QUALIFIED REFERENCES (both modes, when `known_pairs` is supplied): a wiki-link whose last
-    two path segments name an existing (owner, id) pair — `[[bob/ENG-1]]`, `[[tickets/bob/ENG-1]]` —
-    is recorded as the qualified `bob/ENG-1`, honoring the owner the author explicitly wrote instead
+    two path segments name an existing (owner, id) pair — `[[bob/TEST-1]]`, `[[tickets/bob/TEST-1]]` —
+    is recorded as the qualified `bob/TEST-1`, honoring the owner the author explicitly wrote instead
     of re-deriving it later. The decision is PER LINK: a separate bare `[[chargeback-lift]]` next to a
     qualified `[[bob/chargeback-lift]]` is its own deliberate reference and both survive. In keyed
     mode a bare pattern hit is dropped when a qualified ref names the same id, because the qualified
     link's own text contains the key and the pattern scan cannot tell the two apart. Keyed refs may
-    always name a ticket with no folder here, and qualified ones keep that: `[[bob/ENG-999]]` stays
-    `bob/ENG-999` when `bob` is a KNOWN OWNER and the id is a full tracker key, folder or not. Any
+    always name a ticket with no folder here, and qualified ones keep that: `[[bob/TEST-999]]` stays
+    `bob/TEST-999` when `bob` is a KNOWN OWNER and the id is a full tracker key, folder or not. Any
     other `a/b` target falls through to the old leaf-reduction, so path-style links like
     `[[graph/notes]]` keep resolving exactly as before; slug mode requires the pair to exist, since
     a slug ref has no meaning without its folder.

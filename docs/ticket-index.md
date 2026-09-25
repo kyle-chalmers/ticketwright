@@ -33,8 +33,8 @@ pre-commit gate. So the model writes summaries into `index_data.json`; the rende
 Depends on `project.id_mode`.
 
 **`keyed` (default).** Any immediate sub-folder of `tickets/<owner>/` whose name contains a **tracker
-key** — the prefixes come from `stack.yaml` (`key_prefixes`, else `key_prefix`; e.g. `ENG-12`).
-Emoji-prefixed names like `☑️ ENG-12_thing` work too (`☑️` = done, `🛠️` = in progress — an optional
+key** — the prefixes come from `stack.yaml` (`key_prefixes`, else `key_prefix`; e.g. `TEST-12`).
+Emoji-prefixed names like `☑️ TEST-12_thing` work too (`☑️` = done, `🛠️` = in progress — an optional
 convention). Folders with **no** tracker key are treated as reference/scratch work and skipped (e.g.
 `adhoc-*`, `scratch-*`, `ℹ️ notes`).
 
@@ -50,9 +50,9 @@ don't keep both.
 
 Owner is part of a ticket's identity, and one grammar names a ticket everywhere:
 
-- **`owner/id`** — the CLI and display form (`alice/ENG-12`, `dana/signup-funnel-lift`). A bare
+- **`owner/id`** — the CLI and display form (`alice/TEST-12`, `dana/signup-funnel-lift`). A bare
   **`id`** is allowed whenever exactly one owner has it. Every engine takes it:
-  `enrich_ticket.py alice/ENG-12`, `recall.py --for alice/ENG-12` (equivalent to `--owner alice`).
+  `enrich_ticket.py alice/TEST-12`, `recall.py --for alice/TEST-12` (equivalent to `--owner alice`).
 - **A bare id two or more owners share is a hard stop** naming every owner and the qualified
   spellings — a CLI never picks one, and never operates on all of them. (`recall.py` established
   this discipline with `--owner`; `enrich_ticket.py` exits 3 the same way instead of its old
@@ -77,7 +77,7 @@ Owner is part of a ticket's identity, and one grammar names a ticket everywhere:
 ### Cross-references
 
 In `keyed` mode a cross-reference is any tracker key found in a README's prose, so the index can name
-a ticket that has no folder here (`blocked by ENG-999`).
+a ticket that has no folder here (`blocked by TEST-999`).
 
 In `slug` mode it is **only** a `[[wiki-link]]` naming a ticket that exists. This is not a shortcut:
 a slug is free to be an ordinary phrase, so pattern-matching prose would turn stray words like
@@ -91,7 +91,7 @@ consulted — earlier attempts at that kept leaking images, external URLs and es
 - `key_prefix` / `key_prefixes` — which tracker keys the index recognizes in folder names. Not
   needed under `id_mode: slug`.
 - `ticket_url_template` — e.g. `https://acme.atlassian.net/browse/{id}`; how `INDEX.md`/`OBJECTS.md`
-  link each ticket. `{id}` = full key (`ENG-12`); `{number}` = trailing integer (for Azure Boards /
+  link each ticket. `{id}` = full key (`TEST-12`); `{number}` = trailing integer (for Azure Boards /
   GitHub Issues whose native id is a bare number). Omit/`null` to drop the `↗` link.
 
 ## Prior-art recall & the object reverse-index
@@ -178,8 +178,8 @@ Upgrade the closed ticket's row from auto-derived to curated, then commit. One c
 README, writes the summary via the runtime's model command, ingests, re-renders):
 
 ```bash
-python3 bin/enrich_ticket.py ENG-123      # or --branch to use the current branch's id
-python3 bin/enrich_ticket.py alice/ENG-123   # the owner/id locator, when two owners share the id
+python3 bin/enrich_ticket.py TEST-123     # or --branch to use the current branch's id
+python3 bin/enrich_ticket.py alice/TEST-123  # the owner/id locator, when two owners share the id
 ```
 
 A bare id under multiple owners is a hard stop (exit 3) naming them — pass `owner/id` to pick one.

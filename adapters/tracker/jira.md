@@ -48,7 +48,7 @@ grant in the connector's own settings surface (OAuth consent / server config / i
 record the outcome in gitignored `.claude/config/posture.local.yaml`.
 
 ## verb: fetch_ticket
-**In:** `id` (e.g. `ENG-1234`). **Out:** title, description, status, type, assignee, links.
+**In:** `id` (e.g. `TEST-1234`). **Out:** title, description, status, type, assignee, links.
 ```bash
 acli jira workitem view <id>
 ```
@@ -114,7 +114,7 @@ acli jira workitem search --json --limit <scan_cap> \
 **Group by the issue key's prefix, and take `last_activity` from the ordering — not from fields.**
 `acli jira workitem search` does not accept a field selector on every build, so do not assume a
 `project` or `updated` column is present. Both are recoverable without one: every Jira key is
-`<PROJECT>-<number>` (`ENG-1234` ⇒ project `ENG`), and the JQL already sorts `updated DESC`, so the
+`<PROJECT>-<number>` (`TEST-1234` ⇒ project `TEST`), and the JQL already sorts `updated DESC`, so the
 **first** row bearing a project's prefix is that project's most recent activity. Row count per
 prefix is `activity`.
 

@@ -19,12 +19,12 @@
 # Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.multi-audience.yaml
 
 project:
-  key_prefix: ENG
-  key_prefixes: [ENG]
+  key_prefix: TEST
+  key_prefixes: [TEST]
   assignee_dir: alice
   ticket_path: "tickets/{assignee}/{id}"
   ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
-  default_epic: ENG-100
+  default_epic: TEST-100
   terminal_status: Done
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}

@@ -31,7 +31,7 @@ the scope, the deliverables and the open questions — read it first and do not 
    become `/review`'s checklist, and its **dev target** is `seams.warehouse.dev_target`, else the key
    the warehouse adapter names in its `dev_key:` frontmatter. Set the plan's `spec:` line to the path
    it will be written to, `<ticket-dir>/specs/<id>-<slug>.md`, spelled out from the repo root (for
-   example `tickets/alice/ENG-130/specs/ENG-130-returns.md`) so `/build` cannot resolve it anywhere
+   example `tickets/alice/TEST-130/specs/TEST-130-returns.md`) so `/build` cannot resolve it anywhere
    else. Like the plan, it is drafted now and written to the ticket only at `/ticket` step 12, after
    approval.
 4. **Reduce assumptions:** add the spec's open questions to the plan's list — `/ticket` asks them all

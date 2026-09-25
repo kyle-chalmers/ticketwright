@@ -93,16 +93,16 @@ gitignored `.claude/config/posture.local.yaml`.
 
 ## verb: draft   (the default — policy chat_default_draft, and `default_mode: draft` set explicitly)
 ```
-mcp__{mcp}__create_draft(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[ENG-123] summary>, body=<body>)
+mcp__{mcp}__create_draft(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<body>)
 ```
 Body rules: plain text or simple HTML; **hyperlink everything** — ticket IDs
-(`[ENG-123](https://<site>/browse/ENG-123)`), docstore files, PRs. Honor `word_limits.chat` (<100).
+(`[TEST-123](https://<site>/browse/TEST-123)`), docstore files, PRs. Honor `word_limits.chat` (<100).
 Name every routed recipient in the body too (`--check-draft` reads the draft, not the API call).
 The draft sits in `{identity}`'s Drafts folder for a human to open and send.
 
 ## verb: send    (ONLY on explicit "send it"/"post it" — an email cannot be unsent)
 ```
-mcp__{mcp}__send_message(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[ENG-123] summary>, body=<body>)
+mcp__{mcp}__send_message(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<body>)
 ```
 
 ## verb: lookup_user

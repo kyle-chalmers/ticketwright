@@ -88,6 +88,6 @@ whether the repo tracks status by label, by Projects field, or by open/closed.
 Return `unavailable` with the reason when `gh auth status` fails or the token lacks org read scope.
 
 ## gotchas
-- Ids are bare numbers — `fetch_ticket` takes `123`, not `ENG-123`.
+- Ids are bare numbers — `fetch_ticket` takes `123`, not `TEST-123`.
 - "Status" is open/closed unless you adopt a Projects Status field or label convention — set
   `done_label` (or map terminal_status → closed) so `transition` is unambiguous.

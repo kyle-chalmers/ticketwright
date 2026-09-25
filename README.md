@@ -87,10 +87,10 @@ your-repo/
     ├── OBJECTS.md             # table or view -> tickets that touched it  (auto)
     ├── graph/  objects/       # Obsidian nodes for tickets and tables     (auto)
     ├── bob/
-    │   └── ENG-118/           # returns baseline, shipped last month
+    │   └── TEST-118/          # returns baseline, shipped last month
     └── alice/
-        ├── ENG-127/           # shipped
-        └── ENG-130/           # in progress, builds on bob's ENG-118
+        ├── TEST-127/          # shipped
+        └── TEST-130/          # in progress, builds on bob's TEST-118
             ├── README.md              /ticket   business context, every assumption
             ├── plan.md                /ticket   the plan you approved
             ├── specs/                 /ticket   the spec, when the plan calls for one
@@ -103,7 +103,7 @@ your-repo/
 
 Nobody maintains the catalog by hand. `/ship` files each finished ticket into `INDEX.md`,
 `OBJECTS.md` and the graph, and `/ticket` searches every owner's past work, not only yours. When
-Alice's ENG-130 mentions Bob's ENG-118, the two are linked, so her reviewer can trace the numbers
+Alice's TEST-130 mentions Bob's TEST-118, the two are linked, so her reviewer can trace the numbers
 back to his. A new teammate adds one `people/` file and gets their own folder. Nothing else changes.
 
 ## How work flows

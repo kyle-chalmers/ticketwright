@@ -233,7 +233,7 @@ deliverables open for human sign-off at `/review` only."
 
 ```yaml
 project:
-  key_prefix: ENG
+  key_prefix: TEST
   assignee_dir: alice
   ticket_path: "tickets/{assignee}/{id}"
   terminal_status: Done

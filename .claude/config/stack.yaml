@@ -13,12 +13,12 @@
 # stack.example.no-warehouse.yaml (no warehouse seam — document/report deliverables).
 
 project:
-  key_prefix: ENG                       # ticket-ID prefix; branch names = {key_prefix}-NNNN
-  key_prefixes: [ENG]                   # prefixes the ticket index recognizes (defaults to [key_prefix])
+  key_prefix: TEST                      # ticket-ID prefix; branch names = {key_prefix}-NNNN
+  key_prefixes: [TEST]                  # prefixes the ticket index recognizes (defaults to [key_prefix])
   assignee_dir: alice                   # default owner subdir under tickets/
   ticket_path: "tickets/{assignee}/{id}"
   ticket_subdirs: [source_materials, final_deliverables, qc_queries, exploratory_analysis]
-  default_epic: ENG-100                 # parent epic for new tickets (or null if the tracker has no epics)
+  default_epic: TEST-100                # parent epic for new tickets (or null if the tracker has no epics)
   terminal_status: Done                 # the workflow's "done" state (not always "Done")
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
   # intake: [tracker]                   # where work arrives (tracker | email | chat); email/chat intake = forwarded threads in source_materials/

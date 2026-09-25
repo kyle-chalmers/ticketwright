@@ -9,7 +9,7 @@ auth: |
   The Linear MCP server (`{mcp}`) must be connected (OAuth).
   Verify: a read-only issue/team query returns without error.
 note: |
-  Linear has first-class issue identifiers (e.g. ENG-123) — a natural fit for project.key_prefix and
+  Linear has first-class issue identifiers (e.g. TEST-123) — a natural fit for project.key_prefix and
   branch names (Linear even suggests `username/eng-123-slug`). "Epic" ≈ a **Project** or a parent
   issue; "status" = workflow **state** (Backlog / Todo / In Progress / Done / Canceled).
 ---
@@ -44,7 +44,7 @@ settings surface (OAuth consent / server config / its owner) — record the outc
 `.claude/config/posture.local.yaml`.
 
 ## verb: fetch_ticket
-**In:** issue id (e.g. `ENG-123`). **Out:** title, description (markdown), state, assignee, labels,
+**In:** issue id (e.g. `TEST-123`). **Out:** title, description (markdown), state, assignee, labels,
 attachments, parent/project.
 ```
 mcp__{mcp}__get-issue(id=<id>)
@@ -67,7 +67,7 @@ Fetch the team's states once to map `project.terminal_status` → `{done_state_i
 ```
 create-comment(issueId=<id>, body=<markdown>)
 ```
-Linear comments support full markdown links — `[ENG-123](url)`, file links, PR links. Honor
+Linear comments support full markdown links — `[TEST-123](url)`, file links, PR links. Honor
 `word_limits.tracker_comment`; never post before human review.
 
 ## verb: search

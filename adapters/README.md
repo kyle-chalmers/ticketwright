@@ -10,7 +10,7 @@ skill  ──calls──▶  verb (e.g. tracker.fetch_ticket)
    stack.yaml ──picks──▶ adapter (tracker/jira.md)
                      │
                      ▼
-            concrete command (acli jira workitem view ENG-123)
+            concrete command (acli jira workitem view TEST-123)
 ```
 
 A skill resolves a verb like this:
@@ -324,7 +324,7 @@ did. The schema:
                                        # as applied (+ the shipper when include_self is set)
     docstore:
       target: archive                  # chosen docstore target (null when single)
-      destination: "Shared drives/Tickets/ENG-1234 example-analysis"
+      destination: "Shared drives/Tickets/TEST-1234 example-analysis"
       sharing_scope: team              # declared scope of the destination: team | org | external
     deliverables:                      # OPTIONAL: per-file classification, when one ticket holds
       - file: final_deliverables/summary.pdf     # both an internal working file and a client-facing

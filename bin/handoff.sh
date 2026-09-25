@@ -7,7 +7,7 @@
 #
 # Usage:
 #   bin/handoff.sh [--dry-run] [--reveal] PATH [PATH ...]
-#   bin/handoff.sh --dry-run tickets/alice/ENG-1/final_deliverables/out.csv
+#   bin/handoff.sh --dry-run tickets/alice/TEST-1/final_deliverables/out.csv
 #
 #   --dry-run  resolve routes and print the commands; never launch anything
 #   --reveal   show each path in the OS file manager instead of opening it

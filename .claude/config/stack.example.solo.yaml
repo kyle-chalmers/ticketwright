@@ -5,7 +5,7 @@
 # the unit of work, and its README.md is the ticket.
 #
 # Two settings carry that: `tracker: local` (the tracker verbs read and write the folder itself) and
-# `id_mode: slug` (the folder name is the id, instead of a tracker key like ENG-1234). Chat and
+# `id_mode: slug` (the folder name is the id, instead of a tracker key like TEST-1234). Chat and
 # docstore are simply absent — /ship skips those artifacts and names the /setup command that would
 # enable them, rather than blocking.
 #

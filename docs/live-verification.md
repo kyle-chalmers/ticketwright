@@ -171,7 +171,7 @@ recorded.
 
 **Stage B — the criterion proper.** In a **fresh** repo, with the improved installer:
 `ticketwright install --runtime codex-cli`, trust the hooks by hash (an interactive approval is
-not a hand-edit), run the setup skill, open a fixture analysis (e.g. `DEMO-101`), review it, ship
+not a hand-edit), run the setup skill, open a fixture analysis (e.g. `TEST-101`), review it, ship
 it. Count hand-edited files. **The count must be zero**, and the guard must be observed
 intercepting the flow's destructive statements (a lifecycle that never traversed the hook proves
 nothing about it).
