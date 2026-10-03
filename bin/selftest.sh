@@ -787,6 +787,19 @@ for a in configure-workspace onboard-teammate start-ticket qc-review deliver-tic
   [ -f ".claude/commands/$a.md" ] && al_bad="$al_bad $a"
 done
 [ -z "$al_bad" ] && ok "12 deprecated v1 alias stubs removed (v3)" || bad "v1 alias stub still present:$al_bad"
+# A fresh plugin install gets exactly what this tree ships, so a retired name must not exist as a
+# skill or command ANYWHERE in it: the plugin's skills/ and commands/ (symlinks into .claude/), and
+# every emitted runtime fixture. The list comes from bin/retired_skills.py, never a second copy.
+rs_list="$(python3 -c "import sys; sys.path.insert(0,'bin'); import retired_skills as r; print(' '.join(r.RETIRED_SKILLS))" 2>/dev/null)"
+rs_ship=""
+[ -n "$rs_list" ] || rs_ship="could not read RETIRED_SKILLS"
+for r in $rs_list; do
+  for d in .claude/skills/$r .claude/commands/$r.md skills/$r commands/$r.md tests/emit/*/.agents/skills/$r tests/emit/*/*/skills/$r; do
+    [ -e "$d" ] && rs_ship="$rs_ship $d"
+  done
+done
+[ -z "$rs_ship" ] && ok "a fresh plugin install ships no retired skill or command ($rs_list)" \
+  || bad "a retired skill would reach a fresh install" "$rs_ship"
 
 hdr "15 · plugin manifest (Claude Code plugin packaging)"
 python3 -c "import json; m=json.load(open('.claude-plugin/plugin.json')); assert m['name']=='ticketwright' and m.get('version') and 'hooks' in m" 2>/dev/null \
