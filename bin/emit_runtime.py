@@ -62,6 +62,7 @@ from pathlib import Path
 # never the project root).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kit_paths  # noqa: E402
+from retired_skills import prune_retired  # noqa: E402
 
 CANONICAL_SKILLS = ".claude/skills"
 CANONICAL_AGENTS = ".claude/agents"
@@ -397,25 +398,6 @@ def report_foreign(foreign: list[Path]) -> int:
     return 2 if foreign else 0
 
 
-# Skills that USED to ship and no longer do. Neither this emitter nor `ticketwright init` prunes:
-# both only ever write. So an install that predates a rename keeps the old skill directory sitting
-# next to the new one — same description, both model-invocable, and the stale copy points at a
-# template path that no longer exists, so it fails AFTER its hard halt has already been cleared.
-# We WARN and never delete: removing files a user may have edited is not this tool's call.
-RETIRED_SKILLS = ("productize", "spec-and-build")
-
-
-def warn_retired_skills(root: Path, label: str) -> None:
-    """Name any retired skill directory still present. Never deletes."""
-    for name in RETIRED_SKILLS:
-        stale = root / name
-        if stale.is_dir():
-            print(f"  WARNING: {stale} is a RETIRED skill left over from an older version. It was "
-                  f"renamed, not removed, so this install now has both. Delete that directory — "
-                  f"nothing here will do it for you, and while it exists an agent may pick the "
-                  f"stale copy ({label}).", file=sys.stderr)
-
-
 def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
                 foreign: list[Path]) -> list[str]:
     """Translate every canonical skill into emit_root. Returns the names emitted."""
@@ -470,7 +452,9 @@ def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
     if other:
         print(f"  note: display-only source keys dropped (nothing a reader loses): {', '.join(other)}.")
     print("  hand-copying these files between runtime layouts is unsupported — re-run this install to update.")
-    warn_retired_skills(emit_root, f"emitted tree for {tool}")
+    # A retired skill this emitter (or an older one) wrote is ours to remove; an edited one is
+    # only named. The rule and the shipped-version hashes live in bin/retired_skills.py.
+    prune_retired(emit_root, f"emitted tree for {tool}", is_ours=lambda t: PROVENANCE_MARK in t)
     return emitted
 
 
@@ -573,7 +557,8 @@ def verify_native(project: Path, tool: str) -> int:
               "emits anything under .claude/.")
         # A vendored copy is upgraded by git pull, which prunes nothing: the retired-skill warning
         # has to fire on the verify path too, or a native reader keeps both copies unannounced.
-        warn_retired_skills(project / ".claude" / "skills", f"canonical copy read by {tool}")
+        # Verify-only writes nothing, so it names the remedy rather than applying it.
+        prune_retired(project / ".claude" / "skills", f"canonical copy read by {tool}", remove=False)
         return 0
     plugin = kit_paths._plugin_kit(project)
     if plugin:
@@ -613,7 +598,7 @@ def verify_foreign(kit: Path, project: Path, fm: dict, tool: str, version: str) 
     print(f"{tool}: verify-only — {tool} reads the canonical {CANONICAL_SKILLS}/ copy natively; "
           f"found {len(skills)} skills at {project / '.claude' / 'skills'}. Emitting a translated "
           f"duplicate could silently shadow the canonical copy, so nothing is emitted.")
-    warn_retired_skills(project / ".claude" / "skills", f"canonical copy read by {tool}")
+    prune_retired(project / ".claude" / "skills", f"canonical copy read by {tool}", remove=False)
     caveat = fm.get("foreign_skills_caveat", "")
     if caveat:
         print(f"  caveat    {caveat}")

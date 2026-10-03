@@ -7,6 +7,16 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- **Upgrades now remove retired skills instead of only warning about them.** A repo installed
+  before the `productize` → `skillify` or `spec-and-build` → `build` rename kept the old skill
+  directory, so `/productize` and `/spec-and-build` still showed up in the slash menu beside their
+  replacements. `ticketwright init` and `ticketwright install --runtime <name>` now delete a retired
+  directory when every file in it is byte-identical to a version Ticketwright shipped (or, in an
+  emitted tree, still carries the installer's provenance header), and print what they removed. A
+  directory with anything edited is kept, and the warning now names the files that differ. A
+  vendored copy upgraded with `git pull` can run the same check with `bash bin/tw retired_skills.py`.
+  The verify-only paths still delete nothing. The rule and the list of shipped-version hashes live
+  in one place, `bin/retired_skills.py`, which both installers import.
 - **Example tickets use the `TEST` project key.** The README's team-repo tree, the docs, the shipped
   `stack.yaml` and every stack example, the adapter docs, the setup interview's sample config, the
   example index store, the golden-replay template and the CLI help all showed `ENG-` (and one

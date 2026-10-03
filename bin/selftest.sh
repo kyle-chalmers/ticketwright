@@ -9303,26 +9303,109 @@ grep -q 'productize' "$RM_TMPL" \
   && bad "the README template still advertises the retired 'productize' command" \
   || ok "the README template advertises no retired skill name"
 
-# (g) BOTH install paths warn about a retired skill directory an upgrade cannot prune. Neither
-#     `ticketwright init` nor emit_runtime deletes anything, so a renamed skill leaves the old
-#     directory beside the new one — same description, both model-invocable, and the stale copy
-#     points at a template path that no longer exists. The warning is the only thing standing
-#     between a user and an agent picking the dead copy.
+# (g) BOTH install paths clear a retired skill directory an upgrade leaves behind. Neither
+#     `ticketwright init` nor emit_runtime mirrors the kit, so a renamed skill leaves the old
+#     directory beside the new one: same description, both model-invocable, both in the `/` menu,
+#     and the stale copy points at a template path that no longer exists. ONE module owns the list
+#     and the removal rule; a second copy of the list is how the two installers drifted before.
 rt_bad=""
-grep -q 'RETIRED_SKILLS' bin/emit_runtime.py || rt_bad="$rt_bad emit_runtime"
-grep -qi 'retired' ticketwright/cli.py || rt_bad="$rt_bad cli.py"
-grep -q 'productize' docs/troubleshooting.md || rt_bad="$rt_bad troubleshooting"
+grep -q 'from retired_skills import prune_retired' bin/emit_runtime.py || rt_bad="$rt_bad emit_runtime"
+grep -q 'from retired_skills import prune_retired' ticketwright/cli.py || rt_bad="$rt_bad cli.py"
+grep -q 'RETIRED_SKILLS *=' bin/emit_runtime.py ticketwright/cli.py && rt_bad="$rt_bad duplicated-list"
+grep -q '"spec-and-build"' bin/retired_skills.py && grep -q '"productize"' bin/retired_skills.py \
+  || rt_bad="$rt_bad retired_skills-list"
+grep -q 'productize' docs/troubleshooting.md && grep -q 'spec-and-build' docs/troubleshooting.md \
+  || rt_bad="$rt_bad troubleshooting"
 [ -z "$rt_bad" ] \
-  && ok "both install paths + the docs name a retired skill dir an upgrade leaves behind" \
-  || bad "a retired skill directory would survive an upgrade unannounced" "$rt_bad"
-# spec-and-build → build rides the same mechanism: both lists and the troubleshooting page.
-rt2_bad=""
-grep -q '"spec-and-build"' bin/emit_runtime.py || rt2_bad="$rt2_bad emit_runtime"
-grep -q '"spec-and-build"' ticketwright/cli.py || rt2_bad="$rt2_bad cli.py"
-grep -q 'spec-and-build' docs/troubleshooting.md || rt2_bad="$rt2_bad troubleshooting"
-[ -z "$rt2_bad" ] \
-  && ok "the spec-and-build → build rename is named as RETIRED in both installers and the docs" \
-  || bad "spec-and-build would survive an upgrade beside build/ unannounced" "$rt2_bad"
+  && ok "both installers import bin/retired_skills.py (one list, one rule) and the docs name both renames" \
+  || bad "a retired skill directory would survive an upgrade, or the list is duplicated" "$rt_bad"
+
+# (h) the removal rule, behaviorally. A retired directory is deleted ONLY when every file is
+#     provably ours and unedited (a shipped hash, or the emitter's provenance header in an emitted
+#     tree); an edited copy is kept and named; verify-only mode deletes nothing; a current skill is
+#     never touched. Hashes are injected so the test needs no git history.
+cat >"$TMP/rs_case.py" <<'PY'
+import hashlib, io, sys, contextlib
+from pathlib import Path
+sys.path.insert(0, "bin")
+import retired_skills as rs
+root = Path(sys.argv[1])
+def mk(rel, text):
+    f = root / rel; f.parent.mkdir(parents=True, exist_ok=True); f.write_text(text, encoding="utf-8")
+    return hashlib.sha256(text.encode()).hexdigest()
+fails = []
+# (1) unedited -> removed; current build/ untouched
+h1 = mk("a/spec-and-build/SKILL.md", "shipped body\n"); mk("a/build/SKILL.md", "current\n")
+(root / "a/spec-and-build/.DS_Store").write_bytes(b"\0")
+with contextlib.redirect_stdout(io.StringIO()):
+    rs.prune_retired(root / "a", "t", shipped={h1})
+if (root / "a/spec-and-build").exists(): fails.append("unedited copy not removed")
+if not (root / "a/build/SKILL.md").exists(): fails.append("current skill touched")
+# (2) edited -> kept, and the warning names the file
+h2 = mk("b/productize/SKILL.md", "shipped\n"); mk("b/productize/authoring.md", "edited by a user\n")
+err = io.StringIO()
+with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+    rs.prune_retired(root / "b", "t", shipped={h2})
+if not (root / "b/productize").exists(): fails.append("edited copy deleted")
+if "authoring.md" not in err.getvalue(): fails.append("warning does not name the edited file")
+# (3) emitted tree: provenance-marked SKILL.md counts as ours only when is_ours is passed
+mk("c/spec-and-build/SKILL.md", "<!-- emitted by ticketwright install v1.0.0 -->\nbody\n")
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    rs.prune_retired(root / "c", "t", shipped=set())
+    if not (root / "c/spec-and-build").exists(): fails.append("provenance honored without is_ours")
+    rs.prune_retired(root / "c", "t", shipped=set(), is_ours=lambda t: "emitted by ticketwright install v" in t)
+if (root / "c/spec-and-build").exists(): fails.append("provenance-marked emitted copy not removed")
+# (4) verify-only: same verdict, nothing deleted
+h4 = mk("d/spec-and-build/SKILL.md", "shipped\n")
+with contextlib.redirect_stderr(io.StringIO()):
+    rs.prune_retired(root / "d", "t", shipped={h4}, remove=False)
+if not (root / "d/spec-and-build").exists(): fails.append("verify-only mode deleted")
+# (5) a symlinked retired dir is named, never followed or deleted through
+import os
+(root / "e-real").mkdir(); (root / "e").mkdir(); os.symlink(root / "e-real", root / "e/productize")
+err = io.StringIO()
+with contextlib.redirect_stderr(err):
+    rs.prune_retired(root / "e", "t", shipped=set())
+if not (root / "e/productize").is_symlink() or "symlink" not in err.getvalue():
+    fails.append("symlinked retired dir not kept + named")
+# (6) an unreadable file keeps the dir and never raises (root reads everything, so skip there)
+if os.geteuid() != 0:
+    h6 = mk("f/productize/SKILL.md", "shipped\n"); mk("f/productize/x.md", "?\n")
+    os.chmod(root / "f/productize/x.md", 0)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            rs.prune_retired(root / "f", "t", shipped={h6})
+        if not (root / "f/productize").exists(): fails.append("unreadable file's dir deleted")
+    except Exception as e:
+        fails.append(f"prune_retired raised {type(e).__name__}")
+    finally:
+        os.chmod(root / "f/productize/x.md", 0o644)
+print("; ".join(fails) if fails else "ok")
+PY
+rs_out="$TMP/rs_case.out"; mkdir -p "$TMP/rs_root"
+python3 "$TMP/rs_case.py" "$TMP/rs_root" >"$rs_out" 2>&1
+[ "$(cat "$rs_out")" = "ok" ] \
+  && ok "retired_skills: unedited removed; edited, symlinked or unreadable kept + named; provenance only in emitted trees; verify-only deletes nothing" \
+  || bad "the retired-skill removal rule is wrong" "$(cat "$rs_out")"
+
+# (i) the frozen hash set is exactly the shipped history, whenever that history is present. A
+#     shallow CI clone cannot answer, so it says so instead of passing or failing on no evidence.
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "false" ] \
+   && git rev-parse -q --verify origin/main >/dev/null 2>&1; then
+  git rev-list origin/main -- .claude/skills/productize .claude/skills/spec-and-build >"$TMP/rs_commits" 2>/dev/null
+  : >"$TMP/rs_hist"
+  while read -r c; do
+    git ls-tree -r "$c" -- .claude/skills/productize .claude/skills/spec-and-build | awk '{print $3}'
+  done <"$TMP/rs_commits" | sort -u | while read -r b; do
+    git cat-file blob "$b" | python3 -c "import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())"
+  done | sort -u >"$TMP/rs_hist"
+  python3 -c "import sys; sys.path.insert(0,'bin'); import retired_skills as r; print('\n'.join(sorted(r.SHIPPED_SHA256)))" >"$TMP/rs_frozen"
+  diff "$TMP/rs_hist" "$TMP/rs_frozen" >/dev/null 2>&1 \
+    && ok "SHIPPED_SHA256 matches every retired-skill blob in main's history" \
+    || bad "SHIPPED_SHA256 drifted from main's history (regenerate it; the command is in bin/retired_skills.py)"
+else
+  ok "SHIPPED_SHA256 history check skipped: shallow clone or no origin/main (nothing to compare against)"
+fi
 
 hdr "55 · plugin doctor: every install state is NAMED, and no probe touches a real CLI"
 # The gap this exists for: registering a marketplace is not installing a plugin, and five distinct
@@ -10160,7 +10243,7 @@ grep -q 'SKIPPED' templates/ticket-README.md.tmpl \
   || bad "the banner or architecture.md still describes the old lifecycle"
 left56="$(grep -rl 'spec-and-build' --exclude-dir=.git --exclude-dir=emit --exclude-dir=__pycache__ \
           --exclude-dir=.ai-friend-review . 2>/dev/null \
-          | grep -v 'CHANGELOG.md\|docs/troubleshooting.md\|bin/emit_runtime.py\|ticketwright/cli.py\|bin/selftest.sh\|ROADMAP.md' || true)"
+          | grep -v 'CHANGELOG.md\|docs/troubleshooting.md\|bin/retired_skills.py\|bin/emit_runtime.py\|ticketwright/cli.py\|bin/selftest.sh\|ROADMAP.md' || true)"
 [ -z "$left56" ] && ok "spec-and-build survives only in history, the rename map, the RETIRED lists, and this suite" \
   || bad "the retired skill name is still on the adoption surface" "$left56"
 if grep -rq 'v4\.1' docs README.md templates .claude bin --exclude=selftest.sh 2>/dev/null; then
@@ -10201,9 +10284,10 @@ PY56
 grep -q 'reference file, verbatim' bin/emit_runtime.py \
   && ok "emit_runtime.py emits reference files verbatim alongside each SKILL.md" \
   || bad "emit_runtime.py still emits SKILL.md alone"
-[ "$(grep -c 'warn_retired_skills(' bin/emit_runtime.py)" -ge 4 ] \
-  && ok "the retired-skill warning fires on the emit path AND both verify-only paths" \
-  || bad "a verify-only install can keep a retired skill directory beside the new one unannounced"
+{ [ "$(grep -c 'prune_retired(.*is_ours=' bin/emit_runtime.py)" -eq 1 ] \
+  && [ "$(grep -c 'prune_retired(.*remove=False)' bin/emit_runtime.py)" -eq 2 ]; } \
+  && ok "the retired-skill check runs on the emit path (prunes) AND both verify-only paths (names, deletes nothing)" \
+  || bad "a verify-only install can keep a retired skill directory unannounced, or a verify path deletes"
 # (i) a spec lives WITH its ticket, and its path says so. /ticket writes <ticket-dir>/specs/, but the
 # plan's `spec:` line once read a bare `specs/<id>-<slug>.md` while /setup also created an empty
 # repo-root specs/, so the same path named two places depending on where /build resolved it.
