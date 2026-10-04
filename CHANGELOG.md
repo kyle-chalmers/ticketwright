@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.2.0] — 2026-10-03
+
 ### Changed
 - **Upgrades now remove retired skills instead of only warning about them.** A repo installed
   before the `productize` → `skillify` or `spec-and-build` → `build` rename kept the old skill
