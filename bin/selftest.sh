@@ -7088,7 +7088,7 @@ python3 "$SCAN" --root "$LIM48" >/dev/null 2>&1 \
   || ok "an INCOMPLETE scan exits non-zero (it does not certify the tree)"
 g_lim="$(printf '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"%s\"}' "$LIM48" \
   | python3 .claude/hooks/source_material_guard.py 2>/dev/null)"
-grep -q '\"permissionDecision\": \"ask\"' <<<"$g_lim" && grep -qi 'did NOT cover' <<<"$g_lim" \
+grep -q '\"permissionDecision\": \"ask\"' <<<"$g_lim" && grep -qi 'too many files to check' <<<"$g_lim" \
   && ok "the guard ASKS on incomplete coverage, naming it as coverage rather than a finding" \
   || bad "incomplete coverage passes the guard silently" "$g_lim"
 
@@ -10638,6 +10638,72 @@ rm -f "$T59/qc_queries/1_review_verdict.md"
   && python3 "$PL59" --text "$TMP/pl59-unread.txt" > "$TMP/pl59-unread.out" 2>&1 \
   && ok "review guard: an unreadable review file is explained in plain words (ask reason and CLI line)" \
   || bad "unreadable-review message uses internal terms or was not captured" "$(head -4 "$TMP/pl59-unread.out") $(cat "$TMP/pl59-unread.txt")"
+
+# Source-material (raw transcript) guard and the other-runtime shim's database and internal-error
+# paths: captures from the guard and the shim, then the guard's failure branches.
+mkdir -p "$T59/source_materials"
+cp tests/source_materials/fixtures/2026-08-20-roadmap-sync-meeting.md "$T59/source_materials/"
+# The shim only reaches a database gate when a warehouse tool slot exists (as in section 43),
+# so the database payloads use their own fixture and leave $R59's stack untouched.
+RW59="$TMP/s59w"; mkdir -p "$RW59/.claude/config"
+printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' > "$RW59/.claude/config/stack.yaml"
+( cd "$RW59" && git init -q . ) 2>/dev/null
+: > "$TMP/pl59-sm.txt"
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/source_material_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' "$(pay59 'cp -r tickets /tmp/backup')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/source_material_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' "$(pay59 'git add -A' ',"permission_mode":"bypassPermissions"')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/source_material_guard.py \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("systemMessage",""))' >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook source_material_guard >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \\"DROP TABLE t\\""},"cwd":"%s"}' "$RW59" \
+  | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' '{"tool_name":"Bash"}' | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard --root "$R59" >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' 'this is not json' | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard --root "$R59" >> "$TMP/pl59-sm.txt" 2>/dev/null
+[ "$(grep -c . "$TMP/pl59-sm.txt")" -ge 7 ] && python3 "$PL59" --text "$TMP/pl59-sm.txt" > "$TMP/pl59-sm.out" 2>&1 \
+  && ok "source-material guard and the shim's database paths lead in plain words" \
+  || bad "source-material or shim messages use internal terms or were not captured" "$(head -5 "$TMP/pl59-sm.out") lines=$(grep -c . "$TMP/pl59-sm.txt")"
+# The shim's database deny was silent without a warehouse tool slot: pin that it is produced.
+printf '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \\"DROP TABLE t\\""},"cwd":"%s"}' "$RW59" \
+  | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard > "$TMP/pl59-shimdb.txt" 2>/dev/null
+grep -q "can't ask for approval" "$TMP/pl59-shimdb.txt" && grep -q 'Details:' "$TMP/pl59-shimdb.txt" \
+  && ok "shim database deny is produced (non-empty) and says the tool can't ask for approval" \
+  || bad "the shim's database deny was silent or is not plain" "$(cat "$TMP/pl59-shimdb.txt")"
+# The stated limit stays in plain words, and the text never names one vendor (the shim reuses it).
+grep -q 'file names and layout, not what the text says' "$TMP/pl59-sm.txt" \
+  && ! grep -q "Claude" "$TMP/pl59-sm.txt" \
+  && ok "transcript guard keeps its limit (file names and layout, not what the text says) and names no vendor" \
+  || bad "the transcript guard dropped its limit or names a vendor" "$(head -3 "$TMP/pl59-sm.txt")"
+grep -q 'Approval prompts are off for this session' "$TMP/pl59-sm.txt" \
+  && ok "transcript guard bypass note is plain" \
+  || bad "transcript guard bypass note missing" "$(sed -n 3p "$TMP/pl59-sm.txt")"
+# The guard's failure branches, via a kit copy whose classifier is missing, throws or is partial.
+: > "$TMP/pl59-smfail.txt"
+for kind59 in missing throws partial; do
+  PLK="$TMP/pl59-k-$kind59"; mkdir -p "$PLK/kit" && cp -R bin .claude adapters templates "$PLK/kit/" 2>/dev/null
+  case "$kind59" in
+    missing) rm "$PLK/kit/bin/scan_source_materials.py" ;;
+    throws)  printf 'def scan(repo):\n    raise RuntimeError("boom")\n' > "$PLK/kit/bin/scan_source_materials.py" ;;
+    partial) printf 'def scan(repo):\n    return []\ndef flagged(r):\n    return []\ndef incomplete(r):\n    return [{"reason": "limit reached"}]\n' > "$PLK/kit/bin/scan_source_materials.py" ;;
+  esac
+  printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 "$PLK/kit/.claude/hooks/source_material_guard.py" 2>/dev/null \
+    | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-smfail.txt" 2>/dev/null
+done
+[ "$(grep -c . "$TMP/pl59-smfail.txt")" -eq 3 ] && python3 "$PL59" --text "$TMP/pl59-smfail.txt" > "$TMP/pl59-smfail.out" 2>&1 \
+  && grep -q 'too many files to check' "$TMP/pl59-smfail.txt" \
+  && ok "transcript guard failure branches (missing, throwing and partial classifier) lead in plain words" \
+  || bad "transcript guard failure messages are missing or use internal terms" "$(cat "$TMP/pl59-smfail.txt") $(head -3 "$TMP/pl59-smfail.out")"
+# The shim's internal-error paths, forced with the fault injector section 43 uses.
+: > "$TMP/pl59-shimerr.txt"
+printf '%s' "$(pay59 'ls')" | TICKETWRIGHT_SHIM_FAULT=raise env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard >> "$TMP/pl59-shimerr.txt" 2>/dev/null
+printf '%s' "$(pay59 'ls')" | TICKETWRIGHT_SHIM_FAULT=raise env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook shell_guards >> "$TMP/pl59-shimerr.txt" 2>/dev/null
+[ "$(grep -c 'blocking instead of guessing' "$TMP/pl59-shimerr.txt")" -eq 2 ] \
+  && python3 "$PL59" --text "$TMP/pl59-shimerr.txt" > "$TMP/pl59-shimerr.out" 2>&1 \
+  && ok "shim internal-error messages lead in plain words" \
+  || bad "shim internal-error messages are missing or use internal terms" "$(cat "$TMP/pl59-shimerr.txt") $(head -3 "$TMP/pl59-shimerr.out")"
+grep -q "safety checks could not run" bin/opencode_tool_gate.js \
+  && ok "opencode fallback says the safety checks could not run" \
+  || bad "opencode fallback text not updated" "$(grep -n 'could not run' bin/opencode_tool_gate.js)"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

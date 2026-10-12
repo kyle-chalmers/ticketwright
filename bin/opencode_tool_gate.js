@@ -50,9 +50,9 @@ export const TicketwrightDbWriteGuard = async ({ directory }) => {
       if (!res.error && res.status === 0) return // pass: OpenCode's own permission flow proceeds
       const detail = (((res.stdout || "") + "\n" + (res.stderr || "")).trim())
       throw new Error(detail ||
-        "ticketwright shell_guards: denied — the guard shim could not run (is the kit vendored? " +
-        "bin/tw + bin/hook_shim.py). A guard that cannot run never guesses allow; set the " +
-        "matching policy in .claude/config/stack.yaml to disable it explicitly.")
+        "Ticketwright's safety checks could not run, so this command is blocked instead of " +
+        "allowed unchecked. Reinstall or update Ticketwright in this repo, or turn the check off " +
+        "in .claude/config/stack.yaml. Details: bin/tw or bin/hook_shim.py is missing or failed.")
     },
   }
 }

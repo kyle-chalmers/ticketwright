@@ -253,9 +253,9 @@ def run() -> int:
         # FAIL-SAFE, not fail-open: without the classifier nothing can be assessed, so a command
         # in this guard's jurisdiction is gated and the malfunction is NAMED rather than swallowed.
         return _ask_or_note(payload, (
-            f"source_material_guard: the classifier (bin/scan_source_materials.py) could not be "
-            f"loaded ({_SCAN_IMPORT_ERROR}). Source material cannot be assessed, so this "
-            f"staging/copy command is gated — more, never less. Restore the kit's bin/ directory."
+            f"Ticketwright can't check for raw meeting transcripts right now, so it is asking "
+            f"before this commit or copy. Reinstall or update the Ticketwright plugin to fix it. "
+            f"Details: bin/scan_source_materials.py could not be loaded ({_SCAN_IMPORT_ERROR})."
         ))
 
     try:
@@ -263,9 +263,9 @@ def run() -> int:
         flagged = _scan.flagged(records)
     except Exception as e:  # noqa: BLE001 — a classifier that misbehaves must gate, not fall through
         return _ask_or_note(payload, (
-            f"source_material_guard: the classifier failed while assessing source material "
-            f"({e.__class__.__name__}: {e}). This staging/copy command is gated until the kit "
-            f"is repaired."
+            f"Ticketwright's transcript check failed, so it is asking before this commit or copy. "
+            f"Reinstall or update the Ticketwright plugin to fix it. "
+            f"Details: {e.__class__.__name__}: {e}."
         ))
 
     # An INCOMPLETE scan does not certify anything. Treat it exactly like a finding: the tree was
@@ -273,10 +273,9 @@ def run() -> int:
     partial = _scan.incomplete(records)
     if partial and not flagged:
         return _ask_or_note(payload, (
-            f"source_material_guard: the source-material scan did NOT cover the whole tree "
-            f"({partial[0]['reason']}), so it cannot certify that no raw transcript is present. "
-            f"Gating rather than assuming clean. Narrow the command to one ticket, or check the "
-            f"folder by hand."))
+            f"There are too many files to check them all for raw meeting transcripts, so "
+            f"Ticketwright is asking first. Narrow the command to one ticket folder, or check the "
+            f"folder by hand. Details: {partial[0]['reason']}."))
 
     if not flagged:
         return 0
@@ -296,7 +295,7 @@ def run() -> int:
         verb, why = "backed up", (
             "A folder-wide docstore backup copies everything in the ticket directory, and "
             "`.gitignore` does not apply to a docstore copy (`cp -r`, `rsync` or "
-            "`rclone copy`) — so moving a file under "
+            "`rclone copy`), so moving a file under "
             "`source_materials/private/` protects git and does NOT protect this copy. Remove the "
             "file from the folder, or approve this copy explicitly."
         )
@@ -323,17 +322,23 @@ def run() -> int:
     if len(relevant) > 4:
         listing += f"; and {len(relevant) - 4} more"
     return _ask_or_note(payload, (
-        f"source_material_guard: raw transcript material may be about to be {verb} — {listing}. "
-        f"{why} (The classifier matches filenames and document shape, never meaning — it is a "
-        f"gate against the bulk artifact, not a confidentiality review.)"
+        f"This may {('commit' if verb == 'committed' else 'back up')} a raw meeting transcript: "
+        f"{listing}. {why} This check looks at file names and layout, not what the text says, so "
+        f"it catches whole transcripts, not every sensitive line."
     ))
+
+
+def before_details(message: str, note: str) -> str:
+    """Insert a plain sentence before the Details clause so it stays in the part people read."""
+    head, sep, tail = message.partition(" Details:")
+    return f"{head} {note}{sep}{tail}" if sep else f"{message} {note}"
 
 
 def _ask_or_note(payload: dict, message: str) -> int:
     """Ask, unless the operator turned prompting off for the session — then say so visibly."""
     if payload.get("permission_mode") == "bypassPermissions":
-        emit(system_message=f"{message} Approval not requested: the session is in "
-                            f"bypassPermissions mode.")
+        emit(system_message=before_details(message, "Approval prompts are off for this session, "
+                                                    "so Ticketwright did not ask."))
         return 0
     emit("ask", message)
     return 0

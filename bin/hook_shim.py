@@ -276,10 +276,11 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
             print("ticketwright hook_shim: one-shot token consumed — passing an UNREADABLE "
                   "hook input through on explicit human approval.", file=sys.stderr)
             return present_pass()
-        msg = ("db_write_requires_approval is enforced here by ticketwright's hook shim, and the "
-               "hook input could not be read — a guard that cannot read its input never guesses "
-               "allow. Check the hook wiring (see the enforcement table in AGENTS.md). "
-               + escape_text(stack.parent, prefix_readable=False))
+        msg = ("Ticketwright could not read what this tool is about to run, so it is not letting "
+               "a possible database write through unchecked. "
+               + escape_text(stack.parent, prefix_readable=False)
+               + " Details: the hook payload could not be parsed; see the enforcement table in "
+               "AGENTS.md for this tool's hook wiring.")
         return present_gate(protocol, msg, policy)
 
     tool = tool_identity(payload)
@@ -292,10 +293,11 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
             print("ticketwright hook_shim: one-shot token consumed — passing an unreadable "
                   "shell payload through on explicit human approval.", file=sys.stderr)
             return present_pass()
-        msg = ("db_write_requires_approval is enforced here by ticketwright's hook shim, and no "
-               "shell command could be extracted from the hook payload — a guard that cannot "
-               "read its input never guesses allow. Check the hook wiring (see the enforcement "
-               "table in AGENTS.md). " + escape_text(stack.parent, prefix_readable=False))
+        msg = ("Ticketwright could not read what this tool is about to run, so it is not letting "
+               "a possible database write through unchecked. "
+               + escape_text(stack.parent, prefix_readable=False)
+               + " Details: no shell command could be extracted from the hook payload; see the "
+               "enforcement table in AGENTS.md.")
         return present_gate(protocol, msg, policy)
 
     import sql_scan  # noqa: E402 — lazy, guard-only (module-level would couple the banners to it)
@@ -318,8 +320,9 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
         print(f"ticketwright hook_shim: {granted} — approved once: {decision['detail']}",
               file=sys.stderr)
         return present_pass()
-    msg = (decision["detail"] + " This runtime has no ask tier, so the statement is DENIED "
-           "instead (deny-with-escape). " + escape_text(stack.parent, prefix_readable=True))
+    msg = before_details(decision["detail"],
+                         "This tool can't ask for approval, so Ticketwright blocked the command. "
+                         + escape_text(stack.parent, prefix_readable=True))
     return present_gate(protocol, msg, policy)
 
 
@@ -447,9 +450,9 @@ def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
     partial = scan.incomplete(records)
     if partial and not flagged:
         return present_gate(protocol, (
-            f"ticketwright source_material_guard: the source-material scan did NOT cover the whole "
-            f"tree ({partial[0]['reason']}), so it cannot certify that no raw transcript is "
-            f"present. Gating rather than assuming clean."), "high_risk")
+            f"Ticketwright: there are too many files to check them all for raw meeting "
+            f"transcripts, so it is asking first. Narrow the command to one ticket folder, or "
+            f"check the folder by hand. Details: {partial[0]['reason']}."), "high_risk")
     if not flagged:
         return present_pass()
 
@@ -468,17 +471,17 @@ def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
     listing = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in flagged[:4])
     if len(flagged) > 4:
         listing += f"; and {len(flagged) - 4} more"
-    msg = (f"ticketwright source_material_guard: raw transcript material may be about to leave "
-           f"the repo — {listing}. {why} (The classifier matches filenames and document shape, "
-           f"never meaning — a gate against the bulk artifact, not a confidentiality review.)")
+    msg = (f"This may take a raw meeting transcript out of the repo: {listing}. {why} This check "
+           f"looks at file names and layout, not what the text says, so it catches whole "
+           f"transcripts, not every sensitive line.")
 
     if ask_capable(protocol):
         return present_gate(protocol, msg, "high_risk")
     # No ask tier: DENY, and say so. The remedy here is a file change the person makes once,
     # not a re-run, so there is deliberately no one-shot escape token as the DB guard has.
-    return present_gate(protocol, msg + " This runtime has no ask tier, so the command is "
-                                        "DENIED instead; make the change above and re-run.",
-                        "high_risk")
+    return present_gate(protocol, before_details(
+        msg, "This tool can't ask for approval, so Ticketwright blocked the command. Make the "
+             "change above and try again."), "high_risk")
 
 
 def run_session(hook: str, root_arg: str | None) -> int:
@@ -589,11 +592,11 @@ def main(argv=None) -> int:
                       RV_GUARD: run_review_verdict_guard}[args.hook]
             return runner(protocol, args.root)
         except Exception as e:  # noqa: BLE001 — same discipline as the DB guard below
-            msg = (f"ticketwright's shell guard ({args.hook}) hit an internal error "
-                   f"({e.__class__.__name__}: {e}) and refuses to guess allow. Fix the kit "
-                   f"install (bin/ + .claude/hooks/), or set the guard's policy "
-                   f"(`source_material_guard: off` / `hard_halt_before_external_posts: false`) "
-                   f"to disable it explicitly.")
+            msg = (f"A Ticketwright safety check hit an error, so it is blocking instead of "
+                   f"guessing. Reinstall or update the Ticketwright plugin, or turn that check off "
+                   f"in stack.yaml (`source_material_guard: off` or "
+                   f"`hard_halt_before_external_posts: false`). "
+                   f"Details: {args.hook} raised {e.__class__.__name__}: {e}.")
             try:
                 if ask_capable(protocol):
                     return present_gate(protocol, msg, "high_risk")
@@ -608,10 +611,11 @@ def main(argv=None) -> int:
     try:
         return run_guard(protocol, args.root)
     except Exception as e:  # noqa: BLE001 — map EVERY internal failure to a deliberate decision
-        msg = (f"db_write_requires_approval is enforced here by ticketwright's hook shim, which "
-               f"hit an internal error ({e.__class__.__name__}: {e}) and refuses to guess allow. "
-               f"Fix the kit install (bin/ + .claude/hooks/), or set the policy to `off` to "
-               f"disable the guard explicitly. " + escape_text(None, prefix_readable=False))
+        msg = (f"Ticketwright's database-write check hit an error, so it is blocking instead of "
+               f"guessing. Reinstall or update the Ticketwright plugin, or set "
+               f"`db_write_requires_approval: off` to turn the check off. "
+               + escape_text(None, prefix_readable=False)
+               + f" Details: {e.__class__.__name__}: {e}.")
         try:
             if ask_capable(protocol):
                 return present_gate(protocol, msg, "high_risk")
