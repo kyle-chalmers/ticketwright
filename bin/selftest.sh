@@ -5170,14 +5170,22 @@ grep -q 'no definition file path' <<<"$oc_out" \
   && ok "opencode's report states why no agent is emitted (definition path not established — never guessed)" \
   || bad "opencode's agent-definition refusal went unstated"
 # The user-facing markers (selftest section 59's lint input) must survive emission: a runtime that
-# strips them would drop the say-this text from the lint's reach. Every runtime tree that carries
-# review/SKILL.md or qc-reviewer.md is checked.
+# strips them would drop the say-this text from the lint's reach. Every emitted file that carries
+# ship/SKILL.md, review/SKILL.md or qc-reviewer (.md or .toml) is checked for BOTH markers, and each
+# runtime must contribute at least one such file.
 mk41=0
 for rt41 in codex-cli antigravity cursor devin; do
-  grep -rq 'ticketwright:user-facing:begin' "tests/emit/$rt41" \
-    || { bad "user-facing markers did not survive emission to $rt41"; mk41=1; }
+  n41=0
+  while IFS= read -r f41; do
+    [ -n "$f41" ] || continue
+    n41=$((n41 + 1))
+    nb41="$(grep -c 'ticketwright:user-facing:begin' "$f41")"; ne41="$(grep -c 'ticketwright:user-facing:end' "$f41")"
+    { [ "$nb41" -ge 1 ] && [ "$nb41" -eq "$ne41" ]; } \
+      || { bad "user-facing markers did not survive emission to $f41" "begin=$nb41 end=$ne41"; mk41=1; }
+  done < <(find "tests/emit/$rt41" -type f \( -path '*/ship/SKILL.md' -o -path '*/review/SKILL.md' -o -name 'qc-reviewer.*' \) | sort)
+  [ "$n41" -ge 1 ] || { bad "no emitted ship, review or qc-reviewer file found for $rt41"; mk41=1; }
 done
-[ "$mk41" -eq 0 ] && ok "user-facing markers survive emission to every runtime that carries skills or agents"
+[ "$mk41" -eq 0 ] && ok "user-facing markers (begin and end) survive emission in every emitted file that carries them"
 # A plugin-cache-only install is invisible to a foreign runtime — the verify must FAIL and say why.
 PC_P="$E41/plugonly"; mkdir -p "$PC_P"
 pc_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
@@ -5270,7 +5278,7 @@ inl42="$(grep -B8 -A4 'review_mode: inline-same-context' "$RSK42")"
   || bad "/review no longer maps unknown to the degraded branch"
 
 # --- the weaker-check sentence, verbatim, one line, in BOTH the skill and the record template ----
-wc42='ran in the same conversation that did the work'
+wc42='This review ran in the same conversation that did the work, so it is not the independent second check the review process expects.'
 { grep -qF "$wc42" "$RSK42" && grep -qF "$wc42" "$QCA42"; } \
   && ok "the weaker-check sentence is pinned verbatim in /review and qc-reviewer" \
   || bad "the weaker-check sentence drifted — an inline APPROVE would read as independent again"
@@ -10823,11 +10831,17 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
   && ok "the setup skills quote the stable part of the MCP pointer line" || bad "setup skills quote a stale posture line"
 
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
-n59="$(grep -c 'ticketwright:user-facing:begin' .claude/skills/ship/SKILL.md .claude/skills/review/SKILL.md .claude/agents/qc-reviewer.md | awk -F: '{s+=$2} END {print s+0}')"
-[ "$n59" -ge 3 ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
+# Exact block count per file: a file that loses a block must fail, not hide behind the total.
+c59=""
+for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
+  f59="${want59%%:*}"; w59="${want59##*:}"
+  g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
+  { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
+done
+[ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
      --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
-  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain ($n59 blocks)" \
-  || bad "a say-this template is unmarked or uses internal terms" "blocks=$n59 $(head -5 "$TMP/pl59-skills.out")"
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 2 + 1 blocks)" \
+  || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

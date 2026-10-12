@@ -172,20 +172,29 @@ execute — nothing the steps don't do may appear in it:
    - then the exact actions, in order (the numbered steps below).
 
    Print the plan in this shape, one block, with the values filled in from the resolution (the
-   block is the text the person reads, so it names no internal field):
+   block is the text the person reads, so it names no internal field and shows no plan hash). Print
+   only the lines the plan actually delivers, one Documents line (with its sharing line) for each
+   routed classification, and one Chat line for each routed audience:
    <!-- ticketwright:user-facing:begin -->
    > Delivery plan for `<owner>/<id>`. Nothing has been sent yet.
-   > Plan: `<first 8 characters of the fingerprint>`
-   > Documents: `<tool>`, target `<target>`, backed up to `<destination>`.
-   > Sharing settings: not checked (one destination).
+   > Documents: `<tool>`, target `<target>`, chosen by the classification `<classification>`, backed up to `<destination>`.
+   > Sharing settings: <declared scope> (declared, not checked) | not checked (one destination).
    > Ticket: `<tool>`, target `<target>`, comment on `<owner>/<id>`.
-   > Chat: `<tool>`, target `<target>`, to `<recipients>`, as a draft | sent.
+   > Chat: `<tool>`, target `<target>`, chosen by the audience `<audience>`, in `<channel>`, to `<recipients>`, sent as `<sender>`, as a draft | sent.
    > Code: `<tool>`, target `<target>`, branch `<branch>`, and a pull request opens.
+   > This chat target was picked for this run, not declared on the ticket.
+   > What happens, in this order:
+   > 1. Scan the ticket folder for raw source material, then back it up to the documents destination above.
+   > 2. Post the approved comment on the ticket.
+   > 3. Draft the chat message for the recipients above, or send it only if you say "send it".
+   > 4. Commit the ticket files, push the branch, and open the pull request.
+   > 5. Move the ticket toward its final status if that applies.
    > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
-   Print only the lines the plan actually delivers. On a routed docstore, replace the sharing line
-   with `Sharing settings: <declared scope> (declared, not checked)`. Add the chat line's
-   `sender` and an override note when the resolution carries them, per the bullets above.
+   Leave out the "picked for this run" line unless the chat target came from `--chat <target>`, and
+   leave out the sender when the routed JSON carries none. The numbered list is the steps below
+   (5 to 9), so drop any step the plan does not deliver (for example the documents backup when no
+   documents tool slot is configured).
 
    Resolver exit 7 (tool slot not configured) = skip that line and tell the person:
    <!-- ticketwright:user-facing:begin -->
@@ -197,9 +206,8 @@ execute — nothing the steps don't do may appear in it:
    rendering a target the steps below would not deliver to is an authorization mismatch — never fall
    back to another target or to slot-level values.
    **Pin the plan the human just authorized.** Each routed line carries the target name AND its
-   `resolution_fingerprint`. Print the target name and only the plan's short handle (the first 8
-   characters of the fingerprint, as the `Plan:` line above); the short handle is for display, so
-   keep the FULL fingerprint internally and pass the full value back. Pass both back on **every**
+   `resolution_fingerprint`. Keep both from the resolution; the person is never shown the
+   fingerprint or any shortened form of it. Pass both back on **every**
    delivery_plan call in steps 5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
    with. The name catches a swapped target; the fingerprint catches what a name check cannot — a
    config or plan edit between approval and delivery that keeps the name while moving the channel,
@@ -220,15 +228,16 @@ execute — nothing the steps don't do may appear in it:
    **docstore.backup** the ticket folder (full-title dest name) **into the routed target's
    destination from step 4(a)** — never another target's, and never a slot-level path. Then record
    each delivered file against the target it actually went to:
-   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <approved> --expect-fingerprint <approved>`
+   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <name from the resolution> --expect-fingerprint <full fingerprint from the resolution>`
    and call `docstore.link_for` **against that same recorded target**. The recorded row is what
    makes a link provably come from the store the copy went into, rather than from whichever store
    was resolved a step later. Skip when the docstore seam isn't configured.
    **Routing is per deliverable here.** If the plan's `deliverables:` gives a file its own
    `classification:` (a client-facing summary among internal working files), that file routes to
    *its* target: resolve it with `--file <path>` and back that file up separately, rather than
-   assuming the whole folder shares one destination. Its `--expect-target`/`--expect-fingerprint`
-   are the ones the plan line showed for that classification. Anything the approved plan did not
+   assuming the whole folder shares one destination. For that file pass the full
+   fingerprint the resolver returned for its line, kept from the resolution, never anything printed to the person.
+   Anything the approved plan did not
    show, you do not deliver. **The plan-level classification is folder-wide** — the backup carries
    `qc_queries/` and everything else not split out by a row, so an external plan-level
    classification must be a deliberate statement about the whole folder, and the approval line

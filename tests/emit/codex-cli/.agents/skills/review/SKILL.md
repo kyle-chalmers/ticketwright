@@ -187,6 +187,10 @@ alongside the saved record:
 <!-- ticketwright:user-facing:begin -->
 > Review result: <APPROVE | REQUEST-CHANGES>. <one sentence on what was checked>.
 <!-- ticketwright:user-facing:end -->
+When `review_mode` is `inline-same-context`, the sentence after the result is not a description of
+what was checked: it is the same-conversation honesty sentence from the probe section ("This review
+ran in the same conversation that did the work, so it is not the independent second check the review
+process expects."), so an inline result never reads like an independent one.
 Then route:
 APPROVE ⇒ recommend `/ship <owner>/<id>` (the qualified locator, so `/ship` cannot re-resolve a bare
 id to a different owner's ticket). REQUEST-CHANGES ⇒ **if this review was run from inside `/build`
