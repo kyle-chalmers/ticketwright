@@ -10361,7 +10361,7 @@ env -u CLAUDE_PROJECT_DIR python3 "$RV57" --ticket "$TMP/does-not-exist" >/dev/n
 g57() { printf '%s' "$1" | env -u CLAUDE_PROJECT_DIR python3 "$RVG57" 2>/dev/null; }
 pay57() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"%s}' "$1" "$R57" "${2:-}"; }
 o="$(g57 "$(pay57 'git push -u origin ENG-7')")"
-grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'no review verdict' <<<"$o" \
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'has not been approved in review' <<<"$o" \
   && ok "hook ASKS on git push when the branch's ticket has deliverables and no verdict (the raw-git bypass closed)" \
   || bad "a raw git push of an unreviewed ticket is not gated" "$o"
 for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7'; do
@@ -10436,11 +10436,11 @@ rc="$(rv57)"; grep -q '22_review_verdict.md' "$TMP/rv57.out" && ! grep -q '022_r
 rm "$T57/qc_queries/20_review_verdict.md" "$T57/qc_queries/21_review_verdict.md" "$T57/qc_queries/022_review_verdict.md" "$T57/qc_queries/22_review_verdict.md"
 # --- (C) the shim presents the same judgment in the other runtimes' protocols ------------------------
 o="$(printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook shell_guards 2>/dev/null)"
-grep -q '"permission": "ask"' <<<"$o" && grep -q 'review_verdict_guard' <<<"$o" \
+grep -q '"permission": "ask"' <<<"$o" && grep -q 'approved in review' <<<"$o" \
   && ok "shim: the single shell_guards entry reaches the review-verdict guard and asks in cursor-json" \
   || bad "the shell_guards shim does not run the third guard" "$o"
 printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook review_verdict_guard >"$TMP/rv57.d" 2>/dev/null; rd=$?
-[ "$rd" -eq 2 ] && grep -q 'DENIED' "$TMP/rv57.d" \
+[ "$rd" -eq 2 ] && grep -q 'blocked the command' "$TMP/rv57.d" \
   && ok "shim: on a runtime with no ask tier the guard denies with the reason (exit 2), never exits anything else" \
   || bad "devin shim exit/decision drifted for the review guard" "rc=$rd $(cat "$TMP/rv57.d")"
 printf '%s' "$(pay57 'git status')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook review_verdict_guard >"$TMP/rv57.c" 2>/dev/null; rc57=$?
@@ -10584,6 +10584,35 @@ done
   && grep -q 'every command in this project' "$TMP/pl59-down.txt" \
   && ok "scanner-down ask and bypass messages lead in plain words and name the real scope (every command)" \
   || bad "scanner-down messages are missing, use internal terms, or understate their scope" "$(cat "$TMP/pl59-down.txt") $(head -3 "$TMP/pl59-down.out")"
+
+# Review-before-ship guard: Claude ask, Claude bypass, a runtime with no ask tier, and the
+# classifier's own CLI line. Built from its own fixture so it does not depend on section 57.
+R59="$TMP/s59"; T59="$R59/tickets/alice/ENG-7"
+mkdir -p "$R59/.claude/config" "$T59/qc_queries" "$T59/final_deliverables"
+printf 'project:\n  key_prefix: ENG\npolicies:\n  db_write_requires_approval: high_risk\n' > "$R59/.claude/config/stack.yaml"
+( cd "$R59" && git init -q . && git symbolic-ref HEAD refs/heads/ENG-7 ) 2>/dev/null
+printf 'a,b\n1,2\n' > "$T59/final_deliverables/1_rows_2.csv"
+pay59() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"%s}' "$1" "$R59" "${2:-}"; }
+: > "$TMP/pl59-rv.txt"
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/review_verdict_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-rv.txt" 2>/dev/null
+printf '%s' "$(pay59 'git push' ',"permission_mode":"bypassPermissions"')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/review_verdict_guard.py \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("systemMessage",""))' >> "$TMP/pl59-rv.txt" 2>/dev/null
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook review_verdict_guard >> "$TMP/pl59-rv.txt" 2>/dev/null
+env -u CLAUDE_PROJECT_DIR python3 bin/review_verdict.py --ticket "$T59" >> "$TMP/pl59-rv.txt" 2>/dev/null
+[ "$(grep -c . "$TMP/pl59-rv.txt")" -ge 4 ] && python3 "$PL59" --text "$TMP/pl59-rv.txt" > "$TMP/pl59-rv.out" 2>&1 \
+  && ok "review-before-ship guard (Claude, bypass, no-ask runtime) and review_verdict lead in plain words" \
+  || bad "review-before-ship messages use internal terms or were not captured" "$(head -5 "$TMP/pl59-rv.out") lines=$(grep -c . "$TMP/pl59-rv.txt")"
+# The no-ask note must precede Details, or the person's action hides in the technical part.
+python3 - "$TMP/pl59-rv.txt" > "$TMP/pl59-order.out" <<'PY'
+import sys
+lines = [l for l in open(sys.argv[1], encoding="utf-8") if "can't ask for approval" in l]
+ok = lines and all(" Details:" not in l or l.index("can't ask") < l.index(" Details:") for l in lines)
+print("ok" if ok else "bad")
+PY
+[ "$(cat "$TMP/pl59-order.out")" = ok ] \
+  && ok "shim: the no-ask note comes before the Details clause" \
+  || bad "shim appended its note after Details (or did not add it)" "$(grep -i 'ask' "$TMP/pl59-rv.txt" | head -2)"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

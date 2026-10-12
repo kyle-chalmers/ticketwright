@@ -172,6 +172,12 @@ def present_pass() -> int:
     return 0  # no opinion: the runtime's own permission flow proceeds
 
 
+def before_details(message: str, note: str) -> str:
+    """Insert a plain sentence before the Details clause so it stays in the part people read."""
+    head, sep, tail = message.partition(" Details:")
+    return f"{head} {note}{sep}{tail}" if sep else f"{message} {note}"
+
+
 def present_gate(protocol: str, message: str, policy: str) -> int:
     if protocol == "codex-json":
         print(json.dumps({"hookSpecificOutput": {
@@ -389,12 +395,12 @@ def run_review_verdict_guard(protocol: str, root_arg: str | None) -> int:
     msg = rvg.assess(command, cwd, repo)
     if msg is None:
         return present_pass()
-    msg = "ticketwright " + msg
+    msg = "Ticketwright: " + msg
     if ask_capable(protocol):
         return present_gate(protocol, msg, "high_risk")
-    return present_gate(protocol, msg + " This runtime has no ask tier, so the command is DENIED "
-                                        "instead; run the review (or record the unreviewed ship "
-                                        "through /ship) and re-run.", "high_risk")
+    return present_gate(protocol, before_details(
+        msg, "This tool can't ask for approval, so Ticketwright blocked the command. Run the "
+             "review (or record an unreviewed ship through /ship) and try again."), "high_risk")
 
 
 def run_source_material_guard(protocol: str, root_arg: str | None) -> int:

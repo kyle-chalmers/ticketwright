@@ -255,18 +255,21 @@ def locate(repo: Path, paths: list[Path] | None = None, cwd: Path | None = None,
 
 def describe(record: dict) -> str:
     s = record["status"]
+    name = Path(record["file"]).name if record.get("file") else ""
     if s == STATUS_APPROVE:
-        return f"APPROVE on file ({Path(record['file']).name}, {record.get('review_mode') or 'review_mode unrecorded'})"
+        return f"reviewed and approved ({name}, {record.get('review_mode') or 'review mode not recorded'})"
     if s == STATUS_REQUEST_CHANGES:
-        return f"REQUEST-CHANGES on file ({Path(record['file']).name})"
+        return f"the review asked for changes ({name})"
     if s == STATUS_SKIPPED:
-        return f"SKIPPED on file ({Path(record['file']).name}) — an unreviewed ship was recorded; this is not approval"
+        return f"shipped unreviewed before, which is not an approval ({name})"
     if s == STATUS_UNREADABLE:
-        return f"{Path(record['file']).name} is unreadable as a verdict: {record['reason']}"
+        return (f"the review file {name} can't be read; its first line should be "
+                f"`verdict: APPROVE` (or `REQUEST-CHANGES` / `SKIPPED`). Details: {record['reason']}")
     extra = ""
     if record.get("legacy_candidates"):
-        extra = " (report-shaped files present, not honored automatically: " + ", ".join(record["legacy_candidates"]) + ")"
-    return "no review verdict on file" + extra
+        extra = (" (older review reports are present but not counted automatically: "
+                 + ", ".join(record["legacy_candidates"]) + ")")
+    return "not reviewed yet" + extra
 
 
 def main(argv=None) -> int:
