@@ -318,13 +318,14 @@ def run() -> int:
     if not relevant:
         return 0
 
-    listing = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in relevant[:4])
+    names = ", ".join(Path(r["file"]).name for r in relevant[:4])
     if len(relevant) > 4:
-        listing += f"; and {len(relevant) - 4} more"
+        names += f" (and {len(relevant) - 4} more)"
+    reasons = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in relevant[:4])
     return _ask_or_note(payload, (
         f"This may {('commit' if verb == 'committed' else 'back up')} a raw meeting transcript: "
-        f"{listing}. {why} This check looks at file names and layout, not what the text says, so "
-        f"it catches whole transcripts, not every sensitive line."
+        f"{names}. {why} This check looks at file names and layout, not what the text says, so "
+        f"it catches whole transcripts, not every sensitive line. Details: {reasons}."
     ))
 
 

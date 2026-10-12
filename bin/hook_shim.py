@@ -474,12 +474,13 @@ def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
                "`YYYY-MM-DD-<slug>-meeting.md`, move it under `source_materials/private/`"
                + (", or approve this staging explicitly." if can_ask else "."))
 
-    listing = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in flagged[:4])
+    names = ", ".join(Path(r["file"]).name for r in flagged[:4])
     if len(flagged) > 4:
-        listing += f"; and {len(flagged) - 4} more"
-    msg = (f"This may take a raw meeting transcript out of the repo: {listing}. {why} This check "
+        names += f" (and {len(flagged) - 4} more)"
+    reasons = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in flagged[:4])
+    msg = (f"This may take a raw meeting transcript out of the repo: {names}. {why} This check "
            f"looks at file names and layout, not what the text says, so it catches whole "
-           f"transcripts, not every sensitive line.")
+           f"transcripts, not every sensitive line. Details: {reasons}.")
 
     if can_ask:
         return present_gate(protocol, msg, "high_risk")

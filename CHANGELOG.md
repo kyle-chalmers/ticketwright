@@ -15,6 +15,8 @@ All notable changes to this project are documented here. Format loosely follows
   the review file, not the work, and the transcript guard says it reads file names and layout, not
   what the text says. Offers to approve anyway appear only where the runtime can ask.
 - `/ship` no longer prints the plan fingerprint to the person; it is still carried between steps.
+- The database guard's "check not working" message now names its real scope: it asks before every
+  command in the project, not only SQL.
 - Fixed "carries a additive statement" in the database-write prompt.
 
 ### Added

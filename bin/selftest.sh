@@ -10735,6 +10735,24 @@ grep -q "can't ask for approval" "$TMP/pl59-smd.txt" && ! grep -q 'approve this'
   && python3 "$PL59" --text "$TMP/pl59-smc-plain.txt" > "$TMP/pl59-smc.out" 2>&1 \
   && ok "shim transcript guard offers approval on an ask-capable runtime only (devin denies without offering it)" \
   || bad "the shim offers an approval its runtime cannot give, or omits it where it can" "$(cat "$TMP/pl59-smd.txt") --- $(cat "$TMP/pl59-smc.txt") $(head -3 "$TMP/pl59-smd.out")"
+# The scanner's per-file reasons are technical: they belong after Details, with only file names before it.
+cat > "$TMP/pl59-smdet.py" <<'SMPY'
+import json, sys
+def split(line):
+    line = line.strip()
+    if line.startswith("{"):
+        o = json.loads(line)
+        line = o.get("user_message") or o.get("agent_message") or o.get("permissionDecisionReason") or line
+    head, sep, tail = line.partition(" Details:")
+    return bool(sep) and "transcript shape" not in head and "transcript shape" in tail
+claude = open(sys.argv[1], encoding="utf-8").read().splitlines()[0]
+shim = open(sys.argv[2], encoding="utf-8").read().splitlines()[0]
+print("ok" if split(claude) and split(shim) else "bad")
+SMPY
+python3 "$TMP/pl59-smdet.py" "$TMP/pl59-sm.txt" "$TMP/pl59-smd.txt" > "$TMP/pl59-smdet.out" 2>&1
+[ "$(cat "$TMP/pl59-smdet.out")" = ok ] \
+  && ok "transcript guard (Claude and shim) puts the scanner reasons after Details, not in the plain part" \
+  || bad "transcript guard still shows scanner reasons before Details" "$(head -2 "$TMP/pl59-sm.txt") $(cat "$TMP/pl59-smdet.out")"
 : > "$TMP/pl59-smp.txt"
 printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 "$TMP/pl59-k-partial/kit/bin/hook_shim.py" --runtime devin --hook source_material_guard >> "$TMP/pl59-smp.txt" 2>/dev/null
 grep -q 'blocked the command' "$TMP/pl59-smp.txt" && ! grep -q 'asking first' "$TMP/pl59-smp.txt" \

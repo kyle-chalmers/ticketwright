@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """PreToolUse hook — the review-before-ship gate, at the command layer.
 
-`/ship` asks before delivering a ticket whose review result is not an approval. That gate lived only in the
-skill's prose, so it fired only when a human typed `/ship`. Two real tickets shipped unreviewed by
+`/ship` asks before delivering a ticket whose review result is not an approval. That gate lived
+only in the skill's prose, so it fired only when a human typed `/ship`. Two real tickets shipped unreviewed by
 `git push` + `gh pr create` — the skill never ran, and nothing said anything. A skill instruction is
 GUIDANCE by the kit's own definition; this file is the ENFORCEMENT half, exactly as
 db_write_guard.py presents bin/sql_scan.py and source_material_guard.py presents
