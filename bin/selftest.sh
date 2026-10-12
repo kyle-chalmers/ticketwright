@@ -10538,12 +10538,24 @@ python3 "$PL59" --text "$TMP/pl59-bad.txt" > "$TMP/pl59-bad.out" 2>&1; rc59=$?
 [ "$rc59" -eq 1 ] && grep -q "'seam'" "$TMP/pl59-bad.out" && grep -q 'tool slot' "$TMP/pl59-bad.out" \
   && ok "checker: a listed term in the plain part fails and names the plain replacement" \
   || bad "checker missed jargon in the plain part" "rc=$rc59 $(cat "$TMP/pl59-bad.out")"
-python3 "$PL59" --text "$TMP/pl59-empty.txt" >/dev/null 2>&1; rc59=$?
-[ "$rc59" -eq 1 ] && ok "checker: a message with no plain part fails" \
-  || bad "checker accepted a message that is all Details" "rc=$rc59"
+python3 "$PL59" --text "$TMP/pl59-empty.txt" > "$TMP/pl59-empty.out" 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && grep -q 'no plain part' "$TMP/pl59-empty.out" \
+  && ok "checker: a message with no plain part fails and says so" \
+  || bad "checker accepted a message that is all Details, or crashed" "rc=$rc59 $(cat "$TMP/pl59-empty.out")"
 python3 "$PL59" --text "$TMP/pl59-code.txt" >/dev/null 2>&1 \
   && ok "checker: text inside a code span is exempt (something the person types)" \
   || bad "checker flagged a code span"
+# Circled digits match as substrings: \w matches them, so a whole-word match would miss them.
+printf 'See ①-⑤ now.\n' > "$TMP/pl59-circled.txt"
+python3 "$PL59" --text "$TMP/pl59-circled.txt" > "$TMP/pl59-circled.out" 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && grep -q '①' "$TMP/pl59-circled.out" \
+  && ok "checker: a circled-digit check name in the plain part fails and is named" \
+  || bad "checker missed a circled-digit check name" "rc=$rc59 $(cat "$TMP/pl59-circled.out")"
+# A missing input is a usage error (exit 2) with one plain line, never a traceback.
+python3 "$PL59" --text "$TMP/pl59-missing.txt" > "$TMP/pl59-missing.out" 2>&1; rc59=$?
+[ "$rc59" -eq 2 ] && grep -q 'cannot read' "$TMP/pl59-missing.out" && ! grep -q Traceback "$TMP/pl59-missing.out" \
+  && ok "checker: a missing input file exits 2 with one 'cannot read' line" \
+  || bad "checker crashed or misreported a missing input" "rc=$rc59 $(cat "$TMP/pl59-missing.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

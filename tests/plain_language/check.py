@@ -33,6 +33,8 @@ END = "<!-- ticketwright:user-facing:end -->"
 CODE_SPAN = re.compile(r"`[^`]*`")
 DETAILS = re.compile(r"(?:^|\s)Details:")
 PY_SINKS = {"ConfigError": 2, "_err": 1}
+# An unreadable or malformed input is a usage error (exit 2), never a traceback.
+READ_ERRORS = (OSError, UnicodeDecodeError, json.JSONDecodeError, SyntaxError)
 
 
 def load_terms(path: Path) -> list[tuple[re.Pattern, str, str]]:
@@ -42,10 +44,12 @@ def load_terms(path: Path) -> list[tuple[re.Pattern, str, str]]:
             continue
         term, _, plain = raw.partition("\t")
         term = term.strip()
-        if "/" in term or not re.fullmatch(r"[\w-]+", term):
+        # Whole-word only for plain ASCII words. Python's \w also matches circled digits (①), so
+        # those, and anything containing "/" or non-ASCII, match as substrings.
+        if "/" in term or not re.fullmatch(r"[A-Za-z0-9_-]+", term):
             pat = re.compile(re.escape(term), re.I)
         else:
-            pat = re.compile(r"(?<![\w-])" + re.escape(term) + r"(?![\w-])", re.I)
+            pat = re.compile(r"(?<![A-Za-z0-9_-])" + re.escape(term) + r"(?![A-Za-z0-9_-])", re.I)
         out.append((pat, term, plain.strip()))
     return out
 
@@ -135,12 +139,21 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     if not (args.golden or args.text or args.marked or args.py):
         ap.error("give at least one input")
-    terms = load_terms(args.terms)
+    try:
+        terms = load_terms(args.terms)
+    except READ_ERRORS as e:
+        print(f"check.py: cannot read {args.terms}: {e}", file=sys.stderr)
+        return 2
     findings: list[str] = []
     for readers, paths in ((from_golden, args.golden), (from_text, args.text),
                            (from_marked, args.marked), (from_py, args.py)):
         for p in paths:
-            for source, message in readers(p):
+            try:
+                items = list(readers(p))
+            except READ_ERRORS as e:
+                print(f"check.py: cannot read {p}: {e}", file=sys.stderr)
+                return 2
+            for source, message in items:
                 findings += check(source, message, terms)
     for f in findings:
         print(f)

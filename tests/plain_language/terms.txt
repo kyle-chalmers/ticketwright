@@ -1,5 +1,6 @@
 # Terms a person should never meet in the plain part of a message (selftest section 59).
-# term<TAB>what to say instead. Whole-word, case-insensitive; an entry containing "/" matches as a substring.
+# term<TAB>what to say instead. Case-insensitive. Plain ASCII words (letters, digits, _ and -) match whole-word;
+# an entry containing "/" or any non-ASCII character matches as a substring.
 seam	tool slot
 seams	tool slots
 adapter	the tool's setup notes
