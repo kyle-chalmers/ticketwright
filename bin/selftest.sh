@@ -10560,6 +10560,30 @@ python3 "$PL59" --text "$TMP/pl59-missing.txt" > "$TMP/pl59-missing.out" 2>&1; r
 python3 "$PL59" --golden tests/guard/golden.json > "$TMP/pl59-guard.out" 2>&1 \
   && ok "database-write guard: every ask reason and systemMessage leads in plain words" \
   || bad "database-write guard messages use internal terms" "$(head -5 "$TMP/pl59-guard.out")"
+# The scanner-down messages are not in the golden corpus. Break the scanner the way section 43
+# does, capture the ask reason and the bypass-mode systemMessage, and lint both. scanner_down
+# fires before any classification, so it must say it asks before EVERY command, not only SQL.
+PLB="$TMP/pl59-broken"; mkdir -p "$PLB/kit" "$PLB/proj/.claude/config"
+cp -R bin .claude adapters templates "$PLB/kit/" 2>/dev/null
+printf 'gitdir: fixture\n' > "$PLB/proj/.git"
+printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' \
+  > "$PLB/proj/.claude/config/stack.yaml"
+rm "$PLB/kit/bin/sql_scan.py"
+: > "$TMP/pl59-down.txt"
+for mode59 in default bypassPermissions; do
+  python3 -c 'import json,sys
+p={"tool_name":"Bash","tool_input":{"command":"ls -la"},"cwd":sys.argv[1]}
+if sys.argv[2]!="default": p["permission_mode"]=sys.argv[2]
+print(json.dumps(p))' "$PLB/proj" "$mode59" \
+    | env -u CLAUDE_PROJECT_DIR python3 "$PLB/kit/.claude/hooks/db_write_guard.py" 2>/dev/null \
+    | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+print(d.get("systemMessage") or d["hookSpecificOutput"]["permissionDecisionReason"])' >> "$TMP/pl59-down.txt" 2>/dev/null
+done
+[ "$(grep -c . "$TMP/pl59-down.txt")" -eq 2 ] && python3 "$PL59" --text "$TMP/pl59-down.txt" > "$TMP/pl59-down.out" 2>&1 \
+  && grep -q 'every command in this project' "$TMP/pl59-down.txt" \
+  && ok "scanner-down ask and bypass messages lead in plain words and name the real scope (every command)" \
+  || bad "scanner-down messages are missing, use internal terms, or understate their scope" "$(cat "$TMP/pl59-down.txt") $(head -3 "$TMP/pl59-down.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

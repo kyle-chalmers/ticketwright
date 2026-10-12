@@ -118,14 +118,14 @@ def run() -> int:
         if payload.get("permission_mode") == "bypassPermissions":
             emit(system_message=(
                 f"Ticketwright's SQL check is not working, and approval prompts are off for this "
-                f"session, so warehouse commands are running unchecked. Reinstall or update the "
-                f"Ticketwright plugin to fix it. Details: bin/sql_scan.py {problem}; permission "
-                f"mode bypassPermissions."
+                f"session, so commands here, including warehouse commands, are running unchecked. "
+                f"Reinstall or update the Ticketwright plugin to fix it. Details: "
+                f"bin/sql_scan.py {problem}; permission mode bypassPermissions."
             ))
             return 0
         emit("ask", (
-            f"Ticketwright's SQL check is not working, so it is asking before every warehouse "
-            f"command. Reinstall or update the Ticketwright plugin to fix it. "
+            f"Ticketwright's SQL check is not working, so it is asking before every command in "
+            f"this project. Reinstall or update the Ticketwright plugin to fix it. "
             f"Details: bin/sql_scan.py {problem}."
         ))
         return 0
