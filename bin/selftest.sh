@@ -5169,6 +5169,15 @@ oc_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EM
 grep -q 'no definition file path' <<<"$oc_out" \
   && ok "opencode's report states why no agent is emitted (definition path not established — never guessed)" \
   || bad "opencode's agent-definition refusal went unstated"
+# The user-facing markers (selftest section 59's lint input) must survive emission: a runtime that
+# strips them would drop the say-this text from the lint's reach. Every runtime tree that carries
+# review/SKILL.md or qc-reviewer.md is checked.
+mk41=0
+for rt41 in codex-cli antigravity cursor devin; do
+  grep -rq 'ticketwright:user-facing:begin' "tests/emit/$rt41" \
+    || { bad "user-facing markers did not survive emission to $rt41"; mk41=1; }
+done
+[ "$mk41" -eq 0 ] && ok "user-facing markers survive emission to every runtime that carries skills or agents"
 # A plugin-cache-only install is invisible to a foreign runtime — the verify must FAIL and say why.
 PC_P="$E41/plugonly"; mkdir -p "$PC_P"
 pc_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
@@ -5261,7 +5270,7 @@ inl42="$(grep -B8 -A4 'review_mode: inline-same-context' "$RSK42")"
   || bad "/review no longer maps unknown to the degraded branch"
 
 # --- the weaker-check sentence, verbatim, one line, in BOTH the skill and the record template ----
-wc42='A same-context review is not the independent second pass the validation pyramid assumes'
+wc42='ran in the same conversation that did the work'
 { grep -qF "$wc42" "$RSK42" && grep -qF "$wc42" "$QCA42"; } \
   && ok "the weaker-check sentence is pinned verbatim in /review and qc-reviewer" \
   || bad "the weaker-check sentence drifted — an inline APPROVE would read as independent again"
@@ -10812,6 +10821,13 @@ bo59="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.ya
 grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'connects through MCP' .claude/skills/setup/teammate.md \
   && ! grep -q 'posture\[<slot>\]' .claude/skills/setup/SKILL.md .claude/skills/setup/teammate.md \
   && ok "the setup skills quote the stable part of the MCP pointer line" || bad "setup skills quote a stale posture line"
+
+# --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
+n59="$(grep -c 'ticketwright:user-facing:begin' .claude/skills/ship/SKILL.md .claude/skills/review/SKILL.md .claude/agents/qc-reviewer.md | awk -F: '{s+=$2} END {print s+0}')"
+[ "$n59" -ge 3 ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
+     --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain ($n59 blocks)" \
+  || bad "a say-this template is unmarked or uses internal terms" "blocks=$n59 $(head -5 "$TMP/pl59-skills.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

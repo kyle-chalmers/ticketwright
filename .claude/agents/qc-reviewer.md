@@ -18,7 +18,9 @@ assert more. On a runtime whose adapter declares subagents absent or isolation `
 `/review` instead walks this checklist **inline, in its own context**.
 The fresh-context claim above does NOT hold there: the record must say
 `review_mode: inline-same-context` and must carry this sentence verbatim:
-A same-context review is not the independent second pass the validation pyramid assumes.
+<!-- ticketwright:user-facing:begin -->
+This review ran in the same conversation that did the work, so it is not the independent second check the review process expects.
+<!-- ticketwright:user-facing:end -->
 
 ## Setup
 1. Read `.claude/config/stack.yaml`. Resolve the warehouse **target(s)** in scope (order in

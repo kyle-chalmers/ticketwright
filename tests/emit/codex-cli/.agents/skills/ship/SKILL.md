@@ -47,10 +47,12 @@ works regardless of the underlying tools.
    - **No verdict file at all, or the newest one says `SKIPPED`** → **WARN, then stop and wait.** A
      SKIPPED record never counts as approval; this gate re-fires on every ship until a real review
      supersedes it. Print, verbatim in shape:
-     > No independent `/review` verdict is recorded for `<owner>/<id>` (last: none | SKIPPED on
-     > <date>). The validation pyramid — dialect lint, counts & dedup, reconciliation, independent
-     > re-run, human sign-off — has not run on these deliverables. Shipping now delivers unreviewed
-     > work. Reply **`ship unreviewed`** to continue, or run `/review <owner>/<id>`.
+     <!-- ticketwright:user-facing:begin -->
+     > Nobody has independently reviewed `<owner>/<id>` yet (last review: none | shipped
+     > unreviewed on <date>). That means the lint, counts, duplicates, reconciliation, independent
+     > re-run and your sign-off have not happened for these deliverables. Reply **`ship unreviewed`**
+     > to deliver them anyway, or run `/review <owner>/<id>` first.
+     <!-- ticketwright:user-facing:end -->
      Only on that exact phrase: write `qc_queries/<n>_review_verdict.md` with `verdict: SKIPPED`,
      `review_mode: none`, the date, the shipper (from whoami), and the user's instruction verbatim —
      the record shows what review this ticket actually got, the same honesty rule `/review` applies
@@ -155,8 +157,9 @@ execute — nothing the steps don't do may appear in it:
    - **docstore** — tool, target, the declared `classification` that selected it, the exact
      destination it will back up into, and the target's declared `sharing_scope`. Say plainly that
      the scope is **declared, not verified**: the kit checks that the destination exists, never its
-     real sharing permissions (`adapters/README.md` § The delivery plan). On a single mapping the
-     honest line stays "sharing scope: not declared — single destination";
+     real sharing permissions (`adapters/README.md` § The delivery plan). Print it as
+     `Sharing settings: <declared scope> (declared, not checked)`. On a single mapping the line is
+     `Sharing settings: not checked (one destination).` (the plan has no sharing scope to show);
    - **tracker** — tool, target, the exact ticket (`owner/id`) the comment lands on;
    - **chat** — tool, target, the declared `audience` that selected it, channel, the full
      recipient list (the routed target's own `recipients`, including the shipper when
@@ -167,15 +170,37 @@ execute — nothing the steps don't do may appear in it:
      ticket does not record is a fact the approver should see;
    - **vcs** — tool, target, the branch, and that a PR opens;
    - then the exact actions, in order (the numbered steps below).
-   Resolver exit 7 (seam not configured) = skip that line and name the `/setup tool <name>` enabler,
-   as today. For **tracker and vcs**, exit 8 or a resolution whose `target` is non-null (a `targets:`
+
+   Print the plan in this shape, one block, with the values filled in from the resolution (the
+   block is the text the person reads, so it names no internal field):
+   <!-- ticketwright:user-facing:begin -->
+   > Delivery plan for `<owner>/<id>`. Nothing has been sent yet.
+   > Plan: `<first 8 characters of the fingerprint>`
+   > Documents: `<tool>`, target `<target>`, backed up to `<destination>`.
+   > Sharing settings: not checked (one destination).
+   > Ticket: `<tool>`, target `<target>`, comment on `<owner>/<id>`.
+   > Chat: `<tool>`, target `<target>`, to `<recipients>`, as a draft | sent.
+   > Code: `<tool>`, target `<target>`, branch `<branch>`, and a pull request opens.
+   > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
+   <!-- ticketwright:user-facing:end -->
+   Print only the lines the plan actually delivers. On a routed docstore, replace the sharing line
+   with `Sharing settings: <declared scope> (declared, not checked)`. Add the chat line's
+   `sender` and an override note when the resolution carries them, per the bullets above.
+
+   Resolver exit 7 (tool slot not configured) = skip that line and tell the person:
+   <!-- ticketwright:user-facing:begin -->
+   > <tool slot> isn't set up yet; run `/setup tool <slot>`.
+   <!-- ticketwright:user-facing:end -->
+   For **tracker and vcs**, exit 8 or a resolution whose `target` is non-null (a `targets:`
    block on either) = **halt** naming the configured targets: target routing for those two slots is
    deliberately not built (identity and remote-binding work, see `adapters/README.md`), and
    rendering a target the steps below would not deliver to is an authorization mismatch — never fall
    back to another target or to slot-level values.
    **Pin the plan the human just authorized.** Each routed line carries the target name AND its
-   `resolution_fingerprint` (print both). Pass both back on **every** delivery_plan call in steps
-   5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
+   `resolution_fingerprint`. Print the target name and only the plan's short handle (the first 8
+   characters of the fingerprint, as the `Plan:` line above); the short handle is for display, so
+   keep the FULL fingerprint internally and pass the full value back. Pass both back on **every**
+   delivery_plan call in steps 5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
    with. The name catches a swapped target; the fingerprint catches what a name check cannot — a
    config or plan edit between approval and delivery that keeps the name while moving the channel,
    the recipient list, or the declared scope. Either mismatch refuses instead of quietly delivering

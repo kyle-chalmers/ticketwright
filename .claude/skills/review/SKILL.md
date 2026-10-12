@@ -94,7 +94,7 @@ canonical order resolves next — the ticket's declared target before the seam d
      applications, in `.claude/config/connections.local.yaml`) can be configured independently.
      Treating "a file exists" as "configured" would leave that person permanently stuck with a
      gate that never opens anything and never offers to fix itself.
-  3. Print a short **what to look at** list — row counts, the grain key, and anything ②/③ flagged —
+  3. Print a short **what to look at** list — row counts, the grain key, and anything the counts or reconciliation checks flagged —
      so they know where to aim, not just that files opened.
   4. **Wait for explicit sign-off.** Under `all`, note what they already approved earlier in the
      build and focus this pass on what changed since; never skip the gate silently just because an
@@ -135,7 +135,9 @@ data decides, so a new runtime changes this skill's behavior without changing th
    take the panel's layers sequentially, then still run the adversarial-verify pass. The verdict
    records `review_mode: inline-same-context`, `subagent_isolation:` as probed (`unknown` when the
    probe failed, noting the failure), and this sentence, verbatim:
-   **A same-context review is not the independent second pass the validation pyramid assumes.**
+   <!-- ticketwright:user-facing:begin -->
+   **This review ran in the same conversation that did the work, so it is not the independent second check the review process expects.**
+   <!-- ticketwright:user-facing:end -->
    Never present an inline pass as independent.
 
 When a branch spawns, pass `review_mode` and the probed `subagent_isolation` value in every
@@ -176,9 +178,16 @@ reads. **The current verdict is the file with the highest `<n>`, compared numeri
 newer than `9_`; a lexical sort or a file mtime is not the rule — so a later review supersedes an
 earlier one, including a `SKIPPED` record `/ship` wrote for an unreviewed ship. **Confirm the record
 parses before routing:**
-`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir>`
-must report the status you just wrote — a file it calls `unreadable` is one `/ship` and the
-`review_verdict_guard` hook treat as missing. Then route:
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
+and compare its `status` field (`approve` or `request-changes`) to the verdict you just wrote. A
+`status` of `unreadable` marks a file `/ship` and the `review_verdict_guard` hook treat as missing.
+Read the `status` field, never the plain-words line the command prints without `--json`, because
+that line is for the person and its wording can change. Then print one plain line for the person,
+alongside the saved record:
+<!-- ticketwright:user-facing:begin -->
+> Review result: <APPROVE | REQUEST-CHANGES>. <one sentence on what was checked>.
+<!-- ticketwright:user-facing:end -->
+Then route:
 APPROVE ⇒ recommend `/ship <owner>/<id>` (the qualified locator, so `/ship` cannot re-resolve a bare
 id to a different owner's ticket). REQUEST-CHANGES ⇒ **if this review was run from inside `/build`
 (its Phase 3), return to that build's step 8 rather than starting a new `/build`** — re-entering the

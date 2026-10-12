@@ -575,8 +575,8 @@ the prose, this entry pays off the behavior)
 **Claim to verify.** (a) One live `/review --deep` on a runtime without documented isolation
 (codex-cli or opencode: `unestablished`; cline: no user-definable subagents) actually produces a
 verdict recording the degraded/posture-annotated mode — `review_mode: inline-same-context` with
-the sentence "A same-context review is not the independent second pass the validation pyramid
-assumes." verbatim, or `review_mode: independent-subagent` with `subagent_isolation:
+the sentence "This review ran in the same conversation that did the work, so it is not the
+independent second check the review process expects." verbatim, or `review_mode: independent-subagent` with `subagent_isolation:
 unestablished` recorded verbatim. A skill is prose a model executes; U4 could only pin the prose.
 This entry records that an agent followed it — it does not, and cannot, resolve the isolation
 posture itself (that is entries 2 and 6).
