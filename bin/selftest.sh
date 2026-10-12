@@ -10522,5 +10522,28 @@ PY
   && ok "every relative link in README, getting-started and how-it-works resolves (file and heading)" \
   || bad "a README or handoff-doc link is dead" "$(cat "$TMP/s58.links")"
 
+hdr "59 · what the person sees is plain language (tests/plain_language/check.py)"
+# Every message a person reads leads with what happened and what to do, in plain words; technical
+# detail goes after " Details:". The checker lints REAL output (golden corpora, captured hook and
+# script runs, marked skill templates), not source text, so a docstring never trips it.
+PL59="tests/plain_language/check.py"
+printf 'This command changes data. Approve it. Details: seam adapter fingerprint\n' > "$TMP/pl59-ok.txt"
+printf 'The seam is down. Run /setup.\n' > "$TMP/pl59-bad.txt"
+printf 'Details: everything is technical here\n' > "$TMP/pl59-empty.txt"
+printf 'Set `db_write_requires_approval: off` to turn it off.\n' > "$TMP/pl59-code.txt"
+python3 "$PL59" --text "$TMP/pl59-ok.txt" >/dev/null 2>&1 \
+  && ok "checker: technical terms after ' Details:' are allowed" \
+  || bad "checker flagged the Details part, which the contract leaves free"
+python3 "$PL59" --text "$TMP/pl59-bad.txt" > "$TMP/pl59-bad.out" 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && grep -q "'seam'" "$TMP/pl59-bad.out" && grep -q 'tool slot' "$TMP/pl59-bad.out" \
+  && ok "checker: a listed term in the plain part fails and names the plain replacement" \
+  || bad "checker missed jargon in the plain part" "rc=$rc59 $(cat "$TMP/pl59-bad.out")"
+python3 "$PL59" --text "$TMP/pl59-empty.txt" >/dev/null 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && ok "checker: a message with no plain part fails" \
+  || bad "checker accepted a message that is all Details" "rc=$rc59"
+python3 "$PL59" --text "$TMP/pl59-code.txt" >/dev/null 2>&1 \
+  && ok "checker: text inside a code span is exempt (something the person types)" \
+  || bad "checker flagged a code span"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
