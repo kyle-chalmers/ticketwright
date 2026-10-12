@@ -460,15 +460,15 @@ YAML
 d="$(cat "$TMP/hd371.out")"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d/q.sql"
 out="$(gask "snow sql -f $d/q.sql" "$d")"
-grep -q 'wrong warehouse' <<<"$out" \
+grep -q 'This SQL says it is for warehouse' <<<"$out" \
   && ok "a read against the wrong target is gated (mismatched -- warehouse-target: header)" \
   || bad "SQL declaring one target ran on another with no prompt" "$out"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$d/ok.sql"
 out="$(gask "snow sql -f $d/ok.sql" "$d")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "a matching target header raises no wrong-warehouse prompt" || bad "matching target wrongly gated" "$out"
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "a matching target header raises no wrong-warehouse prompt" || bad "matching target wrongly gated" "$out"
 printf -- '-- warehouse-target: typo\nSELECT 1;\n' > "$d/typo.sql"
 out="$(gask "snow sql -f $d/typo.sql" "$d")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
 # A single-warehouse repo has no targets, so a stray header must not resolve to the seam's own cli.
 gstack wrongwh1 <<'YAML' >"$TMP/hd392.out"
 seams:
@@ -479,7 +479,7 @@ YAML
 d1="$(cat "$TMP/hd392.out")"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d1/q.sql"
 out="$(gask "snow sql -f $d1/q.sql" "$d1")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
   || bad "a single-mapping seam resolved an undefined target and gated" "$out"
 # A quoted scalar is valid YAML. Leaving the quotes attached made every comparison mismatch, i.e. a
 # false prompt on a correct command — the worst outcome for a guard, since dismissed prompts stop working.
@@ -494,11 +494,11 @@ YAML
 dq="$(cat "$TMP/hd405.out")"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$dq/ok.sql"
 out="$(gask "snow sql -f $dq/ok.sql" "$dq")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
   || bad "quoted YAML scalars produced a bogus wrong-warehouse prompt" "$out"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dq/bad.sql"
 out="$(gask "snow sql -f $dq/bad.sql" "$dq")"
-grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value still catches a real mismatch" \
+grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "a quoted cli: value still catches a real mismatch" \
   || bad "quoting the cli hid a real mismatch" "$out"
 # Exotic YAML the stdlib scan doesn't read must fall through to NO gate, never to a guess.
 for shape in flowtargets aliastarget; do
@@ -517,7 +517,7 @@ for shape in flowtargets aliastarget; do
   printf '%s\n' "$y" > "$dx/.claude/config/stack.yaml"
   printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dx/q.sql"
   out="$(gask "snow sql -f $dx/q.sql" "$dx")"
-  ! grep -q 'wrong warehouse' <<<"$out" && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
+  ! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
     || bad "an unread YAML form produced a wrong-warehouse prompt ($shape)" "$out"
 done
 
@@ -534,7 +534,7 @@ YAML
 d2="$(cat "$TMP/hd444.out")"
 printf -- '-- warehouse-target: sbx\nSELECT 1;\n' > "$d2/q.sql"
 out="$(gask "snow sql -f $d2/q.sql" "$d2")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
   || bad "seam-level cli inheritance produced a bogus mismatch" "$out"
 
 # A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
@@ -10556,6 +10556,10 @@ python3 "$PL59" --text "$TMP/pl59-missing.txt" > "$TMP/pl59-missing.out" 2>&1; r
 [ "$rc59" -eq 2 ] && grep -q 'cannot read' "$TMP/pl59-missing.out" && ! grep -q Traceback "$TMP/pl59-missing.out" \
   && ok "checker: a missing input file exits 2 with one 'cannot read' line" \
   || bad "checker crashed or misreported a missing input" "rc=$rc59 $(cat "$TMP/pl59-missing.out")"
+
+python3 "$PL59" --golden tests/guard/golden.json > "$TMP/pl59-guard.out" 2>&1 \
+  && ok "database-write guard: every ask reason and systemMessage leads in plain words" \
+  || bad "database-write guard messages use internal terms" "$(head -5 "$TMP/pl59-guard.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
