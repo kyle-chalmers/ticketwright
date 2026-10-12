@@ -241,8 +241,9 @@ def resolve(root: str | Path, tier3: object = _UNSET) -> dict:
             res["identity"] = ident
             res["warning"] = (
                 f"whoami: this machine is set to work as '{pid}', but your git identity "
-                f"'{ident}' belongs to '{ids[0]}'. Using '{pid}'. If that is wrong, fix it with "
-                f"/setup --teammate before work lands in a colleague's folder. "
+                f"'{ident}' belongs to '{ids[0]}'. Using '{pid}'. If that is wrong, fix the `person:` "
+                f"setting with /setup --teammate or fix this repo's git config before work lands "
+                f"in a colleague's folder. "
                 f"Details: person: in .claude/config/connections.local.yaml.")
         return res
 

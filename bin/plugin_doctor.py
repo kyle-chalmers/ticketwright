@@ -716,7 +716,7 @@ LABELS = {
     "repo_install": "Ticketwright is installed for this repo",
     "install_payload": "The plugin's files are complete",
     "user_install": "Not also installed machine-wide",
-    "catalog_current": "The plugin catalog is up to date",
+    "catalog_current": "This repo runs the newest version offered",
     "yq_present": "yq is installed",
     "git_identity": "Your git name and email are set",
     "restart": "Reload after install changes",

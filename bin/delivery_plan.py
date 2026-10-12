@@ -139,12 +139,12 @@ def destination_key(seam_name: str, adapter_rel: str | None, root: Path) -> tupl
     fm_key = DESTINATION_FRONTMATTER[seam_name]
     key = ec.adapter_key(adapter_rel, root, fm_key)
     if not key:
-        return None, (f"adapter `{adapter_rel or '?'}` declares no `{fm_key}:` frontmatter — a "
-                      f"multi-target {seam_name} slot cannot know which key holds this tool's "
-                      f"destination")
+        return None, (f"the tool's setup notes (`{adapter_rel or 'adapters/<slot>/<tool>.md'}`) "
+                      f"declare no `{fm_key}:`, so a multi-target {seam_name} slot cannot know "
+                      f"which key holds this tool's destination. Add it to the setup notes.")
     if not KEY_NAME_RE.match(key):
-        return None, (f"adapter `{adapter_rel}` declares `{fm_key}: {key}`, which is not a plain "
-                      f"config key name — refusing to use it as a lookup")
+        return None, (f"the tool's setup notes (`{adapter_rel}`) declare `{fm_key}: {key}`, "
+                      f"which is not a plain config key name. Refusing to use it as a lookup.")
     return key, None
 
 
@@ -394,17 +394,19 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                 #     purpose (vals, not target): one shared identity serving two audiences is
                 #     normal, unlike a shared destination.
                 skey = ec.adapter_key(vals.get("adapter"), res.root, "sender_key")
+                anotes = vals.get("adapter") or "adapters/<slot>/<tool>.md"
                 if skey is not None and not KEY_NAME_RE.match(skey):
-                    out.append(("error", f"{label}: its adapter declares `sender_key: {skey}`, "
-                                         f"which is not a plain config key name — refusing to "
-                                         f"use it as a lookup"))
+                    out.append(("error", f"{label}: the tool's setup notes (`{anotes}`) declare "
+                                         f"`sender_key: {skey}`, which is not a plain config key "
+                                         f"name. Refusing to use it as a lookup."))
                 elif skey:
                     sender = vals.get(skey)
                     if not isinstance(sender, str) or not sender.strip():
-                        out.append(("error", f"{label}: its adapter declares `sender_key: {skey}` "
-                                             f"but no `{skey}:` is set — mail must not go out as "
-                                             f"whoever the transport happens to be authenticated "
-                                             f"as"))
+                        out.append(("error", f"{label}: the tool's setup notes (`{anotes}`) "
+                                             f"declare `sender_key: {skey}` but no `{skey}:` is "
+                                             f"set, so mail would go out as whoever the transport "
+                                             f"happens to be signed in as. Add `{skey}:` to the "
+                                             f"tool slot config."))
                     elif _unsafe(sender):
                         out.append(("error", f"{label}: the `{skey}` value contains "
                                              f"{ec.offending_chars(sender)} — shell metacharacters are refused in a "
@@ -956,17 +958,17 @@ def main(argv: list[str] | None = None) -> int:
         # one, the plan changed between the preview and this step — that is the exact drift a
         # human-authorized plan is supposed to make impossible, so it stops here.
         err = _err("target_changed",
-                   f"routing now resolves to `{actual_target}`, not the approved "
-                   f"`{args.expect_target}` — the delivery plan changed after it was approved; "
-                   f"re-print the plan and get it authorized again")
+                   f"The delivery target changed after you approved it. Review and approve the "
+                   f"plan again before shipping. Details: routing now resolves to "
+                   f"`{actual_target}`, not the approved `{args.expect_target}`.")
         out, err = _fail(out, err)
     if (not err and args.expect_fingerprint is not None
             and out.get("resolution_fingerprint") != args.expect_fingerprint.strip()):
         # The name may match while the resolution moved — a stack.yaml edit can keep `client` and
         # re-point its channel or its recipients. The fingerprint is what the human approved.
         err = _err("target_changed",
-                   f"The delivery settings changed after you approved them. Review the plan "
-                   f"again before shipping. Details: fingerprint "
+                   f"The delivery settings changed after you approved them. Review and approve the "
+                   f"plan again before shipping. Details: fingerprint "
                    f"{out.get('resolution_fingerprint')}, approved {args.expect_fingerprint.strip()}.")
         out, err = _fail(out, err)
     if err:

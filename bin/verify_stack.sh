@@ -83,7 +83,7 @@ if [[ $rc -ne 0 ]]; then
     *) count_fail "config" ;;
   esac
   [[ -s "$PLAN" ]] || { echo "─────────────────────────────────────────────────────────";
-                        echo "Some tools need attention: sign in to or install the ones marked above."; exit 1; }
+                        echo "Some tools or settings need attention: fix the ones marked above."; exit 1; }
 fi
 
 # Each row is one JSON object; `python3 -c` pulls the fields so bash never parses JSON.
@@ -131,7 +131,9 @@ while IFS= read -r line; do
   [[ -n "$pt" ]] || pt="$(sed -n '2,/^---$/p' "$adapter_path" 2>/dev/null \
                        | sed -n 's/^transport:[[:space:]]*\([A-Za-z]*\).*/\1/p' | head -n 1)"
   case "$pt" in mcp|both)
-    posture_line="  ▸ $label also connects through MCP: confirm its permissions in your session (see \`$adapter\`, section \`Permission posture (MCP)\`; the result is saved in \`.claude/config/posture.local.yaml\`)";;
+    # `both` has a shell path too, so MCP is an additional route; `mcp` is the only route.
+    mcp_phrase="also connects through MCP"; [[ "$pt" == "mcp" ]] && mcp_phrase="connects through MCP"
+    posture_line="  ▸ $label $mcp_phrase: confirm its permissions in your session (see \`$adapter\`, section \`Permission posture (MCP)\`; record the result in \`.claude/config/posture.local.yaml\`)";;
   esac
 
   # 2) are the adapter's required keys actually set? A verify command only exercises the keys its
@@ -262,7 +264,7 @@ if [[ $fail -ne 0 ]]; then
   [[ $warn_count -gt 0 ]] && summary="$summary, $warn_count unverified ($warn_list)"
   [[ $fail_count -gt 0 ]] && summary="$summary, $fail_count failing ($fail_list)"
   echo "$summary."
-  echo "Some tools need attention: sign in to or install the ones marked above."
+  echo "Some tools or settings need attention: fix the ones marked above."
 elif [[ $warn_count -gt 0 ]]; then
   echo "$ok_count OK, $warn_count unverified ($warn_list)."
 else

@@ -354,7 +354,7 @@ Only on explicit confirmation, execute — **source of truth first, derived file
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
      adapter's auth notes as the fix.
    - **…and the posture pointers that check prints (advisory, never blocking):** verify_stack
-     emits a `▸ <slot> also connects through MCP` line for every tool slot whose resolved transport includes MCP,
+     emits a `▸ <slot> ... connects through MCP` line (`also connects` when the slot has a terminal route too) for every tool slot whose resolved transport includes MCP,
      naming that adapter's "Permission posture (MCP)" section. For each pointer: run the section's
      read-only probe in-session, apply the adapter's comparison rule, and record the outcome in
      the report AND in the gitignored record file `.claude/config/posture.local.yaml`

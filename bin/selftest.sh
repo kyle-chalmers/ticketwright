@@ -8526,8 +8526,8 @@ printf '%s\n' "$mw51" > "$TMP/mw51.out"
   && grep -qF '`adapters/warehouse/snowflake.md`, section `Permission posture (MCP)`' <<<"$mw51" \
   && grep -qF '▸ tracker also connects through MCP' <<<"$mw51" \
   && grep -qF '`adapters/tracker/jira.md`, section `Permission posture (MCP)`' <<<"$mw51" \
-  && grep -qF '▸ chat also connects through MCP' <<<"$mw51"; } \
-  && ok "multi-warehouse dry-run: posture advisories for prod(both) + tracker(both) + chat(mcp), each naming its adapter" \
+  && grep -qF '▸ chat connects through MCP' <<<"$mw51"; } \
+  && ok "multi-warehouse dry-run: MCP pointers for the prod warehouse, the tracker and chat (not lake), each naming its adapter's section" \
   || bad "a resolved-transport advisory is missing from the multi-warehouse dry-run" "$mw51"
 grep -qF '▸ warehouse[lake] also connects through MCP' <<<"$mw51" \
   && bad "warehouse[lake] got a posture line — configured transport=cli must beat the adapter's both" \
@@ -8542,9 +8542,9 @@ grep -qF 'skipped: unresolved {profile}' <<<"$mw51" \
 
 # --- (B) mcp-only seams both advise -----------------------------------------------------------------
 ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
-{ grep -qF '▸ tracker also connects through MCP' <<<"$ab51" \
+{ grep -qF '▸ tracker connects through MCP' <<<"$ab51" \
   && grep -qF '`adapters/tracker/asana.md`, section `Permission posture (MCP)`' <<<"$ab51" \
-  && grep -qF '▸ chat also connects through MCP' <<<"$ab51" \
+  && grep -qF '▸ chat connects through MCP' <<<"$ab51" \
   && grep -qF '`adapters/chat/teams.md`, section `Permission posture (MCP)`' <<<"$ab51" \
   && ! grep -qF '▸ warehouse also connects through MCP' <<<"$ab51"; } \
   && ok "asana-bq dry-run: tracker + chat advise (mcp); the cli warehouse stays silent" \
@@ -8554,11 +8554,11 @@ ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dr
 rs51="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; rs51rc=$?
 printf '%s\n' "$rs51" > "$TMP/rs51.out"
 { [ "$rs51rc" -eq 0 ] \
-  && grep -qF '▸ chat also connects through MCP' <<<"$rs51" \
+  && grep -qF '▸ chat connects through MCP' <<<"$rs51" \
   && grep -q "MCP-only: can't be checked from the terminal" <<<"$rs51"; } \
   && ok "root stack: the chat advisory coexists with the null-verify MCP-only warning (both print, in order)" \
   || bad "the chat posture advisory broke the null-verify terminal branch" "rc=$rs51rc $(tail -5 <<<"$rs51")"
-p51adj "$TMP/rs51.out" "MCP-only: can't be checked from the terminal" '▸ chat also connects through MCP' \
+p51adj "$TMP/rs51.out" "MCP-only: can't be checked from the terminal" '▸ chat connects through MCP' \
   && ok "ADJACENT: the chat advisory is the very next line after the null-verify warning" \
   || bad "the chat advisory drifted from its null-verify terminal status" "$rs51"
 # --- (C2) a `both` seam with a null verify must NOT be told to "write a verify" -------------------
@@ -8626,8 +8626,8 @@ grep -qF 'also connects through MCP' <<<"$nw51" \
 az51="$(bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run 2>&1)"
 { ! grep -qF '▸ tracker also connects through MCP' <<<"$az51" && ! grep -qF '▸ warehouse also connects through MCP' <<<"$az51" \
   && ! grep -qF '▸ docstore also connects through MCP' <<<"$az51" && ! grep -qF '▸ vcs also connects through MCP' <<<"$az51" \
-  && grep -qF '▸ chat[internal]* also connects through MCP' <<<"$az51" \
-  && grep -qF '▸ chat[email] also connects through MCP' <<<"$az51"; } \
+  && grep -qF '▸ chat[internal]* connects through MCP' <<<"$az51" \
+  && grep -qF '▸ chat[email] connects through MCP' <<<"$az51"; } \
   && ok "azure stack: cli seams silent; both mcp chat TARGETS advise under their own unit labels" \
   || bad "per-target advisory wrong on the azure stack" "$az51"
 
@@ -10782,7 +10782,8 @@ import plugin_doctor as d
 emitted = [c["id"] for c in json.load(open(sys.argv[1]))["checks"]]
 missing = [i for i in emitted + list(d.CHECK_IDS) if i not in d.LABELS]
 extra = [i for i in d.LABELS if i not in d.CHECK_IDS]
-print("MISSING: " + " ".join(missing) if missing else ("EXTRA: " + " ".join(extra) if extra else "OK"))
+wrong = [] if d.LABELS.get("catalog_current") == "This repo runs the newest version offered" else ["catalog_current"]
+print("MISSING: " + " ".join(missing) if missing else ("EXTRA: " + " ".join(extra) if extra else ("WRONG: " + " ".join(wrong) if wrong else "OK")))
 PDPY
 pd_cfg "$PDC" "$PDR" project
 PATH="$PD_MODERN:$SAFEBIN" python3 "$PD_DOC" --root "$PDR" --config-root "$PDC" --no-probe --json > "$TMP/pl59-doctor.json" 2>/dev/null
@@ -10790,6 +10791,27 @@ python3 "$TMP/pl59-labels.py" "$TMP/pl59-doctor.json" > "$TMP/pl59-labels.out" 2
 [ "$(cat "$TMP/pl59-labels.out")" = "OK" ] \
   && ok "every check the doctor emits has a plain label" \
   || bad "a doctor check has no plain label (or a label names no check)" "$(cat "$TMP/pl59-labels.out")"
+
+# --- Task 6 fix round: neutral failure line, MCP-only vs both wording, doctor label meaning -------
+RJ59="$TMP/rj59"; mkdir -p "$RJ59/.claude/config"
+cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$RJ59/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' > "$RJ59/.claude/config/connections.local.yaml"
+CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ59/.claude/config/stack.yaml" --dry-run > "$TMP/pl59-cfgfail.txt" 2>&1; rcj59=$?
+{ [ "$rcj59" -ne 0 ] && grep -qF 'Some tools or settings need attention: fix the ones marked above.' "$TMP/pl59-cfgfail.txt" \
+  && ! grep -q 'sign in to or install' "$TMP/pl59-cfgfail.txt"; } \
+  && ok "a rejected override prints the neutral 'tools or settings need attention' line, not 'sign in or install'" \
+  || bad "a config failure still tells the person to sign in or install" "rc=$rcj59 $(tail -3 "$TMP/pl59-cfgfail.txt")"
+mo59="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
+bo59="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
+{ grep -qF '▸ tracker connects through MCP: confirm its permissions' <<<"$mo59" \
+  && ! grep -qF '▸ tracker also connects' <<<"$mo59" && ! grep -qF '▸ chat also connects' <<<"$mo59" \
+  && grep -qF '▸ tracker also connects through MCP: confirm its permissions' <<<"$bo59" \
+  && grep -qF 'record the result in `.claude/config/posture.local.yaml`' <<<"$mo59"; } \
+  && ok "an MCP-only slot prints 'connects through MCP', a slot with a terminal route too prints 'also connects'" \
+  || bad "MCP-only vs both posture wording is wrong" "$mo59"
+grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'connects through MCP' .claude/skills/setup/teammate.md \
+  && ! grep -q 'posture\[<slot>\]' .claude/skills/setup/SKILL.md .claude/skills/setup/teammate.md \
+  && ok "the setup skills quote the stable part of the MCP pointer line" || bad "setup skills quote a stale posture line"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

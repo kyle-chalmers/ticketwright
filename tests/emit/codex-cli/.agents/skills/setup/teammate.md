@@ -133,7 +133,7 @@ result mean something:
   `auth:` notes name a suitable probe), and record the outcome — reachable or unreachable — next
   to that slot in the checklist. An unverified MCP slot is not done until this probe has run.
 - **Check each MCP slot's permission posture — discover, compare, record.** For every slot whose
-  resolved transport includes MCP, the verifier printed a `▸ <slot> also connects through MCP` pointer naming that
+  resolved transport includes MCP, the verifier printed a `▸ <slot> ... connects through MCP` pointer naming that
   adapter's "Permission posture (MCP)" section. Run the section's read-only probe in-session,
   apply its comparison rule, and record the outcome per slot — `matches` (the discovered
   privileges satisfy the rule), `exceeds-policy` (the probe found more than the policy expects),
