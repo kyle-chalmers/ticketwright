@@ -8638,15 +8638,15 @@ b51() {  # $1 = project dir → the SessionStart banner
 }
 # (i) the kit's own stack: warehouse transport both + high_risk ⇒ the MCP wording.
 bi51="$(b51 "$KIT")"
-grep -qF 'DB writes: policy high_risk — Bash path hook-gated; MCP path advisory (tool-side controls, posture recorded at setup).' <<<"$bi51" \
-  && ok "banner (kit stack): the DB-writes line names both paths — Bash hook-gated, MCP advisory" \
+grep -qF "Database writes (high_risk): commands in the terminal ask first. Writes through the warehouse's MCP connector rely on that tool's own permissions, set up during /setup." <<<"$bi51" \
+  && ok "banner (kit stack): the database-writes line names both paths: terminal commands ask first, MCP connector relies on its own permissions" \
   || bad "the MCP-aware DB-writes banner line is missing" "$bi51"
 # (ii) configured cli ⇒ plain jurisdiction wording, and no MCP claim anywhere in that line.
 BP51="$TMP/b51-cli"; mkdir -p "$BP51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: postgres\n    adapter: adapters/warehouse/postgres.md\n    transport: cli\n    cli: psql\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BP51/.claude/config/stack.yaml"
 bii51="$(b51 "$BP51")"
-if grep -qF 'DB writes: policy high_risk — hook-gated (Bash jurisdiction).' <<<"$bii51"; then
-  if grep 'DB writes: policy' <<<"$bii51" | grep -q 'MCP'; then
+if grep -qxF 'Database writes (high_risk): commands in the terminal ask first.' <<<"$bii51"; then
+  if grep 'Database writes (' <<<"$bii51" | grep -q 'MCP'; then
     bad "a cli-only warehouse banner line claims MCP" "$bii51"
   else
     ok "banner (cli warehouse): plain jurisdiction wording, no MCP substring in the DB-writes line"
@@ -8658,21 +8658,21 @@ fi
 BU51="$TMP/b51-unknown"; mkdir -p "$BU51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: mystery\n    adapter: adapters/warehouse/does-not-exist.md\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BU51/.claude/config/stack.yaml"
 biii51="$(b51 "$BU51")"
-grep -qF 'DB writes: policy high_risk — hook-gated (Bash jurisdiction).' <<<"$biii51" \
+grep -qxF 'Database writes (high_risk): commands in the terminal ask first.' <<<"$biii51" \
   && ok "banner (unknown transport): falls to the plain wording — unknown never claims MCP" \
   || bad "an unknown transport produced the wrong DB-writes line" "$biii51"
-# (iv) policy off ⇒ no advisory line at all (the policy summary already says NOT gated).
+# (iv) policy off ⇒ no advisory line at all (the safety-rules line already says database writes do NOT ask first).
 BO51="$TMP/b51-off"; mkdir -p "$BO51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    transport: both\n    cli: snow\npolicies:\n  db_write_requires_approval: off\n' > "$BO51/.claude/config/stack.yaml"
 biv51="$(b51 "$BO51")"
-grep -qF 'DB writes: policy' <<<"$biv51" \
+grep -qF 'Database writes (' <<<"$biv51" \
   && bad "policy off still printed a DB-writes advisory line" "$biv51" \
   || ok "banner (policy off): no DB-writes advisory line"
 # (v) no warehouse seam ⇒ no line.
 BN51="$TMP/b51-none"; mkdir -p "$BN51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: local\n    adapter: adapters/tracker/local.md\n    transport: cli\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BN51/.claude/config/stack.yaml"
 bv51="$(b51 "$BN51")"
-grep -qF 'DB writes: policy' <<<"$bv51" \
+grep -qF 'Database writes (' <<<"$bv51" \
   && bad "a warehouse-less repo printed a DB-writes advisory line" "$bv51" \
   || ok "banner (no warehouse): no DB-writes advisory line"
 hdr "51d · the meetings tool slot (PROMPT: meetings-intake, stage 2)"
@@ -10727,6 +10727,24 @@ grep -q 'blocked the command' "$TMP/pl59-smp.txt" && ! grep -q 'asking first' "$
 grep -q "safety checks could not run" bin/opencode_tool_gate.js \
   && ok "opencode fallback says the safety checks could not run" \
   || bad "opencode fallback text not updated" "$(grep -n 'could not run' bin/opencode_tool_gate.js)"
+
+# --- Task 5: session banner and index hints -----------------------------------------------------
+( cd "$KIT" && env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/session_context.py; \
+  env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/ticket_index_context.py ) > "$TMP/pl59-banner.txt" 2>/dev/null
+grep -q 'Ticketwright' "$TMP/pl59-banner.txt" && python3 "$PL59" --text "$TMP/pl59-banner.txt" > "$TMP/pl59-banner.out" 2>&1 \
+  && ok "session banners lead in plain words" \
+  || bad "session banner uses internal terms or printed nothing" "$(head -5 "$TMP/pl59-banner.out")"
+grep -q 'Run /refresh index' .claude/hooks/regenerate_ticket_index.py \
+  && ok "the index regenerator points at /refresh index, not a bin/ script" \
+  || bad "regenerate_ticket_index.py still points people at a bin/ script"
+grep -qF 'Safety rules: database writes do NOT ask first (`db_write_requires_approval: off`)' <<<"$biv51" \
+  && grep -qF 'Safety rules: risky database writes (drop, delete, update, grant and similar) ask first' <<<"$bi51" \
+  && ! grep -qE 'Policies enforced|DB writes' <<<"$bi51$biv51" \
+  && ok "banner safety-rules line names the database-write rule in plain words for off and high_risk" \
+  || bad "banner safety-rules line wrong" "$bi51 --- $biv51"
+grep -qF 'run /refresh index.)' .claude/hooks/ticket_index_context.py && ! grep -q 'index workflow' .claude/hooks/ticket_index_context.py \
+  && ok "the catalog banner points at /refresh index" \
+  || bad "ticket_index_context.py still says 'index workflow'"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

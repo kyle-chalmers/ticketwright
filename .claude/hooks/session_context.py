@@ -371,18 +371,19 @@ def policy_advisory_lines(s: dict, mode: str) -> list[str]:
     meetings slot) slots in without touching main(). Honesty rules: the line prints only when a
     warehouse is configured AND the policy is on; the MCP clause appears only when some warehouse
     unit's resolved transport provably includes mcp (`warehouse_mcp is True`); False or unknown
-    (None — including the regex fallback scan, which never sets the key) states the plain Bash
-    jurisdiction and claims nothing about a path it cannot see. Fail-open string logic — any
+    (None, including the regex fallback scan, which never sets the key) states only that terminal
+    commands ask first and claims nothing about a path it cannot see. Fail-open string logic: any
     surprise yields no line, never a crash."""
     lines: list[str] = []
     try:
         if s.get("warehouse") in (None, "—") or mode == MODE_OFF:
             return lines
         if s.get("warehouse_mcp") is True:
-            lines.append(f"DB writes: policy {mode} — Bash path hook-gated; MCP path advisory "
-                         "(tool-side controls, posture recorded at setup).")
+            lines.append(f"Database writes ({mode}): commands in the terminal ask first. Writes "
+                         "through the warehouse's MCP connector rely on that tool's own "
+                         "permissions, set up during /setup.")
         else:
-            lines.append(f"DB writes: policy {mode} — hook-gated (Bash jurisdiction).")
+            lines.append(f"Database writes ({mode}): commands in the terminal ask first.")
     except Exception:  # noqa: BLE001 — a hook must fail open
         return []
     return lines
@@ -428,13 +429,12 @@ def main() -> int:
     # guard is set to `off` teaches the agent the wrong rule.
     mode = db_write_mode(stack)
     db_rule = {
-        MODE_OFF: "DB writes are NOT gated (db_write_requires_approval: off)",
-        MODE_ALL: "every DB write requires approval (db_write_requires_approval: all)",
-    }.get(mode, "high-risk DB writes require approval (db_write_requires_approval: high_risk) — "
-                "plain CREATE/INSERT/ALTER ADD run without asking")
-    lines.append(f"Policies enforced: {db_rule}; external posts require approval "
-                 "(db_write_guard hook + skill hard-halts); chat defaults to draft; "
-                 "outputs deterministic. See AGENTS.md.")
+        MODE_OFF: "database writes do NOT ask first (`db_write_requires_approval: off`)",
+        MODE_ALL: "every database write asks first",
+    }.get(mode, "risky database writes (drop, delete, update, grant and similar) ask first; plain "
+                "CREATE/INSERT/ALTER ADD run without asking")
+    lines.append(f"Safety rules: {db_rule}; anything posted outside the repo waits for your "
+                 "go-ahead; chat messages start as drafts; outputs are reproducible. See AGENTS.md.")
     # Where the DB-write gate actually reaches, per transport — before the footer, appended from a
     # list that is empty whenever the line would not be true (no warehouse, policy off, failure).
     lines.extend(policy_advisory_lines(s, mode))

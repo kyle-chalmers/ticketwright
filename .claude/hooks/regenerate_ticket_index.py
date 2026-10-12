@@ -83,8 +83,8 @@ def main() -> int:
                 if not any(gd.iterdir()):
                     gd.rmdir()
         if changed_any:
-            print("Auto-regenerated tickets/INDEX.md + OBJECTS.md + graph layer (ticket folder changed). "
-                  "Run bin/ingest_index_records.py to refresh a ticket's curated summary.")
+            print("Rebuilt tickets/INDEX.md, OBJECTS.md and the graph notes because a ticket folder "
+                  "changed. Run /refresh index <ticket> to update a ticket's written summary.")
     except OSError:
         pass
     return 0
