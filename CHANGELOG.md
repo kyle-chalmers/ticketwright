@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- Guard prompts, the session banner, `verify_stack`, the doctor, config errors and the `/ship`
+  and `/review` say-this text now lead with what happened and what to do, in plain words, with
+  technical detail after "Details:". `verify_stack` says "All tools reachable" instead of
+  "All seams OK"; the doctor shows a plain label beside each check id.
+- Guard prompts keep what each check cannot see in plain words: the review guard says it reads
+  the review file, not the work, and the transcript guard says it reads file names and layout, not
+  what the text says. Offers to approve anyway appear only where the runtime can ask.
+- `/ship` no longer prints the plan fingerprint to the person; it is still carried between steps.
+- Fixed "carries a additive statement" in the database-write prompt.
+
+### Added
+- Selftest section 59 lints everything a person reads against `tests/plain_language/terms.txt`.
+  The contract is stated in `AGENTS.md`.
+
 ## [4.2.0] — 2026-10-03
 
 ### Changed

@@ -192,7 +192,7 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   / `skipped` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
   `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create`, locating the ticket from the
   command's paths, its cwd, or the checked-out branch, and asks when a ticket with deliverables has
-  anything but APPROVE on file. Silenced by `hard_halt_before_external_posts: false`. The three
+  anything but an approved review result on file. Silenced by `hard_halt_before_external_posts: false`. The three
   lifecycle skills call the same classifier, so the read is one implementation, not three readings.
 - **`db_write_guard.py`** (PreToolUse/Bash) — makes `db_write_requires_approval` mechanical.
   The policy is a three-value enum (`off` | `high_risk` | `all`, default `high_risk`), so routine

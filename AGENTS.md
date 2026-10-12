@@ -101,6 +101,14 @@ contributor docs like this one). A seam is one of: `tracker`, `warehouse`, `chat
    `adapters/README.md`.
 3. `bin/verify_stack.sh` — pings each seam's read-only `verify` before use.
 
+**Messages a person reads follow one contract** (selftest section 59 enforces it):
+lead with what happened and what to do, in plain words; put anything technical (a policy key, a
+script path, an exception) after ` Details:`. Talk to the person, never to the model, in a field
+the person sees (an `ask` reason, a `systemMessage`). Keep every caveat about what a guard cannot
+see, in plain words. Protocol tokens stay exact: `ship unreviewed`, `verdict:` values, command
+names, record keys. Say-this text in a skill sits between `<!-- ticketwright:user-facing:begin -->`
+and `<!-- ticketwright:user-facing:end -->`. The term list is `tests/plain_language/terms.txt`.
+
 **THE GOLDEN RULE: skills/commands are tool-agnostic.** Anything in `.claude/skills/` (or
 `.claude/commands/`) is written **once against verbs** and must never *invoke* a concrete tool — no
 `acli`/`snow`/`gh`/`psql`/`mcp__*` calls in orchestration. Tool specifics live only in adapters +
