@@ -183,10 +183,15 @@ def assess(command: str, cwd_raw: str, repo: Path) -> str | None:
     if not problems:
         return None
     return (f"This `{action}` would deliver work that has not been approved in review. Run "
-            f"`/review <owner>/<id>` first, or approve this `{action}` to deliver it anyway "
-            f"(`/ship` records an unreviewed ship as SKIPPED). Only commands run in Claude's "
-            f"terminal are checked, and the check reads the review file, not the work itself. "
+            f"`/review <owner>/<id>` first. Only commands run in the agent's terminal are "
+            f"checked, and the check reads the review file, not the work itself. "
             f"Details: " + "; ".join(problems) + ".")
+
+
+def approve_anyway(action: str) -> str:
+    """The way past the gate, offered only where the runtime can actually ask."""
+    return (f"Or approve this `{action}` to deliver it anyway (`/ship` records an unreviewed "
+            f"ship as SKIPPED).")
 
 
 def emit(decision: str | None = None, reason: str = "", system_message: str = "") -> None:
@@ -209,12 +214,12 @@ def before_details(message: str, note: str) -> str:
     return f"{head} {note}{sep}{tail}" if sep else f"{message} {note}"
 
 
-def _ask_or_note(payload: dict, message: str) -> int:
+def _ask_or_note(payload: dict, message: str, ask_note: str = "") -> int:
     if payload.get("permission_mode") == "bypassPermissions":
         emit(system_message=before_details(message, "Approval prompts are off for this session, "
                                                     "so Ticketwright did not ask."))
         return 0
-    emit("ask", message)
+    emit("ask", before_details(message, ask_note) if ask_note else message)
     return 0
 
 
@@ -244,7 +249,7 @@ def run() -> int:
             f"Details: bin/review_verdict.py could not run ({e.__class__.__name__}: {e})."))
     if message is None:
         return 0
-    return _ask_or_note(payload, message)
+    return _ask_or_note(payload, message, approve_anyway(outbound_action(command)))
 
 
 def main() -> int:

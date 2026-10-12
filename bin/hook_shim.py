@@ -397,7 +397,8 @@ def run_review_verdict_guard(protocol: str, root_arg: str | None) -> int:
         return present_pass()
     msg = "Ticketwright: " + msg
     if ask_capable(protocol):
-        return present_gate(protocol, msg, "high_risk")
+        return present_gate(protocol, before_details(msg, rvg.approve_anyway(rvg.outbound_action(command))),
+                            "high_risk")
     return present_gate(protocol, before_details(
         msg, "This tool can't ask for approval, so Ticketwright blocked the command. Run the "
              "review (or record an unreviewed ship through /ship) and try again."), "high_risk")

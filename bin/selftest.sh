@@ -10613,6 +10613,31 @@ PY
 [ "$(cat "$TMP/pl59-order.out")" = ok ] \
   && ok "shim: the no-ask note comes before the Details clause" \
   || bad "shim appended its note after Details (or did not add it)" "$(grep -i 'ask' "$TMP/pl59-rv.txt" | head -2)"
+# The limit of the check stays visible, in words that are true on every runtime the shim serves.
+# Line 1 is the Claude ask; line 2 the Claude bypass note; line 3 the shim's no-ask output.
+sed -n 1p "$TMP/pl59-rv.txt" > "$TMP/pl59-ask.txt"; sed -n 3p "$TMP/pl59-rv.txt" > "$TMP/pl59-noask.txt"
+grep -q 'reads the review file, not the work' "$TMP/pl59-ask.txt" && grep -q 'reads the review file, not the work' "$TMP/pl59-noask.txt" \
+  && ok "review guard keeps its limit in plain words (it reads the review file, not the work) on both paths" \
+  || bad "the review guard dropped its stated limit" "$(cat "$TMP/pl59-ask.txt")"
+# The approve-anyway offer appears only where the runtime can actually ask.
+grep -q 'Or approve this' "$TMP/pl59-ask.txt" && ! grep -q 'approve this' "$TMP/pl59-noask.txt" \
+  && ! grep -q 'Or approve this' <(sed -n 2p "$TMP/pl59-rv.txt") \
+  && ok "approve-anyway is offered on the ask path only (not in bypass mode, not on a runtime that cannot ask)" \
+  || bad "the review guard offers an approval its runtime cannot give, or omits it where it can" "$(cat "$TMP/pl59-rv.txt")"
+# The text is reused by Cursor, Devin and Codex through the shim, so it must not name Claude's terminal.
+! grep -q "Claude's terminal" "$TMP/pl59-rv.txt" \
+  && ok "review guard text names the agent's terminal, not one vendor's" \
+  || bad "review guard text still names Claude's terminal" "$(grep -n "Claude's terminal" "$TMP/pl59-rv.txt" | head -2)"
+# A malformed verdict file takes the unreadable branch; its message is lint-clean too.
+printf '# QC Review\nVerdict: APPROVE\n' > "$T59/qc_queries/1_review_verdict.md"
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/review_verdict_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' > "$TMP/pl59-unread.txt" 2>/dev/null
+env -u CLAUDE_PROJECT_DIR python3 bin/review_verdict.py --ticket "$T59" >> "$TMP/pl59-unread.txt" 2>/dev/null
+rm -f "$T59/qc_queries/1_review_verdict.md"
+[ "$(grep -c . "$TMP/pl59-unread.txt")" -ge 2 ] && grep -q "can't be read" "$TMP/pl59-unread.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-unread.txt" > "$TMP/pl59-unread.out" 2>&1 \
+  && ok "review guard: an unreadable review file is explained in plain words (ask reason and CLI line)" \
+  || bad "unreadable-review message uses internal terms or was not captured" "$(head -4 "$TMP/pl59-unread.out") $(cat "$TMP/pl59-unread.txt")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
