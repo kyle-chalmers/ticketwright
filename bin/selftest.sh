@@ -10701,6 +10701,29 @@ printf '%s' "$(pay59 'ls')" | TICKETWRIGHT_SHIM_FAULT=raise env -u CLAUDE_PROJEC
   && python3 "$PL59" --text "$TMP/pl59-shimerr.txt" > "$TMP/pl59-shimerr.out" 2>&1 \
   && ok "shim internal-error messages lead in plain words" \
   || bad "shim internal-error messages are missing or use internal terms" "$(cat "$TMP/pl59-shimerr.txt") $(head -3 "$TMP/pl59-shimerr.out")"
+# The shim offers "approve this" only where the runtime can ask: devin (deny-only) must not,
+# cursor (ask-capable) must. Same for the partial-scan wording ("blocked" vs "asking first").
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook source_material_guard > "$TMP/pl59-smd.txt" 2>/dev/null
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook source_material_guard > "$TMP/pl59-smc.txt" 2>/dev/null
+printf '%s' "$(pay59 'cp -r tickets /tmp/backup')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook source_material_guard >> "$TMP/pl59-smd.txt" 2>/dev/null
+python3 -c 'import json,sys
+for l in open(sys.argv[1]):
+    l=l.strip()
+    if l.startswith("{"):
+        o=json.loads(l); print(o.get("user_message") or o.get("agent_message") or o.get("permissionDecisionReason") or l)
+    elif l: print(l)' "$TMP/pl59-smc.txt" > "$TMP/pl59-smc-plain.txt" 2>/dev/null
+grep -q "can't ask for approval" "$TMP/pl59-smd.txt" && ! grep -q 'approve this' "$TMP/pl59-smd.txt" \
+  && grep -q 'approve this' "$TMP/pl59-smc-plain.txt" && ! grep -q "can't ask for approval" "$TMP/pl59-smc-plain.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-smd.txt" > "$TMP/pl59-smd.out" 2>&1 \
+  && python3 "$PL59" --text "$TMP/pl59-smc-plain.txt" > "$TMP/pl59-smc.out" 2>&1 \
+  && ok "shim transcript guard offers approval on an ask-capable runtime only (devin denies without offering it)" \
+  || bad "the shim offers an approval its runtime cannot give, or omits it where it can" "$(cat "$TMP/pl59-smd.txt") --- $(cat "$TMP/pl59-smc.txt") $(head -3 "$TMP/pl59-smd.out")"
+: > "$TMP/pl59-smp.txt"
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 "$TMP/pl59-k-partial/kit/bin/hook_shim.py" --runtime devin --hook source_material_guard >> "$TMP/pl59-smp.txt" 2>/dev/null
+grep -q 'blocked the command' "$TMP/pl59-smp.txt" && ! grep -q 'asking first' "$TMP/pl59-smp.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-smp.txt" > "$TMP/pl59-smp.out" 2>&1 \
+  && ok "shim partial-scan message says the command was blocked on a runtime that cannot ask" \
+  || bad "the shim's partial-scan message says it is asking on a deny-only runtime" "$(cat "$TMP/pl59-smp.txt") $(head -3 "$TMP/pl59-smp.out")"
 grep -q "safety checks could not run" bin/opencode_tool_gate.js \
   && ok "opencode fallback says the safety checks could not run" \
   || bad "opencode fallback text not updated" "$(grep -n 'could not run' bin/opencode_tool_gate.js)"

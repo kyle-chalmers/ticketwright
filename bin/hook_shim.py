@@ -448,25 +448,31 @@ def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
     records = scan.scan(repo)
     flagged = scan.flagged(records)
     partial = scan.incomplete(records)
+    can_ask = ask_capable(protocol)
     if partial and not flagged:
+        if can_ask:
+            return present_gate(protocol, (
+                f"Ticketwright: there are too many files to check them all for raw meeting "
+                f"transcripts, so it is asking first. Narrow the command to one ticket folder, "
+                f"or check the folder by hand. Details: {partial[0]['reason']}."), "high_risk")
         return present_gate(protocol, (
-            f"Ticketwright: there are too many files to check them all for raw meeting "
-            f"transcripts, so it is asking first. Narrow the command to one ticket folder, or "
-            f"check the folder by hand. Details: {partial[0]['reason']}."), "high_risk")
+            f"There are too many files to check them all for raw meeting transcripts, so "
+            f"Ticketwright blocked the command. Narrow the command to one ticket folder and try "
+            f"again. Details: {partial[0]['reason']}."), "high_risk")
     if not flagged:
         return present_pass()
 
     if copying:
         why = ("A folder-wide docstore backup copies everything in the ticket directory, and "
-               "`.gitignore` does not apply to `cp -r`. Remove the file from the folder, or "
-               "approve this copy explicitly.")
+               "`.gitignore` does not apply to `cp -r`. Remove the file from the folder"
+               + (", or approve this copy explicitly." if can_ask else "."))
     else:
         # Mirrors .claude/hooks/source_material_guard.py: every raw_suspect is asked about. The
         # guard does not predict git's ignore decision from the kit's SHIPPED template — an
         # install predating those patterns would stage a transcript in silence.
         why = ("Trim it to decisions and action items and rename it to the curated form "
-               "`YYYY-MM-DD-<slug>-meeting.md`, move it under `source_materials/private/`, or "
-               "approve this staging explicitly.")
+               "`YYYY-MM-DD-<slug>-meeting.md`, move it under `source_materials/private/`"
+               + (", or approve this staging explicitly." if can_ask else "."))
 
     listing = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in flagged[:4])
     if len(flagged) > 4:
@@ -475,7 +481,7 @@ def run_source_material_guard(protocol: str, root_arg: str | None) -> int:
            f"looks at file names and layout, not what the text says, so it catches whole "
            f"transcripts, not every sensitive line.")
 
-    if ask_capable(protocol):
+    if can_ask:
         return present_gate(protocol, msg, "high_risk")
     # No ask tier: DENY, and say so. The remedy here is a file change the person makes once,
     # not a re-run, so there is deliberately no one-shot escape token as the DB guard has.
