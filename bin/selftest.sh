@@ -10737,11 +10737,20 @@ grep -q 'Ticketwright' "$TMP/pl59-banner.txt" && python3 "$PL59" --text "$TMP/pl
 grep -q 'Run /refresh index' .claude/hooks/regenerate_ticket_index.py \
   && ok "the index regenerator points at /refresh index, not a bin/ script" \
   || bad "regenerate_ticket_index.py still points people at a bin/ script"
-grep -qF 'Safety rules: database writes do NOT ask first (`db_write_requires_approval: off`)' <<<"$biv51" \
-  && grep -qF 'Safety rules: risky database writes (drop, delete, update, grant and similar) ask first' <<<"$bi51" \
-  && ! grep -qE 'Policies enforced|DB writes' <<<"$bi51$biv51" \
-  && ok "banner safety-rules line names the database-write rule in plain words for off and high_risk" \
-  || bad "banner safety-rules line wrong" "$bi51 --- $biv51"
+SR59="$TMP/pl59-sr"; SRT59="/ship stops for your go-ahead before posting anything outside the repo, and a push or PR without an approved review asks first; chat messages start as drafts; outputs are reproducible. See AGENTS.md."
+for m59 in off all high_risk; do
+  mkdir -p "$SR59-$m59/.claude/config"
+  printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: postgres\n    adapter: adapters/warehouse/postgres.md\n    transport: cli\n    cli: psql\npolicies:\n  db_write_requires_approval: %s\n' "$m59" > "$SR59-$m59/.claude/config/stack.yaml"
+  b59="$(b51 "$SR59-$m59")"; printf '%s\n' "$b59" > "$SR59-$m59.txt"
+done
+grep -qF "Safety rules: database writes do NOT ask first (\`db_write_requires_approval: off\`); $SRT59" "$SR59-off.txt" \
+  && grep -qF "Safety rules: every database write run in the terminal asks first; $SRT59" "$SR59-all.txt" \
+  && grep -qF "Safety rules: risky database writes run in the terminal (drop, delete, update, grant and similar) ask first; plain CREATE/INSERT/ALTER ADD run without asking; $SRT59" "$SR59-high_risk.txt" \
+  && ! grep -qE 'Policies enforced|DB writes|waits for your go-ahead|Claude' "$SR59-off.txt" "$SR59-all.txt" "$SR59-high_risk.txt" \
+  && python3 "$PL59" --text "$SR59-off.txt" >/dev/null 2>&1 && python3 "$PL59" --text "$SR59-all.txt" >/dev/null 2>&1 \
+  && python3 "$PL59" --text "$SR59-high_risk.txt" >/dev/null 2>&1 \
+  && ok "banner safety-rules line scopes database writes to the terminal and names who stops posts, for off, all and high_risk" \
+  || bad "banner safety-rules line wrong" "$(cat "$SR59-off.txt" "$SR59-all.txt" "$SR59-high_risk.txt" 2>&1)"
 grep -qF 'run /refresh index.)' .claude/hooks/ticket_index_context.py && ! grep -q 'index workflow' .claude/hooks/ticket_index_context.py \
   && ok "the catalog banner points at /refresh index" \
   || bad "ticket_index_context.py still says 'index workflow'"

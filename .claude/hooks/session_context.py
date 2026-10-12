@@ -430,11 +430,12 @@ def main() -> int:
     mode = db_write_mode(stack)
     db_rule = {
         MODE_OFF: "database writes do NOT ask first (`db_write_requires_approval: off`)",
-        MODE_ALL: "every database write asks first",
-    }.get(mode, "risky database writes (drop, delete, update, grant and similar) ask first; plain "
-                "CREATE/INSERT/ALTER ADD run without asking")
-    lines.append(f"Safety rules: {db_rule}; anything posted outside the repo waits for your "
-                 "go-ahead; chat messages start as drafts; outputs are reproducible. See AGENTS.md.")
+        MODE_ALL: "every database write run in the terminal asks first",
+    }.get(mode, "risky database writes run in the terminal (drop, delete, update, grant and similar) "
+                "ask first; plain CREATE/INSERT/ALTER ADD run without asking")
+    lines.append(f"Safety rules: {db_rule}; /ship stops for your go-ahead before posting anything "
+                 "outside the repo, and a push or PR without an approved review asks first; chat "
+                 "messages start as drafts; outputs are reproducible. See AGENTS.md.")
     # Where the DB-write gate actually reaches, per transport — before the footer, appended from a
     # list that is empty whenever the line would not be true (no warehouse, policy off, failure).
     lines.extend(policy_advisory_lines(s, mode))
