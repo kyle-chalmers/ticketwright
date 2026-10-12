@@ -86,22 +86,22 @@ hdr "1 · config parses + every seam resolves to an adapter (kit example stacks)
 for s in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
   if yq -e '.seams|keys' "$s" >/dev/null 2>&1; then ok "parses: $s"; else bad "parse error: $s"; fi
   out="$(bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
-  if grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
+  if grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
     ok "kit example stack resolves: $s"
   else bad "seam resolution failed: $s" "$(grep -E 'missing|UNREACHABLE' <<<"$out" | head -2)"; fi
 done
 
 # The summary line must CARRY the truth, not paper over it: the kit's own Acme stack has an
 # MCP-only chat seam and an unresolved docstore {base_path}, so a healthy run reports exactly
-# which seams are unverified — a teammate shipped against "All seams OK." while Slack was
+# which seams are unverified — a teammate shipped against an all-clear line while Slack was
 # completely unauthenticated, which is the failure this wording exists to prevent.
 vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1rc=$?
 { [ "$vs1rc" -eq 0 ] \
   && grep -q '3 OK, 2 unverified (chat, docstore).' <<<"$vs1" \
-  && grep -q 'MCP-only: not checkable from the shell' <<<"$vs1" \
+  && grep -q "MCP-only: can't be checked from the terminal" <<<"$vs1" \
   && grep -q 'skipped: unresolved {base_path}' <<<"$vs1" \
-  && ! grep -q 'All seams OK' <<<"$vs1"; } \
-  && ok "verify_stack summary counts unverified seams by name (never 'All seams OK.' over a warning)" \
+  && ! grep -q 'All tools reachable' <<<"$vs1"; } \
+  && ok "verify_stack summary counts unverified seams by name (never 'All tools reachable.' over a warning)" \
   || bad "the verify_stack summary hides unverified seams" "rc=$vs1rc $(tail -3 <<<"$vs1")"
 
 hdr "2 · adapter verb coverage matches the contract"
@@ -969,9 +969,9 @@ done
 VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
 vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-# Require positive success (a healthy summary: "All seams OK" or "N OK, M unverified"), not just the absence of "adapter missing" — else a
+# Require positive success (a healthy summary: "All tools reachable" or "N OK, M unverified"), not just the absence of "adapter missing" — else a
 # fixture that failed to create would falsely pass (the seam here has verify:null, so success prints).
-{ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
+{ grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
   && ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)" \
   || bad "verify_stack failed on a project-external stack (adapter missing / no success line)" "$vout"
 # E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
@@ -1428,11 +1428,11 @@ pr="$(python3 -c "import json; print(','.join(x['id'] for x in json.load(open('$
 hdr "24 · multi-target warehouse seam (default: + targets:)"
 MT=".claude/config/stack.example.multi-warehouse.yaml"
 mtout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MT" --dry-run 2>&1)"; mtrc=$?
-{ [ "$mtrc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$mtout"; } \
+{ [ "$mtrc" -eq 0 ] && grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$mtout"; } \
   && ok "multi-warehouse example resolves" || bad "multi-warehouse example does not resolve" "$mtout"
-[ "$(grep -c '▸ warehouse\[' <<<"$mtout")" -eq 2 ] \
+[ "$(grep -c '^▸ warehouse\[' <<<"$mtout")" -eq 2 ] \
   && ok "both warehouse targets get their own row" || bad "expected exactly 2 target rows" "$mtout"
-grep -q '▸ warehouse\[prod\]\*' <<<"$mtout" \
+grep -q '^▸ warehouse\[prod\]\*' <<<"$mtout" \
   && ok "the default target is marked with *" || bad "default marker missing (default: pointer not read)" "$mtout"
 # Each target's verify interpolates ITS OWN tokens, not a sibling's — and the token now comes from
 # the MACHINE tier, which is the whole point of the three-tier split. The committed example
@@ -1466,7 +1466,7 @@ for s in $(for f in .claude/config/stack.yaml .claude/config/stack.example.*.yam
              yq -e '.seams.warehouse.targets' "$f" >/dev/null 2>&1 || echo "$f"
            done); do
   o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
-  { [ "$(grep -c '▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '▸ warehouse\[' <<<"$o"; } \
+  { [ "$(grep -c '^▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '^▸ warehouse\[' <<<"$o"; } \
     && ok "$(basename "$s"): still one plain warehouse row" || bad "$(basename "$s") regressed to target rows" "$o"
 done
 
@@ -2319,7 +2319,7 @@ else
     && ok "handoff.sh resolves routes with yq absent from PATH entirely" \
     || bad "handoff.sh still depends on yq" "$o rc=$rc"
   o="$(VS_PATH="$NOYQ" safe_verify_stack "$KIT/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
-  { [ "$rc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$o"; } \
+  { [ "$rc" -eq 0 ] && grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$o"; } \
     && ok "verify_stack.sh resolves every seam with yq absent from PATH entirely" \
     || bad "verify_stack.sh still depends on yq (it used to exit 1 without it)" "$o rc=$rc"
 fi
@@ -2469,7 +2469,7 @@ grep -q 'voice_profiles' .claude/config/stack.schema.md \
 VP="$TMP/vp"; mkdir -p "$VP/.claude/config"
 printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    path: "voices/{profile_id}.md"\n    map:\n      "a@b": a\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VP/.claude/config/stack.yaml"
 vpo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VP/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
+grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
 
 hdr "30 · verify_stack reports unset adapter-required keys (requires: was never read)"
 # /setup tells the user an unfilled key can be left as `# TODO` because "verify will point at it".
@@ -2903,7 +2903,7 @@ grep -qi 'tracker-sourced' .claude/skills/ship/SKILL.md && ok "/ship states WHY 
 # --- scripts, not just skills, must locate kit assets without a Claude variable ----------------
 # verify_stack read $CLAUDE_PLUGIN_ROOT directly, which is empty under every other harness.
 vso="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-{ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
+{ grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
   && ok "verify_stack resolves adapters with no Claude env var (project-external stack)" \
   || bad "verify_stack cannot find adapters without a Claude variable" "$vso"
 grep -q 'kit_paths\|/tw" --kit' bin/verify_stack.sh \
@@ -3024,7 +3024,7 @@ grep -q '"catalog": "main"' <<<"$ECOUT" \
 # believe they had turned a gate off.
 printf 'person: alice\npolicies:\n  db_write_requires_approval: off\n' > "$D/.claude/config/connections.local.yaml"
 ecrun "$D"
-{ [ "$ECRC" -eq 6 ] && grep -q 'not mergeable at any tier' <<<"$(ecerr)"; } \
+{ [ "$ECRC" -eq 6 ] && grep -q "can't be changed from your personal config" <<<"$(ecerr)"; } \
   && ok "a machine file carrying \`policies:\` is REJECTED, not ignored" \
   || bad "a gitignored file was allowed to touch policy" "rc=$ECRC $(ecerr)"
 # The fixture's team value (stack.example.multi-warehouse.yaml) is `high_risk`; `off` must not win.
@@ -3049,7 +3049,7 @@ printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      ghost:\n       
 ecrun "$D"; [ "$ECRC" -eq 6 ] \
   && ok "an overlay cannot invent a target" || bad "a local file created a warehouse target" "rc=$ECRC"
 printf 'person: alice\nseams:\n  warehouse:\n    profile: x\n' > "$D/.claude/config/connections.local.yaml"
-ecrun "$D"; { [ "$ECRC" -eq 6 ] && grep -q 'scope the override to a target' <<<"$(ecerr)"; } \
+ecrun "$D"; { [ "$ECRC" -eq 6 ] && grep -q 'pick one by name' <<<"$(ecerr)"; } \
   && ok "a seam-level override on a multi-target seam is refused with the right fix" || bad "seam-level override accepted where no adapter is defined" "rc=$ECRC $(ecerr)"
 
 # No adapter may declare a data-selection key as personal — the allowlist and the reserved set are
@@ -3249,12 +3249,12 @@ grep -q '"permissionDecision": "ask"' <<<"$(sabotage_says)" \
   || bad "a broken resolver turned the guard fail-open"
 
 # --- a rejected override must not report a healthy stack -----------------------------------------
-# Reporting "All seams OK" after REFUSING a prohibited override would defeat reject-not-ignore
+# Reporting "All tools reachable" after REFUSING a prohibited override would defeat reject-not-ignore
 # entirely: the person would believe both that their local file applied and that the stack was fine.
 RJ="$(ecroot reject)"; cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$RJ/.claude/config/stack.yaml"
 printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' > "$RJ/.claude/config/connections.local.yaml"
 o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
-{ [ "$rc" -ne 0 ] && ! grep -q 'All seams OK' <<<"$o"; } \
+{ [ "$rc" -ne 0 ] && ! grep -q 'All tools reachable' <<<"$o"; } \
   && ok "verify_stack fails when the resolver rejected an override" \
   || bad "a prohibited override still reported a healthy stack" "rc=$rc $o"
 printf 'person: alice\nstack_fingerprint: deadbeef\n' > "$RJ/.claude/config/connections.local.yaml"
@@ -4450,7 +4450,7 @@ policies:
 EOF
 IVY="$IVR/.claude/config/stack.yaml"
 ivout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVY" --dry-run 2>&1)"
-grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
+grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
   && ok "the completed-interview config verifies end to end" \
   || bad "the completed-interview config failed verify_stack" "$ivout"
 grep -q 'required key(s) not set' <<<"$ivout" \
@@ -4490,7 +4490,7 @@ sed -e 's|^  role: analyst$|  # TODO(setup): round 5 skipped — role/domain/ana
     "$IVY" > "$IVS/.claude/config/stack.yaml"
 printf '  hard_halt_before_external_posts: true\n' >> "$IVS/.claude/config/stack.yaml"
 skout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVS/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$skout" \
+grep -Eq 'All tools reachable|[0-9]+ OK, [0-9]+ unverified' <<<"$skout" \
   && ok "a config with rounds 5-6 skipped (TODO lines in place) still verifies" \
   || bad "the skipped-rounds config failed verify_stack" "$skout"
 { grep -q '# TODO(setup): round 5 skipped' "$IVS/.claude/config/stack.yaml" \
@@ -7448,7 +7448,7 @@ else
   printf 'someone-elses-bucket' > "$RC_STUB_DIR/attacker-drive.token"
   rc_local teamdrive
   o="$(RC_STUB_DIR="$RC_STUB_DIR" VS_PATH="$RCBIN" safe_verify_stack "$RCP50/.claude/config/stack.yaml" 2>&1)"
-  grep -q 'All seams OK' <<<"$o" \
+  grep -q 'All tools reachable' <<<"$o" \
     && ok "a remote whose sentinel matches the team token VERIFIES (no mount anywhere in the path)" \
     || bad "the correct rclone remote failed verification" "$o"
   rc_local attacker-drive
@@ -8522,31 +8522,31 @@ p51adj() {  # in file $1, the line immediately after the one containing $2 must 
 # --- (A) dry-run over a both/mcp/cli mix: prod yes, tracker yes, chat yes, lake NO ----------------
 mw51="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
 printf '%s\n' "$mw51" > "$TMP/mw51.out"
-{ grep -qF 'posture[warehouse[prod]*]: transport=both' <<<"$mw51" \
-  && grep -qF 'adapters/warehouse/snowflake.md § Permission posture (MCP)' <<<"$mw51" \
-  && grep -qF 'posture[tracker]: transport=both' <<<"$mw51" \
-  && grep -qF 'adapters/tracker/jira.md § Permission posture (MCP)' <<<"$mw51" \
-  && grep -qF 'posture[chat]: transport=mcp' <<<"$mw51"; } \
+{ grep -qF '▸ warehouse[prod]* also connects through MCP' <<<"$mw51" \
+  && grep -qF '`adapters/warehouse/snowflake.md`, section `Permission posture (MCP)`' <<<"$mw51" \
+  && grep -qF '▸ tracker also connects through MCP' <<<"$mw51" \
+  && grep -qF '`adapters/tracker/jira.md`, section `Permission posture (MCP)`' <<<"$mw51" \
+  && grep -qF '▸ chat also connects through MCP' <<<"$mw51"; } \
   && ok "multi-warehouse dry-run: posture advisories for prod(both) + tracker(both) + chat(mcp), each naming its adapter" \
   || bad "a resolved-transport advisory is missing from the multi-warehouse dry-run" "$mw51"
-grep -qF 'posture[warehouse[lake]]' <<<"$mw51" \
+grep -qF '▸ warehouse[lake] also connects through MCP' <<<"$mw51" \
   && bad "warehouse[lake] got a posture line — configured transport=cli must beat the adapter's both" \
   || ok "warehouse[lake] stays silent: configured cli wins over the adapter's both frontmatter"
 grep -qF 'skipped: unresolved {profile}' <<<"$mw51" \
   && ok "…and [lake]'s unresolved-{profile} terminal branch coexists untouched in the same run" \
   || bad "the unresolved-token branch changed shape" "$mw51"
-{ p51adj "$TMP/mw51.out" '→ would run: snow connection test' 'posture[warehouse[prod]*]: transport=both' \
-  && p51adj "$TMP/mw51.out" '→ would run: acli jira workitem search' 'posture[tracker]: transport=both'; } \
+{ p51adj "$TMP/mw51.out" '→ would run: snow connection test' '▸ warehouse[prod]* also connects through MCP' \
+  && p51adj "$TMP/mw51.out" '→ would run: acli jira workitem search' '▸ tracker also connects through MCP'; } \
   && ok "ADJACENT: each dry-run advisory is the very next line after its row's terminal status" \
   || bad "an advisory is not adjacent to its terminal status — flush spliced or drifted" "$mw51"
 
 # --- (B) mcp-only seams both advise -----------------------------------------------------------------
 ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
-{ grep -qF 'posture[tracker]: transport=mcp' <<<"$ab51" \
-  && grep -qF 'adapters/tracker/asana.md § Permission posture (MCP)' <<<"$ab51" \
-  && grep -qF 'posture[chat]: transport=mcp' <<<"$ab51" \
-  && grep -qF 'adapters/chat/teams.md § Permission posture (MCP)' <<<"$ab51" \
-  && ! grep -qF 'posture[warehouse]' <<<"$ab51"; } \
+{ grep -qF '▸ tracker also connects through MCP' <<<"$ab51" \
+  && grep -qF '`adapters/tracker/asana.md`, section `Permission posture (MCP)`' <<<"$ab51" \
+  && grep -qF '▸ chat also connects through MCP' <<<"$ab51" \
+  && grep -qF '`adapters/chat/teams.md`, section `Permission posture (MCP)`' <<<"$ab51" \
+  && ! grep -qF '▸ warehouse also connects through MCP' <<<"$ab51"; } \
   && ok "asana-bq dry-run: tracker + chat advise (mcp); the cli warehouse stays silent" \
   || bad "mcp-only advisory wrong on the asana-bq stack" "$ab51"
 
@@ -8554,11 +8554,11 @@ ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dr
 rs51="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; rs51rc=$?
 printf '%s\n' "$rs51" > "$TMP/rs51.out"
 { [ "$rs51rc" -eq 0 ] \
-  && grep -qF 'posture[chat]: transport=mcp' <<<"$rs51" \
-  && grep -q 'MCP-only: not checkable from the shell' <<<"$rs51"; } \
+  && grep -qF '▸ chat also connects through MCP' <<<"$rs51" \
+  && grep -q "MCP-only: can't be checked from the terminal" <<<"$rs51"; } \
   && ok "root stack: the chat advisory coexists with the null-verify MCP-only warning (both print, in order)" \
   || bad "the chat posture advisory broke the null-verify terminal branch" "rc=$rs51rc $(tail -5 <<<"$rs51")"
-p51adj "$TMP/rs51.out" 'MCP-only: not checkable from the shell' 'posture[chat]: transport=mcp' \
+p51adj "$TMP/rs51.out" "MCP-only: can't be checked from the terminal" '▸ chat also connects through MCP' \
   && ok "ADJACENT: the chat advisory is the very next line after the null-verify warning" \
   || bad "the chat advisory drifted from its null-verify terminal status" "$rs51"
 # --- (C2) a `both` seam with a null verify must NOT be told to "write a verify" -------------------
@@ -8580,7 +8580,7 @@ grep -q '⊘ no verify command; transport' <<<"$b51" \
   && ok "not-shell-checkable gets its own glyph, distinct from the you-forgot-one warning" \
   || bad "the not-shell-checkable case still shares ⚠ with a missing verify" "$b51"
 
-{ grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qF 'posture[docstore]' <<<"$rs51"; } \
+{ grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qF '▸ docstore also connects through MCP' <<<"$rs51"; } \
   && ok "the cli docstore row keeps its unresolved warning and gains NO posture line" \
   || bad "the docstore row changed" "$rs51"
 grep -qF '3 OK, 2 unverified (chat, docstore).' <<<"$rs51" \
@@ -8593,10 +8593,10 @@ printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n
 fv51="$(safe_verify_stack "$FV51/stack.yaml" 2>&1)"; fv51rc=$?
 printf '%s\n' "$fv51" > "$TMP/fv51.out"
 { [ "$fv51rc" -eq 1 ] && grep -q 'UNREACHABLE' <<<"$fv51" \
-  && grep -qF 'posture[warehouse]: transport=both' <<<"$fv51"; } \
+  && grep -qF '▸ warehouse also connects through MCP' <<<"$fv51"; } \
   && ok "an UNREACHABLE seam still gets its posture advisory, and the run still exits 1" \
   || bad "the advisory is lost (or the exit code moved) on the failed-verify branch" "rc=$fv51rc $fv51"
-p51adj "$TMP/fv51.out" '✗ UNREACHABLE → false' 'posture[warehouse]: transport=both' \
+p51adj "$TMP/fv51.out" '✗ UNREACHABLE → false' '▸ warehouse also connects through MCP' \
   && ok "ADJACENT: the advisory is the very next line after ✗ UNREACHABLE" \
   || bad "the advisory drifted from the UNREACHABLE terminal status" "$fv51"
 
@@ -8611,23 +8611,23 @@ rm -f "$TMP/PWNED51"
 uv51="$(safe_verify_stack "$UV51/.claude/config/stack.yaml" 2>&1)"; uv51rc=$?
 printf '%s\n' "$uv51" > "$TMP/uv51.out"
 { [ "$uv51rc" -eq 1 ] && grep -q 'refusing to run' <<<"$uv51" && [ ! -f "$TMP/PWNED51" ] \
-  && grep -qF 'posture[warehouse]: transport=both' <<<"$uv51"; } \
+  && grep -qF '▸ warehouse also connects through MCP' <<<"$uv51"; } \
   && ok "a metachar-refused token still gets its posture advisory (refused, never executed, exit 1)" \
   || bad "the unsafe-token terminal branch lost its advisory (or executed the value)" "rc=$uv51rc $uv51"
-p51adj "$TMP/uv51.out" 'refusing to run: value for {profile}' 'posture[warehouse]: transport=both' \
+p51adj "$TMP/uv51.out" 'refusing to run: value for {profile}' '▸ warehouse also connects through MCP' \
   && ok "ADJACENT: the advisory is the very next line after the refusal" \
   || bad "the advisory drifted from the unsafe-token terminal status" "$uv51"
 
 # --- (E) cli-only stacks are advisory-free ---------------------------------------------------------
 nw51="$(bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml --dry-run 2>&1)"
-grep -qF 'posture[' <<<"$nw51" \
+grep -qF 'also connects through MCP' <<<"$nw51" \
   && bad "a cli-only stack printed a posture advisory" "$nw51" \
   || ok "no-warehouse (all-cli) stack prints zero posture advisories"
 az51="$(bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run 2>&1)"
-{ ! grep -qF 'posture[tracker]' <<<"$az51" && ! grep -qF 'posture[warehouse' <<<"$az51" \
-  && ! grep -qF 'posture[docstore]' <<<"$az51" && ! grep -qF 'posture[vcs]' <<<"$az51" \
-  && grep -qF 'posture[chat[internal]*]: transport=mcp' <<<"$az51" \
-  && grep -qF 'posture[chat[email]]: transport=mcp' <<<"$az51"; } \
+{ ! grep -qF '▸ tracker also connects through MCP' <<<"$az51" && ! grep -qF '▸ warehouse also connects through MCP' <<<"$az51" \
+  && ! grep -qF '▸ docstore also connects through MCP' <<<"$az51" && ! grep -qF '▸ vcs also connects through MCP' <<<"$az51" \
+  && grep -qF '▸ chat[internal]* also connects through MCP' <<<"$az51" \
+  && grep -qF '▸ chat[email] also connects through MCP' <<<"$az51"; } \
   && ok "azure stack: cli seams silent; both mcp chat TARGETS advise under their own unit labels" \
   || bad "per-target advisory wrong on the azure stack" "$az51"
 
@@ -10754,6 +10754,42 @@ grep -qF "Safety rules: database writes do NOT ask first (\`db_write_requires_ap
 grep -qF 'run /refresh index.)' .claude/hooks/ticket_index_context.py && ! grep -q 'index workflow' .claude/hooks/ticket_index_context.py \
   && ok "the catalog banner points at /refresh index" \
   || bad "ticket_index_context.py still says 'index workflow'"
+
+# --- Task 6: stack check, config errors, identity, doctor labels ---------------------------------
+: > "$TMP/pl59-stack.txt"
+for st59 in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
+  safe_verify_stack "$st59" --dry-run >> "$TMP/pl59-stack.txt" 2>&1
+done
+( cd "$R59" && env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PERSON python3 "$KIT/bin/whoami.py" ) >> "$TMP/pl59-stack.txt" 2>&1
+python3 "$PL59" --text "$TMP/pl59-stack.txt" --py bin/effective_config.py --py bin/delivery_plan.py > "$TMP/pl59-stack.out" 2>&1 \
+  && ok "stack check, identity, and config error messages lead in plain words" \
+  || bad "stack/config/identity messages use internal terms" "$(head -8 "$TMP/pl59-stack.out")"
+grep -q '"All tools reachable."' bin/verify_stack.sh && ! grep -q 'All seams OK' bin/verify_stack.sh \
+  && ok "verify_stack's all-clear says tools, not seams" || bad "verify_stack still prints 'All seams OK'"
+# The doctor's plain-text report, in section 55's sandbox (fake claude on PATH, no probe, no real CLI).
+: > "$TMP/pl59-doctor.txt"
+for pdst59 in none project; do
+  pd_cfg "$PDC" "$PDR" "$pdst59"
+  PATH="$PD_MODERN:$SAFEBIN" python3 "$PD_DOC" --root "$PDR" --config-root "$PDC" --no-probe >> "$TMP/pl59-doctor.txt" 2>&1
+done
+[ "$(grep -c . "$TMP/pl59-doctor.txt")" -ge 20 ] && python3 "$PL59" --text "$TMP/pl59-doctor.txt" > "$TMP/pl59-doctor.out" 2>&1 \
+  && ok "the doctor's text report leads in plain words and shows a plain label beside each check id" \
+  || bad "the doctor's text report uses internal terms or printed too little" "$(head -8 "$TMP/pl59-doctor.out")"
+cat > "$TMP/pl59-labels.py" <<'PDPY'
+import json, os, sys
+sys.path.insert(0, "bin")
+import plugin_doctor as d
+emitted = [c["id"] for c in json.load(open(sys.argv[1]))["checks"]]
+missing = [i for i in emitted + list(d.CHECK_IDS) if i not in d.LABELS]
+extra = [i for i in d.LABELS if i not in d.CHECK_IDS]
+print("MISSING: " + " ".join(missing) if missing else ("EXTRA: " + " ".join(extra) if extra else "OK"))
+PDPY
+pd_cfg "$PDC" "$PDR" project
+PATH="$PD_MODERN:$SAFEBIN" python3 "$PD_DOC" --root "$PDR" --config-root "$PDC" --no-probe --json > "$TMP/pl59-doctor.json" 2>/dev/null
+python3 "$TMP/pl59-labels.py" "$TMP/pl59-doctor.json" > "$TMP/pl59-labels.out" 2>&1
+[ "$(cat "$TMP/pl59-labels.out")" = "OK" ] \
+  && ok "every check the doctor emits has a plain label" \
+  || bad "a doctor check has no plain label (or a label names no check)" "$(cat "$TMP/pl59-labels.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

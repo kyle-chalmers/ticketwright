@@ -240,10 +240,10 @@ def resolve(root: str | Path, tier3: object = _UNSET) -> dict:
             res["status"] = "conflict"
             res["identity"] = ident
             res["warning"] = (
-                f"whoami: this machine is pinned to '{pid}' (connections.local.yaml person:), "
-                f"but the local identity '{ident}' maps to '{ids[0]}'. Using '{pid}' — if that is "
-                f"wrong, fix the pin or this repo's git config before work lands in a colleague's "
-                f"folder.")
+                f"whoami: this machine is set to work as '{pid}', but your git identity "
+                f"'{ident}' belongs to '{ids[0]}'. Using '{pid}'. If that is wrong, fix it with "
+                f"/setup --teammate before work lands in a colleague's folder. "
+                f"Details: person: in .claude/config/connections.local.yaml.")
         return res
 
     env = os.environ.get("TICKETWRIGHT_PERSON", "").strip()
@@ -260,8 +260,9 @@ def resolve(root: str | Path, tier3: object = _UNSET) -> dict:
         return res
     if len(ids) > 1:
         res.update(status="ambiguous", identity=ident, candidates=ids,
-                   warning=(f"whoami: '{ident}' is enumerated by more than one person "
-                            f"({', '.join(ids)}) — say who you are: whoami.py --bind <id>"))
+                   warning=(f"whoami: '{ident}' matches more than one person "
+                            f"({', '.join(ids)}). Tell the agent which one you are; it will run "
+                            f"`whoami.py --bind <id>`."))
         return res
     # A MISS still owes the caller the roster. `setup/SKILL.md` and `teammate.md` both promise the
     # bind interview "every id under people/ as a candidate plus someone new", and this returned an
@@ -531,8 +532,8 @@ def main(argv: list[str] | None = None) -> int:
     elif res["status"] == "ambiguous":
         print(res["warning"], file=sys.stderr)
     else:
-        print("whoami: no identity resolved — the host agent should ask who you are and run "
-              "whoami.py --bind <id> (never guessing an owner).", file=sys.stderr)
+        print("whoami: Ticketwright doesn't know who you are yet. Run /setup --teammate, or "
+              "tell the agent your name so it can link you (never guessed).", file=sys.stderr)
     return code
 
 

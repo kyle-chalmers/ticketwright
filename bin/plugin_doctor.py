@@ -651,8 +651,8 @@ class Doctor:
         if shutil.which("yq"):
             return "ok", "yq is on PATH", []
         return ("warn",
-                "yq is missing — needed only by bin/selftest.sh, which reports many unrelated "
-                "failures from this one cause",
+                "yq is missing. Only the kit's self-test (`bin/selftest.sh`) needs it, and without "
+                "it that test reports many unrelated failures from this one cause",
                 [yq_install_command()])
 
     # -- 14 --
@@ -700,11 +700,35 @@ class Doctor:
         return self.results
 
 
+# A plain name for each check, shown beside the raw id (docs and troubleshooting cite the id).
+# Each label describes what the matching c_<id> check actually tests; `claude_version` and
+# `install_channel` are about the Claude Code CLI, not about Ticketwright, and `restart` is "ok"
+# when no reload is needed, so its label stays neutral instead of asserting that one is.
+LABELS = {
+    "git_clone": "This folder is a git clone",
+    "cwd_is_root": "Running from the repo's top folder",
+    "claude_on_path": "Claude Code is installed",
+    "claude_version": "Claude Code version",
+    "scope_supported": "Project-level plugin installs are supported",
+    "install_channel": "How Claude Code was installed",
+    "marketplace_registered": "Ticketwright's plugin source is registered",
+    "marketplace_source": "Your settings agree with the repo on the plugin source",
+    "repo_install": "Ticketwright is installed for this repo",
+    "install_payload": "The plugin's files are complete",
+    "user_install": "Not also installed machine-wide",
+    "catalog_current": "The plugin catalog is up to date",
+    "yq_present": "yq is installed",
+    "git_identity": "Your git name and email are set",
+    "restart": "Reload after install changes",
+}
+
+
 def render_human(doc: Doctor, results: list) -> str:
     lines = ["plugin_doctor · {} · names from {} · {}".format(
         doc.ref or "plugin unknown", doc.names_from, doc.root), ""]
     for res in results:
-        lines.append("{}  {}  {}".format(SYMBOL[res["status"]], res["id"], res["detail"]))
+        lines.append("{}  {} ({})  {}".format(SYMBOL[res["status"]],
+                                             LABELS.get(res["id"], res["id"]), res["id"], res["detail"]))
         # `restart`'s fix IS the footer below — printing it in both places is the duplication this
         # render deliberately avoids. The fix list still carries it for `--json`, which has no
         # footer and whose consumer (/setup) reports each non-ok finding's fix verbatim.
