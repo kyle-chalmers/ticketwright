@@ -253,8 +253,8 @@ def run() -> int:
         # FAIL-SAFE, not fail-open: without the classifier nothing can be assessed, so a command
         # in this guard's jurisdiction is gated and the malfunction is NAMED rather than swallowed.
         return _ask_or_note(payload, (
-            f"Ticketwright can't check for raw meeting transcripts right now, so it is asking "
-            f"before this commit or copy. Reinstall or update the Ticketwright plugin to fix it. "
+            f"Ticketwright can't check for raw meeting transcripts right now, so this commit or "
+            f"copy needs your approval first. Reinstall or update the Ticketwright plugin to fix it. "
             f"Details: bin/scan_source_materials.py could not be loaded ({_SCAN_IMPORT_ERROR})."
         ))
 
@@ -263,7 +263,8 @@ def run() -> int:
         flagged = _scan.flagged(records)
     except Exception as e:  # noqa: BLE001 — a classifier that misbehaves must gate, not fall through
         return _ask_or_note(payload, (
-            f"Ticketwright's transcript check failed, so it is asking before this commit or copy. "
+            f"Ticketwright's transcript check failed, so this commit or copy needs your approval "
+            f"first. "
             f"Reinstall or update the Ticketwright plugin to fix it. "
             f"Details: {e.__class__.__name__}: {e}."
         ))
@@ -273,8 +274,8 @@ def run() -> int:
     partial = _scan.incomplete(records)
     if partial and not flagged:
         return _ask_or_note(payload, (
-            f"There are too many files to check them all for raw meeting transcripts, so "
-            f"Ticketwright is asking first. Narrow the command to one ticket folder, or check the "
+            f"There are too many files to check them all for raw meeting transcripts, so this "
+            f"commit or copy needs your approval first. Narrow the command to one ticket folder, or check the "
             f"folder by hand. Details: {partial[0]['reason']}."))
 
     if not flagged:
@@ -297,8 +298,9 @@ def run() -> int:
             "`.gitignore` does not apply to a docstore copy (`cp -r`, `rsync` or "
             "`rclone copy`), so moving a file under "
             "`source_materials/private/` protects git and does NOT protect this copy. Remove the "
-            "file from the folder, or approve this copy explicitly."
+            "file from the folder."
         )
+        approve = "Or approve this copy explicitly."
     else:
         # EVERY raw_suspect counts here, whatever its filename. An earlier version assumed a
         # `*transcript*` file was already gitignored and so needed asking about only under `-f`.
@@ -311,9 +313,9 @@ def run() -> int:
         relevant = list(flagged)
         verb, why = "committed", (
             "Rename it to the curated form `YYYY-MM-DD-<slug>-meeting.md` after trimming it to "
-            "the decisions and action items, move it under `source_materials/private/`, or "
-            "approve this staging explicitly."
+            "the decisions and action items, or move it under `source_materials/private/`."
         )
+        approve = "Or approve this staging explicitly."
 
     if not relevant:
         return 0
@@ -322,11 +324,12 @@ def run() -> int:
     if len(relevant) > 4:
         names += f" (and {len(relevant) - 4} more)"
     reasons = "; ".join(f"{Path(r['file']).name} ({r['reason']})" for r in relevant[:4])
-    return _ask_or_note(payload, (
-        f"This may {('commit' if verb == 'committed' else 'back up')} a raw meeting transcript: "
-        f"{names}. {why} This check looks at file names and layout, not what the text says, so "
-        f"it catches whole transcripts, not every sensitive line. Details: {reasons}."
-    ))
+    def message(offer: str) -> str:
+        return (f"This may {('commit' if verb == 'committed' else 'back up')} a raw meeting "
+                f"transcript: {names}. {why}{offer} This check looks at file names and layout, "
+                f"not what the text says, so it catches whole transcripts, not every sensitive "
+                f"line. Details: {reasons}.")
+    return _ask_or_note(payload, message(""), ask_message=message(" " + approve))
 
 
 def before_details(message: str, note: str) -> str:
@@ -335,13 +338,17 @@ def before_details(message: str, note: str) -> str:
     return f"{head} {note}{sep}{tail}" if sep else f"{message} {note}"
 
 
-def _ask_or_note(payload: dict, message: str) -> int:
-    """Ask, unless the operator turned prompting off for the session — then say so visibly."""
+def _ask_or_note(payload: dict, message: str, ask_message: str = "") -> int:
+    """Ask, unless the operator turned prompting off for the session; then say so visibly.
+
+    `ask_message` (the same text plus the approve-it-anyway offer) is used on the ask path only:
+    in bypass mode nothing asks, so offering an approval there would describe a prompt that never
+    appears."""
     if payload.get("permission_mode") == "bypassPermissions":
         emit(system_message=before_details(message, "Approval prompts are off for this session, "
                                                     "so Ticketwright did not ask."))
         return 0
-    emit("ask", message)
+    emit("ask", ask_message or message)
     return 0
 
 

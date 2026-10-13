@@ -173,25 +173,29 @@ def assess(command: str, cwd_raw: str, repo: Path) -> str | None:
         return None
     cwd = Path(cwd_raw) if cwd_raw else repo
     tickets = _rv.locate(repo, _command_paths(command, cwd), cwd, _rv.current_branch(repo))
-    problems = []
+    problems, locators = [], []
     for t in tickets:
         rec = _rv.classify(t)
         if rec["deliverables"] == 0 or rec["status"] == _rv.STATUS_APPROVE:
             continue
+        locators.append(rec["locator"])
         problems.append(f"`{rec['locator']}`: {_rv.describe(rec)}, {rec['deliverables']} "
                         f"deliverable file(s)")
     if not problems:
         return None
+    # One ticket: name it, so the command can be typed as shown. Several: the placeholder, and
+    # the Details clause lists each one.
+    target = locators[0] if len(locators) == 1 else "<owner>/<id>"
     return (f"This `{action}` would deliver work that has not been approved in review. Run "
-            f"`/review <owner>/<id>` first. Only commands run in the agent's terminal are "
+            f"`/review {target}` first. Only commands run in the agent's terminal are "
             f"checked, and the check reads the review file, not the work itself. "
             f"Details: " + "; ".join(problems) + ".")
 
 
 def approve_anyway(action: str) -> str:
     """The way past the gate, offered only where the runtime can actually ask."""
-    return (f"Or approve this `{action}` to deliver it anyway (`/ship` records an unreviewed "
-            f"ship as SKIPPED).")
+    return (f"Or approve this `{action}` to deliver it anyway; approving here leaves no record. "
+            f"To ship unreviewed on the record, use `/ship` and reply `ship unreviewed`.")
 
 
 def emit(decision: str | None = None, reason: str = "", system_message: str = "") -> None:
@@ -244,8 +248,8 @@ def run() -> int:
         message = assess(command, cwd_raw, repo)
     except Exception as e:  # noqa: BLE001 — a classifier that cannot run gates MORE, visibly
         return _ask_or_note(payload, (
-            f"Ticketwright can't check review results right now, so it is asking before this "
-            f"push or PR. Reinstall or update the Ticketwright plugin to fix it. "
+            f"Ticketwright can't check review results right now, so this push or PR needs "
+            f"your approval first. Reinstall or update the Ticketwright plugin to fix it. "
             f"Details: bin/review_verdict.py could not run ({e.__class__.__name__}: {e})."))
     if message is None:
         return 0

@@ -256,8 +256,9 @@ fi
 
 echo "─────────────────────────────────────────────────────────"
 # The summary tells the truth about all three states. "All tools reachable." is reserved for the run where
-# every seam actually verified (or, in dry-run, resolved to a runnable verify) — an unverifiable
-# seam is named, not absorbed into the green line. Exit codes are unchanged: failures exit 1,
+# every seam actually verified; a dry run where every seam resolved to a runnable verify says "All
+# tools resolve (dry run, nothing contacted)." instead. An unverifiable seam is named, not absorbed
+# into the green line. Exit codes are unchanged: failures exit 1,
 # warnings alone still exit 0.
 if [[ $fail -ne 0 ]]; then
   summary="$ok_count OK"
@@ -267,6 +268,9 @@ if [[ $fail -ne 0 ]]; then
   echo "Some tools or settings need attention: fix the ones marked above."
 elif [[ $warn_count -gt 0 ]]; then
   echo "$ok_count OK, $warn_count unverified ($warn_list)."
+elif [[ $dry -eq 1 ]]; then
+  # A dry run contacts nothing, so it can only say every tool resolved, never that one answered.
+  echo "All tools resolve (dry run, nothing contacted)."
 else
   echo "All tools reachable."
 fi

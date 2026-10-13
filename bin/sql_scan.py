@@ -431,10 +431,12 @@ MODE_HIGH_RISK = "high_risk"
 MODE_ALL = "all"
 
 # What each statement class does, in words a person approving the command can check against the SQL.
+# "could" for high-risk: that class also holds statements the scanner does not recognize, which it
+# gates rather than guesses about, so "would" would overstate what it knows.
 PLAIN_CHANGE = {
-    "high-risk": "change or remove existing data, tables or permissions (for example DROP, "
+    "high-risk": "could change or remove existing data, tables or permissions (for example DROP, "
                  "DELETE, UPDATE, MERGE or GRANT)",
-    "additive": "add new data or objects (for example CREATE, INSERT or ALTER ... ADD)",
+    "additive": "would add new data or objects (for example CREATE, INSERT or ALTER ... ADD)",
 }
 
 
@@ -493,7 +495,7 @@ def assess(command: str, cwd: str, stack: Path | None, policy: str) -> dict:
     if tier >= threshold:
         label = "high-risk" if tier == HIGH else "additive"
         detail = (
-            f"This `{cli}` command would {PLAIN_CHANGE[label]}. Approve only after you have "
+            f"This `{cli}` command {PLAIN_CHANGE[label]}. Approve only after you have "
             f"seen the SQL and know which environment it runs against. "
             f"Details: policy db_write_requires_approval={policy}, statement class {label}."
         )

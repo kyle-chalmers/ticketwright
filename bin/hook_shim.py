@@ -398,7 +398,8 @@ def run_review_verdict_guard(protocol: str, root_arg: str | None) -> int:
     msg = rvg.assess(command, cwd, repo)
     if msg is None:
         return present_pass()
-    msg = "Ticketwright: " + msg
+    # House style for the shim prefix: lowercase after the colon, as in every other shim prefix.
+    msg = "Ticketwright: " + msg[:1].lower() + msg[1:]
     if ask_capable(protocol):
         return present_gate(protocol, before_details(msg, rvg.approve_anyway(rvg.outbound_action(command))),
                             "high_risk")
@@ -599,8 +600,9 @@ def main(argv=None) -> int:
                       RV_GUARD: run_review_verdict_guard}[args.hook]
             return runner(protocol, args.root)
         except Exception as e:  # noqa: BLE001 — same discipline as the DB guard below
-            msg = (f"A Ticketwright safety check hit an error, so it is blocking instead of "
-                   f"guessing. Reinstall or update the Ticketwright plugin, or turn that check off "
+            verb = "asking" if ask_capable(protocol) else "blocking"
+            msg = (f"A Ticketwright safety check hit an error, so it is {verb} instead of "
+                   f"guessing. Reinstall or update Ticketwright, or turn that check off "
                    f"in stack.yaml (`source_material_guard: off` or "
                    f"`hard_halt_before_external_posts: false`). "
                    f"Details: {args.hook} raised {e.__class__.__name__}: {e}.")
@@ -618,11 +620,14 @@ def main(argv=None) -> int:
     try:
         return run_guard(protocol, args.root)
     except Exception as e:  # noqa: BLE001 — map EVERY internal failure to a deliberate decision
-        msg = (f"Ticketwright's database-write check hit an error, so it is blocking instead of "
-               f"guessing. Reinstall or update the Ticketwright plugin, or set "
-               f"`db_write_requires_approval: off` to turn the check off. "
-               + escape_text(None, prefix_readable=False)
-               + f" Details: {e.__class__.__name__}: {e}.")
+        # On an ask-capable runtime the ask IS the way through, and the one-shot token is never
+        # read there, so offering it would point at an escape that does nothing.
+        can_ask = ask_capable(protocol)
+        msg = (f"Ticketwright's database-write check hit an error, so it is "
+               f"{'asking' if can_ask else 'blocking'} instead of guessing. Reinstall or update "
+               f"Ticketwright, or set `db_write_requires_approval: off` to turn the check off. "
+               + ("" if can_ask else escape_text(None, prefix_readable=False) + " ")
+               + f"Details: {e.__class__.__name__}: {e}.")
         try:
             if ask_capable(protocol):
                 return present_gate(protocol, msg, "high_risk")

@@ -420,7 +420,9 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                 if "bcc" in target:
                     out.append(("warn", f"{label}: `bcc:` has no effect — the kit deliberately "
                                         f"maps no hidden recipients (the no-bcc position in the "
-                                        f"email adapters); recipients belong in `always_include`, "
+                                        f"email tools' setup notes, `adapters/chat/gmail.md` and "
+                                        f"`adapters/chat/outlook.md`); recipients belong in "
+                                        f"`always_include`, "
                                         f"where each is visible, validated, and printed on the "
                                         f"approval line"))
             else:

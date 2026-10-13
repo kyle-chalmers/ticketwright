@@ -899,11 +899,13 @@ def lint(res: "Resolution") -> list[tuple[str, str]]:
     for unit in res.units():
         team = _team_unit_values(res, unit)
         declared = _adapter_user_keys(unit["values"].get("adapter"), res.root, []) or set()
+        notes = unit["values"].get("adapter") or "adapters/<slot>/<tool>.md"
         for key in sorted(declared):
             if key in team and team[key] not in (None, ""):
                 out.append((unit["label"],
-                            f"`{key}: {team[key]}` is committed in stack.yaml, but the adapter "
-                            f"declares it personal — move it to .claude/config/connections.local.yaml"))
+                            f"`{key}: {team[key]}` is committed in stack.yaml, but the tool's "
+                            f"setup notes (`{notes}`) mark it personal: move it to "
+                            f".claude/config/connections.local.yaml"))
         verify = team.get("verify")
         if isinstance(verify, str) and verify.strip():
             for key in sorted(declared):
