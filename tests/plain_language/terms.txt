@@ -1,0 +1,44 @@
+# Terms a person should never meet in the plain part of a message (selftest section 59).
+# term<TAB>what to say instead. Case-insensitive. Plain ASCII words (letters, digits, _ and -) match whole-word;
+# an entry containing "/" or any non-ASCII character matches as a substring.
+seam	tool slot
+seams	tool slots
+adapter	the tool's setup notes
+adapters	the tools' setup notes
+verb	action
+jurisdiction	what this check can see
+advisory	not enforced here
+fingerprint	the approved plan
+locator	ticket
+pyramid	the review checks (counts, duplicates, reconciliation, re-run, sign-off)
+①	the lint check
+②	the counts check
+③	the reconciliation check
+④	the independent re-run
+⑤	your sign-off
+inline-same-context	ran in the same conversation that did the work
+independent-subagent	ran in a separate, fresh context
+subagent_isolation	whether the reviewer was independent
+unestablished	not confirmed
+owner_source	how the owner was found
+unbound	not linked to a person
+assignee_dir_fallback	guessed from the folder name
+fail-open	lets work continue when it breaks
+hook-gated	checked before it runs
+gated	asks first
+unclassified	could not be checked
+posture	permissions
+PRP	plan-then-build
+classifier	check
+bypassPermissions	approval prompts are off
+hard_halt_before_external_posts	the "stop before posting" setting
+db_write_requires_approval	the database-write setting
+human_review_handoff	the review hand-off setting
+chat_default_draft	the chat-draft setting
+hyperlink_everything	the hyperlink setting
+skillify_everything	the skillify setting
+reduce_assumptions	the assumptions setting
+commit_plan_before_implement	the plan-first setting
+system_evolution	the system-evolution setting
+deterministic_outputs	the deterministic-outputs setting
+bin/	the Ticketwright plugin

@@ -117,16 +117,16 @@ def run() -> int:
             return 0
         if payload.get("permission_mode") == "bypassPermissions":
             emit(system_message=(
-                f"db_write_guard: the SQL scanner (bin/sql_scan.py) {problem}, so commands "
-                f"cannot be classified; approval not requested because the session is in "
-                f"bypassPermissions mode. Restore the kit's bin/ directory."
+                f"Ticketwright's SQL check is not working, and approval prompts are off for this "
+                f"session, so commands here, including warehouse commands, are running unchecked. "
+                f"Reinstall or update the Ticketwright plugin to fix it. Details: "
+                f"bin/sql_scan.py {problem}; permission mode bypassPermissions."
             ))
             return 0
         emit("ask", (
-            f"db_write_guard: the SQL scanner (bin/sql_scan.py, in this kit's bin/ directory) "
-            f"{problem}. Nothing can be classified, so every command is treated as "
-            f"unclassified and gated — more, never less. Restore or reinstall the kit's bin/ "
-            f"directory to clear this."
+            f"Ticketwright's SQL check is not working, so it is asking before every command in "
+            f"this project. Reinstall or update the Ticketwright plugin to fix it. "
+            f"Details: bin/sql_scan.py {problem}."
         ))
         return 0
 
@@ -161,9 +161,9 @@ def run() -> int:
     if kind == "wrong_target":
         if payload.get("permission_mode") == "bypassPermissions":
             emit(system_message=(
-                f"db_write_guard: SQL declares target `{named}` "
-                f"(`{want}`) but the command runs `{cli}`; approval "
-                f"not requested because the session is in bypassPermissions mode."
+                f"This SQL says it is for warehouse `{named}` (`{want}`), but the command runs "
+                f"`{cli}`. Approval prompts are off for this session, so Ticketwright did not "
+                f"ask. Details: permission mode bypassPermissions."
             ))
             return 0
         emit("ask", detail)
@@ -175,9 +175,10 @@ def run() -> int:
             # that. Say only that we did not request approval — other hooks or deny rules
             # may still intervene, so we cannot claim the command will run.
             emit(system_message=(
-                f"db_write_guard: {label} warehouse statement detected "
-                f"({cli}); approval not requested because the session is in "
-                f"bypassPermissions mode."
+                f"Ticketwright would normally ask before this `{cli}` command, which "
+                f"{_sql_scan.PLAIN_CHANGE.get(label, 'could change warehouse data')}. Approval prompts "
+                f"are off for this session, so it did not ask. Details: statement class {label}; "
+                f"permission mode bypassPermissions."
             ))
             return 0
         emit("ask", detail)

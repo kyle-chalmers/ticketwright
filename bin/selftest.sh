@@ -86,22 +86,22 @@ hdr "1 · config parses + every seam resolves to an adapter (kit example stacks)
 for s in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
   if yq -e '.seams|keys' "$s" >/dev/null 2>&1; then ok "parses: $s"; else bad "parse error: $s"; fi
   out="$(bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
-  if grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
+  if grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$out" && ! grep -q "adapter missing" <<<"$out"; then
     ok "kit example stack resolves: $s"
   else bad "seam resolution failed: $s" "$(grep -E 'missing|UNREACHABLE' <<<"$out" | head -2)"; fi
 done
 
 # The summary line must CARRY the truth, not paper over it: the kit's own Acme stack has an
 # MCP-only chat seam and an unresolved docstore {base_path}, so a healthy run reports exactly
-# which seams are unverified — a teammate shipped against "All seams OK." while Slack was
+# which seams are unverified — a teammate shipped against an all-clear line while Slack was
 # completely unauthenticated, which is the failure this wording exists to prevent.
 vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1rc=$?
 { [ "$vs1rc" -eq 0 ] \
   && grep -q '3 OK, 2 unverified (chat, docstore).' <<<"$vs1" \
-  && grep -q 'MCP-only: not checkable from the shell' <<<"$vs1" \
+  && grep -q "MCP-only: can't be checked from the terminal" <<<"$vs1" \
   && grep -q 'skipped: unresolved {base_path}' <<<"$vs1" \
-  && ! grep -q 'All seams OK' <<<"$vs1"; } \
-  && ok "verify_stack summary counts unverified seams by name (never 'All seams OK.' over a warning)" \
+  && ! grep -qE 'All tools (reachable|resolve)' <<<"$vs1"; } \
+  && ok "verify_stack summary counts unverified seams by name (never an all-clear line over a warning)" \
   || bad "the verify_stack summary hides unverified seams" "rc=$vs1rc $(tail -3 <<<"$vs1")"
 
 hdr "2 · adapter verb coverage matches the contract"
@@ -460,15 +460,15 @@ YAML
 d="$(cat "$TMP/hd371.out")"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d/q.sql"
 out="$(gask "snow sql -f $d/q.sql" "$d")"
-grep -q 'wrong warehouse' <<<"$out" \
+grep -q 'This SQL says it is for warehouse' <<<"$out" \
   && ok "a read against the wrong target is gated (mismatched -- warehouse-target: header)" \
   || bad "SQL declaring one target ran on another with no prompt" "$out"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$d/ok.sql"
 out="$(gask "snow sql -f $d/ok.sql" "$d")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "a matching target header raises no wrong-warehouse prompt" || bad "matching target wrongly gated" "$out"
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "a matching target header raises no wrong-warehouse prompt" || bad "matching target wrongly gated" "$out"
 printf -- '-- warehouse-target: typo\nSELECT 1;\n' > "$d/typo.sql"
 out="$(gask "snow sql -f $d/typo.sql" "$d")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "an unknown target name invents no mismatch" || bad "an unresolvable target name produced a prompt" "$out"
 # A single-warehouse repo has no targets, so a stray header must not resolve to the seam's own cli.
 gstack wrongwh1 <<'YAML' >"$TMP/hd392.out"
 seams:
@@ -479,7 +479,7 @@ YAML
 d1="$(cat "$TMP/hd392.out")"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$d1/q.sql"
 out="$(gask "snow sql -f $d1/q.sql" "$d1")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "single-warehouse repo: a stray target header changes nothing" \
   || bad "a single-mapping seam resolved an undefined target and gated" "$out"
 # A quoted scalar is valid YAML. Leaving the quotes attached made every comparison mismatch, i.e. a
 # false prompt on a correct command — the worst outcome for a guard, since dismissed prompts stop working.
@@ -494,11 +494,11 @@ YAML
 dq="$(cat "$TMP/hd405.out")"
 printf -- '-- warehouse-target: prod\nSELECT 1;\n' > "$dq/ok.sql"
 out="$(gask "snow sql -f $dq/ok.sql" "$dq")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "a quoted cli: value doesn't false-gate a correct command" \
   || bad "quoted YAML scalars produced a bogus wrong-warehouse prompt" "$out"
 printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dq/bad.sql"
 out="$(gask "snow sql -f $dq/bad.sql" "$dq")"
-grep -q 'wrong warehouse' <<<"$out" && ok "a quoted cli: value still catches a real mismatch" \
+grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "a quoted cli: value still catches a real mismatch" \
   || bad "quoting the cli hid a real mismatch" "$out"
 # Exotic YAML the stdlib scan doesn't read must fall through to NO gate, never to a guess.
 for shape in flowtargets aliastarget; do
@@ -517,7 +517,7 @@ for shape in flowtargets aliastarget; do
   printf '%s\n' "$y" > "$dx/.claude/config/stack.yaml"
   printf -- '-- warehouse-target: lake\nSELECT 1;\n' > "$dx/q.sql"
   out="$(gask "snow sql -f $dx/q.sql" "$dx")"
-  ! grep -q 'wrong warehouse' <<<"$out" && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
+  ! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "unparseable target form ($shape) falls through to no gate, not a guess" \
     || bad "an unread YAML form produced a wrong-warehouse prompt ($shape)" "$out"
 done
 
@@ -534,7 +534,7 @@ YAML
 d2="$(cat "$TMP/hd444.out")"
 printf -- '-- warehouse-target: sbx\nSELECT 1;\n' > "$d2/q.sql"
 out="$(gask "snow sql -f $d2/q.sql" "$d2")"
-! grep -q 'wrong warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
+! grep -q 'This SQL says it is for warehouse' <<<"$out" && ok "targets inheriting one seam-level cli don't false-positive" \
   || bad "seam-level cli inheritance produced a bogus mismatch" "$out"
 
 # A mapping key may carry a YAML anchor before its nested block; yq resolves it, so must the scan.
@@ -969,9 +969,9 @@ done
 VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
 vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-# Require positive success (a healthy summary: "All seams OK" or "N OK, M unverified"), not just the absence of "adapter missing" — else a
+# Require positive success (a healthy dry-run summary: "All tools resolve (dry run, nothing contacted)." or "N OK, M unverified"), not just the absence of "adapter missing", else a
 # fixture that failed to create would falsely pass (the seam here has verify:null, so success prints).
-{ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
+{ grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
   && ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)" \
   || bad "verify_stack failed on a project-external stack (adapter missing / no success line)" "$vout"
 # E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
@@ -1428,11 +1428,11 @@ pr="$(python3 -c "import json; print(','.join(x['id'] for x in json.load(open('$
 hdr "24 · multi-target warehouse seam (default: + targets:)"
 MT=".claude/config/stack.example.multi-warehouse.yaml"
 mtout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$MT" --dry-run 2>&1)"; mtrc=$?
-{ [ "$mtrc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$mtout"; } \
+{ [ "$mtrc" -eq 0 ] && grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$mtout"; } \
   && ok "multi-warehouse example resolves" || bad "multi-warehouse example does not resolve" "$mtout"
-[ "$(grep -c '▸ warehouse\[' <<<"$mtout")" -eq 2 ] \
+[ "$(grep -c '^▸ warehouse\[' <<<"$mtout")" -eq 2 ] \
   && ok "both warehouse targets get their own row" || bad "expected exactly 2 target rows" "$mtout"
-grep -q '▸ warehouse\[prod\]\*' <<<"$mtout" \
+grep -q '^▸ warehouse\[prod\]\*' <<<"$mtout" \
   && ok "the default target is marked with *" || bad "default marker missing (default: pointer not read)" "$mtout"
 # Each target's verify interpolates ITS OWN tokens, not a sibling's — and the token now comes from
 # the MACHINE tier, which is the whole point of the three-tier split. The committed example
@@ -1466,7 +1466,7 @@ for s in $(for f in .claude/config/stack.yaml .claude/config/stack.example.*.yam
              yq -e '.seams.warehouse.targets' "$f" >/dev/null 2>&1 || echo "$f"
            done); do
   o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$s" --dry-run 2>&1)"
-  { [ "$(grep -c '▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '▸ warehouse\[' <<<"$o"; } \
+  { [ "$(grep -c '^▸ warehouse ' <<<"$o")" -eq 1 ] && ! grep -q '^▸ warehouse\[' <<<"$o"; } \
     && ok "$(basename "$s"): still one plain warehouse row" || bad "$(basename "$s") regressed to target rows" "$o"
 done
 
@@ -2319,7 +2319,7 @@ else
     && ok "handoff.sh resolves routes with yq absent from PATH entirely" \
     || bad "handoff.sh still depends on yq" "$o rc=$rc"
   o="$(VS_PATH="$NOYQ" safe_verify_stack "$KIT/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
-  { [ "$rc" -eq 0 ] && grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$o"; } \
+  { [ "$rc" -eq 0 ] && grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$o"; } \
     && ok "verify_stack.sh resolves every seam with yq absent from PATH entirely" \
     || bad "verify_stack.sh still depends on yq (it used to exit 1 without it)" "$o rc=$rc"
 fi
@@ -2469,7 +2469,7 @@ grep -q 'voice_profiles' .claude/config/stack.schema.md \
 VP="$TMP/vp"; mkdir -p "$VP/.claude/config"
 printf 'project:\n  key_prefix: ENG\n  voice_profiles:\n    path: "voices/{profile_id}.md"\n    map:\n      "a@b": a\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VP/.claude/config/stack.yaml"
 vpo="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VP/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
+grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$vpo" && ok "verify_stack passes with voice_profiles present (ignored, non-fatal)" || bad "verify_stack tripped on voice_profiles" "$vpo"
 
 hdr "30 · verify_stack reports unset adapter-required keys (requires: was never read)"
 # /setup tells the user an unfilled key can be left as `# TODO` because "verify will point at it".
@@ -2903,7 +2903,7 @@ grep -qi 'tracker-sourced' .claude/skills/ship/SKILL.md && ok "/ship states WHY 
 # --- scripts, not just skills, must locate kit assets without a Claude variable ----------------
 # verify_stack read $CLAUDE_PLUGIN_ROOT directly, which is empty under every other harness.
 vso="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
-{ grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
+{ grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$vso" && ! grep -q 'adapter missing' <<<"$vso"; } \
   && ok "verify_stack resolves adapters with no Claude env var (project-external stack)" \
   || bad "verify_stack cannot find adapters without a Claude variable" "$vso"
 grep -q 'kit_paths\|/tw" --kit' bin/verify_stack.sh \
@@ -3024,7 +3024,7 @@ grep -q '"catalog": "main"' <<<"$ECOUT" \
 # believe they had turned a gate off.
 printf 'person: alice\npolicies:\n  db_write_requires_approval: off\n' > "$D/.claude/config/connections.local.yaml"
 ecrun "$D"
-{ [ "$ECRC" -eq 6 ] && grep -q 'not mergeable at any tier' <<<"$(ecerr)"; } \
+{ [ "$ECRC" -eq 6 ] && grep -q "can't be changed from your personal config" <<<"$(ecerr)"; } \
   && ok "a machine file carrying \`policies:\` is REJECTED, not ignored" \
   || bad "a gitignored file was allowed to touch policy" "rc=$ECRC $(ecerr)"
 # The fixture's team value (stack.example.multi-warehouse.yaml) is `high_risk`; `off` must not win.
@@ -3049,7 +3049,7 @@ printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      ghost:\n       
 ecrun "$D"; [ "$ECRC" -eq 6 ] \
   && ok "an overlay cannot invent a target" || bad "a local file created a warehouse target" "rc=$ECRC"
 printf 'person: alice\nseams:\n  warehouse:\n    profile: x\n' > "$D/.claude/config/connections.local.yaml"
-ecrun "$D"; { [ "$ECRC" -eq 6 ] && grep -q 'scope the override to a target' <<<"$(ecerr)"; } \
+ecrun "$D"; { [ "$ECRC" -eq 6 ] && grep -q 'pick one by name' <<<"$(ecerr)"; } \
   && ok "a seam-level override on a multi-target seam is refused with the right fix" || bad "seam-level override accepted where no adapter is defined" "rc=$ECRC $(ecerr)"
 
 # No adapter may declare a data-selection key as personal — the allowlist and the reserved set are
@@ -3213,7 +3213,7 @@ grep -q 'verify hardcodes a machine-local' <<<"$lk" \
   || bad "the hardcoded-verify leak produced no warning" "$lk"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: databricks\n    adapter: adapters/warehouse/databricks.md\n    profile: analytics-prod\n    verify: "databricks --profile {warehouse_id} current-user me"\n' > "$LK/.claude/config/stack.yaml"
 lk="$(python3 "$EC" --root "$LK" --lint --quiet 2>/dev/null)"
-grep -q 'declares it personal' <<<"$lk" \
+grep -q 'setup notes (`adapters/warehouse/databricks.md`) mark it personal' <<<"$lk" \
   && ok "a literal in a declared user_key warns even alongside an unrelated {token}" \
   || bad "the warning keyed on the verify string instead of the declaration" "$lk"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    default_warehouse: WH\n    verify: "snow connection test"\n' > "$LK/.claude/config/stack.yaml"
@@ -3249,12 +3249,12 @@ grep -q '"permissionDecision": "ask"' <<<"$(sabotage_says)" \
   || bad "a broken resolver turned the guard fail-open"
 
 # --- a rejected override must not report a healthy stack -----------------------------------------
-# Reporting "All seams OK" after REFUSING a prohibited override would defeat reject-not-ignore
+# Reporting "All tools reachable" after REFUSING a prohibited override would defeat reject-not-ignore
 # entirely: the person would believe both that their local file applied and that the stack was fine.
 RJ="$(ecroot reject)"; cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$RJ/.claude/config/stack.yaml"
 printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' > "$RJ/.claude/config/connections.local.yaml"
 o="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ/.claude/config/stack.yaml" --dry-run 2>&1)"; rc=$?
-{ [ "$rc" -ne 0 ] && ! grep -q 'All seams OK' <<<"$o"; } \
+{ [ "$rc" -ne 0 ] && ! grep -qE 'All tools (reachable|resolve)' <<<"$o"; } \
   && ok "verify_stack fails when the resolver rejected an override" \
   || bad "a prohibited override still reported a healthy stack" "rc=$rc $o"
 printf 'person: alice\nstack_fingerprint: deadbeef\n' > "$RJ/.claude/config/connections.local.yaml"
@@ -4450,7 +4450,7 @@ policies:
 EOF
 IVY="$IVR/.claude/config/stack.yaml"
 ivout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVY" --dry-run 2>&1)"
-grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
+grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
   && ok "the completed-interview config verifies end to end" \
   || bad "the completed-interview config failed verify_stack" "$ivout"
 grep -q 'required key(s) not set' <<<"$ivout" \
@@ -4490,7 +4490,7 @@ sed -e 's|^  role: analyst$|  # TODO(setup): round 5 skipped — role/domain/ana
     "$IVY" > "$IVS/.claude/config/stack.yaml"
 printf '  hard_halt_before_external_posts: true\n' >> "$IVS/.claude/config/stack.yaml"
 skout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVS/.claude/config/stack.yaml" --dry-run 2>&1)"
-grep -Eq 'All seams OK|[0-9]+ OK, [0-9]+ unverified' <<<"$skout" \
+grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$skout" \
   && ok "a config with rounds 5-6 skipped (TODO lines in place) still verifies" \
   || bad "the skipped-rounds config failed verify_stack" "$skout"
 { grep -q '# TODO(setup): round 5 skipped' "$IVS/.claude/config/stack.yaml" \
@@ -5169,6 +5169,23 @@ oc_out="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EM
 grep -q 'no definition file path' <<<"$oc_out" \
   && ok "opencode's report states why no agent is emitted (definition path not established — never guessed)" \
   || bad "opencode's agent-definition refusal went unstated"
+# The user-facing markers (selftest section 59's lint input) must survive emission: a runtime that
+# strips them would drop the say-this text from the lint's reach. Every emitted file that carries
+# ship/SKILL.md, review/SKILL.md or qc-reviewer (.md or .toml) is checked for BOTH markers, and each
+# runtime must contribute at least one such file.
+mk41=0
+for rt41 in codex-cli antigravity cursor devin; do
+  n41=0
+  while IFS= read -r f41; do
+    [ -n "$f41" ] || continue
+    n41=$((n41 + 1))
+    nb41="$(grep -c 'ticketwright:user-facing:begin' "$f41")"; ne41="$(grep -c 'ticketwright:user-facing:end' "$f41")"
+    { [ "$nb41" -ge 1 ] && [ "$nb41" -eq "$ne41" ]; } \
+      || { bad "user-facing markers did not survive emission to $f41" "begin=$nb41 end=$ne41"; mk41=1; }
+  done < <(find "tests/emit/$rt41" -type f \( -path '*/ship/SKILL.md' -o -path '*/review/SKILL.md' -o -name 'qc-reviewer.*' \) | sort)
+  [ "$n41" -ge 1 ] || { bad "no emitted ship, review or qc-reviewer file found for $rt41"; mk41=1; }
+done
+[ "$mk41" -eq 0 ] && ok "user-facing markers (begin and end) survive emission in every emitted file that carries them"
 # A plugin-cache-only install is invisible to a foreign runtime — the verify must FAIL and say why.
 PC_P="$E41/plugonly"; mkdir -p "$PC_P"
 pc_err="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
@@ -5261,7 +5278,7 @@ inl42="$(grep -B8 -A4 'review_mode: inline-same-context' "$RSK42")"
   || bad "/review no longer maps unknown to the degraded branch"
 
 # --- the weaker-check sentence, verbatim, one line, in BOTH the skill and the record template ----
-wc42='A same-context review is not the independent second pass the validation pyramid assumes'
+wc42='This review ran in the same conversation that did the work, so it is not the independent second check the review process expects.'
 { grep -qF "$wc42" "$RSK42" && grep -qF "$wc42" "$QCA42"; } \
   && ok "the weaker-check sentence is pinned verbatim in /review and qc-reviewer" \
   || bad "the weaker-check sentence drifted — an inline APPROVE would read as independent again"
@@ -7088,7 +7105,7 @@ python3 "$SCAN" --root "$LIM48" >/dev/null 2>&1 \
   || ok "an INCOMPLETE scan exits non-zero (it does not certify the tree)"
 g_lim="$(printf '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git add -A\"},\"cwd\":\"%s\"}' "$LIM48" \
   | python3 .claude/hooks/source_material_guard.py 2>/dev/null)"
-grep -q '\"permissionDecision\": \"ask\"' <<<"$g_lim" && grep -qi 'did NOT cover' <<<"$g_lim" \
+grep -q '\"permissionDecision\": \"ask\"' <<<"$g_lim" && grep -qi 'too many files to check' <<<"$g_lim" \
   && ok "the guard ASKS on incomplete coverage, naming it as coverage rather than a finding" \
   || bad "incomplete coverage passes the guard silently" "$g_lim"
 
@@ -7448,7 +7465,7 @@ else
   printf 'someone-elses-bucket' > "$RC_STUB_DIR/attacker-drive.token"
   rc_local teamdrive
   o="$(RC_STUB_DIR="$RC_STUB_DIR" VS_PATH="$RCBIN" safe_verify_stack "$RCP50/.claude/config/stack.yaml" 2>&1)"
-  grep -q 'All seams OK' <<<"$o" \
+  grep -q 'All tools reachable' <<<"$o" \
     && ok "a remote whose sentinel matches the team token VERIFIES (no mount anywhere in the path)" \
     || bad "the correct rclone remote failed verification" "$o"
   rc_local attacker-drive
@@ -8522,31 +8539,31 @@ p51adj() {  # in file $1, the line immediately after the one containing $2 must 
 # --- (A) dry-run over a both/mcp/cli mix: prod yes, tracker yes, chat yes, lake NO ----------------
 mw51="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
 printf '%s\n' "$mw51" > "$TMP/mw51.out"
-{ grep -qF 'posture[warehouse[prod]*]: transport=both' <<<"$mw51" \
-  && grep -qF 'adapters/warehouse/snowflake.md § Permission posture (MCP)' <<<"$mw51" \
-  && grep -qF 'posture[tracker]: transport=both' <<<"$mw51" \
-  && grep -qF 'adapters/tracker/jira.md § Permission posture (MCP)' <<<"$mw51" \
-  && grep -qF 'posture[chat]: transport=mcp' <<<"$mw51"; } \
-  && ok "multi-warehouse dry-run: posture advisories for prod(both) + tracker(both) + chat(mcp), each naming its adapter" \
+{ grep -qF '▸ warehouse[prod]* also connects through MCP' <<<"$mw51" \
+  && grep -qF '`adapters/warehouse/snowflake.md`, section `Permission posture (MCP)`' <<<"$mw51" \
+  && grep -qF '▸ tracker also connects through MCP' <<<"$mw51" \
+  && grep -qF '`adapters/tracker/jira.md`, section `Permission posture (MCP)`' <<<"$mw51" \
+  && grep -qF '▸ chat connects through MCP' <<<"$mw51"; } \
+  && ok "multi-warehouse dry-run: MCP pointers for the prod warehouse, the tracker and chat (not lake), each naming its adapter's section" \
   || bad "a resolved-transport advisory is missing from the multi-warehouse dry-run" "$mw51"
-grep -qF 'posture[warehouse[lake]]' <<<"$mw51" \
+grep -qE '▸ warehouse\[lake\] (also )?connects through MCP' <<<"$mw51" \
   && bad "warehouse[lake] got a posture line — configured transport=cli must beat the adapter's both" \
   || ok "warehouse[lake] stays silent: configured cli wins over the adapter's both frontmatter"
 grep -qF 'skipped: unresolved {profile}' <<<"$mw51" \
   && ok "…and [lake]'s unresolved-{profile} terminal branch coexists untouched in the same run" \
   || bad "the unresolved-token branch changed shape" "$mw51"
-{ p51adj "$TMP/mw51.out" '→ would run: snow connection test' 'posture[warehouse[prod]*]: transport=both' \
-  && p51adj "$TMP/mw51.out" '→ would run: acli jira workitem search' 'posture[tracker]: transport=both'; } \
+{ p51adj "$TMP/mw51.out" '→ would run: snow connection test' '▸ warehouse[prod]* also connects through MCP' \
+  && p51adj "$TMP/mw51.out" '→ would run: acli jira workitem search' '▸ tracker also connects through MCP'; } \
   && ok "ADJACENT: each dry-run advisory is the very next line after its row's terminal status" \
   || bad "an advisory is not adjacent to its terminal status — flush spliced or drifted" "$mw51"
 
 # --- (B) mcp-only seams both advise -----------------------------------------------------------------
 ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
-{ grep -qF 'posture[tracker]: transport=mcp' <<<"$ab51" \
-  && grep -qF 'adapters/tracker/asana.md § Permission posture (MCP)' <<<"$ab51" \
-  && grep -qF 'posture[chat]: transport=mcp' <<<"$ab51" \
-  && grep -qF 'adapters/chat/teams.md § Permission posture (MCP)' <<<"$ab51" \
-  && ! grep -qF 'posture[warehouse]' <<<"$ab51"; } \
+{ grep -qF '▸ tracker connects through MCP' <<<"$ab51" \
+  && grep -qF '`adapters/tracker/asana.md`, section `Permission posture (MCP)`' <<<"$ab51" \
+  && grep -qF '▸ chat connects through MCP' <<<"$ab51" \
+  && grep -qF '`adapters/chat/teams.md`, section `Permission posture (MCP)`' <<<"$ab51" \
+  && ! grep -qE '▸ warehouse (also )?connects through MCP' <<<"$ab51"; } \
   && ok "asana-bq dry-run: tracker + chat advise (mcp); the cli warehouse stays silent" \
   || bad "mcp-only advisory wrong on the asana-bq stack" "$ab51"
 
@@ -8554,11 +8571,11 @@ ab51="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dr
 rs51="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; rs51rc=$?
 printf '%s\n' "$rs51" > "$TMP/rs51.out"
 { [ "$rs51rc" -eq 0 ] \
-  && grep -qF 'posture[chat]: transport=mcp' <<<"$rs51" \
-  && grep -q 'MCP-only: not checkable from the shell' <<<"$rs51"; } \
+  && grep -qF '▸ chat connects through MCP' <<<"$rs51" \
+  && grep -q "MCP-only: can't be checked from the terminal" <<<"$rs51"; } \
   && ok "root stack: the chat advisory coexists with the null-verify MCP-only warning (both print, in order)" \
   || bad "the chat posture advisory broke the null-verify terminal branch" "rc=$rs51rc $(tail -5 <<<"$rs51")"
-p51adj "$TMP/rs51.out" 'MCP-only: not checkable from the shell' 'posture[chat]: transport=mcp' \
+p51adj "$TMP/rs51.out" "MCP-only: can't be checked from the terminal" '▸ chat connects through MCP' \
   && ok "ADJACENT: the chat advisory is the very next line after the null-verify warning" \
   || bad "the chat advisory drifted from its null-verify terminal status" "$rs51"
 # --- (C2) a `both` seam with a null verify must NOT be told to "write a verify" -------------------
@@ -8580,7 +8597,7 @@ grep -q '⊘ no verify command; transport' <<<"$b51" \
   && ok "not-shell-checkable gets its own glyph, distinct from the you-forgot-one warning" \
   || bad "the not-shell-checkable case still shares ⚠ with a missing verify" "$b51"
 
-{ grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qF 'posture[docstore]' <<<"$rs51"; } \
+{ grep -q 'skipped: unresolved {base_path}' <<<"$rs51" && ! grep -qE '▸ docstore (also )?connects through MCP' <<<"$rs51"; } \
   && ok "the cli docstore row keeps its unresolved warning and gains NO posture line" \
   || bad "the docstore row changed" "$rs51"
 grep -qF '3 OK, 2 unverified (chat, docstore).' <<<"$rs51" \
@@ -8593,10 +8610,10 @@ printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n
 fv51="$(safe_verify_stack "$FV51/stack.yaml" 2>&1)"; fv51rc=$?
 printf '%s\n' "$fv51" > "$TMP/fv51.out"
 { [ "$fv51rc" -eq 1 ] && grep -q 'UNREACHABLE' <<<"$fv51" \
-  && grep -qF 'posture[warehouse]: transport=both' <<<"$fv51"; } \
+  && grep -qF '▸ warehouse also connects through MCP' <<<"$fv51"; } \
   && ok "an UNREACHABLE seam still gets its posture advisory, and the run still exits 1" \
   || bad "the advisory is lost (or the exit code moved) on the failed-verify branch" "rc=$fv51rc $fv51"
-p51adj "$TMP/fv51.out" '✗ UNREACHABLE → false' 'posture[warehouse]: transport=both' \
+p51adj "$TMP/fv51.out" '✗ UNREACHABLE → false' '▸ warehouse also connects through MCP' \
   && ok "ADJACENT: the advisory is the very next line after ✗ UNREACHABLE" \
   || bad "the advisory drifted from the UNREACHABLE terminal status" "$fv51"
 
@@ -8611,23 +8628,23 @@ rm -f "$TMP/PWNED51"
 uv51="$(safe_verify_stack "$UV51/.claude/config/stack.yaml" 2>&1)"; uv51rc=$?
 printf '%s\n' "$uv51" > "$TMP/uv51.out"
 { [ "$uv51rc" -eq 1 ] && grep -q 'refusing to run' <<<"$uv51" && [ ! -f "$TMP/PWNED51" ] \
-  && grep -qF 'posture[warehouse]: transport=both' <<<"$uv51"; } \
+  && grep -qF '▸ warehouse also connects through MCP' <<<"$uv51"; } \
   && ok "a metachar-refused token still gets its posture advisory (refused, never executed, exit 1)" \
   || bad "the unsafe-token terminal branch lost its advisory (or executed the value)" "rc=$uv51rc $uv51"
-p51adj "$TMP/uv51.out" 'refusing to run: value for {profile}' 'posture[warehouse]: transport=both' \
+p51adj "$TMP/uv51.out" 'refusing to run: value for {profile}' '▸ warehouse also connects through MCP' \
   && ok "ADJACENT: the advisory is the very next line after the refusal" \
   || bad "the advisory drifted from the unsafe-token terminal status" "$uv51"
 
 # --- (E) cli-only stacks are advisory-free ---------------------------------------------------------
 nw51="$(bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml --dry-run 2>&1)"
-grep -qF 'posture[' <<<"$nw51" \
+grep -qF 'connects through MCP' <<<"$nw51" \
   && bad "a cli-only stack printed a posture advisory" "$nw51" \
   || ok "no-warehouse (all-cli) stack prints zero posture advisories"
 az51="$(bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run 2>&1)"
-{ ! grep -qF 'posture[tracker]' <<<"$az51" && ! grep -qF 'posture[warehouse' <<<"$az51" \
-  && ! grep -qF 'posture[docstore]' <<<"$az51" && ! grep -qF 'posture[vcs]' <<<"$az51" \
-  && grep -qF 'posture[chat[internal]*]: transport=mcp' <<<"$az51" \
-  && grep -qF 'posture[chat[email]]: transport=mcp' <<<"$az51"; } \
+{ ! grep -qE '▸ tracker (also )?connects through MCP' <<<"$az51" && ! grep -qE '▸ warehouse (also )?connects through MCP' <<<"$az51" \
+  && ! grep -qE '▸ docstore (also )?connects through MCP' <<<"$az51" && ! grep -qE '▸ vcs (also )?connects through MCP' <<<"$az51" \
+  && grep -qF '▸ chat[internal]* connects through MCP' <<<"$az51" \
+  && grep -qF '▸ chat[email] connects through MCP' <<<"$az51"; } \
   && ok "azure stack: cli seams silent; both mcp chat TARGETS advise under their own unit labels" \
   || bad "per-target advisory wrong on the azure stack" "$az51"
 
@@ -8638,15 +8655,15 @@ b51() {  # $1 = project dir → the SessionStart banner
 }
 # (i) the kit's own stack: warehouse transport both + high_risk ⇒ the MCP wording.
 bi51="$(b51 "$KIT")"
-grep -qF 'DB writes: policy high_risk — Bash path hook-gated; MCP path advisory (tool-side controls, posture recorded at setup).' <<<"$bi51" \
-  && ok "banner (kit stack): the DB-writes line names both paths — Bash hook-gated, MCP advisory" \
+grep -qF "Database writes (high_risk): commands in the terminal need your approval first. Writes through the warehouse's MCP connector rely on that tool's own permissions, set up during /setup." <<<"$bi51" \
+  && ok "banner (kit stack): the database-writes line names both paths: terminal commands need approval first, MCP connector relies on its own permissions" \
   || bad "the MCP-aware DB-writes banner line is missing" "$bi51"
 # (ii) configured cli ⇒ plain jurisdiction wording, and no MCP claim anywhere in that line.
 BP51="$TMP/b51-cli"; mkdir -p "$BP51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: postgres\n    adapter: adapters/warehouse/postgres.md\n    transport: cli\n    cli: psql\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BP51/.claude/config/stack.yaml"
 bii51="$(b51 "$BP51")"
-if grep -qF 'DB writes: policy high_risk — hook-gated (Bash jurisdiction).' <<<"$bii51"; then
-  if grep 'DB writes: policy' <<<"$bii51" | grep -q 'MCP'; then
+if grep -qxF 'Database writes (high_risk): commands in the terminal need your approval first.' <<<"$bii51"; then
+  if grep 'Database writes (' <<<"$bii51" | grep -q 'MCP'; then
     bad "a cli-only warehouse banner line claims MCP" "$bii51"
   else
     ok "banner (cli warehouse): plain jurisdiction wording, no MCP substring in the DB-writes line"
@@ -8658,21 +8675,21 @@ fi
 BU51="$TMP/b51-unknown"; mkdir -p "$BU51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: mystery\n    adapter: adapters/warehouse/does-not-exist.md\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BU51/.claude/config/stack.yaml"
 biii51="$(b51 "$BU51")"
-grep -qF 'DB writes: policy high_risk — hook-gated (Bash jurisdiction).' <<<"$biii51" \
+grep -qxF 'Database writes (high_risk): commands in the terminal need your approval first.' <<<"$biii51" \
   && ok "banner (unknown transport): falls to the plain wording — unknown never claims MCP" \
   || bad "an unknown transport produced the wrong DB-writes line" "$biii51"
-# (iv) policy off ⇒ no advisory line at all (the policy summary already says NOT gated).
+# (iv) policy off ⇒ no advisory line at all (the safety-rules line already says database writes do NOT need your approval first).
 BO51="$TMP/b51-off"; mkdir -p "$BO51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: snowflake\n    adapter: adapters/warehouse/snowflake.md\n    transport: both\n    cli: snow\npolicies:\n  db_write_requires_approval: off\n' > "$BO51/.claude/config/stack.yaml"
 biv51="$(b51 "$BO51")"
-grep -qF 'DB writes: policy' <<<"$biv51" \
+grep -qF 'Database writes (' <<<"$biv51" \
   && bad "policy off still printed a DB-writes advisory line" "$biv51" \
   || ok "banner (policy off): no DB-writes advisory line"
 # (v) no warehouse seam ⇒ no line.
 BN51="$TMP/b51-none"; mkdir -p "$BN51/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: local\n    adapter: adapters/tracker/local.md\n    transport: cli\npolicies:\n  db_write_requires_approval: high_risk\n' > "$BN51/.claude/config/stack.yaml"
 bv51="$(b51 "$BN51")"
-grep -qF 'DB writes: policy' <<<"$bv51" \
+grep -qF 'Database writes (' <<<"$bv51" \
   && bad "a warehouse-less repo printed a DB-writes advisory line" "$bv51" \
   || ok "banner (no warehouse): no DB-writes advisory line"
 hdr "51d · the meetings tool slot (PROMPT: meetings-intake, stage 2)"
@@ -10361,7 +10378,7 @@ env -u CLAUDE_PROJECT_DIR python3 "$RV57" --ticket "$TMP/does-not-exist" >/dev/n
 g57() { printf '%s' "$1" | env -u CLAUDE_PROJECT_DIR python3 "$RVG57" 2>/dev/null; }
 pay57() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"%s}' "$1" "$R57" "${2:-}"; }
 o="$(g57 "$(pay57 'git push -u origin ENG-7')")"
-grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'no review verdict' <<<"$o" \
+grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'has not been approved in review' <<<"$o" \
   && ok "hook ASKS on git push when the branch's ticket has deliverables and no verdict (the raw-git bypass closed)" \
   || bad "a raw git push of an unreviewed ticket is not gated" "$o"
 for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7'; do
@@ -10376,7 +10393,9 @@ done
 printf 'verdict: APPROVE\nreview_mode: independent-subagent\n' > "$T57/qc_queries/4_review_verdict.md"
 o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "hook is SILENT once an APPROVE is on file (no false prompt)" || bad "hook prompts on an approved ticket" "$o"
 printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/5_review_verdict.md"
-o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -qi 'SKIPPED' <<<"$o" \
+# The SKIPPED record must be what the message reports (describe()'s wording for it), not a word
+# that happens to appear elsewhere in the text.
+o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'shipped unreviewed before, which is not an approval (5_review_verdict.md)' <<<"$o" \
   && ok "hook re-fires on a SKIPPED record — an unreviewed ship on record is not approval" || bad "SKIPPED passes the hook" "$o"
 rm "$T57/qc_queries/5_review_verdict.md" "$T57/qc_queries/4_review_verdict.md"
 rm "$T57/final_deliverables/1_rows_2.csv"
@@ -10436,11 +10455,11 @@ rc="$(rv57)"; grep -q '22_review_verdict.md' "$TMP/rv57.out" && ! grep -q '022_r
 rm "$T57/qc_queries/20_review_verdict.md" "$T57/qc_queries/21_review_verdict.md" "$T57/qc_queries/022_review_verdict.md" "$T57/qc_queries/22_review_verdict.md"
 # --- (C) the shim presents the same judgment in the other runtimes' protocols ------------------------
 o="$(printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook shell_guards 2>/dev/null)"
-grep -q '"permission": "ask"' <<<"$o" && grep -q 'review_verdict_guard' <<<"$o" \
+grep -q '"permission": "ask"' <<<"$o" && grep -q 'approved in review' <<<"$o" \
   && ok "shim: the single shell_guards entry reaches the review-verdict guard and asks in cursor-json" \
   || bad "the shell_guards shim does not run the third guard" "$o"
 printf '%s' "$(pay57 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook review_verdict_guard >"$TMP/rv57.d" 2>/dev/null; rd=$?
-[ "$rd" -eq 2 ] && grep -q 'DENIED' "$TMP/rv57.d" \
+[ "$rd" -eq 2 ] && grep -q 'blocked the command' "$TMP/rv57.d" \
   && ok "shim: on a runtime with no ask tier the guard denies with the reason (exit 2), never exits anything else" \
   || bad "devin shim exit/decision drifted for the review guard" "rc=$rd $(cat "$TMP/rv57.d")"
 printf '%s' "$(pay57 'git status')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook review_verdict_guard >"$TMP/rv57.c" 2>/dev/null; rc57=$?
@@ -10521,6 +10540,406 @@ PY
 [ -z "$(cat "$TMP/s58.links")" ] \
   && ok "every relative link in README, getting-started and how-it-works resolves (file and heading)" \
   || bad "a README or handoff-doc link is dead" "$(cat "$TMP/s58.links")"
+
+hdr "59 · what the person sees is plain language (tests/plain_language/check.py)"
+# Every message a person reads leads with what happened and what to do, in plain words; technical
+# detail goes after " Details:". The checker lints REAL output (golden corpora, captured hook and
+# script runs, marked skill templates), not source text, so a docstring never trips it.
+PL59="tests/plain_language/check.py"
+printf 'This command changes data. Approve it. Details: seam adapter fingerprint\n' > "$TMP/pl59-ok.txt"
+printf 'The seam is down. Run /setup.\n' > "$TMP/pl59-bad.txt"
+printf 'Details: everything is technical here\n' > "$TMP/pl59-empty.txt"
+printf 'Set `db_write_requires_approval: off` to turn it off.\n' > "$TMP/pl59-code.txt"
+python3 "$PL59" --text "$TMP/pl59-ok.txt" >/dev/null 2>&1 \
+  && ok "checker: technical terms after ' Details:' are allowed" \
+  || bad "checker flagged the Details part, which the contract leaves free"
+python3 "$PL59" --text "$TMP/pl59-bad.txt" > "$TMP/pl59-bad.out" 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && grep -q "'seam'" "$TMP/pl59-bad.out" && grep -q 'tool slot' "$TMP/pl59-bad.out" \
+  && ok "checker: a listed term in the plain part fails and names the plain replacement" \
+  || bad "checker missed jargon in the plain part" "rc=$rc59 $(cat "$TMP/pl59-bad.out")"
+python3 "$PL59" --text "$TMP/pl59-empty.txt" > "$TMP/pl59-empty.out" 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && grep -q 'no plain part' "$TMP/pl59-empty.out" \
+  && ok "checker: a message with no plain part fails and says so" \
+  || bad "checker accepted a message that is all Details, or crashed" "rc=$rc59 $(cat "$TMP/pl59-empty.out")"
+python3 "$PL59" --text "$TMP/pl59-code.txt" >/dev/null 2>&1 \
+  && ok "checker: text inside a code span is exempt (something the person types)" \
+  || bad "checker flagged a code span"
+# Circled digits match as substrings: \w matches them, so a whole-word match would miss them.
+printf 'See ①-⑤ now.\n' > "$TMP/pl59-circled.txt"
+python3 "$PL59" --text "$TMP/pl59-circled.txt" > "$TMP/pl59-circled.out" 2>&1; rc59=$?
+[ "$rc59" -eq 1 ] && grep -q '①' "$TMP/pl59-circled.out" \
+  && ok "checker: a circled-digit check name in the plain part fails and is named" \
+  || bad "checker missed a circled-digit check name" "rc=$rc59 $(cat "$TMP/pl59-circled.out")"
+# A missing input is a usage error (exit 2) with one plain line, never a traceback.
+python3 "$PL59" --text "$TMP/pl59-missing.txt" > "$TMP/pl59-missing.out" 2>&1; rc59=$?
+[ "$rc59" -eq 2 ] && grep -q 'cannot read' "$TMP/pl59-missing.out" && ! grep -q Traceback "$TMP/pl59-missing.out" \
+  && ok "checker: a missing input file exits 2 with one 'cannot read' line" \
+  || bad "checker crashed or misreported a missing input" "rc=$rc59 $(cat "$TMP/pl59-missing.out")"
+
+python3 "$PL59" --golden tests/guard/golden.json > "$TMP/pl59-guard.out" 2>&1 \
+  && ok "database-write guard: every ask reason and systemMessage leads in plain words" \
+  || bad "database-write guard messages use internal terms" "$(head -5 "$TMP/pl59-guard.out")"
+# The scanner-down messages are not in the golden corpus. Break the scanner the way section 43
+# does, capture the ask reason and the bypass-mode systemMessage, and lint both. scanner_down
+# fires before any classification, so it must say it asks before EVERY command, not only SQL.
+PLB="$TMP/pl59-broken"; mkdir -p "$PLB/kit" "$PLB/proj/.claude/config"
+cp -R bin .claude adapters templates "$PLB/kit/" 2>/dev/null
+printf 'gitdir: fixture\n' > "$PLB/proj/.git"
+printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' \
+  > "$PLB/proj/.claude/config/stack.yaml"
+rm "$PLB/kit/bin/sql_scan.py"
+: > "$TMP/pl59-down.txt"
+for mode59 in default bypassPermissions; do
+  python3 -c 'import json,sys
+p={"tool_name":"Bash","tool_input":{"command":"ls -la"},"cwd":sys.argv[1]}
+if sys.argv[2]!="default": p["permission_mode"]=sys.argv[2]
+print(json.dumps(p))' "$PLB/proj" "$mode59" \
+    | env -u CLAUDE_PROJECT_DIR python3 "$PLB/kit/.claude/hooks/db_write_guard.py" 2>/dev/null \
+    | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+print(d.get("systemMessage") or d["hookSpecificOutput"]["permissionDecisionReason"])' >> "$TMP/pl59-down.txt" 2>/dev/null
+done
+[ "$(grep -c . "$TMP/pl59-down.txt")" -eq 2 ] && python3 "$PL59" --text "$TMP/pl59-down.txt" > "$TMP/pl59-down.out" 2>&1 \
+  && grep -q 'every command in this project' "$TMP/pl59-down.txt" \
+  && ok "scanner-down ask and bypass messages lead in plain words and name the real scope (every command)" \
+  || bad "scanner-down messages are missing, use internal terms, or understate their scope" "$(cat "$TMP/pl59-down.txt") $(head -3 "$TMP/pl59-down.out")"
+
+# Review-before-ship guard: Claude ask, Claude bypass, a runtime with no ask tier, and the
+# classifier's own CLI line. Built from its own fixture so it does not depend on section 57.
+R59="$TMP/s59"; T59="$R59/tickets/alice/ENG-7"
+mkdir -p "$R59/.claude/config" "$T59/qc_queries" "$T59/final_deliverables"
+printf 'project:\n  key_prefix: ENG\npolicies:\n  db_write_requires_approval: high_risk\n' > "$R59/.claude/config/stack.yaml"
+( cd "$R59" && git init -q . && git symbolic-ref HEAD refs/heads/ENG-7 ) 2>/dev/null
+printf 'a,b\n1,2\n' > "$T59/final_deliverables/1_rows_2.csv"
+pay59() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"%s}' "$1" "$R59" "${2:-}"; }
+: > "$TMP/pl59-rv.txt"
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/review_verdict_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-rv.txt" 2>/dev/null
+printf '%s' "$(pay59 'git push' ',"permission_mode":"bypassPermissions"')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/review_verdict_guard.py \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("systemMessage",""))' >> "$TMP/pl59-rv.txt" 2>/dev/null
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook review_verdict_guard >> "$TMP/pl59-rv.txt" 2>/dev/null
+env -u CLAUDE_PROJECT_DIR python3 bin/review_verdict.py --ticket "$T59" >> "$TMP/pl59-rv.txt" 2>/dev/null
+[ "$(grep -c . "$TMP/pl59-rv.txt")" -ge 4 ] && python3 "$PL59" --text "$TMP/pl59-rv.txt" > "$TMP/pl59-rv.out" 2>&1 \
+  && ok "review-before-ship guard (Claude, bypass, no-ask runtime) and review_verdict lead in plain words" \
+  || bad "review-before-ship messages use internal terms or were not captured" "$(head -5 "$TMP/pl59-rv.out") lines=$(grep -c . "$TMP/pl59-rv.txt")"
+# The no-ask note must precede Details, or the person's action hides in the technical part.
+python3 - "$TMP/pl59-rv.txt" > "$TMP/pl59-order.out" <<'PY'
+import sys
+lines = [l for l in open(sys.argv[1], encoding="utf-8") if "can't ask for approval" in l]
+ok = lines and all(" Details:" not in l or l.index("can't ask") < l.index(" Details:") for l in lines)
+print("ok" if ok else "bad")
+PY
+[ "$(cat "$TMP/pl59-order.out")" = ok ] \
+  && ok "shim: the no-ask note comes before the Details clause" \
+  || bad "shim appended its note after Details (or did not add it)" "$(grep -i 'ask' "$TMP/pl59-rv.txt" | head -2)"
+# The limit of the check stays visible, in words that are true on every runtime the shim serves.
+# Line 1 is the Claude ask; line 2 the Claude bypass note; line 3 the shim's no-ask output.
+sed -n 1p "$TMP/pl59-rv.txt" > "$TMP/pl59-ask.txt"; sed -n 3p "$TMP/pl59-rv.txt" > "$TMP/pl59-noask.txt"
+grep -q 'reads the review file, not the work' "$TMP/pl59-ask.txt" && grep -q 'reads the review file, not the work' "$TMP/pl59-noask.txt" \
+  && ok "review guard keeps its limit in plain words (it reads the review file, not the work) on both paths" \
+  || bad "the review guard dropped its stated limit" "$(cat "$TMP/pl59-ask.txt")"
+# The approve-anyway offer appears only where the runtime can actually ask.
+grep -q 'Or approve this' "$TMP/pl59-ask.txt" && ! grep -q 'approve this' "$TMP/pl59-noask.txt" \
+  && ! grep -q 'Or approve this' <(sed -n 2p "$TMP/pl59-rv.txt") \
+  && ok "approve-anyway is offered on the ask path only (not in bypass mode, not on a runtime that cannot ask)" \
+  || bad "the review guard offers an approval its runtime cannot give, or omits it where it can" "$(cat "$TMP/pl59-rv.txt")"
+# Approving a raw push leaves no record; the on-the-record way is /ship plus the exact reply.
+grep -qF 'approving here leaves no record. To ship unreviewed on the record, use `/ship` and reply `ship unreviewed`.' "$TMP/pl59-ask.txt" \
+  && ! grep -q 'records an unreviewed' "$TMP/pl59-rv.txt" \
+  && ok "approve-anyway says approving leaves no record and names /ship with \`ship unreviewed\`" \
+  || bad "approve-anyway implies approving a push leaves a record" "$(cat "$TMP/pl59-ask.txt")"
+# One ticket involved: the command names its real locator, so it can be typed as shown.
+grep -qF '`/review alice/ENG-7`' "$TMP/pl59-ask.txt" && grep -qF '`/review alice/ENG-7`' "$TMP/pl59-noask.txt" \
+  && ! grep -qF '<owner>/<id>' "$TMP/pl59-ask.txt" \
+  && ok "review guard names the one ticket's locator (/review alice/ENG-7), not a placeholder" \
+  || bad "review guard still prints the placeholder for a single ticket" "$(cat "$TMP/pl59-ask.txt")"
+# The shim prefix is lowercase after the colon, like every other shim prefix.
+grep -q '^Ticketwright: this `git push`' "$TMP/pl59-noask.txt" && ! grep -q 'Ticketwright: [A-Z]' "$TMP/pl59-rv.txt" \
+  && ok "shim prefix reads 'Ticketwright: this ...' (lowercase after the colon)" \
+  || bad "shim prefix is capitalized after the colon" "$(cat "$TMP/pl59-noask.txt")"
+# The text is reused by Cursor, Devin and Codex through the shim, so it must not name Claude's terminal.
+! grep -q "Claude's terminal" "$TMP/pl59-rv.txt" \
+  && ok "review guard text names the agent's terminal, not one vendor's" \
+  || bad "review guard text still names Claude's terminal" "$(grep -n "Claude's terminal" "$TMP/pl59-rv.txt" | head -2)"
+# A malformed verdict file takes the unreadable branch; its message is lint-clean too.
+printf '# QC Review\nVerdict: APPROVE\n' > "$T59/qc_queries/1_review_verdict.md"
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/review_verdict_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' > "$TMP/pl59-unread.txt" 2>/dev/null
+env -u CLAUDE_PROJECT_DIR python3 bin/review_verdict.py --ticket "$T59" >> "$TMP/pl59-unread.txt" 2>/dev/null
+rm -f "$T59/qc_queries/1_review_verdict.md"
+[ "$(grep -c . "$TMP/pl59-unread.txt")" -ge 2 ] && grep -q "can't be read" "$TMP/pl59-unread.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-unread.txt" > "$TMP/pl59-unread.out" 2>&1 \
+  && ok "review guard: an unreadable review file is explained in plain words (ask reason and CLI line)" \
+  || bad "unreadable-review message uses internal terms or was not captured" "$(head -4 "$TMP/pl59-unread.out") $(cat "$TMP/pl59-unread.txt")"
+
+# Source-material (raw transcript) guard and the other-runtime shim's database and internal-error
+# paths: captures from the guard and the shim, then the guard's failure branches.
+mkdir -p "$T59/source_materials"
+cp tests/source_materials/fixtures/2026-08-20-roadmap-sync-meeting.md "$T59/source_materials/"
+# The shim only reaches a database gate when a warehouse tool slot exists (as in section 43),
+# so the database payloads use their own fixture and leave $R59's stack untouched.
+RW59="$TMP/s59w"; mkdir -p "$RW59/.claude/config"
+printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  db_write_requires_approval: high_risk\n' > "$RW59/.claude/config/stack.yaml"
+( cd "$RW59" && git init -q . ) 2>/dev/null
+: > "$TMP/pl59-sm.txt"
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/source_material_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' "$(pay59 'cp -r tickets /tmp/backup')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/source_material_guard.py \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' "$(pay59 'git add -A' ',"permission_mode":"bypassPermissions"')" | env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/source_material_guard.py \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("systemMessage",""))' >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook source_material_guard >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \\"DROP TABLE t\\""},"cwd":"%s"}' "$RW59" \
+  | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' '{"tool_name":"Bash"}' | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard --root "$R59" >> "$TMP/pl59-sm.txt" 2>/dev/null
+printf '%s' 'this is not json' | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard --root "$R59" >> "$TMP/pl59-sm.txt" 2>/dev/null
+[ "$(grep -c . "$TMP/pl59-sm.txt")" -ge 7 ] && python3 "$PL59" --text "$TMP/pl59-sm.txt" > "$TMP/pl59-sm.out" 2>&1 \
+  && ok "source-material guard and the shim's database paths lead in plain words" \
+  || bad "source-material or shim messages use internal terms or were not captured" "$(head -5 "$TMP/pl59-sm.out") lines=$(grep -c . "$TMP/pl59-sm.txt")"
+# The shim's database deny was silent without a warehouse tool slot: pin that it is produced.
+printf '{"tool_name":"Bash","tool_input":{"command":"snow sql -q \\"DROP TABLE t\\""},"cwd":"%s"}' "$RW59" \
+  | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard > "$TMP/pl59-shimdb.txt" 2>/dev/null
+grep -q "can't ask for approval" "$TMP/pl59-shimdb.txt" && grep -q 'Details:' "$TMP/pl59-shimdb.txt" \
+  && ok "shim database deny is produced (non-empty) and says the tool can't ask for approval" \
+  || bad "the shim's database deny was silent or is not plain" "$(cat "$TMP/pl59-shimdb.txt")"
+# The stated limit stays in plain words, and the text never names one vendor (the shim reuses it).
+grep -q 'file names and layout, not what the text says' "$TMP/pl59-sm.txt" \
+  && ! grep -q "Claude" "$TMP/pl59-sm.txt" \
+  && ok "transcript guard keeps its limit (file names and layout, not what the text says) and names no vendor" \
+  || bad "the transcript guard dropped its limit or names a vendor" "$(head -3 "$TMP/pl59-sm.txt")"
+grep -q 'Approval prompts are off for this session' "$TMP/pl59-sm.txt" \
+  && ok "transcript guard bypass note is plain" \
+  || bad "transcript guard bypass note missing" "$(sed -n 3p "$TMP/pl59-sm.txt")"
+# The approve offer is on the ask path only: lines 1-2 are Claude asks, line 3 the bypass note.
+sed -n 1p "$TMP/pl59-sm.txt" | grep -q 'Or approve this staging explicitly' \
+  && sed -n 2p "$TMP/pl59-sm.txt" | grep -q 'Or approve this copy explicitly' \
+  && ! sed -n 3p "$TMP/pl59-sm.txt" | grep -qi 'approve this' \
+  && ok "transcript guard offers approval when it asks, and not in bypass mode where nothing asks" \
+  || bad "transcript guard offers an approval in bypass mode, or omits it when asking" "$(sed -n 1,3p "$TMP/pl59-sm.txt")"
+# The guard's failure branches, via a kit copy whose classifier is missing, throws or is partial.
+: > "$TMP/pl59-smfail.txt"; : > "$TMP/pl59-smfail-bp.txt"
+for kind59 in missing throws partial; do
+  PLK="$TMP/pl59-k-$kind59"; mkdir -p "$PLK/kit" && cp -R bin .claude adapters templates "$PLK/kit/" 2>/dev/null
+  case "$kind59" in
+    missing) rm "$PLK/kit/bin/scan_source_materials.py" ;;
+    throws)  printf 'def scan(repo):\n    raise RuntimeError("boom")\n' > "$PLK/kit/bin/scan_source_materials.py" ;;
+    partial) printf 'def scan(repo):\n    return []\ndef flagged(r):\n    return []\ndef incomplete(r):\n    return [{"reason": "limit reached"}]\n' > "$PLK/kit/bin/scan_source_materials.py" ;;
+  esac
+  printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 "$PLK/kit/.claude/hooks/source_material_guard.py" 2>/dev/null \
+    | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-smfail.txt" 2>/dev/null
+  # The same branch in bypass mode: a systemMessage, which must never claim it is asking.
+  printf '%s' "$(pay59 'git add -A' ',"permission_mode":"bypassPermissions"')" | env -u CLAUDE_PROJECT_DIR python3 "$PLK/kit/.claude/hooks/source_material_guard.py" 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("systemMessage",""))' >> "$TMP/pl59-smfail-bp.txt" 2>/dev/null
+done
+[ "$(grep -c . "$TMP/pl59-smfail.txt")" -eq 3 ] && python3 "$PL59" --text "$TMP/pl59-smfail.txt" > "$TMP/pl59-smfail.out" 2>&1 \
+  && grep -q 'too many files to check' "$TMP/pl59-smfail.txt" \
+  && ok "transcript guard failure branches (missing, throwing and partial classifier) lead in plain words" \
+  || bad "transcript guard failure messages are missing or use internal terms" "$(cat "$TMP/pl59-smfail.txt") $(head -3 "$TMP/pl59-smfail.out")"
+# The review guard's own failure branch (classifier missing), in ask and bypass mode.
+PLR="$TMP/pl59-k-rv"; mkdir -p "$PLR/kit" && cp -R bin .claude adapters templates "$PLR/kit/" 2>/dev/null
+rm "$PLR/kit/bin/review_verdict.py"
+printf '%s' "$(pay59 'git push')" | env -u CLAUDE_PROJECT_DIR python3 "$PLR/kit/.claude/hooks/review_verdict_guard.py" 2>/dev/null \
+  | python3 -c 'import json,sys; o=json.load(sys.stdin); print((o.get("hookSpecificOutput") or {}).get("permissionDecisionReason",""))' >> "$TMP/pl59-smfail.txt" 2>/dev/null
+printf '%s' "$(pay59 'git push' ',"permission_mode":"bypassPermissions"')" | env -u CLAUDE_PROJECT_DIR python3 "$PLR/kit/.claude/hooks/review_verdict_guard.py" 2>/dev/null \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("systemMessage",""))' >> "$TMP/pl59-smfail-bp.txt" 2>/dev/null
+[ "$(grep -c . "$TMP/pl59-smfail-bp.txt")" -eq 4 ] && [ "$(grep -c 'did not ask' "$TMP/pl59-smfail-bp.txt")" -eq 4 ] \
+  && ! grep -qiE 'is asking|asking (first|before)|approve this' "$TMP/pl59-smfail-bp.txt" \
+  && [ "$(grep -c 'needs your approval first' "$TMP/pl59-smfail.txt")" -eq 4 ] \
+  && python3 "$PL59" --text "$TMP/pl59-smfail-bp.txt" > "$TMP/pl59-smfail-bp.out" 2>&1 \
+  && ok "guard failure branches in bypass mode say they did not ask and never claim to be asking (transcript x3, review x1)" \
+  || bad "a bypass-mode failure message says it is asking, or a branch was not captured" "$(cat "$TMP/pl59-smfail-bp.txt") --- $(cat "$TMP/pl59-smfail.txt")"
+# The shim's internal-error paths, forced with the fault injector section 43 uses.
+: > "$TMP/pl59-shimerr.txt"
+printf '%s' "$(pay59 'ls')" | TICKETWRIGHT_SHIM_FAULT=raise env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook db_write_guard >> "$TMP/pl59-shimerr.txt" 2>/dev/null
+printf '%s' "$(pay59 'ls')" | TICKETWRIGHT_SHIM_FAULT=raise env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook shell_guards >> "$TMP/pl59-shimerr.txt" 2>/dev/null
+[ "$(grep -c 'blocking instead of guessing' "$TMP/pl59-shimerr.txt")" -eq 2 ] \
+  && python3 "$PL59" --text "$TMP/pl59-shimerr.txt" > "$TMP/pl59-shimerr.out" 2>&1 \
+  && ok "shim internal-error messages lead in plain words" \
+  || bad "shim internal-error messages are missing or use internal terms" "$(cat "$TMP/pl59-shimerr.txt") $(head -3 "$TMP/pl59-shimerr.out")"
+# On an ask-capable runtime (cursor) the same faults ask, so the text says asking, and it never
+# offers the one-shot token, which is not read there.
+: > "$TMP/pl59-shimerr-c.txt"
+for h59 in db_write_guard shell_guards; do
+  printf '%s' "$(pay59 'ls')" | TICKETWRIGHT_SHIM_FAULT=raise env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook "$h59" 2>/dev/null \
+    | python3 -c 'import json,sys; o=json.load(sys.stdin); assert o["permission"]=="ask"; print(o["reason"])' >> "$TMP/pl59-shimerr-c.txt" 2>/dev/null
+done
+[ "$(grep -c 'asking instead of guessing' "$TMP/pl59-shimerr-c.txt")" -eq 2 ] \
+  && ! grep -qE 'blocking|To approve once|approve\.once' "$TMP/pl59-shimerr-c.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-shimerr-c.txt" > "$TMP/pl59-shimerr-c.out" 2>&1 \
+  && ok "shim internal-error on an ask-capable runtime (cursor) says it is asking and offers no one-shot token" \
+  || bad "the cursor internal-error message says blocking or offers the token" "$(cat "$TMP/pl59-shimerr-c.txt") $(head -3 "$TMP/pl59-shimerr-c.out")"
+grep -q 'Reinstall or update Ticketwright' "$TMP/pl59-shimerr.txt" && grep -q 'Reinstall or update Ticketwright' "$TMP/pl59-shimerr-c.txt" \
+  && ! grep -q 'Ticketwright plugin' "$TMP/pl59-shimerr.txt" "$TMP/pl59-shimerr-c.txt" \
+  && ok "shim internal-error says 'Reinstall or update Ticketwright' (no plugin on a vendored runtime)" \
+  || bad "shim internal-error still names the plugin" "$(cat "$TMP/pl59-shimerr.txt")"
+# The shim offers "approve this" only where the runtime can ask: devin (deny-only) must not,
+# cursor (ask-capable) must. Same for the partial-scan wording ("blocked" vs "asking first").
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook source_material_guard > "$TMP/pl59-smd.txt" 2>/dev/null
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime cursor --hook source_material_guard > "$TMP/pl59-smc.txt" 2>/dev/null
+printf '%s' "$(pay59 'cp -r tickets /tmp/backup')" | env -u CLAUDE_PROJECT_DIR python3 bin/hook_shim.py --runtime devin --hook source_material_guard >> "$TMP/pl59-smd.txt" 2>/dev/null
+python3 -c 'import json,sys
+for l in open(sys.argv[1]):
+    l=l.strip()
+    if l.startswith("{"):
+        o=json.loads(l); print(o.get("user_message") or o.get("agent_message") or o.get("permissionDecisionReason") or l)
+    elif l: print(l)' "$TMP/pl59-smc.txt" > "$TMP/pl59-smc-plain.txt" 2>/dev/null
+grep -q "can't ask for approval" "$TMP/pl59-smd.txt" && ! grep -q 'approve this' "$TMP/pl59-smd.txt" \
+  && grep -q 'approve this' "$TMP/pl59-smc-plain.txt" && ! grep -q "can't ask for approval" "$TMP/pl59-smc-plain.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-smd.txt" > "$TMP/pl59-smd.out" 2>&1 \
+  && python3 "$PL59" --text "$TMP/pl59-smc-plain.txt" > "$TMP/pl59-smc.out" 2>&1 \
+  && ok "shim transcript guard offers approval on an ask-capable runtime only (devin denies without offering it)" \
+  || bad "the shim offers an approval its runtime cannot give, or omits it where it can" "$(cat "$TMP/pl59-smd.txt") --- $(cat "$TMP/pl59-smc.txt") $(head -3 "$TMP/pl59-smd.out")"
+# The scanner's per-file reasons are technical: they belong after Details, with only file names before it.
+cat > "$TMP/pl59-smdet.py" <<'SMPY'
+import json, sys
+def split(line):
+    line = line.strip()
+    if line.startswith("{"):
+        o = json.loads(line)
+        line = o.get("user_message") or o.get("agent_message") or o.get("permissionDecisionReason") or line
+    head, sep, tail = line.partition(" Details:")
+    return bool(sep) and "transcript shape" not in head and "transcript shape" in tail
+claude = open(sys.argv[1], encoding="utf-8").read().splitlines()[0]
+shim = open(sys.argv[2], encoding="utf-8").read().splitlines()[0]
+print("ok" if split(claude) and split(shim) else "bad")
+SMPY
+python3 "$TMP/pl59-smdet.py" "$TMP/pl59-sm.txt" "$TMP/pl59-smd.txt" > "$TMP/pl59-smdet.out" 2>&1
+[ "$(cat "$TMP/pl59-smdet.out")" = ok ] \
+  && ok "transcript guard (Claude and shim) puts the scanner reasons after Details, not in the plain part" \
+  || bad "transcript guard still shows scanner reasons before Details" "$(head -2 "$TMP/pl59-sm.txt") $(cat "$TMP/pl59-smdet.out")"
+: > "$TMP/pl59-smp.txt"
+printf '%s' "$(pay59 'git add -A')" | env -u CLAUDE_PROJECT_DIR python3 "$TMP/pl59-k-partial/kit/bin/hook_shim.py" --runtime devin --hook source_material_guard >> "$TMP/pl59-smp.txt" 2>/dev/null
+grep -q 'blocked the command' "$TMP/pl59-smp.txt" && ! grep -q 'asking first' "$TMP/pl59-smp.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-smp.txt" > "$TMP/pl59-smp.out" 2>&1 \
+  && ok "shim partial-scan message says the command was blocked on a runtime that cannot ask" \
+  || bad "the shim's partial-scan message says it is asking on a deny-only runtime" "$(cat "$TMP/pl59-smp.txt") $(head -3 "$TMP/pl59-smp.out")"
+grep -q "safety checks could not run" bin/opencode_tool_gate.js \
+  && ok "opencode fallback says the safety checks could not run" \
+  || bad "opencode fallback text not updated" "$(grep -n 'could not run' bin/opencode_tool_gate.js)"
+
+# --- Task 5: session banner and index hints -----------------------------------------------------
+( cd "$KIT" && env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/session_context.py; \
+  env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/ticket_index_context.py ) > "$TMP/pl59-banner.txt" 2>/dev/null
+grep -q 'Ticketwright' "$TMP/pl59-banner.txt" && python3 "$PL59" --text "$TMP/pl59-banner.txt" > "$TMP/pl59-banner.out" 2>&1 \
+  && ok "session banners lead in plain words" \
+  || bad "session banner uses internal terms or printed nothing" "$(head -5 "$TMP/pl59-banner.out")"
+grep -q 'Run /refresh index' .claude/hooks/regenerate_ticket_index.py \
+  && ok "the index regenerator points at /refresh index, not a bin/ script" \
+  || bad "regenerate_ticket_index.py still points people at a bin/ script"
+SR59="$TMP/pl59-sr"; SRT59="/ship stops for your go-ahead before posting anything outside the repo, and a push or PR without an approved review needs your approval first; chat messages start as drafts; outputs are reproducible. See AGENTS.md."
+for m59 in off all high_risk; do
+  mkdir -p "$SR59-$m59/.claude/config"
+  printf 'project:\n  key_prefix: ENG\nseams:\n  warehouse:\n    tool: postgres\n    adapter: adapters/warehouse/postgres.md\n    transport: cli\n    cli: psql\npolicies:\n  db_write_requires_approval: %s\n' "$m59" > "$SR59-$m59/.claude/config/stack.yaml"
+  b59="$(b51 "$SR59-$m59")"; printf '%s\n' "$b59" > "$SR59-$m59.txt"
+done
+grep -qF "Safety rules: database writes do NOT need your approval first (\`db_write_requires_approval: off\`); $SRT59" "$SR59-off.txt" \
+  && grep -qF "Safety rules: every database write run in the terminal needs your approval first; $SRT59" "$SR59-all.txt" \
+  && grep -qF "Safety rules: risky database writes run in the terminal (drop, delete, update, grant and similar) need your approval first; plain CREATE/INSERT/ALTER ADD run without asking; $SRT59" "$SR59-high_risk.txt" \
+  && ! grep -qE 'ask first|asks first' "$SR59-off.txt" "$SR59-all.txt" "$SR59-high_risk.txt" \
+  && ! grep -qE 'Policies enforced|DB writes|waits for your go-ahead|Claude' "$SR59-off.txt" "$SR59-all.txt" "$SR59-high_risk.txt" \
+  && python3 "$PL59" --text "$SR59-off.txt" >/dev/null 2>&1 && python3 "$PL59" --text "$SR59-all.txt" >/dev/null 2>&1 \
+  && python3 "$PL59" --text "$SR59-high_risk.txt" >/dev/null 2>&1 \
+  && ok "banner safety-rules line scopes database writes to the terminal and names who stops posts, for off, all and high_risk" \
+  || bad "banner safety-rules line wrong" "$(cat "$SR59-off.txt" "$SR59-all.txt" "$SR59-high_risk.txt" 2>&1)"
+# With the hard halt off, nothing holds posts and the push/PR guard is silent, so the banner must
+# say so instead of promising a stop that never happens.
+mkdir -p "$SR59-hh/.claude/config"
+printf 'project:\n  key_prefix: ENG\npolicies:\n  db_write_requires_approval: high_risk\n  hard_halt_before_external_posts: false\n' > "$SR59-hh/.claude/config/stack.yaml"
+b51 "$SR59-hh" > "$SR59-hh.txt"
+grep -qF 'external posts are NOT held for your go-ahead (`hard_halt_before_external_posts: false`)' "$SR59-hh.txt" \
+  && ! grep -qE '/ship stops for your go-ahead|push or PR without an approved review' "$SR59-hh.txt" \
+  && python3 "$PL59" --text "$SR59-hh.txt" > "$SR59-hh.out" 2>&1 \
+  && ok "banner with the hard halt off says external posts are NOT held, and drops the /ship and push/PR promise" \
+  || bad "banner promises a post stop while hard_halt_before_external_posts is false" "$(cat "$SR59-hh.txt") $(head -3 "$SR59-hh.out")"
+# The same banner reaches deny-only runtimes through the shim (codex-cli, devin), where nothing
+# asks: the wording must be runtime-neutral there too, and lint-clean.
+python3 bin/hook_shim.py --runtime devin --hook session_context --root "$SR59-high_risk" < /dev/null 2>/dev/null \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])' > "$TMP/pl59-shimbanner.txt" 2>/dev/null
+grep -q 'Safety rules:' "$TMP/pl59-shimbanner.txt" && grep -q 'need your approval first' "$TMP/pl59-shimbanner.txt" \
+  && ! grep -qE 'ask first|asks first' "$TMP/pl59-shimbanner.txt" \
+  && python3 "$PL59" --text "$TMP/pl59-shimbanner.txt" > "$TMP/pl59-shimbanner.out" 2>&1 \
+  && ok "banner via the shim on a deny-only runtime (devin) says 'need your approval first', never 'ask first', and is plain" \
+  || bad "the shim's session banner says 'ask first' on a runtime that cannot ask, or is not plain" "$(cat "$TMP/pl59-shimbanner.txt") $(head -3 "$TMP/pl59-shimbanner.out")"
+grep -qF 'run /refresh index.)' .claude/hooks/ticket_index_context.py && ! grep -q 'index workflow' .claude/hooks/ticket_index_context.py \
+  && ok "the catalog banner points at /refresh index" \
+  || bad "ticket_index_context.py still says 'index workflow'"
+
+# --- Task 6: stack check, config errors, identity, doctor labels ---------------------------------
+: > "$TMP/pl59-stack.txt"
+for st59 in .claude/config/stack.yaml .claude/config/stack.example.*.yaml; do
+  safe_verify_stack "$st59" --dry-run >> "$TMP/pl59-stack.txt" 2>&1
+done
+( cd "$R59" && env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PERSON python3 "$KIT/bin/whoami.py" ) >> "$TMP/pl59-stack.txt" 2>&1
+python3 "$PL59" --text "$TMP/pl59-stack.txt" --py bin/effective_config.py --py bin/delivery_plan.py > "$TMP/pl59-stack.out" 2>&1 \
+  && ok "stack check, identity, and config error messages lead in plain words" \
+  || bad "stack/config/identity messages use internal terms" "$(head -8 "$TMP/pl59-stack.out")"
+grep -q '"All tools reachable."' bin/verify_stack.sh && grep -qF '"All tools resolve (dry run, nothing contacted)."' bin/verify_stack.sh \
+  && ! grep -q 'All seams OK' bin/verify_stack.sh \
+  && ok "verify_stack's all-clear says tools, not seams (real run and dry run)" || bad "verify_stack still prints 'All seams OK', or lost a summary line"
+# The doctor's plain-text report, in section 55's sandbox (fake claude on PATH, no probe, no real CLI).
+: > "$TMP/pl59-doctor.txt"
+for pdst59 in none project; do
+  pd_cfg "$PDC" "$PDR" "$pdst59"
+  PATH="$PD_MODERN:$SAFEBIN" python3 "$PD_DOC" --root "$PDR" --config-root "$PDC" --no-probe >> "$TMP/pl59-doctor.txt" 2>&1
+done
+[ "$(grep -c . "$TMP/pl59-doctor.txt")" -ge 20 ] && python3 "$PL59" --text "$TMP/pl59-doctor.txt" > "$TMP/pl59-doctor.out" 2>&1 \
+  && ok "the doctor's text report leads in plain words and shows a plain label beside each check id" \
+  || bad "the doctor's text report uses internal terms or printed too little" "$(head -8 "$TMP/pl59-doctor.out")"
+cat > "$TMP/pl59-labels.py" <<'PDPY'
+import json, os, sys
+sys.path.insert(0, "bin")
+import plugin_doctor as d
+emitted = [c["id"] for c in json.load(open(sys.argv[1]))["checks"]]
+missing = [i for i in emitted + list(d.CHECK_IDS) if i not in d.LABELS]
+extra = [i for i in d.LABELS if i not in d.CHECK_IDS]
+wrong = [] if d.LABELS.get("catalog_current") == "This repo runs the newest version offered" else ["catalog_current"]
+print("MISSING: " + " ".join(missing) if missing else ("EXTRA: " + " ".join(extra) if extra else ("WRONG: " + " ".join(wrong) if wrong else "OK")))
+PDPY
+pd_cfg "$PDC" "$PDR" project
+PATH="$PD_MODERN:$SAFEBIN" python3 "$PD_DOC" --root "$PDR" --config-root "$PDC" --no-probe --json > "$TMP/pl59-doctor.json" 2>/dev/null
+python3 "$TMP/pl59-labels.py" "$TMP/pl59-doctor.json" > "$TMP/pl59-labels.out" 2>&1
+[ "$(cat "$TMP/pl59-labels.out")" = "OK" ] \
+  && ok "every check the doctor emits has a plain label" \
+  || bad "a doctor check has no plain label (or a label names no check)" "$(cat "$TMP/pl59-labels.out")"
+
+# --- Task 6 fix round: neutral failure line, MCP-only vs both wording, doctor label meaning -------
+RJ59="$TMP/rj59"; mkdir -p "$RJ59/.claude/config"
+cp "$KIT/.claude/config/stack.example.multi-warehouse.yaml" "$RJ59/.claude/config/stack.yaml"
+printf 'person: alice\nseams:\n  warehouse:\n    targets:\n      lake:\n        catalog: sneaky\n' > "$RJ59/.claude/config/connections.local.yaml"
+CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$RJ59/.claude/config/stack.yaml" --dry-run > "$TMP/pl59-cfgfail.txt" 2>&1; rcj59=$?
+{ [ "$rcj59" -ne 0 ] && grep -qF 'Some tools or settings need attention: fix the ones marked above.' "$TMP/pl59-cfgfail.txt" \
+  && ! grep -q 'sign in to or install' "$TMP/pl59-cfgfail.txt"; } \
+  && ok "a rejected override prints the neutral 'tools or settings need attention' line, not 'sign in or install'" \
+  || bad "a config failure still tells the person to sign in or install" "rc=$rcj59 $(tail -3 "$TMP/pl59-cfgfail.txt")"
+mo59="$(bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run 2>&1)"
+bo59="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
+{ grep -qF '▸ tracker connects through MCP: confirm its permissions' <<<"$mo59" \
+  && ! grep -qF '▸ tracker also connects' <<<"$mo59" && ! grep -qF '▸ chat also connects' <<<"$mo59" \
+  && grep -qF '▸ tracker also connects through MCP: confirm its permissions' <<<"$bo59" \
+  && grep -qF 'record the result in `.claude/config/posture.local.yaml`' <<<"$mo59"; } \
+  && ok "an MCP-only slot prints 'connects through MCP', a slot with a terminal route too prints 'also connects'" \
+  || bad "MCP-only vs both posture wording is wrong" "$mo59"
+grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'connects through MCP' .claude/skills/setup/teammate.md \
+  && ! grep -q 'posture\[<slot>\]' .claude/skills/setup/SKILL.md .claude/skills/setup/teammate.md \
+  && ok "the setup skills quote the stable part of the MCP pointer line" || bad "setup skills quote a stale posture line"
+
+# --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
+# Exact block count per file: a file that loses a block must fail, not hide behind the total.
+c59=""
+for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
+  f59="${want59%%:*}"; w59="${want59##*:}"
+  g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
+  { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
+done
+[ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
+     --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 2 + 1 blocks)" \
+  || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
+
+# --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
+! grep -qE 'would (could|would)' tests/guard/golden.json \
+  && ok "guard golden corpus has no doubled modal ('would could' / 'would would')" \
+  || bad "tests/guard/golden.json contains a doubled modal; the bypass message prefixes a verb PLAIN_CHANGE already carries"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

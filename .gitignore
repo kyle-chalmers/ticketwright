@@ -37,3 +37,6 @@ tickets/index_data.json
 
 # AI friend review artifacts (local review reports + prompts)
 .ai-friend-review/
+
+# Local design specs and plans (working artifacts, never published)
+.planning/

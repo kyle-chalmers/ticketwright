@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _stack import MODE_ALL, MODE_OFF, db_write_mode  # noqa: E402
+from _stack import HH_OFF, MODE_ALL, MODE_OFF, db_write_mode, hard_halt_mode  # noqa: E402
 
 
 def project_root() -> Path:
@@ -371,18 +371,21 @@ def policy_advisory_lines(s: dict, mode: str) -> list[str]:
     meetings slot) slots in without touching main(). Honesty rules: the line prints only when a
     warehouse is configured AND the policy is on; the MCP clause appears only when some warehouse
     unit's resolved transport provably includes mcp (`warehouse_mcp is True`); False or unknown
-    (None — including the regex fallback scan, which never sets the key) states the plain Bash
-    jurisdiction and claims nothing about a path it cannot see. Fail-open string logic — any
+    (None, including the regex fallback scan, which never sets the key) states only that terminal
+    commands need approval first and claims nothing about a path it cannot see. Fail-open string logic: any
     surprise yields no line, never a crash."""
     lines: list[str] = []
     try:
         if s.get("warehouse") in (None, "—") or mode == MODE_OFF:
             return lines
         if s.get("warehouse_mcp") is True:
-            lines.append(f"DB writes: policy {mode} — Bash path hook-gated; MCP path advisory "
-                         "(tool-side controls, posture recorded at setup).")
+            lines.append(f"Database writes ({mode}): commands in the terminal need your approval "
+                         "first. Writes "
+                         "through the warehouse's MCP connector rely on that tool's own "
+                         "permissions, set up during /setup.")
         else:
-            lines.append(f"DB writes: policy {mode} — hook-gated (Bash jurisdiction).")
+            lines.append(f"Database writes ({mode}): commands in the terminal need your approval "
+                         "first.")
     except Exception:  # noqa: BLE001 — a hook must fail open
         return []
     return lines
@@ -427,14 +430,22 @@ def main() -> int:
     # Name the actual policy value: a banner that says "DB writes require approval" while the
     # guard is set to `off` teaches the agent the wrong rule.
     mode = db_write_mode(stack)
+    # "need your approval first" rather than "ask first": this banner also reaches runtimes with
+    # no ask tier (through bin/hook_shim.py), where the guard blocks and points at the way through.
     db_rule = {
-        MODE_OFF: "DB writes are NOT gated (db_write_requires_approval: off)",
-        MODE_ALL: "every DB write requires approval (db_write_requires_approval: all)",
-    }.get(mode, "high-risk DB writes require approval (db_write_requires_approval: high_risk) — "
-                "plain CREATE/INSERT/ALTER ADD run without asking")
-    lines.append(f"Policies enforced: {db_rule}; external posts require approval "
-                 "(db_write_guard hook + skill hard-halts); chat defaults to draft; "
-                 "outputs deterministic. See AGENTS.md.")
+        MODE_OFF: "database writes do NOT need your approval first (`db_write_requires_approval: off`)",
+        MODE_ALL: "every database write run in the terminal needs your approval first",
+    }.get(mode, "risky database writes run in the terminal (drop, delete, update, grant and similar) "
+                "need your approval first; plain CREATE/INSERT/ALTER ADD run without asking")
+    # The posts clause names the actual hard-halt value, for the same reason as db_rule above.
+    if hard_halt_mode(stack) == HH_OFF:
+        post_rule = ("external posts are NOT held for your go-ahead "
+                     "(`hard_halt_before_external_posts: false`)")
+    else:
+        post_rule = ("/ship stops for your go-ahead before posting anything outside the repo, and "
+                     "a push or PR without an approved review needs your approval first")
+    lines.append(f"Safety rules: {db_rule}; {post_rule}; chat messages start as drafts; outputs "
+                 "are reproducible. See AGENTS.md.")
     # Where the DB-write gate actually reaches, per transport — before the footer, appended from a
     # list that is empty whenever the line would not be true (no warehouse, policy off, failure).
     lines.extend(policy_advisory_lines(s, mode))

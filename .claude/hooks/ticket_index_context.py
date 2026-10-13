@@ -124,7 +124,7 @@ def main() -> int:
         d = t.get("date") or "—"
         lines.append(f"- {t.get('owner')}/{t.get('id')} ({d}) — {title}")
     if total > len(tickets):
-        lines.append(f"({total - len(tickets)} newer ticket(s) on disk not yet enriched — run the index workflow.)")
+        lines.append(f"({total - len(tickets)} newer ticket(s) on disk not yet enriched, run /refresh index.)")
     elif len(tickets) > total and not warn:
         # Not while slug mode is hiding keyed folders: those records DO have folders, and pruning
         # would delete them. The warning below says what to do instead.

@@ -430,6 +430,15 @@ MODE_OFF = "off"
 MODE_HIGH_RISK = "high_risk"
 MODE_ALL = "all"
 
+# What each statement class does, in words a person approving the command can check against the SQL.
+# "could" for high-risk: that class also holds statements the scanner does not recognize, which it
+# gates rather than guesses about, so "would" would overstate what it knows.
+PLAIN_CHANGE = {
+    "high-risk": "could change or remove existing data, tables or permissions (for example DROP, "
+                 "DELETE, UPDATE, MERGE or GRANT)",
+    "additive": "would add new data or objects (for example CREATE, INSERT or ALTER ... ADD)",
+}
+
 
 def assess(command: str, cwd: str, stack: Path | None, policy: str) -> dict:
     """Classify one shell command against a project's warehouse seam and a policy value.
@@ -475,10 +484,9 @@ def assess(command: str, cwd: str, stack: Path | None, policy: str) -> dict:
         want = target_cli(stack, named)
         if want and want != cli:
             detail = (
-                f"wrong warehouse: this command runs `{cli}`, but the SQL declares "
-                f"`-- warehouse-target: {named}`, which uses `{want}`. Confirm the target "
-                f"before running — a query against the wrong warehouse returns plausible "
-                f"wrong numbers rather than an error."
+                f"This SQL says it is for warehouse `{named}` (run with `{want}`), but the "
+                f"command runs `{cli}`. Check the target before approving: the wrong warehouse "
+                f"returns believable but wrong numbers, not an error."
             )
             return {"kind": "wrong_target", "cli": cli, "named": named, "want": want,
                     "detail": detail}
@@ -487,9 +495,9 @@ def assess(command: str, cwd: str, stack: Path | None, policy: str) -> dict:
     if tier >= threshold:
         label = "high-risk" if tier == HIGH else "additive"
         detail = (
-            f"db_write_requires_approval={policy}: this `{cli}` command carries a "
-            f"{label} statement. Show the exact SQL and target environment, explain what "
-            f"it changes, and proceed only on explicit approval."
+            f"This `{cli}` command {PLAIN_CHANGE[label]}. Approve only after you have "
+            f"seen the SQL and know which environment it runs against. "
+            f"Details: policy db_write_requires_approval={policy}, statement class {label}."
         )
         return {"kind": "gate", "cli": cli, "tier": tier, "label": label, "policy": policy,
                 "detail": detail}

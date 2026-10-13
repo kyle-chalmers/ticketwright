@@ -47,10 +47,12 @@ works regardless of the underlying tools.
    - **No verdict file at all, or the newest one says `SKIPPED`** → **WARN, then stop and wait.** A
      SKIPPED record never counts as approval; this gate re-fires on every ship until a real review
      supersedes it. Print, verbatim in shape:
-     > No independent `/review` verdict is recorded for `<owner>/<id>` (last: none | SKIPPED on
-     > <date>). The validation pyramid — dialect lint, counts & dedup, reconciliation, independent
-     > re-run, human sign-off — has not run on these deliverables. Shipping now delivers unreviewed
-     > work. Reply **`ship unreviewed`** to continue, or run `/review <owner>/<id>`.
+     <!-- ticketwright:user-facing:begin -->
+     > Nobody has independently reviewed `<owner>/<id>` yet (last review: none | shipped
+     > unreviewed on <date>). That means the lint, counts, duplicates, reconciliation, independent
+     > re-run and your sign-off have not happened for these deliverables. Reply **`ship unreviewed`**
+     > to deliver them anyway, or run `/review <owner>/<id>` first.
+     <!-- ticketwright:user-facing:end -->
      Only on that exact phrase: write `qc_queries/<n>_review_verdict.md` with `verdict: SKIPPED`,
      `review_mode: none`, the date, the shipper (from whoami), and the user's instruction verbatim —
      the record shows what review this ticket actually got, the same honesty rule `/review` applies
@@ -147,16 +149,17 @@ THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong de
 disclosure, not an inconvenience. Resolve each posting seam with
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --seam <name>`
 and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
-and docstore, print the routing resolved in step 4(a)** — the same JSON, unedited, that steps 5 and
-7 execute from. Preview and execution are one resolution, not two readings of it; re-deriving either
+and docstore, render the plan below from the routing resolved in step 4(a)**, the same resolution
+that steps 5 and 7 execute from; never print that JSON or its fingerprint. Preview and execution are one resolution, not two readings of it; re-deriving either
 half by hand is how they drift apart. Every line names its resolved **target** (`target: single` on
 a single mapping — stating it is the point). The plan must show exactly what steps 5–9 will
 execute — nothing the steps don't do may appear in it:
    - **docstore** — tool, target, the declared `classification` that selected it, the exact
      destination it will back up into, and the target's declared `sharing_scope`. Say plainly that
      the scope is **declared, not verified**: the kit checks that the destination exists, never its
-     real sharing permissions (`adapters/README.md` § The delivery plan). On a single mapping the
-     honest line stays "sharing scope: not declared — single destination";
+     real sharing permissions (`adapters/README.md` § The delivery plan). Print it as
+     `Sharing settings: <declared scope> (declared, not checked)`. On a single mapping the line is
+     `Sharing settings: not checked (one destination).` (the plan has no sharing scope to show);
    - **tracker** — tool, target, the exact ticket (`owner/id`) the comment lands on;
    - **chat** — tool, target, the declared `audience` that selected it, channel, the full
      recipient list (the routed target's own `recipients`, including the shipper when
@@ -167,15 +170,45 @@ execute — nothing the steps don't do may appear in it:
      ticket does not record is a fact the approver should see;
    - **vcs** — tool, target, the branch, and that a PR opens;
    - then the exact actions, in order (the numbered steps below).
-   Resolver exit 7 (seam not configured) = skip that line and name the `/setup tool <name>` enabler,
-   as today. For **tracker and vcs**, exit 8 or a resolution whose `target` is non-null (a `targets:`
+
+   Print the plan in this shape, one block, with the values filled in from the resolution (the
+   block is the text the person reads, so it names no internal field and shows no plan hash). Print
+   only the lines the plan actually delivers, one Documents line (with its sharing line) for each
+   routed classification, and one Chat line for each routed audience:
+   <!-- ticketwright:user-facing:begin -->
+   > Delivery plan for `<owner>/<id>`. Nothing has been sent yet.
+   > Documents: `<tool>`, target `<target>`, chosen by the classification `<classification>`, backed up to `<destination>`.
+   > Sharing settings: <declared scope> (declared, not checked) | not checked (one destination).
+   > Ticket: `<tool>`, target `<target>`, comment on `<owner>/<id>`.
+   > Chat: `<tool>`, target `<target>`, chosen by the audience `<audience>`, in `<channel>`, to `<recipients>`, sent as `<sender>`, as a draft | sent.
+   > Code: `<tool>`, target `<target>`, branch `<branch>`, and a pull request opens.
+   > This chat target was picked for this run, not declared on the ticket.
+   > What happens, in this order:
+   > 1. Scan the ticket folder for raw source material, then back it up to the documents destination above.
+   > 2. Post the approved comment on the ticket.
+   > 3. Draft the chat message for the recipients above, or send it only if you say "send it".
+   > 4. Commit the ticket files (and a separate commit for any changed Ticketwright setup files, when there are any), push the branch, and open the pull request.
+   > 5. Move the ticket toward its final status if that applies.
+   > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
+   <!-- ticketwright:user-facing:end -->
+   Leave out the "picked for this run" line unless the chat target came from `--chat <target>`, and
+   leave out the sender when the routed JSON carries none. The numbered list is the steps below
+   (5 to 9), so drop any step the plan does not deliver (for example the documents backup when no
+   documents tool slot is configured).
+
+   Resolver exit 7 (tool slot not configured) = skip that line and tell the person:
+   <!-- ticketwright:user-facing:begin -->
+   > <tool slot> isn't set up yet; run `/setup tool <slot>`.
+   <!-- ticketwright:user-facing:end -->
+   For **tracker and vcs**, exit 8 or a resolution whose `target` is non-null (a `targets:`
    block on either) = **halt** naming the configured targets: target routing for those two slots is
    deliberately not built (identity and remote-binding work, see `adapters/README.md`), and
    rendering a target the steps below would not deliver to is an authorization mismatch — never fall
    back to another target or to slot-level values.
    **Pin the plan the human just authorized.** Each routed line carries the target name AND its
-   `resolution_fingerprint` (print both). Pass both back on **every** delivery_plan call in steps
-   5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
+   `resolution_fingerprint`. Keep both from the resolution; the person is never shown the
+   fingerprint or any shortened form of it. Pass both back on **every**
+   delivery_plan call in steps 5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
    with. The name catches a swapped target; the fingerprint catches what a name check cannot — a
    config or plan edit between approval and delivery that keeps the name while moving the channel,
    the recipient list, or the declared scope. Either mismatch refuses instead of quietly delivering
@@ -195,15 +228,16 @@ execute — nothing the steps don't do may appear in it:
    **docstore.backup** the ticket folder (full-title dest name) **into the routed target's
    destination from step 4(a)** — never another target's, and never a slot-level path. Then record
    each delivered file against the target it actually went to:
-   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <approved> --expect-fingerprint <approved>`
+   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <name from the resolution> --expect-fingerprint <full fingerprint from the resolution>`
    and call `docstore.link_for` **against that same recorded target**. The recorded row is what
    makes a link provably come from the store the copy went into, rather than from whichever store
    was resolved a step later. Skip when the docstore seam isn't configured.
    **Routing is per deliverable here.** If the plan's `deliverables:` gives a file its own
    `classification:` (a client-facing summary among internal working files), that file routes to
    *its* target: resolve it with `--file <path>` and back that file up separately, rather than
-   assuming the whole folder shares one destination. Its `--expect-target`/`--expect-fingerprint`
-   are the ones the plan line showed for that classification. Anything the approved plan did not
+   assuming the whole folder shares one destination. For that file pass the full
+   fingerprint the resolver returned for its line, kept from the resolution, never anything printed to the person.
+   Anything the approved plan did not
    show, you do not deliver. **The plan-level classification is folder-wide** — the backup carries
    `qc_queries/` and everything else not split out by a row, so an external plan-level
    classification must be a deliberate statement about the whole folder, and the approval line

@@ -202,7 +202,7 @@ past what your own rules allow.
 |---|---|---|
 | PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying high-risk SQL (including SQL hidden in `-f` files / stdin redirects); auto-approves verifiably read-only SQL |
 | PreToolUse (Bash) | `.claude/hooks/source_material_guard.py` | Pauses for confirmation before a raw meeting transcript in a ticket's `source_materials/` is staged for commit or copied into a docstore backup (`cp` / `rclone`); it reads filenames and document shape, not meaning (classifier: `bin/scan_source_materials.py`) |
-| PreToolUse (Bash) | `.claude/hooks/review_verdict_guard.py` | Pauses for confirmation before `git push` / a PR is opened or merged for a ticket that has deliverables but no APPROVE review verdict on file (read by `bin/review_verdict.py`); silent on approved or not-yet-built tickets |
+| PreToolUse (Bash) | `.claude/hooks/review_verdict_guard.py` | Pauses for confirmation before `git push` / a PR is opened or merged for a ticket that has deliverables but no approved review result (read by `bin/review_verdict.py`); the prompt says the work "has not been approved in review" and that the check reads the review file, not the work; silent on approved or not-yet-built tickets |
 | PostToolUse (Write\|Edit) | `.claude/hooks/regenerate_ticket_index.py` | Regenerates `tickets/INDEX.md` / `OBJECTS.md` when the curated store changes |
 | SessionStart | `.claude/hooks/session_context.py`, `ticket_index_context.py` | Emits a short repo/catalog banner inside a ticketwright repo; silent elsewhere |
 

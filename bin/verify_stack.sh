@@ -47,7 +47,7 @@ echo "verify_stack: $stack  $([[ $dry -eq 1 ]] && echo '(dry-run)')"
 echo "─────────────────────────────────────────────────────────"
 fail=0
 
-# Three states per seam, COUNTED, so the summary line carries the truth. "All seams OK." used to
+# Three states per seam, COUNTED, so the summary line carries the truth. The all-clear line used to
 # print whenever nothing failed — including when a seam was never checked at all (MCP-only with no
 # verify command, or an unresolved {token} skip), which put a completely unauthenticated seam
 # under an all-green banner. Warnings still exit 0; they just stop masquerading as verified.
@@ -73,7 +73,7 @@ PLAN="$(mktemp)"; LINT="$(mktemp)"; trap 'rm -f "$PLAN" "$LINT"' EXIT
 python3 "$resolver" --stack "$stack" --verify-plan > "$PLAN" 2>"$LINT"; rc=$?
 if [[ $rc -ne 0 ]]; then
   sed 's/^/  ✗ /' "$LINT" >&2
-  # A rejected override or an unparseable config is a FAILURE, not a note. Reporting "All seams OK"
+  # A rejected override or an unparseable config is a FAILURE, not a note. Reporting "All tools reachable"
   # after refusing a prohibited `catalog:` or `policies:` override would defeat the entire
   # reject-not-ignore rule: the person would believe their local file was in effect AND that the
   # stack was healthy. Exit 5 (stale) is advisory, so it warns instead.
@@ -83,7 +83,7 @@ if [[ $rc -ne 0 ]]; then
     *) count_fail "config" ;;
   esac
   [[ -s "$PLAN" ]] || { echo "─────────────────────────────────────────────────────────";
-                        echo "One or more seams need attention (auth/install)."; exit 1; }
+                        echo "Some tools or settings need attention: fix the ones marked above."; exit 1; }
 fi
 
 # Each row is one JSON object; `python3 -c` pulls the fields so bash never parses JSON.
@@ -131,7 +131,9 @@ while IFS= read -r line; do
   [[ -n "$pt" ]] || pt="$(sed -n '2,/^---$/p' "$adapter_path" 2>/dev/null \
                        | sed -n 's/^transport:[[:space:]]*\([A-Za-z]*\).*/\1/p' | head -n 1)"
   case "$pt" in mcp|both)
-    posture_line="  ▸ posture[$label]: transport=$pt — see $adapter § Permission posture (MCP) (probe runs in-session; record in .claude/config/posture.local.yaml)";;
+    # `both` has a shell path too, so MCP is an additional route; `mcp` is the only route.
+    mcp_phrase="also connects through MCP"; [[ "$pt" == "mcp" ]] && mcp_phrase="connects through MCP"
+    posture_line="  ▸ $label $mcp_phrase: confirm its permissions in your session (see \`$adapter\`, section \`Permission posture (MCP)\`; record the result in \`.claude/config/posture.local.yaml\`)";;
   esac
 
   # 2) are the adapter's required keys actually set? A verify command only exercises the keys its
@@ -156,7 +158,7 @@ while IFS= read -r line; do
     # can check from a shell (ROADMAP nit: ⚠ conflated "you forgot" with "not shell-checkable").
     case "$pt" in
       mcp)
-        echo "  ⊘ MCP-only: not checkable from the shell — the agent must probe the MCP server in-session" ;;
+        echo "  ⊘ MCP-only: can't be checked from the terminal; the agent checks it in your session" ;;
       both)
         echo "  ⊘ no verify command; transport is 'both', so the MCP path is still open — the agent must probe it in-session" ;;
       *)
@@ -232,7 +234,7 @@ if [[ -f "$router" ]]; then
   [[ $rrc -ne 0 ]] && count_fail "delivery"
 elif grep -Eq '"seam": "(chat|docstore)", "target": "' "$PLAN"; then
   # The config declares chat/docstore targets but the router that ENFORCES their rules is gone.
-  # A silent skip here would report "All seams OK" on exactly the config class whose rules exist
+  # A silent skip here would report "All tools reachable" on exactly the config class whose rules exist
   # to prevent a client-data leak — an absent enforcer is a FAILURE on the configs it guards, and
   # only on those (a repo with no such targets loses nothing when the router is absent).
   echo "─────────────────────────────────────────────────────────"
@@ -253,19 +255,23 @@ if [[ -n "$leaks" ]]; then
 fi
 
 echo "─────────────────────────────────────────────────────────"
-# The summary tells the truth about all three states. "All seams OK." is reserved for the run where
-# every seam actually verified (or, in dry-run, resolved to a runnable verify) — an unverifiable
-# seam is named, not absorbed into the green line. Exit codes are unchanged: failures exit 1,
+# The summary tells the truth about all three states. "All tools reachable." is reserved for the run where
+# every seam actually verified; a dry run where every seam resolved to a runnable verify says "All
+# tools resolve (dry run, nothing contacted)." instead. An unverifiable seam is named, not absorbed
+# into the green line. Exit codes are unchanged: failures exit 1,
 # warnings alone still exit 0.
 if [[ $fail -ne 0 ]]; then
   summary="$ok_count OK"
   [[ $warn_count -gt 0 ]] && summary="$summary, $warn_count unverified ($warn_list)"
   [[ $fail_count -gt 0 ]] && summary="$summary, $fail_count failing ($fail_list)"
   echo "$summary."
-  echo "One or more seams need attention (auth/install)."
+  echo "Some tools or settings need attention: fix the ones marked above."
 elif [[ $warn_count -gt 0 ]]; then
   echo "$ok_count OK, $warn_count unverified ($warn_list)."
+elif [[ $dry -eq 1 ]]; then
+  # A dry run contacts nothing, so it can only say every tool resolved, never that one answered.
+  echo "All tools resolve (dry run, nothing contacted)."
 else
-  echo "All seams OK."
+  echo "All tools reachable."
 fi
 exit $fail

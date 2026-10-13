@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """PreToolUse hook — the review-before-ship gate, at the command layer.
 
-`/ship` asks before delivering a ticket that has no APPROVE on file. That gate lived only in the
-skill's prose, so it fired only when a human typed `/ship`. Two real tickets shipped unreviewed by
+`/ship` asks before delivering a ticket whose review result is not an approval. That gate lived
+only in the skill's prose, so it fired only when a human typed `/ship`. Two real tickets shipped unreviewed by
 `git push` + `gh pr create` — the skill never ran, and nothing said anything. A skill instruction is
 GUIDANCE by the kit's own definition; this file is the ENFORCEMENT half, exactly as
 db_write_guard.py presents bin/sql_scan.py and source_material_guard.py presents
@@ -173,21 +173,29 @@ def assess(command: str, cwd_raw: str, repo: Path) -> str | None:
         return None
     cwd = Path(cwd_raw) if cwd_raw else repo
     tickets = _rv.locate(repo, _command_paths(command, cwd), cwd, _rv.current_branch(repo))
-    problems = []
+    problems, locators = [], []
     for t in tickets:
         rec = _rv.classify(t)
         if rec["deliverables"] == 0 or rec["status"] == _rv.STATUS_APPROVE:
             continue
-        problems.append(f"`{rec['locator']}` — {_rv.describe(rec)}; final_deliverables/ holds "
-                        f"{rec['deliverables']} file(s)")
+        locators.append(rec["locator"])
+        problems.append(f"`{rec['locator']}`: {_rv.describe(rec)}, {rec['deliverables']} "
+                        f"deliverable file(s)")
     if not problems:
         return None
-    return (f"review_verdict_guard: `{action}` is about to deliver work with no APPROVE on file — "
-            + "; ".join(problems) +
-            ". `/build` runs `/review` for you; `/ship` records an unreviewed ship as SKIPPED with your "
-            "instruction on the record. Run `/review <owner>/<id>`, or approve this "
-            f"`{action}` explicitly. (Jurisdiction: Bash — a push from another tool never reaches "
-            "this guard; it reads the record, not the work.)")
+    # One ticket: name it, so the command can be typed as shown. Several: the placeholder, and
+    # the Details clause lists each one.
+    target = locators[0] if len(locators) == 1 else "<owner>/<id>"
+    return (f"This `{action}` would deliver work that has not been approved in review. Run "
+            f"`/review {target}` first. Only commands run in the agent's terminal are "
+            f"checked, and the check reads the review file, not the work itself. "
+            f"Details: " + "; ".join(problems) + ".")
+
+
+def approve_anyway(action: str) -> str:
+    """The way past the gate, offered only where the runtime can actually ask."""
+    return (f"Or approve this `{action}` to deliver it anyway; approving here leaves no record. "
+            f"To ship unreviewed on the record, use `/ship` and reply `ship unreviewed`.")
 
 
 def emit(decision: str | None = None, reason: str = "", system_message: str = "") -> None:
@@ -204,12 +212,18 @@ def emit(decision: str | None = None, reason: str = "", system_message: str = ""
         print(json.dumps(out))
 
 
-def _ask_or_note(payload: dict, message: str) -> int:
+def before_details(message: str, note: str) -> str:
+    """Insert a plain sentence before the Details clause so it stays in the part people read."""
+    head, sep, tail = message.partition(" Details:")
+    return f"{head} {note}{sep}{tail}" if sep else f"{message} {note}"
+
+
+def _ask_or_note(payload: dict, message: str, ask_note: str = "") -> int:
     if payload.get("permission_mode") == "bypassPermissions":
-        emit(system_message=f"{message} Approval not requested: the session is in "
-                            f"bypassPermissions mode.")
+        emit(system_message=before_details(message, "Approval prompts are off for this session, "
+                                                    "so Ticketwright did not ask."))
         return 0
-    emit("ask", message)
+    emit("ask", before_details(message, ask_note) if ask_note else message)
     return 0
 
 
@@ -234,12 +248,12 @@ def run() -> int:
         message = assess(command, cwd_raw, repo)
     except Exception as e:  # noqa: BLE001 — a classifier that cannot run gates MORE, visibly
         return _ask_or_note(payload, (
-            f"review_verdict_guard: the classifier (bin/review_verdict.py) could not run "
-            f"({e.__class__.__name__}: {e}). The review verdict cannot be read, so this outbound "
-            f"command is gated — more, never less. Restore the kit's bin/ directory."))
+            f"Ticketwright can't check review results right now, so this push or PR needs "
+            f"your approval first. Reinstall or update the Ticketwright plugin to fix it. "
+            f"Details: bin/review_verdict.py could not run ({e.__class__.__name__}: {e})."))
     if message is None:
         return 0
-    return _ask_or_note(payload, message)
+    return _ask_or_note(payload, message, approve_anyway(outbound_action(command)))
 
 
 def main() -> int:

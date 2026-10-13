@@ -327,7 +327,7 @@ is true.
 <!-- ticketwright:posture:end -->
 
 ## The 10 policies (inherited by every skill, from stack.yaml)
-1. **hard_halt_before_external_posts** — pause for human go before any tracker/chat/docstore write; the `review_verdict_guard` hook also asks before a push/PR of a ticket with deliverables and no APPROVE on file.
+1. **hard_halt_before_external_posts** — pause for human go before any tracker/chat/docstore write; the `review_verdict_guard` hook also asks before a push/PR of a ticket with deliverables that has no approved review result.
 2. **db_write_requires_approval** — `off` | `high_risk` (default) | `all`; show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.

@@ -139,21 +139,21 @@ def destination_key(seam_name: str, adapter_rel: str | None, root: Path) -> tupl
     fm_key = DESTINATION_FRONTMATTER[seam_name]
     key = ec.adapter_key(adapter_rel, root, fm_key)
     if not key:
-        return None, (f"adapter `{adapter_rel or '?'}` declares no `{fm_key}:` frontmatter — a "
-                      f"multi-target {seam_name} slot cannot know which key holds this tool's "
-                      f"destination")
+        return None, (f"the tool's setup notes (`{adapter_rel or 'adapters/<slot>/<tool>.md'}`) "
+                      f"declare no `{fm_key}:`, so a multi-target {seam_name} slot cannot know "
+                      f"which key holds this tool's destination. Add it to the setup notes.")
     if not KEY_NAME_RE.match(key):
-        return None, (f"adapter `{adapter_rel}` declares `{fm_key}: {key}`, which is not a plain "
-                      f"config key name — refusing to use it as a lookup")
+        return None, (f"the tool's setup notes (`{adapter_rel}`) declare `{fm_key}: {key}`, "
+                      f"which is not a plain config key name. Refusing to use it as a lookup.")
     return key, None
 
 
 def read_plan(path: Path) -> tuple[dict | None, dict | None]:
     """(plan, error). A missing file and a malformed one are different failures on purpose."""
     if not path.is_file():
-        return None, _err("no_plan", f"no delivery plan at {path} — the declaration lives in "
-                                     f"`{PLAN_NAME}` at the ticket root (adapters/README.md "
-                                     f"§ The delivery plan)")
+        return None, _err("no_plan", f"no delivery plan at {path}. Create `{PLAN_NAME}` at the "
+                                     f"ticket root (see `adapters/README.md`, section "
+                                     f"`The delivery plan`).")
     try:
         data = parse_file(path)
     except YamliteError as exc:
@@ -394,17 +394,19 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                 #     purpose (vals, not target): one shared identity serving two audiences is
                 #     normal, unlike a shared destination.
                 skey = ec.adapter_key(vals.get("adapter"), res.root, "sender_key")
+                anotes = vals.get("adapter") or "adapters/<slot>/<tool>.md"
                 if skey is not None and not KEY_NAME_RE.match(skey):
-                    out.append(("error", f"{label}: its adapter declares `sender_key: {skey}`, "
-                                         f"which is not a plain config key name — refusing to "
-                                         f"use it as a lookup"))
+                    out.append(("error", f"{label}: the tool's setup notes (`{anotes}`) declare "
+                                         f"`sender_key: {skey}`, which is not a plain config key "
+                                         f"name. Refusing to use it as a lookup."))
                 elif skey:
                     sender = vals.get(skey)
                     if not isinstance(sender, str) or not sender.strip():
-                        out.append(("error", f"{label}: its adapter declares `sender_key: {skey}` "
-                                             f"but no `{skey}:` is set — mail must not go out as "
-                                             f"whoever the transport happens to be authenticated "
-                                             f"as"))
+                        out.append(("error", f"{label}: the tool's setup notes (`{anotes}`) "
+                                             f"declare `sender_key: {skey}` but no `{skey}:` is "
+                                             f"set, so mail would go out as whoever the transport "
+                                             f"happens to be signed in as. Add `{skey}:` to the "
+                                             f"tool slot config."))
                     elif _unsafe(sender):
                         out.append(("error", f"{label}: the `{skey}` value contains "
                                              f"{ec.offending_chars(sender)} — shell metacharacters are refused in a "
@@ -418,7 +420,9 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                 if "bcc" in target:
                     out.append(("warn", f"{label}: `bcc:` has no effect — the kit deliberately "
                                         f"maps no hidden recipients (the no-bcc position in the "
-                                        f"email adapters); recipients belong in `always_include`, "
+                                        f"email tools' setup notes, `adapters/chat/gmail.md` and "
+                                        f"`adapters/chat/outlook.md`); recipients belong in "
+                                        f"`always_include`, "
                                         f"where each is visible, validated, and printed on the "
                                         f"approval line"))
             else:
@@ -575,9 +579,9 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
             return _fail(out, err)
     if dkey is None and selected_by == "single":
         out["warnings"] = out.get("warnings") or []
-        out["warnings"].append(f"adapter `{vals.get('adapter')}` declares no "
+        out["warnings"].append(f"the tool's setup notes (`{vals.get('adapter')}`) declare no "
                                f"`{DESTINATION_FRONTMATTER[seam_name]}:`, so this slot's destination "
-                               f"cannot be resolved mechanically — add it to the adapter")
+                               f"cannot be resolved automatically. Add it to the setup notes.")
     # A NAMED target reads its OWN destination; an inherited one is a value, never a routing
     # destination (two audiences sharing one inherited channel is a separation that does not exist).
     dest = (own.get(dkey) if own is not None else vals.get(dkey)) if dkey else None
@@ -603,9 +607,10 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
             dest = cand.strip()
         else:
             err = _err("no_declaration",
-                       "chat names a tool but no standing destination — declare `chat.channel:` "
-                       "(and `chat.recipients:`) in the delivery plan and re-run "
-                       "(adapters/README.md § The delivery plan); routing never invents a channel")
+                       "chat names a tool but no standing destination. Declare `chat.channel:` "
+                       "(and `chat.recipients:`) in the delivery plan and re-run (see "
+                       "`adapters/README.md`, section `The delivery plan`); routing never "
+                       "invents a channel.")
             return _fail(out, err)
     if dest is None and own is not None:
         err = _err("malformed", f"{unit['label']}: declares no `{dkey}:` of its own — a routed "
@@ -703,10 +708,11 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         # like a moved channel. Read from the RESOLVED values (vals, not own) on purpose: one
         # shared identity serving two audiences is normal, unlike a shared destination.
         skey = ec.adapter_key(vals.get("adapter"), res.root, "sender_key")
+        anotes = vals.get("adapter") or "adapters/<slot>/<tool>.md"
         if skey is not None and not KEY_NAME_RE.match(skey):
-            err = _err("malformed", f"{unit['label']}: its adapter declares `sender_key: {skey}`, "
-                                    f"which is not a plain config key name — refusing to use it "
-                                    f"as a lookup")
+            err = _err("malformed", f"{unit['label']}: the tool's setup notes (`{anotes}`) "
+                                    f"declare `sender_key: {skey}`, which is not a plain config "
+                                    f"key name. Refusing to use it as a lookup.")
             return _fail(out, err)
         if skey:
             sender = vals.get(skey)
@@ -715,15 +721,16 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                     # A routed target with no declared sender would go out as whoever the
                     # transport happens to be authenticated as — a silent wrong-sender, refused
                     # the same way a missing destination is.
-                    err = _err("malformed", f"{unit['label']}: its adapter declares `sender_key: "
-                                            f"{skey}` but no `{skey}:` value resolves — refusing "
-                                            f"to route a message whose sending identity is "
-                                            f"undeclared")
+                    err = _err("malformed", f"{unit['label']}: the tool's setup notes "
+                                            f"(`{anotes}`) declare `sender_key: {skey}` but no "
+                                            f"`{skey}:` value is set, so the message has no "
+                                            f"declared sender. Add `{skey}:` to the tool slot "
+                                            f"config.")
                     return _fail(out, err)
                 out["warnings"] = out.get("warnings") or []
-                out["warnings"].append(f"adapter declares `sender_key: {skey}` but `{skey}:` is "
-                                       f"unset — the sender cannot be shown on the plan line; "
-                                       f"add it to the tool slot config")
+                out["warnings"].append(f"the tool's setup notes declare `sender_key: {skey}` but "
+                                       f"`{skey}:` is unset, so the sender cannot be shown on the "
+                                       f"plan line. Add it to the tool slot config.")
             elif _unsafe(sender):
                 out["unsafe"] = [skey]
                 err = _err("malformed", f"{unit['label']}: the `{skey}` value contains "
@@ -953,19 +960,18 @@ def main(argv: list[str] | None = None) -> int:
         # one, the plan changed between the preview and this step — that is the exact drift a
         # human-authorized plan is supposed to make impossible, so it stops here.
         err = _err("target_changed",
-                   f"routing now resolves to `{actual_target}`, not the approved "
-                   f"`{args.expect_target}` — the delivery plan changed after it was approved; "
-                   f"re-print the plan and get it authorized again")
+                   f"The delivery target changed after you approved it. Review and approve the "
+                   f"plan again before shipping. Details: routing now resolves to "
+                   f"`{actual_target}`, not the approved `{args.expect_target}`.")
         out, err = _fail(out, err)
     if (not err and args.expect_fingerprint is not None
             and out.get("resolution_fingerprint") != args.expect_fingerprint.strip()):
         # The name may match while the resolution moved — a stack.yaml edit can keep `client` and
         # re-point its channel or its recipients. The fingerprint is what the human approved.
         err = _err("target_changed",
-                   f"the resolution changed after approval (fingerprint "
-                   f"{out.get('resolution_fingerprint')}, approved {args.expect_fingerprint.strip()})"
-                   f" — the destination, recipients, sender, scope or mode moved even though the target "
-                   f"name may not have; re-print the plan and get it authorized again")
+                   f"The delivery settings changed after you approved them. Review and approve the "
+                   f"plan again before shipping. Details: fingerprint "
+                   f"{out.get('resolution_fingerprint')}, approved {args.expect_fingerprint.strip()}.")
         out, err = _fail(out, err)
     if err:
         code = {"no_such_seam": EXIT_NO_SEAM, "no_declaration": EXIT_NO_DECLARATION,

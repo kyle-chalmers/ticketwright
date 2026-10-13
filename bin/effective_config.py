@@ -322,8 +322,11 @@ def _adapter_user_keys(adapter_rel: str | None, root: Path,
             if bad:
                 errors.append(ConfigError(
                     "prohibited_override", f"adapter:{adapter_rel}",
-                    "adapter declares reserved key(s) in user_keys: " + ", ".join(sorted(bad))
-                    + " — these select data or wire the seam and can never be personal",
+                    "the tool's setup notes list reserved key(s) as personal settings: "
+                    + ", ".join(sorted(bad))
+                    + ". These choose which data is used or wire the tool slot, so they can "
+                    "never be personal; ask the team to remove them from the setup notes "
+                    "(`user_keys:`).",
                     str(cand)))
                 keys -= bad
             return keys
@@ -434,33 +437,36 @@ def _apply_overlay(base: dict, ov: _Overlay, root: Path, prov: dict,
     mode = ov.data.get("mode")
     seam_overlay = ov.data.get("seams")
     if isinstance(mode, str) and mode.strip().lower() == "defaults" and seam_overlay:
-        reject("mode", "mode: defaults declares that team defaults were accepted, but this file "
-                       "also carries seam overrides — one of the two is wrong")
+        reject("mode", "`mode: defaults` says you accepted the team defaults, but this file also "
+                       "changes tool slots. Remove the tool-slot changes or set `mode: overrides`.")
         return
 
     for block in RESERVED_BLOCKS:
         if block in ov.data:
-            reject(block, f"`{block}:` is not mergeable at any tier — a per-machine or per-person "
-                          f"file must never change {'safety policy' if block == 'policies' else 'team project facts'}")
+            reject(block, f"`{block}:` can't be changed from your personal config, because it holds "
+                          f"{'safety policy' if block == 'policies' else 'team project facts'}. "
+                          f"Remove `{block}:` from that file.")
 
     for key in ov.data:
         if key in RESERVED_BLOCKS or key in STRUCTURAL_KEYS or key in PERSON_KEYS or key == "seams":
             continue
-        reject(key, f"unknown top-level key `{key}` — the merge is an allowlist, so an "
-                    f"unanticipated key is refused rather than inherited")
+        reject(key, f"`{key}` is not a setting your personal config can change. Unknown keys "
+                    f"are refused instead of ignored, so remove it.")
 
     if not isinstance(seam_overlay, dict):
         return
     base_seams = base.setdefault("seams", {})
     for seam_name, seam_ov in seam_overlay.items():
         if not isinstance(seam_ov, dict):
-            reject(f"seams.{seam_name}", "a seam override must be a mapping")
+            reject(f"seams.{seam_name}", "the entry for this tool slot must hold settings "
+                                         "(key: value lines), not a single value")
             continue
         base_seam = base_seams.get(seam_name)
         if not isinstance(base_seam, dict):
             reject(f"seams.{seam_name}",
-                   f"seam `{seam_name}` is not configured in the team stack — an overlay may "
-                   f"override a seam, never create one")
+                   f"tool slot `{seam_name}` is not set up in the team config. Your personal "
+                   f"config can change a tool slot but can't add a new one; remove it from "
+                   f"that file or ask the team to add it.")
             continue
         if _is_multi_target(base_seam):
             _overlay_multi(base_seam, seam_ov, seam_name, root, tier, src, prov, errors, reject)
@@ -472,18 +478,21 @@ def _overlay_multi(base_seam, seam_ov, seam_name, root, tier, src, prov, errors,
     for key, val in seam_ov.items():
         if key != "targets":
             reject(f"seams.{seam_name}.{key}",
-                   f"`{seam_name}` is a multi-target seam, so it has no adapter of its own — "
-                   f"scope the override to a target: seams.{seam_name}.targets.<name>.{key}")
+                   f"`{seam_name}` holds several targets, so pick one by name; it has no setup "
+                   f"notes of its own. Put the setting under a target: "
+                   f"`seams.{seam_name}.targets.<name>.{key}`.")
             continue
         if not isinstance(val, dict):
-            reject(f"seams.{seam_name}.targets", "targets override must be a mapping")
+            reject(f"seams.{seam_name}.targets", "`targets:` must list target names, each with "
+                                                 "its settings underneath")
             continue
         for tname, tov in val.items():
             base_target = base_seam["targets"].get(tname)
             if not isinstance(base_target, dict):
                 reject(f"seams.{seam_name}.targets.{tname}",
-                       f"target `{tname}` is not defined in the team stack — an overlay may "
-                       f"override a target's credentials, never create, rename or delete one")
+                       f"target `{tname}` is not defined in the team config. Your personal "
+                       f"config can change a target's credentials but can't add, rename or "
+                       f"remove one.")
                 continue
             allowed = _adapter_user_keys(_effective_target(base_seam, base_target).get("adapter"),
                                          root, errors)
@@ -494,8 +503,8 @@ def _overlay_multi(base_seam, seam_ov, seam_name, root, tier, src, prov, errors,
 def _overlay_single(base_seam, seam_ov, seam_name, root, tier, src, prov, errors, reject) -> None:
     if "targets" in seam_ov:
         reject(f"seams.{seam_name}.targets",
-               f"`{seam_name}` is a single-mapping seam in the team stack — an overlay may not "
-               f"introduce targets")
+               f"`{seam_name}` has no named targets in the team config, so your personal "
+               f"config can't add any. Remove `targets:` from it.")
         return
     allowed = _adapter_user_keys(base_seam.get("adapter"), root, errors)
     _merge_allowed(base_seam, seam_ov, f"seams.{seam_name}", allowed, tier, src, prov, reject)
@@ -504,18 +513,19 @@ def _overlay_single(base_seam, seam_ov, seam_name, root, tier, src, prov, errors
 def _merge_allowed(dest: dict, overlay: dict, path: str, allowed: set[str] | None,
                    tier: str, src: str, prov: dict, reject) -> None:
     if allowed is None:
-        reject(path, "cannot read the adapter's `user_keys:` declaration, so no override can be "
-                     "validated — refusing rather than guessing which keys are personal")
+        reject(path, "can't read which settings the tool's setup notes let you change "
+                     "(`user_keys:`), so no override can be checked. Nothing was applied rather "
+                     "than guessing which settings are personal.")
         return
     for key, val in overlay.items():
         full = f"{path}.{key}"
         if key in RESERVED_SEAM_KEYS:
-            reject(full, f"`{key}` selects data or wires the seam — it is team-owned and can "
-                         f"never be set from a person or machine file")
+            reject(full, f"`{key}` chooses which data is used or wires the tool slot, so only the "
+                         f"team can set it. Remove it from your personal config.")
             continue
         if key not in allowed:
-            reject(full, f"the adapter does not declare `{key}` in `user_keys:` "
-                         f"(declared: {', '.join(sorted(allowed)) or 'none'})")
+            reject(full, f"the tool's setup notes don't list `{key}` as a setting you can change "
+                         f"(`user_keys:`). You can change: {', '.join(sorted(allowed)) or 'none'}.")
             continue
         dest[key] = val
         prov[full] = {"tier": tier, "source": src}
@@ -726,8 +736,8 @@ def resolve(root: str | Path, person: str | None = None,
             if actual and not actual.startswith(fp.strip()):
                 res.errors.append(ConfigError(
                     "stale", "stack_fingerprint",
-                    "this machine config was completed against a different version of the team "
-                    "stack — re-run the per-person setup", str(local_path)))
+                    "this machine's config was set up against a different version of the team "
+                    "config. Re-run the per-person setup (/setup --teammate).", str(local_path)))
 
     res.team_seams = copy.deepcopy(res.seams)
 
@@ -889,11 +899,13 @@ def lint(res: "Resolution") -> list[tuple[str, str]]:
     for unit in res.units():
         team = _team_unit_values(res, unit)
         declared = _adapter_user_keys(unit["values"].get("adapter"), res.root, []) or set()
+        notes = unit["values"].get("adapter") or "adapters/<slot>/<tool>.md"
         for key in sorted(declared):
             if key in team and team[key] not in (None, ""):
                 out.append((unit["label"],
-                            f"`{key}: {team[key]}` is committed in stack.yaml, but the adapter "
-                            f"declares it personal — move it to .claude/config/connections.local.yaml"))
+                            f"`{key}: {team[key]}` is committed in stack.yaml, but the tool's "
+                            f"setup notes (`{notes}`) mark it personal: move it to "
+                            f".claude/config/connections.local.yaml"))
         verify = team.get("verify")
         if isinstance(verify, str) and verify.strip():
             for key in sorted(declared):
