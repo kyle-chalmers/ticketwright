@@ -149,8 +149,8 @@ THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong de
 disclosure, not an inconvenience. Resolve each posting seam with
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --seam <name>`
 and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
-and docstore, print the routing resolved in step 4(a)** — the same JSON, unedited, that steps 5 and
-7 execute from. Preview and execution are one resolution, not two readings of it; re-deriving either
+and docstore, render the plan below from the routing resolved in step 4(a)**, the same resolution
+that steps 5 and 7 execute from; never print that JSON or its fingerprint. Preview and execution are one resolution, not two readings of it; re-deriving either
 half by hand is how they drift apart. Every line names its resolved **target** (`target: single` on
 a single mapping — stating it is the point). The plan must show exactly what steps 5–9 will
 execute — nothing the steps don't do may appear in it:
@@ -187,7 +187,7 @@ execute — nothing the steps don't do may appear in it:
    > 1. Scan the ticket folder for raw source material, then back it up to the documents destination above.
    > 2. Post the approved comment on the ticket.
    > 3. Draft the chat message for the recipients above, or send it only if you say "send it".
-   > 4. Commit the ticket files, push the branch, and open the pull request.
+   > 4. Commit the ticket files (and a separate commit for any changed Ticketwright setup files, when there are any), push the branch, and open the pull request.
    > 5. Move the ticket toward its final status if that applies.
    > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
