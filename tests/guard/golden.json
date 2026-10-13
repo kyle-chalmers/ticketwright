@@ -21,7 +21,7 @@
   },
   "bypass_drop_sysmsg": {
     "exit": 0,
-    "stdout": "{\"systemMessage\": \"Ticketwright would normally ask before this `snow` command, which would could change or remove existing data, tables or permissions (for example DROP, DELETE, UPDATE, MERGE or GRANT). Approval prompts are off for this session, so it did not ask. Details: statement class high-risk; permission mode bypassPermissions.\"}\n"
+    "stdout": "{\"systemMessage\": \"Ticketwright would normally ask before this `snow` command, which could change or remove existing data, tables or permissions (for example DROP, DELETE, UPDATE, MERGE or GRANT). Approval prompts are off for this session, so it did not ask. Details: statement class high-risk; permission mode bypassPermissions.\"}\n"
   },
   "cmdsub_defeats_fastpath": {
     "exit": 0,

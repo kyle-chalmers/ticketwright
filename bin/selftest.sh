@@ -10936,5 +10936,10 @@ done
   && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 2 + 1 blocks)" \
   || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
+# --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
+! grep -qE 'would (could|would)' tests/guard/golden.json \
+  && ok "guard golden corpus has no doubled modal ('would could' / 'would would')" \
+  || bad "tests/guard/golden.json contains a doubled modal; the bypass message prefixes a verb PLAIN_CHANGE already carries"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

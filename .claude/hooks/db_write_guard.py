@@ -175,8 +175,8 @@ def run() -> int:
             # that. Say only that we did not request approval — other hooks or deny rules
             # may still intervene, so we cannot claim the command will run.
             emit(system_message=(
-                f"Ticketwright would normally ask before this `{cli}` command, which would "
-                f"{_sql_scan.PLAIN_CHANGE.get(label, 'change warehouse data')}. Approval prompts "
+                f"Ticketwright would normally ask before this `{cli}` command, which "
+                f"{_sql_scan.PLAIN_CHANGE.get(label, 'could change warehouse data')}. Approval prompts "
                 f"are off for this session, so it did not ask. Details: statement class {label}; "
                 f"permission mode bypassPermissions."
             ))
