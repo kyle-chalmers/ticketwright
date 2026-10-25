@@ -11276,7 +11276,9 @@ for t in $(grep -h '^question_tool:' adapters/runtime/*.md | awk '{print $2}' | 
   [ "$t" = "none" ] && continue
   # A tool spelled as a plain word ("question") is indistinguishable from prose; the distinctive
   # spellings (CamelCase, snake_case) are what a hard-coded call would carry.
-  case "$t" in *[A-Z_]*) ;; *) continue ;; esac
+  # [[:upper:]] and not A-Z: bash 3.2 ranges follow the locale's collation, and under en_US.UTF-8
+  # (the CI runner) [A-Z] matches lowercase letters too, which made the plain word count.
+  case "$t" in *[[:upper:]_]*) ;; *) continue ;; esac
   grep -rqw "$t" .claude/skills .claude/commands 2>/dev/null && qt60="$qt60 $t"
 done
 [ -z "$qt60" ] && ok "no skill names a runtime's question tool (setup reads it from kit_paths)" \
