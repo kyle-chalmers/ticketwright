@@ -167,15 +167,29 @@ Sources (accessed 2026-08-18): [skills](https://code.claude.com/docs/en/skills) 
   some tool paths opt out entirely; and a non-managed hook must be **reviewed and trusted by hash**
   before it runs, so shipping a hook is not the same as having it active.
 - **Subagents** — `.codex/agents/*.toml`, spawned via `spawn_agent`. The docs describe separate agent
-  threads returning summaries; they do not state "own context window" as a spec line.
+  threads returning summaries; they do not state "own context window" as a spec line. The custom
+  agent file schema has three required fields: `name` ("Agent name Codex uses when spawning or
+  referring to this agent"), `description` and `developer_instructions` ("Core instructions that
+  define the agent's behavior"). Optional keys include model settings (`model`,
+  `model_reasoning_effort`, `model_reasoning_summary`, `model_verbosity`) and capability switches
+  (`features.shell_tool`, `features.apps`, `features.plugins`, `features.memories`,
+  `features.request_permissions_tool`, plus `skills.*`). Sandbox, approvals, provider and MCP
+  servers come from the parent and cannot be overridden from the file, and the docs say the
+  instructions "don't create a separate read-only sandbox". The loader in `openai/codex` rejects a
+  standalone file missing `name` or `developer_instructions`, or carrying a key the config schema
+  does not know, and logs `Ignoring malformed agent role definition` instead of failing the
+  session. Observed on codex-cli 0.162.0 (2026-10-25): the pre-fix emitted file (`instructions`,
+  no `name`) was dropped that way; the three-field file loads and is listed as an available role
+  in `spawn_agent`; a project's `.codex/agents/` is read only once the project is trusted.
 - **Structured questions** — the closest analogue, `tool/requestUserInput`, is an **experimental
   app-server protocol method** for host clients. *Docs unclear:* no authorable CLI-side equivalent of
   `AskUserQuestion` is documented, so treat interviews here as prose.
 
-Sources (accessed 2026-08-18): [hooks](https://learn.chatgpt.com/docs/hooks) ·
+Sources (accessed 2026-08-18; subagents re-verified 2026-10-25): [hooks](https://learn.chatgpt.com/docs/hooks) ·
 [skills](https://learn.chatgpt.com/docs/build-skills) ·
 [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) ·
-[approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)
+[approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security) ·
+[agent role loader](https://github.com/openai/codex/blob/main/codex-rs/agent-roles/src/agent_role_config.rs)
 
 ## Cursor
 

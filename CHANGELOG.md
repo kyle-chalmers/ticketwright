@@ -47,6 +47,20 @@ All notable changes to this project are documented here. Format loosely follows
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.
 
+### Fixed
+- **Codex CLI now loads the `qc-reviewer` agent.** `ticketwright install --runtime codex-cli`
+  wrote `.codex/agents/qc-reviewer.toml` with an `instructions` key and no `name`, so Codex 0.162
+  skipped it with "Ignoring malformed agent role definition ... must define
+  `developer_instructions`" and `/review` had no reviewer role to spawn. The file now carries the
+  three fields Codex requires, `name`, `description` and `developer_instructions`, and nothing
+  else, since Codex also drops a file with a key it does not know. Re-run the install to replace
+  an existing copy. Checked offline on codex-cli 0.162.0: the role is listed for `spawn_agent`,
+  once the project is trusted in Codex (an untrusted project's `.codex/agents/` is not read).
+  Selftest section 41 checks the three fields; `docs/live-verification.md` entry 13 has the steps.
+  For an agent a team adds to `.claude/agents/`, the emitter now keeps an emoji in the description
+  as written (its old escape was invalid TOML) and refuses an agent whose text holds a control
+  character a TOML string cannot carry, instead of writing a file Codex would skip.
+
 ### Docs
 - **The README is ready to be the Claude plugin directory listing.** It opens with a KC AI Labs
   branded banner and a rendered walkthrough GIF (labeled as rendered, not recorded), says "Claude

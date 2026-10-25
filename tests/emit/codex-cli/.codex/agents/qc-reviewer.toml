@@ -1,14 +1,15 @@
 # emitted by ticketwright install v4.2.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update.
 #
 # Canonical source: .claude/agents/qc-reviewer.md, which restricts this agent to
-# tools: Read, Bash, Glob, Grep. No documented field of this format carries a tool
-# restriction, so it is NOT mechanically enforced here — the restriction is restated
-# in the instructions, and whether this definition is accepted at all is
-# live-verification work (see adapters/runtime/codex-cli.md § Metadata mapping).
+# tools: Read, Bash, Glob, Grep. A codex-cli custom agent inherits the parent
+# session's sandbox and permissions, and no field of this format narrows it to
+# those tools, so the restriction is NOT mechanically enforced here. It is restated
+# in developer_instructions (see adapters/runtime/codex-cli.md § Metadata mapping).
 
+name = "qc-reviewer"
 description = "Independent, read-only quality reviewer for a ticket's deliverables. Re-runs queries via the configured warehouse adapter, walks the validation pyramid, sweeps anti-patterns, and returns an APPROVE / REQUEST-CHANGES verdict. Spawn from /review (or before any ship) for a true second-context pass. Tool-agnostic via stack.yaml."
 
-instructions = '''
+developer_instructions = '''
 READ-ONLY BY DESIGN — not mechanically enforced on this runtime. Use only
 capabilities equivalent to: Read, Bash, Glob, Grep. Never edit files; never post externally.
 
