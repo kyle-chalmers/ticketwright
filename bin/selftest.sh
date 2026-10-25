@@ -5135,6 +5135,77 @@ grep -q 'NOT mechanically enforced' tests/emit/codex-cli/.codex/agents/qc-review
   && grep -q 'tools: Read, Bash, Glob, Grep' tests/emit/codex-cli/.codex/agents/qc-reviewer.toml \
   && ok "the codex agent TOML states its tools: loss inside the artifact (lost, but never silently)" \
   || bad "the codex agent TOML dropped the tools: restriction without stating it"
+# Codex ignores a standalone role file unless it defines name, description and
+# developer_instructions, and rejects any key its config schema does not know (codex-cli 0.162,
+# observed 2026-10-25: the pre-fix file was dropped for lacking developer_instructions). So the
+# emitted TOML carries exactly those three top-level keys, each non-blank.
+python3 - <<'PY' >"$TMP/codexrole41.out" 2>&1
+import re
+t = open("tests/emit/codex-cli/.codex/agents/qc-reviewer.toml", encoding="utf-8").read()
+try:
+    import tomllib
+    doc = tomllib.loads(t)
+except ImportError:  # python < 3.11: read the top-level keys outside the literal string
+    outside = re.sub(r"'''.*?'''", "''", t, flags=re.S)
+    doc = {k: v.strip('"\'') for k, v in re.findall(r"^([A-Za-z_][\w.-]*) = (.*)$", outside, re.M)}
+    m = re.search(r"^developer_instructions = '''(.*?)'''", t, re.S | re.M)
+    if m:
+        doc["developer_instructions"] = m.group(1)
+bad = []
+if sorted(doc) != ["description", "developer_instructions", "name"]:
+    bad.append(f"top-level keys are {sorted(doc)}")
+if doc.get("name") != "qc-reviewer":
+    bad.append(f"name is {doc.get('name')!r}")
+bad += [f"{k} is blank" for k in ("description", "developer_instructions") if not str(doc.get(k, "")).strip()]
+print("; ".join(bad))
+PY
+cr41="$(cat "$TMP/codexrole41.out")"
+[ -z "$cr41" ] && ok "the codex agent TOML defines exactly name, description and developer_instructions (the fields Codex requires)" \
+  || bad "the codex agent TOML is not a loadable Codex role file" "$cr41"
+# A future agent must not emit TOML Codex cannot parse: an astral character in a description
+# (json.dumps would write invalid \ud83d surrogate escapes) stays literal, and a control
+# character a literal string cannot hold refuses the agent instead of writing a broken file.
+E41T="$E41/tomlprobe"; mkdir -p "$E41T/kit/.claude/agents" "$E41T/proj"
+printf -- '---\nname: probe-astral\ndescription: Probe \360\237\230\200 with "quotes"\ntools: Read\n---\nbody\n' \
+  > "$E41T/kit/.claude/agents/probe-astral.md"
+printf -- '---\nname: probe-ctrl\ndescription: Probe\ntools: Read\n---\nform\014feed\n' \
+  > "$E41T/kit/.claude/agents/probe-ctrl.md"
+python3 - "$E41T" <<'PY' >"$TMP/tomlprobe41.out" 2>&1
+import contextlib, io, pathlib, sys
+sys.path.insert(0, "bin")
+import emit_runtime
+root = pathlib.Path(sys.argv[1])
+err = io.StringIO()
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+    rc = emit_runtime.emit_agents(root / "kit", root / "proj", {"agents_root": ".codex/agents/<name>.toml"},
+                                  "codex-cli", "0.0.0", [])
+bad = []
+astral = root / "proj/.codex/agents/probe-astral.toml"
+if rc != 2 or "control character" not in err.getvalue():
+    bad.append(f"control character not refused (rc={rc})")
+if (root / "proj/.codex/agents/probe-ctrl.toml").exists():
+    bad.append("probe-ctrl.toml was written despite the refusal")
+if not astral.exists():
+    bad.append("probe-astral.toml was not written")
+else:
+    t = astral.read_text(encoding="utf-8")
+    if "\\ud83d" in t or "\U0001F600" not in t:
+        bad.append("the astral character was not kept literal")
+    try:
+        import tomllib
+    except ImportError:
+        tomllib = None
+    if tomllib:
+        try:
+            if tomllib.loads(t)["description"] != 'Probe \U0001F600 with "quotes"':
+                bad.append("description did not round-trip through tomllib")
+        except Exception as e:
+            bad.append(f"tomllib rejected the emitted file: {e}")
+print("; ".join(bad))
+PY
+tp41="$(cat "$TMP/tomlprobe41.out")"
+[ -z "$tp41" ] && ok "codex agent TOML: an astral character stays literal, a stray control character refuses the agent" \
+  || bad "codex agent TOML escaping can emit a file Codex cannot parse" "$tp41"
 grep -q '^tools: Read, Bash, Glob, Grep' tests/emit/antigravity/.agents/agents/qc-reviewer.md \
   && ok "the antigravity agent definition carries tools: verbatim (mapped, acceptance is live-verification work)" \
   || bad "the antigravity agent definition lost the tools: line"
