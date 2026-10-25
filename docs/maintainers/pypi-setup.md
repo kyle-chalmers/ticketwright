@@ -1,7 +1,7 @@
 # Publishing to PyPI
 
 Ticketwright publishes to PyPI via **GitHub Trusted Publishing** (OIDC — no API tokens stored
-anywhere). The workflow is [`.github/workflows/publish.yml`](../.github/workflows/publish.yml): it
+anywhere). The workflow is [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml): it
 fires on a `v*` tag, builds the sdist + wheel with `uv`, checks the tag matches the package version,
 and uploads via `pypa/gh-action-pypi-publish`.
 

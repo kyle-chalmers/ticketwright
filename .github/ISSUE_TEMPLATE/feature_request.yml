@@ -1,0 +1,43 @@
+name: Feature or adapter request
+description: Something Ticketwright should do, or a tool it should support.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Changes are judged against the [mission](https://github.com/kyle-chalmers/ticketwright#mission):
+        high-volume analysis without letting quality slide, on whatever tools a team already uses.
+        A new tool is usually one adapter file (see
+        [docs/architecture.md](https://github.com/kyle-chalmers/ticketwright/blob/main/docs/architecture.md)),
+        so name the tool slot it fills.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of request is this?
+      options:
+        - A new tool (an adapter for a tool slot)
+        - A change to a skill or phase
+        - A new safety check or policy
+        - Docs
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What happens today, and who it gets in the way of. A real (fictionalized) ticket helps.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like instead
+    validations:
+      required: true
+  - type: textarea
+    id: quality
+    attributes:
+      label: How quality holds
+      description: Volume is only worth having if the quality holds. Which check or record keeps this honest?

@@ -3,7 +3,7 @@ name: publish
 # Tag a release (e.g. `git tag v1.3.1 && git push origin v1.3.1`) to build and publish to PyPI via
 # Trusted Publishing (OIDC — no stored token). One-time setup (Part A): add a PyPI pending publisher
 # for project `ticketwright`, owner kyle-chalmers, repo `ticketwright`, workflow `publish.yml`,
-# environment `pypi`. See docs/pypi-setup.md.
+# environment `pypi`. See docs/maintainers/pypi-setup.md.
 
 on:
   push:

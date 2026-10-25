@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/kyle-chalmers/ticketwright/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue (see SECURITY.md).
+  - name: Troubleshooting guide
+    url: https://github.com/kyle-chalmers/ticketwright/blob/main/docs/troubleshooting.md
+    about: Install, setup and upgrade failures, each with a check that names it.

@@ -437,74 +437,74 @@ anything custom.
 ## Installing without the plugin
 
 The plugin above is the primary channel and the one to use with Claude Code. The pip package
-covers the two cases it can't: vendoring the kit's files into a repo, and running the
+covers what it can't: putting the kit's files into a repo for another coding agent, and running the
 deterministic engines from a shell or CI.
 
 ```bash
 pip install ticketwright                 # zero runtime dependencies; stdlib only
-ticketwright init                        # vendor the kit into a repo (no plugin required)
-ticketwright install --runtime codex-cli # translate the skills for a non-Claude runtime
-ticketwright recall --for TEST-123       # prior-art ranking      — no Claude Code needed
-ticketwright index --stats               # catalog coverage       — no Claude Code needed
-ticketwright enrich TEST-123             # curated index summary  — needs a model CLI on PATH
+ticketwright init                        # copy the kit into a repo (no plugin required)
+ticketwright install --runtime codex-cli # put the skills where a non-Claude agent reads them
+ticketwright recall --for TEST-123       # prior-art ranking: no Claude Code needed
+ticketwright index --stats               # catalog coverage: no Claude Code needed
+ticketwright enrich TEST-123             # curated index summary: needs a model CLI on PATH
 ```
 
+Which agents can do what, with the sources behind each claim, is in [runtimes.md](runtimes.md).
+
 - **`recall` and `index`** are pure stdlib and run anywhere.
-- **`enrich`** calls a model headlessly. Which command it runs is resolved per runtime from
+- **`enrich`** calls a model headlessly. The command it runs comes from the runtime's adapter in
   `adapters/runtime/<name>.md` (`--model-cmd` overrides it), falling back to `claude -p`. A runtime
   that documents no headless command says so and points at the agent-neutral ingest path instead.
-- **`init`** copies the kit's files — skills, agents, hooks, adapters, templates, `bin/` — and
-  preserves your edits on re-runs (`--force` to overwrite).
-- **`install --runtime <name>`** is the compatibility layer between the canonical `.claude/skills/`
-  source and each runtime's own layout (`bin/install.sh` is the same command for a vendored
-  install), covering all seven runtimes and driven by each runtime adapter's declared
-  capabilities, never a name baked into code. Where the runtime already reads the canonical copy
-  it VERIFIES and emits no skills — `--runtime claude-code` natively (the Claude Code path is
-  unchanged), and cursor/opencode/cline/devin because they read `.claude/skills/` directly; the
-  printed report states what that shared file cannot carry for a foreign reader (`allowed-tools` is
-  a Claude-specific key those runtimes ignore, warned per affected skill). Where the runtime cannot
-  see the canonical copy it EMITS a translated copy: codex-cli and antigravity share one
-  `.agents/skills/<name>/SKILL.md` emission, each file stamped with a provenance header —
-  hand-copying skill files between layouts is unsupported, because a stale duplicate silently
-  winning over the canonical copy is the failure mode the installer exists to prevent; re-run it to
-  update (a file the installer did not emit is never overwritten — the install fails loudly
-  instead). All seven skills are model-invocable; the three that take durable or external action
-  confirm before it: `/ship` **stops before any external post**, and `/setup` and `/skillify`
-  **stop before writing committed config or a new skill**, via an in-body HARD HALT — an instruction
-  the agent follows on every runtime, stated plainly as a convention rather than a mechanical block
-  (unlike the Claude-only `disable-model-invocation` frontmatter flag they used to carry, which only
-  Claude Code enforced). That flag remains supported (and is emitted with a topmost warning block on
-  foreign runtimes) for any future skill that must never be model-invoked at all; no skill ships
-  gated today. Every other metadata loss is recorded per
-  runtime in `adapters/runtime/<name>.md` § Metadata mapping. The
-  `qc-reviewer` agent definition is emitted wherever subagents are user-definable
-  (`.codex/agents/*.toml`; markdown for cursor/devin/antigravity); where they are not (cline) or
-  the definition path is undocumented (opencode), the report says so. `--global` emits into the
-  runtime's declared per-user skills root and REFUSES where that root is unknown (antigravity —
-  its documented sources disagree) rather than guessing a path. The install also wires the
-  **DB-write guard** where the runtime documents a home for it — `.cursor/hooks.json` (with
-  `failClosed: true`, required configuration), `.agents/hooks.json` for antigravity, a
-  throw-to-deny plugin under `.opencode/plugins/` — all fronting one scanner
-  (`bin/sql_scan.py`) through `bin/hook_shim.py`. Runtimes with no `ask` tier get the
-  `high_risk` policy as **deny-with-escape** (the deny names a one-shot re-approval), and the
-  report says so at install time; where even the hooks-config location is undocumented
-  (codex-cli, devin) the installer prints the manual wiring line instead of guessing. What is
-  ENFORCEMENT (proven — the native Claude hooks) vs WIRED (emitted, live confirmation owed) vs
-  GUIDANCE vs UNKNOWN per runtime × per hook is stated in the rendered
-  `AGENTS.md` enforcement table (and emitted into `.clinerules/` for cline). The MCP transport,
-  which no shell hook can see, gets its own per-policy posture table right below that one:
-  enforcement moves into the tool's own permission controls, and **NATIVE (tool-side)** is
-  claimable only after a warehouse adapter's read-only posture probe has verified the grant set
-  under its written comparison rule (outcome recorded in gitignored
-  `.claude/config/posture.local.yaml`).
+- **`init`** copies the kit's files (skills, agents, hooks, adapters, templates, `bin/`) and keeps
+  your edits on re-runs (`--force` overwrites them).
+- **`install --runtime <name>`** puts the skills where each of the seven runtimes reads them,
+  driven by what that runtime's adapter declares, never by a name baked into code
+  (`bin/install.sh` is the same command for a vendored install):
+  - **Runtimes that read the canonical `.claude/skills/` copy** (Claude Code natively; Cursor,
+    OpenCode, Cline and Devin directly): it checks and writes no skills. The report says what that
+    shared file cannot carry for a foreign reader, such as `allowed-tools`, a Claude-only key the
+    others ignore, warned per affected skill.
+  - **Runtimes that can't see it** (Codex CLI, Antigravity): it writes one translated copy to
+    `.agents/skills/<name>/SKILL.md`, each file stamped with a provenance header. Re-run it to
+    update. It never overwrites a file it did not write, and fails loudly instead. Don't hand-copy
+    skill files between layouts: a stale duplicate quietly winning over the canonical copy is the
+    failure the installer exists to prevent.
+  - **The `qc-reviewer` agent** is written wherever a runtime lets you define subagents
+    (`.codex/agents/*.toml`; markdown for Cursor, Devin and Antigravity). Where it can't (Cline) or
+    the location is undocumented (OpenCode), the report says so.
+  - **`--global`** writes into the runtime's declared per-user skills folder, and refuses where
+    that folder is unknown (Antigravity, whose documented sources disagree) rather than guessing.
+- **Skills that act outside the chat confirm first, on every runtime.** All seven skills are
+  model-invocable. `/ship` **stops before any external post**, and `/setup` and `/skillify`
+  **stop before writing committed config or a new skill**, through a HARD HALT in the skill's own
+  text. That is an instruction the agent follows, stated plainly as a convention rather than a
+  mechanical block. (The Claude-only `disable-model-invocation` flag the skills used to carry is
+  still supported, and is emitted with a warning block on other runtimes, but no skill ships gated
+  today.) Any other metadata a runtime cannot carry is recorded in `adapters/runtime/<name>.md`
+  § Metadata mapping.
+- **The DB-write guard is wired wherever a runtime documents a home for it:** `.cursor/hooks.json`
+  (with `failClosed: true`, required configuration), `.agents/hooks.json` for Antigravity, and a
+  throw-to-deny plugin under `.opencode/plugins/`. All of them front one scanner,
+  `bin/sql_scan.py`, through `bin/hook_shim.py`. A runtime with no `ask` tier gets the `high_risk`
+  policy as **deny-with-escape** (the deny names a one-shot re-approval), and the install report
+  says so. Where even the hooks-config location is undocumented (Codex CLI, Devin), the installer
+  prints the line to wire by hand instead of guessing.
+- **What is enforced where is written down, per runtime and per hook,** in the rendered `AGENTS.md`
+  enforcement table (and in `.clinerules/` for Cline): ENFORCEMENT (proven, the native Claude
+  hooks), WIRED (emitted, live confirmation owed), GUIDANCE, or UNKNOWN. The MCP transport, which
+  no shell hook can see, has its own per-policy posture table right below it: enforcement moves
+  into the tool's own permission controls, and **NATIVE (tool-side)** can be claimed only after a
+  warehouse adapter's read-only posture probe has verified the grant set under its written
+  comparison rule (the outcome is recorded in the gitignored `.claude/config/posture.local.yaml`).
 
 **`init` is a file copy, not a working setup.** It deliberately writes no `stack.yaml` and no
-`AGENTS.md` — `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
-On another harness you get the skill files (translated by `install` where needed) but still have to
-render the config yourself. A harness-agnostic setup path is on the [roadmap](../ROADMAP.md), not
-shipped — don't read this section as "Ticketwright runs anywhere today."
+`AGENTS.md`: `/setup` renders both from evidence in your repo, and `/setup` runs in Claude Code.
+On another agent you get the skill files (translated by `install` where needed) but still have to
+write the config yourself. A setup path that works on any agent is on the
+[roadmap](../ROADMAP.md), not shipped, so don't read this section as "Ticketwright runs anywhere
+today."
 
-## Publishing
+## Publishing (maintainers)
 
-CI runs the full self-test on every push; PyPI publishing is OIDC Trusted Publishing (no stored
-tokens) — see [docs/pypi-setup.md](pypi-setup.md).
+CI runs the full self-test on every push. PyPI publishing uses OIDC Trusted Publishing, so no token
+is stored anywhere: see [docs/maintainers/pypi-setup.md](maintainers/pypi-setup.md).

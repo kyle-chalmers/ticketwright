@@ -1,15 +1,15 @@
 {
   "name": "ticketwright",
-  "metadata": { "description": "Ticketwright — a tool-agnostic AI layer for ticket-driven work repos (recall, object index, deep QC, self-maintaining catalog)." },
+  "metadata": { "description": "Ticketwright, the Claude Code plugin for ticket-driven analysis, from KC AI Labs." },
   "owner": { "name": "Kyle Chalmers", "url": "https://github.com/kyle-chalmers" },
   "plugins": [
     {
       "name": "ticketwright",
       "source": "./",
       "version": "4.2.0",
-      "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
+      "description": "Ticket-driven analysis in Claude Code: prior work recalled, every result re-run and signed off, and nothing posted without your go-ahead.",
       "license": "MIT",
-      "keywords": ["tickets", "data", "qc", "workflow", "recall"]
+      "keywords": ["analytics", "tickets", "data", "qc", "workflow", "recall", "claude-code"]
     }
   ]
 }

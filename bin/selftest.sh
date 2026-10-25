@@ -6774,10 +6774,10 @@ done
 # doc, is retired — its exemption became the PROMPT- prefix). 'empower' is allowed only inside the
 # verbatim mission sentence (pinned above); the technical noun "agent harness" is not filler and
 # is deliberately NOT grepped.
-filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/PROMPT-' || true)"
+filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/maintainers/PROMPT-' || true)"
 [ -z "$filler" ] && ok "no marketing filler in README + docs/ user-facing prose" \
   || bad "marketing filler in user-facing docs (voice audit, PROMPT 9 rider 1)" "$filler"
-emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/PROMPT-' | grep -v 'empowers a team to do a high volume' || true)"
+emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/maintainers/PROMPT-' | grep -v 'empowers a team to do a high volume' || true)"
 [ -z "$emp" ] && ok "'empower' appears only inside the verbatim mission sentence" \
   || bad "'empower' used outside the mission sentence" "$emp"
 
@@ -10483,9 +10483,11 @@ grep -q 'git commit' "$RVG57" && grep -qi 'deliberately NOT' "$RVG57" \
 hdr "58 · the README is a two-minute read: a prose budget, the two visuals, and links that resolve"
 # The README is the overview; the detail lives in docs/getting-started.md and docs/how-it-works.md.
 # Without a budget it regrows one caveat at a time (it reached 7,300 words that way). PROSE is what
-# a person reads line by line, so fenced blocks (the diagram, the scaffold tree, commands), HTML
-# comments, badge lines and link URLs do not count; link text does.
-README_BUDGET=600
+# a person reads line by line, so fenced blocks (the scaffold tree, commands, example prompts), HTML
+# comments, image and badge lines and link URLs do not count; link text does. The budget rose from
+# 600 to 900 when the README became the Claude plugin directory's listing text too: the listing
+# must carry the data-and-network disclosure, example prompts and the other-agent install itself.
+README_BUDGET=900
 cat > "$TMP/s58-wc.py" <<'PY'
 import re, sys
 t = open(sys.argv[1], encoding="utf-8").read()
@@ -10507,8 +10509,32 @@ python3 "$TMP/s58-wc.py" "$TMP/s58-fenced.md" > "$TMP/s58.f"; python3 "$TMP/s58-
   && ok "the word counter ignores fenced blocks and counts added prose (the budget can fail)" \
   || bad "the README word counter is miscounting" "fenced=$(cat "$TMP/s58.f") padded=$(cat "$TMP/s58.p")"
 # The visuals are why the README can be short: the system diagrams and the working-repo tree,
-# which must show the team scale (more than one owner) and a ticket folder labeled by phase.
-{ grep -q '^```mermaid' README.md && grep -q '^your-repo/' README.md && grep -q 'stack.yaml' README.md \
+# which must show the team scale (more than one owner) and a ticket folder labeled by phase. The
+# diagrams are branded PNGs (scripts/readme_media/), not mermaid, because the same README is the
+# PyPI page and the plugin directory listing, where mermaid shows as raw code. So every image is an
+# absolute main-branch URL whose file exists here, with alt text a screen reader can use.
+python3 - README.md <<'PY' > "$TMP/s58.img" 2>&1
+import os, re, sys
+t = open(sys.argv[1], encoding="utf-8").read()
+base = "https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/"
+bad, shown = [], set()
+for alt, url in re.findall(r'!\[([^\]]*)\]\(([^)\s]+)\)', t):
+    if "img.shields.io" in url or "/actions/workflows/" in url:
+        continue  # live badges, not bundled images
+    if not url.startswith(base):
+        bad.append("image is not an absolute main-branch URL: %s" % url); continue
+    path = url[len(base):].split("#")[0]
+    shown.add(path)
+    if not os.path.isfile(path): bad.append("no such file: %s" % path)
+    if len(alt.strip()) < 20: bad.append("alt text too thin for %s" % path)
+for want in ("docs/images/lifecycle.png", "docs/images/tool-slots.png"):
+    if want not in shown: bad.append("README does not show %s" % want)
+print(" | ".join(bad))
+PY
+[ -z "$(cat "$TMP/s58.img")" ] \
+  && ok "README images are absolute main-branch URLs to files that exist, with real alt text" \
+  || bad "a README image would break on PyPI or the directory listing" "$(cat "$TMP/s58.img")"
+{ grep -q '^your-repo/' README.md && grep -q 'stack.yaml' README.md \
   && [ "$(LC_ALL=C grep -cE '^ {4}[^ ]+ [a-z]+/$' README.md)" -ge 2 ] \
   && grep -qE 'README\.md +/ticket' README.md && grep -qE 'qc_queries/ +/build' README.md; } \
   && ok "README carries the diagrams and the team-scale repo tree, with ticket files labeled by phase" \
@@ -10940,6 +10966,72 @@ done
 ! grep -qE 'would (could|would)' tests/guard/golden.json \
   && ok "guard golden corpus has no doubled modal ('would could' / 'would would')" \
   || bad "tests/guard/golden.json contains a doubled modal; the bypass message prefixes a verb PLAIN_CHANGE already carries"
+
+hdr "60 · the plugin directory listing: icon, listing links, disclosure, example prompts"
+# The Claude plugin directory reads plugin.json's listing fields and shows README.md as the listing
+# text, and its security scan checks the plugin against what that README discloses. These pins keep
+# the listing true as the kit changes. (The directory's structural rules, such as no symlinked
+# components, are CI's validate job, not this section.)
+python3 - <<'PY' > "$TMP/s60.out" 2>&1
+import json, os, re, struct
+bad = []
+m = json.load(open(".claude-plugin/plugin.json"))
+# (a) the icon: a square PNG of 512 to 2048 px, under 2 MB. It becomes the listing icon only once,
+#     at the first save in the developer portal, so a wrong one is hard to take back.
+icon = m.get("icon", "")
+path = icon[2:] if icon.startswith("./") else ""
+if not path or not os.path.isfile(path):
+    bad.append("plugin.json icon is missing or not a ./ path: %r" % icon)
+else:
+    head = open(path, "rb").read(24)
+    if head[:8] != b"\x89PNG\r\n\x1a\n":
+        bad.append("the icon is not a PNG")
+    else:
+        w, h = struct.unpack(">II", head[16:24])
+        if w != h or not 512 <= w <= 2048:
+            bad.append("the icon is %dx%d; it must be square, 512 to 2048 px" % (w, h))
+    if os.path.getsize(path) >= 2 * 1024 * 1024:
+        bad.append("the icon is 2 MB or more")
+# (b) listing links are https, and a link into this repo names a file that exists
+base = "https://github.com/kyle-chalmers/ticketwright/blob/main/"
+for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl"):
+    url = m.get(key, "")
+    if not url.startswith("https://"):
+        bad.append("%s is missing or not https" % key)
+    elif url.startswith(base) and not os.path.isfile(url[len(base):].split("#")[0]):
+        bad.append("%s names a file that does not exist: %s" % (key, url))
+# (c) those fields belong in plugin.json only; the validator flags them in a marketplace entry
+for entry in json.load(open(".claude-plugin/marketplace.json")).get("plugins", []):
+    for key in ("icon", "documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"):
+        if key in entry:
+            bad.append("the marketplace entry carries %s" % key)
+# (d) every hook the plugin registers appears in the full hooks table the README links to
+readme = open("README.md", encoding="utf-8").read()
+hooks = open("docs/how-it-works.md", encoding="utf-8").read().split("## Hooks, in full", 1)[-1]
+hooks = hooks.split("\n## ", 1)[0]
+scripts = sorted(set(re.findall(r"\.claude/hooks/([a-z_]+\.py)", json.dumps(m.get("hooks", {})))))
+if len(scripts) < 3:
+    bad.append("found only %d hook scripts in plugin.json" % len(scripts))
+for script in scripts:
+    if script not in hooks:
+        bad.append("hook %s is missing from how-it-works' Hooks, in full" % script)
+# (e) the README carries the disclosure and links the trust files, which exist
+for need in ("## Data and network", "## Safety rails", "docs/how-it-works.md#hooks-in-full",
+             "no telemetry", "(PRIVACY.md)", "(SECURITY.md)", "(SUPPORT.md)"):
+    if need.lower() not in readme.lower():
+        bad.append("README lacks %r" % need)
+for f in ("PRIVACY.md", "SECURITY.md", "SUPPORT.md", "CODE_OF_CONDUCT.md", "docs/README.md"):
+    if not os.path.isfile(f):
+        bad.append("missing %s" % f)
+# (f) at least three runnable example prompts under ## Try it (the directory policy asks for three)
+try_it = readme.split("## Try it", 1)[-1].split("\n## ", 1)[0]
+if len(re.findall(r"(?m)^/ticketwright:[a-z]+", try_it)) < 3:
+    bad.append("## Try it shows fewer than 3 /ticketwright: prompts")
+print(" | ".join(bad))
+PY
+[ -z "$(cat "$TMP/s60.out")" ] \
+  && ok "directory listing: square PNG icon, https listing links to real files, every hook in the table, disclosure, 3+ example prompts" \
+  || bad "the plugin directory listing drifted" "$(cat "$TMP/s60.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
