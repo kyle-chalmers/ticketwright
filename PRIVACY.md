@@ -18,7 +18,7 @@ The skills run inside your coding agent and work through the tools you name in
 | Your agent's model provider (Anthropic, for Claude Code) | whenever a skill runs | what the skill reads: ticket text, query results, ticket files, meeting notes you curated. Your agreement with that provider governs it |
 | Your tracker | `/ticket` reads the ticket; `/ship` posts a comment you approved | ticket fields and the approved comment |
 | Your warehouse | `/build` and `/review` | the queries the plan calls for, and their results |
-| Your docs store | `/ship` backup | the ticket folder, after a scan for raw source material |
+| Your docs store | `/ship` backup | the whole ticket folder, after a scan for raw source material that asks first. A backup is a copy, so gitignored files in the folder (the `comms/` drafts, `*.private.csv` exports) go too |
 | Your chat tool | `/ship` | a draft message; sent only when you say "send it" |
 | Your git host | `/ship` | a commit, a pushed branch and a pull request |
 | The model command you configure | `ticketwright enrich` | one ticket's text, to write its index summary |
@@ -36,7 +36,7 @@ Fonts when re-rendering; they are not part of the kit.
 
 ## What is kept, and for how long
 
-Everything Ticketwright writes lives in your repository and stays until you delete it:
+Ticketwright writes into your repository, and what it writes stays until you delete it:
 
 - ticket folders, including plans, QC queries, deliverables and CSVs, committed by default so the
   team's history is searchable;
@@ -46,11 +46,17 @@ Everything Ticketwright writes lives in your repository and stays until you dele
   writing fingerprint: to keep yours private, point your `voice.path` outside the repo, or
   gitignore it before its first commit;
 - `.claude/config/*.local.yaml` (your machine's connections and viewer choices) and the `comms/`
-  drafts `/ship` writes, which stay on your machine (both are gitignored).
+  drafts `/ship` writes, which are gitignored.
+
+Outside the repository, only where you choose it: `/setup` can save your viewer choices for every
+repo in `~/.config/ticketwright/viewer.yaml` (that folder can also hold a cross-repo copy of your
+people file), a voice profile lives wherever its `voice.path` points, and
+`ticketwright install --global` writes skills into your agent's per-user folder.
 
 The `.gitignore` that `/setup` writes keeps raw meeting transcripts out of git by default. To keep
-a deliverable out, name it `*.private.csv` (or `.tsv`, `.xlsx`, `.parquet`), or put it in a
-`private/` folder inside `final_deliverables/`.
+a deliverable out of git, name it `*.private.csv` (or `.tsv`, `.xlsx`, `.parquet`), or put it in a
+`private/` folder inside `final_deliverables/`. Gitignore only governs git: a `/ship` backup copies
+the whole ticket folder, so a file that must not reach the docs store has to live outside it.
 
 ## Children
 

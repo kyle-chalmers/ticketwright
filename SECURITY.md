@@ -51,8 +51,10 @@ Ticketwright's safety rails are Claude Code hooks (listed in full in
   `EXPLAIN`, with every referenced file read) is approved without asking. No hook can loosen a
   deny rule in your own settings.
 
-The hooks, skills and engines make no network calls and write nothing outside the repo. What the
-plugin sends, and where, is in [PRIVACY.md](PRIVACY.md).
+The hooks make no network calls and write nothing outside the repo. The skills and engines make
+no network calls of their own; they reach your tools through the CLIs and MCP servers you
+configured, and a few setup choices write to your user config folder. What the plugin sends, what
+it keeps, and where, is in [PRIVACY.md](PRIVACY.md).
 
 ## Everything else
 
