@@ -5,9 +5,12 @@ transport: mcp         # MCP ({mcp}) tools only
 requires: [mcp]        # stack.yaml seams.chat.{mcp, default_mode}; destination + recipients are per-ticket (delivery-plan.yaml chat.channel/recipients)
 channel_key: default_channel   # THIS tool's destination key — read by delivery routing, never guessed by a skill
 user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
+default_surface: claude-code   # the runtime the `## verb:` sections were written against (Slack's own MCP tool names)
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
 auth: |
   The `slack` MCP server must be connected. Verify with a read-only search.
-  Verify: a `mcp__{mcp}__slack_search_channels` call returns without error.
+  Verify: a `mcp__{mcp}__slack_search_channels` call returns without error (on a runtime with its
+  own section below, that section's probe instead: `bin/adapter_surface.py --probe` prints it).
 note: |
   MCP cannot create a brand-new multi-person DM — create it once in the Slack UI, then reuse it.
 ---
@@ -89,5 +92,63 @@ Existing group DMs can be reused by searching; new multi-person DMs must be crea
 
 ## gotchas
 - The `mcp__{mcp}__*` tools take **standard Markdown** — use `[text](URL)` links, not Slack `<URL|text>` mrkdwn.
-- Exact parameter names vary by Slack MCP server; this adapter targets one exposing `channel_id` + `message`. If yours differs, adjust here (not in the skills).
+- Exact parameter names vary by Slack MCP server; this adapter targets one exposing `channel_id` + `message`.
+  Slack's own server, as Codex CLI lists it, takes `keywords` (a list of single words or quoted
+  phrases) for both search tools rather than `query`; if your connector is that server, pass the
+  same shape here.
+- Tool names differ by agent: Codex CLI adds a `slack_` app prefix (its section is below).
+  `bin/adapter_surface.py --adapter adapters/chat/slack.md` picks the right section for the agent
+  running now. A name missing from your session's tool list is a gap to report so the kit can
+  record it, never a local edit here or in a skill.
 - Tag the stakeholders the channel context calls for, but `{always_include}` is non-negotiable.
+
+## Runtime surface: codex-cli
+
+server: codex_apps
+
+Codex CLI reaches Slack through the ChatGPT Slack app: every tool sits under the one server
+`codex_apps`, and the app adds a `slack_` prefix to Slack's own tool names, so
+`slack_send_message_draft` arrives as `slack_slack_send_message_draft`. The argument shapes are
+Slack's own. Both search tools take `keywords`, a list of single words or quoted phrases, and an
+empty list is refused as invalid (observed 2026-10-24, with the connector's own tool declarations,
+in a Codex CLI session). The rules of the default sections hold unchanged here: draft first,
+every message names `{always_include}`, and the destination is the routed one, never a channel
+guessed from its name.
+
+### verb: draft
+```
+mcp__codex_apps__slack_slack_send_message_draft(channel_id=<id or {default_channel}>, message=<body>, thread_ts=<optional>)
+```
+Body rules, the same on every runtime: standard Markdown, **hyperlink everything** with
+`[text](URL)` (ticket IDs, doc files, PRs), honor `word_limits.chat` (<100), and include the
+`{always_include}` mentions. The draft lands in the person's Slack "Drafts & Sent" unsent.
+
+### verb: send
+ONLY on explicit "send it"/"post it".
+```
+mcp__codex_apps__slack_slack_send_message(channel_id=<id>, message=<body>)
+```
+
+### verb: lookup_user
+```
+mcp__codex_apps__slack_slack_search_users(keywords=[<name or email>], natural_language_query="", response_format="concise")   # → user ID for <@ID> mentions
+```
+
+### verb: lookup_channel
+```
+mcp__codex_apps__slack_slack_search_channels(keywords=[<name>], natural_language_query="", response_format="concise")   # → channel ID
+```
+Private channels need `channel_types="public_channel,private_channel"`. New multi-person DMs
+still have to be created in the Slack UI first.
+
+### Permission posture on this runtime
+The control is the Slack app's connection for the signed-in ChatGPT account: which workspace it
+reaches and whether its grant includes send. The grant is NOT introspectable from inside the
+session, so the posture record caps at `status: unverified` exactly as above; confirm it where the
+app was connected and record the outcome in `.claude/config/posture.local.yaml`.
+
+### Read-only probe
+```
+mcp__codex_apps__slack_slack_list_workspaces(limit=1)                                                     # read-only: the connected workspace
+mcp__codex_apps__slack_slack_search_channels(keywords=[<any channel name>], natural_language_query="", limit=1, response_format="concise")   # read-only
+```

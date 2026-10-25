@@ -282,6 +282,27 @@ def detect_runtime(kit: Path | None) -> tuple[str, str]:
     return "unknown", "no runtime signal"
 
 
+def detect_runtimes(kit: Path | None) -> list[tuple[str, str]]:
+    """EVERY runtime whose env signal is set, in detect_runtime's order (no override applied).
+
+    detect_runtime answers with the first match, which is right for a capability floor but not for
+    a choice of tool names: a Codex CLI session started from inside Claude Code inherits
+    CLAUDECODE, so the first match is the wrong agent. A caller that must not guess (the runtime
+    surface picker) asks for all of them and refuses when they disagree.
+    """
+    out, seen = [], set()
+    for tool, (_, fm) in sorted(runtime_adapters(kit).items()):
+        canonical = fm.get("tool") or tool
+        if canonical in seen:
+            continue
+        for var in (v.strip() for v in fm.get("detect_env", "").split(",")):
+            if var and os.environ.get(var):
+                out.append((canonical, f"${var}"))
+                seen.add(canonical)
+                break
+    return out
+
+
 def capabilities(kit: Path | None, runtime: str) -> dict:
     """Capability flags for `runtime`, defaulting to the honest per-key floor.
 

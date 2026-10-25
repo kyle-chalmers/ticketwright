@@ -169,6 +169,13 @@ meetleaks="$(grep -REn -i '\bzoom\b|\bfireflies\b|\bgranola\b|\bnotion\b' \
               | grep -v 'for c in snow acli gh' || true)"
 [ -z "$meetleaks" ] && ok "no meeting-provider name appears in a skill/command/agent" \
   || bad "a skill names a specific meeting provider (scopes the meetings flow to one vendor)" "$meetleaks"
+# A runtime's connector namespace is the same leak again: Codex CLI lists every ChatGPT app under
+# one server with app-prefixed tool names, and those names live in the adapters' runtime surfaces
+# (section 61). A skill naming one would work on one agent and break on every other.
+rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_' \
+            .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
+[ -z "$rtleaks" ] && ok "no runtime connector namespace or app-prefixed tool name appears in a skill/command/agent" \
+  || bad "a skill names one runtime's connector tool names (they belong in an adapter's runtime surface)" "$rtleaks"
 
 hdr "4 · frontmatter valid (skills + agents)"
 for f in .claude/skills/*/SKILL.md .claude/agents/*.md; do
@@ -1017,9 +1024,16 @@ vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/s
 { grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$vout" && ! grep -q 'adapter missing' <<<"$vout"; } \
   && ok "verify_stack resolves adapters via CLAUDE_PLUGIN_ROOT (project-external stack)" \
   || bad "verify_stack failed on a project-external stack (adapter missing / no success line)" "$vout"
-# E4 — adapters use the {mcp} token, never a hardcoded MCP server literal.
-lit="$(grep -REn 'mcp__[A-Za-z0-9]' adapters/ | grep -v 'mcp__{mcp}__' || true)"
-[ -z "$lit" ] && ok "adapters use the {mcp} token (no hardcoded MCP server names)" \
+# E4 — adapters use the {mcp} token, never a hardcoded MCP server literal. The one exception is a
+# `## Runtime surface:` section, which names its runtime's FIXED namespace on a `server:` line (a
+# name no person chose); section 61 checks every call in one uses exactly the server it declares.
+# Fence-aware: a heading-shaped line inside a code block (adapters/README.md's example) opens no
+# exemption.
+lit="$(awk 'FNR == 1 {s = 0; f = 0} /^```/ {f = !f}
+  !f && /^## Runtime surface: / {s = 1; next} !f && /^## / {s = 0}
+  !s && /mcp__[A-Za-z0-9]/ && !/mcp__[{]mcp[}]__/ {print FILENAME ":" FNR ": " $0}' \
+  adapters/*.md adapters/*/*.md)"
+[ -z "$lit" ] && ok "adapters use the {mcp} token (no hardcoded MCP server names outside a runtime surface)" \
   || bad "adapter hardcodes an MCP server name (should be mcp__{mcp}__…)" "$lit"
 # E5 — no seam verify depends on the nullable {default_epic}.
 ve="$(grep -REn 'verify.*\{default_epic\}' .claude/config/*.yaml 2>/dev/null || true)"
@@ -11075,6 +11089,276 @@ PY
 [ -z "$(cat "$TMP/s60.out")" ] \
   && ok "directory listing: square PNG icon, https listing links to real files, every hook in the table, disclosure, 3+ example prompts" \
   || bad "the plugin directory listing drifted" "$(cat "$TMP/s60.out")"
+
+hdr "61 · runtime surfaces: one connector, the tool names each agent lists (bin/adapter_surface.py)"
+# The same connector reaches a session under different tool names per agent: Codex CLI lists every
+# ChatGPT app under one server, `codex_apps`, with app-prefixed names and, for Gmail, a different
+# connector's argument shapes. Which agent runs is per-MACHINE, so that choice can never live in
+# stack.yaml; it lives in the adapter as a `## Runtime surface: <runtime>` section, and
+# bin/adapter_surface.py is the one place that picks a surface. Pinned here: every adapter's
+# surfaces parse (A), which adapters carry one (B), the mapping name by name (C), that a surface is
+# used whole and carries its own safety rules (D), the selection rules (E), the refusals (F), the
+# plain wording (G), and the wiring that sends agents through the picker (H).
+# Every call runs with the kit and runtime overrides cleared: a stray TICKETWRIGHT_KIT would make
+# the picker read another kit's adapters, and TICKETWRIGHT_RUNTIME would pick for it.
+AS61="$KIT/bin/adapter_surface.py"
+p61() { env -u TICKETWRIGHT_KIT -u TICKETWRIGHT_RUNTIME python3 "$AS61" "$@"; }
+s61() { S61OUT="$(p61 "$@" 2>"$TMP/s61.err")"; S61RC=$?; }
+s61j() { printf '%s' "$S61OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
+
+# --- (A) every adapter's surfaces are well formed (frontmatter list = sections, every verb, one
+#         declared server used by every call, a fenced probe); a malformed one is exit 6 ----------
+s61bad=""
+for f in adapters/*/*.md; do
+  case "$f" in adapters/runtime/*|*/README.md) continue ;; esac
+  p61 --adapter "$f" --surface default --json >/dev/null 2>"$TMP/s61.err" \
+    || s61bad="$s61bad $f[$(head -c 200 "$TMP/s61.err")]"
+done
+[ -z "$s61bad" ] && ok "every adapter's runtime surfaces are well formed (the picker accepts all of them)" \
+  || bad "an adapter's runtime surfaces are malformed" "$s61bad"
+
+# --- (B) the census: the three connectors Codex lists under other names, and only those ----------
+s61census="$(grep -l '^surfaces: \[codex-cli\]' adapters/*/*.md | tr '\n' ' ')"
+[ "$s61census" = "adapters/chat/gmail.md adapters/chat/slack.md adapters/meetings/notion.md " ] \
+  && ok "gmail, slack and notion (and only those) declare a codex-cli runtime surface" \
+  || bad "the codex-cli surface census moved (extend this section with it)" "$s61census"
+
+# --- (C) the mapping itself, pinned name by name, read back THROUGH the picker -------------------
+# Codex names were read from the connectors' own tool declarations in a Codex CLI session
+# (2026-10-24); the default names from the Claude connectors' schemas (2026-10-25). Two default
+# fixes ride along: the hosted Gmail connector has no contacts tool, and Notion's fetch returns a
+# placeholder instead of the transcript unless include_transcript=true.
+cat > "$TMP/s61.rows" <<'EOF'
+adapters/chat/gmail.md|codex-cli|draft|mcp__codex_apps__gmail_create_draft(
+adapters/chat/gmail.md|codex-cli|draft|from_address="{identity}"
+adapters/chat/gmail.md|codex-cli|draft|payload={"mime_type": "text/html"
+adapters/chat/gmail.md|codex-cli|send|mcp__codex_apps__gmail_send_email(
+adapters/chat/gmail.md|codex-cli|lookup_user|ask the human
+adapters/chat/gmail.md|codex-cli|lookup_channel|exact address
+adapters/chat/gmail.md|codex-cli|probe|mcp__codex_apps__gmail_get_profile(
+adapters/chat/gmail.md|default|draft|mcp__{mcp}__create_draft(to=["{to}"]
+adapters/chat/gmail.md|default|draft|htmlBody=
+adapters/chat/gmail.md|default|send|mcp__{mcp}__send_message(draftId=
+adapters/chat/gmail.md|default|lookup_user|ask the human for the exact address
+adapters/chat/gmail.md|default|probe|mcp__{mcp}__search_threads(
+adapters/chat/slack.md|codex-cli|draft|mcp__codex_apps__slack_slack_send_message_draft(channel_id=
+adapters/chat/slack.md|codex-cli|send|mcp__codex_apps__slack_slack_send_message(channel_id=
+adapters/chat/slack.md|codex-cli|lookup_user|mcp__codex_apps__slack_slack_search_users(keywords=[
+adapters/chat/slack.md|codex-cli|lookup_channel|mcp__codex_apps__slack_slack_search_channels(keywords=[
+adapters/chat/slack.md|codex-cli|probe|mcp__codex_apps__slack_slack_list_workspaces(
+adapters/chat/slack.md|default|draft|mcp__{mcp}__slack_send_message_draft(
+adapters/chat/slack.md|default|probe|mcp__{mcp}__slack_search_channels(
+adapters/meetings/notion.md|codex-cli|fetch_transcript|mcp__codex_apps__notion_fetch(id={id}, include_transcript=true)
+adapters/meetings/notion.md|codex-cli|search_meetings|mcp__codex_apps__notion_notion_query_meeting_notes(filter=
+adapters/meetings/notion.md|codex-cli|fetch_action_items|mcp__codex_apps__notion_fetch(id={id})
+adapters/meetings/notion.md|codex-cli|probe|mcp__codex_apps__notion_notion_list_recent_pages(
+adapters/meetings/notion.md|default|fetch_transcript|mcp__{mcp}__notion-fetch(id={id}, include_transcript=true)
+adapters/meetings/notion.md|default|search_meetings|mcp__{mcp}__notion-query-meeting-notes(filter=
+adapters/meetings/notion.md|default|probe|mcp__{mcp}__notion-list-recent-pages(
+EOF
+s61miss=""; s61rows=0
+while IFS='|' read -r f surf what want; do
+  [ -n "$f" ] || continue
+  s61rows=$((s61rows + 1))
+  if [ "$what" = "probe" ]; then
+    got="$(p61 --adapter "$f" --surface "$surf" --probe 2>/dev/null)"
+  else
+    got="$(p61 --adapter "$f" --surface "$surf" --verb "$what" 2>/dev/null)"
+  fi
+  grep -qF -- "$want" <<<"$got" || s61miss="$s61miss $(basename "$f"):$surf:$what"
+done < "$TMP/s61.rows"
+{ [ -z "$s61miss" ] && [ "$s61rows" -eq 26 ]; } \
+  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, slack and notion, both surfaces" \
+  || bad "a pinned tool name or argument shape moved in a runtime surface" "rows=$s61rows missing:$s61miss"
+s61old=""
+grep -q 'search_contacts' adapters/chat/gmail.md && s61old="$s61old gmail:search_contacts"
+grep -Eq 'mcp__\{mcp\}__(fetch|query-meeting-notes|list-recent-pages)\(' adapters/meetings/notion.md \
+  && s61old="$s61old notion:unprefixed-names"
+[ -z "$s61old" ] && ok "the default surface no longer names tools its connectors do not have" \
+  || bad "a default surface names a tool its connector lacks" "$s61old"
+
+# --- (D) a surface is used WHOLE and every subsection carries its own rules ----------------------
+# An agent may read only the section the picker prints, so draft-first, always_include, the no-bcc
+# rule and the transcript-privacy rule must travel with each subsection, and no printed section may
+# mix two agents' tool names.
+python3 - "$AS61" <<'PY' >"$TMP/s61d.out"
+import json, os, re, subprocess, sys
+picker = sys.argv[1]
+bad = []
+env = {k: v for k, v in os.environ.items() if k not in ("TICKETWRIGHT_KIT", "TICKETWRIGHT_RUNTIME")}
+def pick(f, surface):
+    r = subprocess.run([sys.executable, picker, "--adapter", f, "--surface", surface, "--json"],
+                       capture_output=True, text=True, env=env)
+    return json.loads(r.stdout) if r.returncode == 0 else None
+def fenced(text):
+    out, on = [], False
+    for ln in text.splitlines():
+        if ln.startswith(chr(96) * 3):
+            on = not on
+            continue
+        if on:
+            out.append(ln)
+    return out
+privacy = "Curated excerpts and action items are committed; raw full transcripts are not, by default."
+for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings/notion.md"):
+    c, d = pick(f, "codex-cli"), pick(f, "default")
+    if not c or not d:
+        bad.append(f + ": picker refused a surface")
+        continue
+    if sorted(c["verbs"]) != sorted(d["verbs"]):
+        bad.append(f + ": codex-cli verbs differ from the default verbs")
+    for v, text in c["verbs"].items():
+        calls = [ln for ln in fenced(text) if "mcp__" in ln]
+        if "mcp__{mcp}__" in text:
+            bad.append(f + ":" + v + ": codex-cli section uses the slot server token")
+        if any(set(re.findall(r"mcp__(.+?)__", ln)) - {"codex_apps"} for ln in calls):
+            bad.append(f + ":" + v + ": codex-cli call on a server other than codex_apps")
+    for v, text in d["verbs"].items():
+        if "codex_apps" in text:
+            bad.append(f + ":" + v + ": default section names the codex_apps server")
+    for surf, data in (("codex-cli", c), ("default", d)):
+        vb = data["verbs"]
+        if "/chat/" in f:
+            if "{always_include}" not in vb["draft"]:
+                bad.append(f + ":" + surf + ":draft: always_include missing")
+            if "ONLY on explicit" not in vb["send"]:
+                bad.append(f + ":" + surf + ":send: the explicit-send rule is missing")
+        if "gmail" in f:
+            if any("bcc=" in ln for t in vb.values() for ln in fenced(t)):
+                bad.append(f + ":" + surf + ": a call passes bcc")
+            for v in ("draft", "send"):
+                if "never pass it" not in vb[v]:
+                    bad.append(f + ":" + surf + ":" + v + ": the no-bcc rule is missing")
+        probe_calls = [ln for ln in fenced(data["probe"] or "") if "mcp__" in ln]
+        probe_tools = [t for ln in probe_calls for t in re.findall(r"mcp__.+?__([A-Za-z0-9_-]+)", ln)]
+        if not probe_tools or any(re.search(r"(create|update|delete|move|send|draft)", t) for t in probe_tools):
+            bad.append(f + ":" + surf + ": the probe is missing or calls a write tool")
+        if "meetings" in f:
+            flat = " ".join(vb["fetch_transcript"].split())
+            if privacy not in flat or "filenames and document shape, never meaning" not in flat:
+                bad.append(f + ":" + surf + ":fetch_transcript: privacy rule or honesty sentence missing")
+            if "include_transcript=true" not in flat or "never passed off" not in flat:
+                bad.append(f + ":" + surf + ":fetch_transcript: the transcript flag or notes-vs-transcript rule is missing")
+            for t in vb.values():
+                if any(re.search(r"(create|update|delete|move)", n) for ln in fenced(t)
+                       for n in re.findall(r"mcp__.+?__([A-Za-z0-9_-]+)", ln)):
+                    bad.append(f + ":" + surf + ": a write tool in a read-only seam")
+    if "gmail" in f:
+        for v in ("draft", "send"):
+            if "never retry without it" not in " ".join(c["verbs"][v].split()):
+                bad.append(f + ": codex-cli " + v + " lost the from_address stop rule")
+if bad:
+    print("\n".join(bad))
+PY
+[ ! -s "$TMP/s61d.out" ] \
+  && ok "surfaces are used whole (no mixed tool names) and each subsection carries its own rules (always_include, explicit send, no bcc, verbatim privacy, read-only)" \
+  || bad "a runtime surface mixes tool names or lost a rule it must carry" "$(head -5 "$TMP/s61d.out")"
+
+# --- (E) selection: flag, env override, real env detection, aliases, unknown runtimes ------------
+s61 --adapter adapters/chat/gmail.md --runtime codex-cli --json
+{ [ "$S61RC" -eq 0 ] && [ "$(s61j "d['surface']")" = "codex-cli" ] && [ "$(s61j "d['selected_by']")" = "runtime" ] \
+  && [ "$(s61j "d['server']")" = "codex_apps" ] && [ "$(s61j "d['server_source']")" = "surface" ]; } \
+  && ok "on codex-cli, gmail picks its codex-cli surface with server codex_apps (the slot's mcp: is not used)" \
+  || bad "codex-cli did not select its own gmail surface" "rc=$S61RC $(head -c 300 <<<"$S61OUT")"
+s61 --adapter adapters/chat/gmail.md --runtime claude-code --json
+{ [ "$S61RC" -eq 0 ] && [ "$(s61j "d['surface']")" = "default" ] && [ "$(s61j "d['server']")" = "None" ] \
+  && [ "$(s61j "d['server_source']")" = "slot" ]; } \
+  && ok "on claude-code, gmail stays on the default surface and the slot's mcp: names the server" \
+  || bad "claude-code did not select the default gmail surface" "rc=$S61RC"
+S61OUT="$(env -u TICKETWRIGHT_KIT TICKETWRIGHT_RUNTIME=codex-cli python3 "$AS61" --adapter adapters/meetings/notion.md --json 2>/dev/null)"
+{ [ "$(s61j "d['surface']")" = "codex-cli" ] && [ "$(s61j "d['runtime_source']")" = "TICKETWRIGHT_RUNTIME" ]; } \
+  && ok "\$TICKETWRIGHT_RUNTIME selects the surface through kit_paths (no flag needed)" \
+  || bad "the runtime override did not reach the picker" "$(head -c 300 <<<"$S61OUT")"
+mkdir -p "$TMP/s61codexhome"
+S61OUT="$(env -i PATH="$PATH" HOME="$HOME" CODEX_HOME="$TMP/s61codexhome" python3 "$AS61" --adapter adapters/chat/slack.md --json 2>/dev/null)"
+{ [ "$(s61j "d['surface']")" = "codex-cli" ] && [ "$(s61j "d['runtime_source']")" = "\$CODEX_HOME" ]; } \
+  && ok "a real Codex environment (CODEX_HOME, nothing else) is detected and picks the codex-cli surface" \
+  || bad "Codex detection from the environment did not pick the codex-cli surface" "$(head -c 300 <<<"$S61OUT")"
+s61 --adapter adapters/chat/gmail.md --runtime codex-cli --surface default --json
+{ [ "$(s61j "d['surface']")" = "default" ] && [ "$(s61j "d['selected_by']")" = "explicit" ]; } \
+  && ok "--surface default overrides the runtime (a server connected directly keeps its own names)" \
+  || bad "--surface default did not override the runtime surface" "rc=$S61RC"
+# A Codex session started from inside Claude Code carries both agents' signals. Where they pick
+# different surfaces the picker refuses (exit 7, no call); where they agree, it carries on.
+S61OUT="$(env -i PATH="$PATH" HOME="$HOME" CODEX_HOME="$TMP/s61codexhome" CLAUDECODE=1 python3 "$AS61" --adapter adapters/chat/gmail.md --verb draft 2>"$TMP/s61.err")"; S61RC=$?
+{ [ "$S61RC" -eq 7 ] && [ -z "$S61OUT" ] && grep -q -- '--runtime' "$TMP/s61.err"; } \
+  && ok "two agents' signals that pick different surfaces are refused (exit 7, no call) with a pointer to --runtime" \
+  || bad "an ambiguous agent still printed a call" "rc=$S61RC"
+S61OUT="$(env -i PATH="$PATH" HOME="$HOME" CODEX_HOME="$TMP/s61codexhome" CLAUDECODE=1 python3 "$AS61" --adapter adapters/chat/gmail.md --runtime codex-cli --verb draft 2>/dev/null)"; S61RC=$?
+S61OUT2="$(env -i PATH="$PATH" HOME="$HOME" CODEX_HOME="$TMP/s61codexhome" CLAUDECODE=1 python3 "$AS61" --adapter adapters/chat/teams.md --json 2>/dev/null)"; S61RC2=$?
+{ [ "$S61RC" -eq 0 ] && grep -q 'mcp__codex_apps__gmail_create_draft' <<<"$S61OUT" && [ "$S61RC2" -eq 0 ]; } \
+  && ok "…--runtime settles it, and signals that agree on a surface (an adapter with no runtime section) pass" \
+  || bad "the ambiguity refusal over-reaches" "rc=$S61RC teams-rc=$S61RC2"
+s61 --adapter adapters/chat/gmail.md --runtime windsurf --json
+{ [ "$(s61j "d['runtime']")" = "devin" ] && [ "$(s61j "d['surface']")" = "default" ] \
+  && grep -q 'nobody has checked them on devin' <<<"$(s61j "d['summary']")"; } \
+  && ok "an alias resolves to its runtime (windsurf → devin), and an unrecorded runtime is told the names are unchecked there" \
+  || bad "alias resolution or the unchecked-runtime summary is wrong" "$(s61j "d.get('runtime')") $(s61j "d.get('summary')")"
+s61 --adapter adapters/meetings/notion.md --runtime nosuch-agent
+grep -q 'do not edit the file' <<<"$S61OUT" \
+  && ok "an unknown runtime gets the default with an ask to report a missing name, never to edit the file" \
+  || bad "the unknown-runtime summary lost its report-not-edit instruction" "$S61OUT"
+
+# --- (F) refusals: a bad name, a bad verb, a missing file, and malformed surfaces print no call ---
+s61 --adapter adapters/chat/gmail.md --surface ghost
+{ [ "$S61RC" -eq 5 ] && [ -z "$S61OUT" ] && grep -q 'default, codex-cli' "$TMP/s61.err"; } \
+  && ok "an unknown --surface is exit 5 listing the real ones, never a fallback" \
+  || bad "an unknown --surface did not refuse" "rc=$S61RC"
+s61 --adapter adapters/chat/gmail.md --verb nosuch
+[ "$S61RC" -eq 2 ] && ok "an unknown verb is a usage error (exit 2)" || bad "an unknown verb did not refuse" "rc=$S61RC"
+s61 --adapter adapters/chat/nosuch.md
+[ "$S61RC" -eq 3 ] && ok "a missing adapter is exit 3" || bad "a missing adapter did not refuse" "rc=$S61RC"
+FX61="$TMP/s61fx/adapters/chat"; mkdir -p "$FX61"
+python3 - "$FX61" <<'PY'
+import pathlib, re, sys
+src = pathlib.Path("adapters/chat/gmail.md").read_text(encoding="utf-8")
+d = pathlib.Path(sys.argv[1])
+head, surf = src.split("## Runtime surface: codex-cli", 1)
+cut = re.sub(r"### verb: lookup_channel\n.*?(?=### )", "", surf, count=1, flags=re.S)
+(d / "missing-verb.md").write_text(head + "## Runtime surface: codex-cli" + cut)
+(d / "wrong-server.md").write_text(src.replace("mcp__codex_apps__gmail_send_email(", "mcp__other_server__gmail_send_email(", 1))
+(d / "undeclared.md").write_text(src.replace("surfaces: [codex-cli]", "surfaces: []", 1))
+(d / "alias-name.md").write_text(src.replace("surfaces: [codex-cli]", "surfaces: [windsurf]", 1)
+                                 .replace("## Runtime surface: codex-cli", "## Runtime surface: windsurf", 1))
+(d / "no-server.md").write_text(src.replace("\nserver: codex_apps\n", "\n", 1))
+# consistent with itself, but not the namespace adapters/runtime/codex-cli.md declares
+(d / "foreign-server.md").write_text(head + "## Runtime surface: codex-cli" + surf.replace("codex_apps", "claude_ai_Gmail"))
+PY
+s61fx=""
+for fx in missing-verb wrong-server undeclared alias-name no-server foreign-server; do
+  s61 --adapter "$FX61/$fx.md" --runtime codex-cli --verb draft
+  { [ "$S61RC" -eq 6 ] && [ -z "$S61OUT" ]; } || s61fx="$s61fx $fx(rc=$S61RC)"
+done
+s61 --adapter "$FX61/missing-verb.md" --runtime claude-code --verb draft
+{ [ "$S61RC" -eq 6 ] && [ -z "$S61OUT" ] && grep -q 'lookup_channel' "$TMP/s61.err"; } || s61fx="$s61fx missing-verb-on-default(rc=$S61RC)"
+[ -z "$s61fx" ] \
+  && ok "malformed surfaces (a missing verb, a wrong server, undeclared, an alias name, no server, a server the runtime does not declare) are exit 6 with no call printed, on every runtime" \
+  || bad "a malformed runtime surface still printed a call" "$s61fx"
+
+# --- (G) the picker's messages are plain language ------------------------------------------------
+{ for r in codex-cli claude-code cursor; do p61 --adapter adapters/chat/gmail.md --runtime "$r"; done
+  p61 --adapter adapters/chat/gmail.md --surface ghost 2>&1
+  p61 --adapter adapters/chat/nosuch.md 2>&1
+  p61 --adapter "$FX61/missing-verb.md" 2>&1
+  env -i PATH="$PATH" HOME="$HOME" CODEX_HOME="$TMP/s61codexhome" CLAUDECODE=1 \
+    python3 "$AS61" --adapter adapters/chat/gmail.md 2>&1; } > "$TMP/s61pl.txt"
+{ [ "$(grep -c . "$TMP/s61pl.txt")" -eq 7 ] && python3 tests/plain_language/check.py --text "$TMP/s61pl.txt" >"$TMP/s61pl.out" 2>&1; } \
+  && ok "the picker's summaries and refusals lead in plain words (section 59's checker)" \
+  || bad "a picker message fails the plain-language check" "$(head -3 "$TMP/s61pl.out")"
+
+# --- (H) the wiring: agents are sent through the picker, and told never to edit an adapter -------
+s61wire=""
+grep -q '^### Runtime surfaces' adapters/README.md || s61wire="$s61wire README:section"
+grep -q 'adapter_surface.py --adapter <path> --verb <verb>' adapters/README.md || s61wire="$s61wire README:resolution-step"
+grep -q 'adapter_surface.py --adapter <path> --verb <verb>' templates/AGENTS.md.tmpl || s61wire="$s61wire AGENTS.md.tmpl"
+grep -q 'do not edit the adapter to match your session' templates/AGENTS.md.tmpl || s61wire="$s61wire AGENTS.md.tmpl:no-edit"
+grep -q 'adapter_surface.py --adapter <path>`' .claude/skills/setup/interview.md || s61wire="$s61wire interview"
+grep -q 'Never edit an adapter to match the tool names in this session' .claude/skills/setup/interview.md || s61wire="$s61wire interview:no-edit"
+grep -q 'adapter_surface.py --adapter <path> --probe' .claude/skills/setup/SKILL.md || s61wire="$s61wire setup:probe"
+grep -q '^connector_server: codex_apps' adapters/runtime/codex-cli.md || s61wire="$s61wire codex-cli.md:connector_server"
+[ -z "$s61wire" ] \
+  && ok "the resolution rule, the rendered AGENTS.md, and /setup send agents through the picker and forbid matching edits" \
+  || bad "the picker is not wired where agents resolve a verb" "$s61wire"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -26,6 +26,15 @@ runtime's exact tool prefix** — the `<name>` in `mcp__<name>__*` — because a
 names from it. Tell the person to copy it from a tool name they can see, not from a UI label; a
 friendly name that matches no connected server makes every rendered tool name point at nothing,
 and nothing errors until a skill tries to call one.
+Check the adapter first with
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path>`:
+when it says this agent uses its own tool names, the adapter already names this agent's server and
+the slot's `mcp:` value is not used here. Then keep an existing `mcp:` value (a teammate on another
+agent needs it), and on a fresh repo write `mcp:` as a `# TODO` that says which agents still need
+it. Never write this agent's own prefix there: the next teammate on another agent would get tool
+names that point at nothing. Never edit an adapter to match the tool names in this session: a name the command
+prints that the session does not have is a gap to report for the kit, listed in the report's punch
+list.
 
 Never promise a question count, in this file or in any report — a stated number becomes the
 binding constraint on correctness, which is exactly the defect this round structure replaced.

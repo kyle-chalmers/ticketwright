@@ -355,8 +355,9 @@ Only on explicit confirmation, execute — **source of truth first, derived file
      adapter's auth notes as the fix.
    - **…and the posture pointers that check prints (advisory, never blocking):** verify_stack
      emits a `▸ <slot> ... connects through MCP` line (`also connects` when the slot has a terminal route too) for every tool slot whose resolved transport includes MCP,
-     naming that adapter's "Permission posture (MCP)" section. For each pointer: run the section's
-     read-only probe in-session, apply the adapter's comparison rule, and record the outcome in
+     naming that adapter's "Permission posture (MCP)" section. For each pointer: run the read-only
+     probe that `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path> --probe`
+     prints (the probe written for this agent's tool names), apply the adapter's comparison rule, and record the outcome in
      the report AND in the gitignored record file `.claude/config/posture.local.yaml`
      ([teammate.md](teammate.md) step 5 defines the three outcome words and the record shape;
      `matches` is writable only when the adapter's comparison rule held). Chat/tracker slots
