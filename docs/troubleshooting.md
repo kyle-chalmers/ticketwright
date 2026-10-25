@@ -190,7 +190,9 @@ session displays the first target it finds. Listing the default target first kee
   ticketwright enabled, then start a fresh session.
 - Repo install (pip/vendored): hooks are wired in `.claude/settings.json` — confirm the `hooks`
   block exists (rendered from `.claude/settings.json.tmpl` by `/setup`).
-- Quick test: `bash bin/selftest.sh` unit-tests all four hooks directly.
+- Plugin doctor: `python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py` names
+  the install state the hooks depend on. In a clone of the Ticketwright repo, `bash bin/selftest.sh`
+  unit-tests every hook directly.
 
 ## The DB-write guard blocked something it shouldn't (or vice versa)
 
@@ -227,7 +229,7 @@ project `stack.yaml` it does nothing at all.
 | Claude Code plugin (user scope) | `claude plugin update ticketwright` | defaults to `--scope user`, matching a no-`--scope` install |
 | Claude Code plugin (local scope) | reinstall at project scope | a per-person override in `.claude/settings.local.json`, written by the desktop app or by `--scope local`; it takes precedence over the committed project declaration, so removing it restores what the team declared |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
-| vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
+| vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin. Leave out the clone's `.claude/CLAUDE.md`: it is the kit's own contributor file and would replace yours (`ticketwright init` never copies it) |
 
 **Installed at the wrong scope?** Both `claude plugin marketplace add` and `claude plugin install`
 default to `--scope user`, so leaving the flag off installs Ticketwright into your own
@@ -263,14 +265,18 @@ repo, re-run `/setup role` or edit that line in your own `AGENTS.md` by hand.
 
 **`spec-and-build` → `build`.** Spec authoring moved into `/ticket` (its Phase 4 writes the plan, and the spec when the plan calls for one, behind a single approval), so the build skill no longer specs and was renamed to say what it does — and it now ends by running `/review` itself. There is no alias; the old name is simply gone. The same two caveats as the `productize` rename apply: an existing repo's rendered `AGENTS.md` still names `/spec-and-build` until you re-run `/setup role` or edit the line by hand, and a vendored or pip install can still have the old `.claude/skills/spec-and-build/` directory beside the new `build/`. The paragraph below covers how that gets cleaned up.
 
-**If you installed via `ticketwright init` or `ticketwright install --runtime <name>`, re-run it to clear a retired skill.** An upgrade copies files in but cannot mirror the kit, so `.claude/skills/productize/` or `.claude/skills/spec-and-build/` (or the `.agents/skills/` copy on a non-Claude runtime) can sit beside the new `skillify/` and `build/`. Both copies show up in the `/` menu and both are model-invocable, and the stale one points at templates that no longer exist, so it fails *after* its confirmation gate has already been cleared. Current versions of `init` and `install` remove a retired directory when every file in it is an unedited copy of a version Ticketwright shipped (checked by hash; an emitted file also counts when it still carries the installer's provenance header), and print the path they removed. A directory with anything edited or unrecognized is kept, and the WARNING names the files that differ; delete it yourself once nothing in it is needed. A vendored copy that you upgrade with `git pull` can run the same check directly: `bash bin/tw retired_skills.py`. A plugin install needs none of this, because updating the plugin replaces its skills wholesale. If `/spec-and-build` still shows up there, the plugin is pinned to an old version: run `claude plugin update ticketwright@ticketwright`.
+**If you installed via `ticketwright init` or `ticketwright install --runtime <name>`, re-run it to clear a retired skill.** An upgrade copies files in but cannot mirror the kit, so `.claude/skills/productize/` or `.claude/skills/spec-and-build/` (or the `.agents/skills/` copy on a non-Claude runtime) can sit beside the new `skillify/` and `build/`. Both copies show up in the `/` menu and both are model-invocable, and the stale one points at templates that no longer exist, so it fails *after* its confirmation gate has already been cleared. Current versions of `init` and `install` remove a retired directory when every file in it is an unedited copy of a version Ticketwright shipped (checked by hash; an emitted file also counts when it still carries the installer's provenance header), and print the path they removed. A directory with anything edited or unrecognized is kept, and the WARNING names the files that differ; delete it yourself once nothing in it is needed. A vendored copy that you upgrade with `git pull` can run the same check directly: `bash bin/tw retired_skills.py`. A plugin install needs none of this, because updating the plugin replaces its skills wholesale. If `/spec-and-build` still shows up there, the plugin is pinned to an old version: upgrade it the way [Upgrading](#upgrading) gives for your scope (at project scope that is uninstall, install, relaunch).
 
 ## Something else went wrong
 
-`bash bin/selftest.sh` runs the kit's full 200+-check suite (config parsing, adapter coverage,
-frontmatter, hooks, render gate, index/recall engines) and pinpoints what's broken. If the
-self-test is green but a skill misbehaves, the issue is usually `stack.yaml` (wrong key, stub
-adapter) — `bash bin/verify_stack.sh` narrows it to a tool slot.
+When a skill misbehaves, the cause is usually `stack.yaml` (a wrong key, a stub adapter). In your
+ticket repo, `bash bin/tw verify_stack.sh` pings each tool slot's read-only check and narrows it to
+one slot. `bin/tw` is the launcher `/setup` commits; it finds the installed kit, so the commands on
+this page work on a plugin install too.
+
+In a clone of the Ticketwright repo itself, `bash bin/selftest.sh` runs the kit's full 200+-check
+suite (config parsing, adapter coverage, frontmatter, hooks, render gate, index and recall engines)
+and pinpoints what's broken.
 
 
 ## Config resolves to something you did not expect
@@ -278,7 +284,7 @@ adapter) — `bash bin/verify_stack.sh` narrows it to a tool slot.
 Read the merged answer rather than guessing which file won:
 
 ```bash
-python3 bin/effective_config.py --root . --json
+bash bin/tw effective_config.py --root . --json
 ```
 
 `provenance` names the tier behind every key (`team`, `person`, `machine`, `inherited`) and its
@@ -288,8 +294,8 @@ was completed against an older team stack, `6` a person/machine file tried to se
 team-owned — a data-selection key such as `catalog`, or a `policies:` block, both of which are
 rejected rather than ignored.
 
-`python3 bin/effective_config.py --root . --lint` lists machine-local values sitting in committed
-config. `bash bin/verify_stack.sh` prints the same warnings alongside tool reachability.
+`bash bin/tw effective_config.py --root . --lint` lists machine-local values sitting in committed
+config. `bash bin/tw verify_stack.sh` prints the same warnings alongside tool reachability.
 
 **A verify command printed `skipped: unresolved {token}`** — that is correct, not a bug: the command
 needs a personal value and no `.claude/config/connections.local.yaml` supplies it. Set the key there.

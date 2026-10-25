@@ -1,7 +1,7 @@
 # Publishing to PyPI
 
 Ticketwright publishes to PyPI via **GitHub Trusted Publishing** (OIDC — no API tokens stored
-anywhere). The workflow is [`.github/workflows/publish.yml`](../.github/workflows/publish.yml): it
+anywhere). The workflow is [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml): it
 fires on a `v*` tag, builds the sdist + wheel with `uv`, checks the tag matches the package version,
 and uploads via `pypa/gh-action-pypi-publish`.
 
@@ -54,6 +54,59 @@ and uploads via `pypa/gh-action-pypi-publish`.
 > ships it.
 
 > Note: `v1.3.0` was tagged before this workflow existed, so the **first** publish is `v1.3.1`.
+
+## Part C: the Claude plugin directory listing
+
+The listing in Anthropic's plugin directory ([claude.ai/directory/manage](https://claude.ai/directory/manage))
+follows the **`directory` branch**, not `main`. After `publish.yml` puts a release on PyPI, its
+`directory-branch` job fast-forwards `directory` to the release tag. The directory then scans that
+commit and publishes it. Nothing to do by hand per release; if the job fails, the listing keeps
+serving the previous version. Only a final `vX.Y.Z` tag moves it: a prerelease tag such as
+`v4.3.0rc1` still publishes to PyPI but leaves the listing alone. `.git-sweep-keep` stops branch
+cleanup from deleting `directory`.
+
+Three rules follow from how the directory and Claude Code pick up a version:
+
+- **`version` must rise with every release.** The directory's checklist requires it, and Claude
+  Code keeps an installed plugin on the `version` in `plugin.json` until that changes, so a commit at
+  an unchanged version reaches no existing install. `bin/bump_version.sh` already moves all three
+  version files, the tag check in `publish.yml` refuses a tag that disagrees with
+  `ticketwright/__init__.py`, and selftest section 16 keeps `plugin.json` in step with that file.
+  This is also why the listing does not follow `main`: day-to-day commits there stay at the last
+  release's version (AGENTS.md, "Hard constraints").
+- **The icon locks at the first portal save.** Whatever icon the plugin has the first time it is
+  saved or submitted in the developer portal becomes the listing icon, and changing the file later
+  does not change it. Settle `.claude-plugin/icon.png` (square PNG, 512 to 2048 px, under 2 MB)
+  before that first save.
+- **The first submission waits for a release with the current layout.** Releases up to v4.2.0 load
+  their skills through root `skills`, `agents` and `commands` symlinks, which the directory blocks.
+  The first release cut after the move to `plugin.json` paths creates `directory`; submit then,
+  with the listing set to follow that branch. Submission is done by the maintainer in the portal.
+
+**The listing is Claude Code only.** Ticketwright ships its scripts in a top-level `bin/`, and
+claude.ai chat and Cowork refuse to install a plugin that has one
+([platform support](https://claude.com/docs/plugins/platform-support)); the portal derives the
+supported surfaces from that rule. `bin/` stays where it is: every installed project's `bin/tw`
+resolves kit scripts at `<kit>/bin/`, and those scripts are the harness-neutral layer the skills
+call (AGENTS.md, tiebreaker 5).
+
+**What the directory checks, and where this repo stands.** The CI `plugin-directory` job runs
+`claude plugin validate --profile directory --strict` (Claude Code 2.1.305 or later) on the committed
+tree. Run the same thing locally on a clean export, so untracked files such as `.DS_Store` are not
+judged:
+
+```bash
+tmp="$(mktemp -d)" && git archive HEAD | tar -x -C "$tmp" && claude plugin validate --profile directory --strict "$tmp"
+```
+
+That command covers a subset; the portal's **Validate** runs the full
+[pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist), and a
+security scan follows on each version. Three of its checks hold a version for a reviewer rather
+than block it, and all three apply here today: `bin/selftest.sh` is over the 256 KiB per-file limit,
+`tests/source_materials/fixtures/export.bin` is a binary fixture, and `scripts/readme_media/` names
+bundled image paths in its scripts and docs. The scan can raise the same holds on each new version;
+trimming those dev-only paths from the `directory` branch would clear them. Re-read the checklist
+before any structural change to the plugin.
 
 ## What ships
 

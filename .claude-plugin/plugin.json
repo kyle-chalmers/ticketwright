@@ -2,15 +2,16 @@
   "name": "ticketwright",
   "displayName": "Ticketwright",
   "version": "4.2.0",
-  "description": "Ticket-driven data work with one front door: /ticket opens, primes, and routes; /review QC-gates; /ship hard-halts before external posts. Prior-art recall + self-maintaining catalog, stdlib-only.",
+  "description": "Ticket-driven analysis in Claude Code: prior work recalled, every result re-run and signed off, and nothing posted without your go-ahead.",
   "author": {
     "name": "Kyle Chalmers",
-    "url": "https://github.com/kyle-chalmers"
+    "url": "https://kclabs.ai"
   },
   "homepage": "https://github.com/kyle-chalmers/ticketwright",
   "repository": "https://github.com/kyle-chalmers/ticketwright",
   "license": "MIT",
   "keywords": [
+    "analytics",
     "tickets",
     "data",
     "sql",
@@ -21,7 +22,16 @@
     "azure-devops",
     "qc",
     "workflow",
-    "recall"
+    "recall",
+    "claude-code"
+  ],
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/docs/README.md",
+  "supportUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/SUPPORT.md",
+  "privacyPolicyUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/PRIVACY.md",
+  "skills": "./.claude/skills/",
+  "agents": [
+    "./.claude/agents/qc-reviewer.md"
   ],
   "hooks": {
     "PreToolUse": [

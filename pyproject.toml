@@ -5,19 +5,21 @@ build-backend = "hatchling.build"
 [project]
 name = "ticketwright"
 dynamic = ["version"]  # single source of truth: ticketwright/__init__.py (read by [tool.hatch.version])
-description = "Tool-agnostic AI layer for ticket-driven work repos: prior-art recall, object reverse-index, deep QC, and a self-maintaining ticket index. Stdlib-only, no vector store."
+description = "Ticket-driven analysis for Claude Code and other coding agents: prior work recalled, every result re-run and signed off, and a self-maintaining ticket index. Stdlib-only."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Kyle Chalmers" }]
-keywords = ["tickets", "claude-code", "recall", "ticket-index", "qc", "workflow", "jira", "linear", "snowflake"]
+keywords = ["analytics", "tickets", "claude-code", "recall", "ticket-index", "qc", "workflow", "jira", "linear", "snowflake"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Topic :: Software Development :: Code Generators",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 # Zero runtime dependencies — the kit is deliberately stdlib-only.
 dependencies = []
@@ -28,7 +30,10 @@ dev = ["pytest>=8", "build>=1", "twine>=5"]
 [project.urls]
 Homepage = "https://github.com/kyle-chalmers/ticketwright"
 Repository = "https://github.com/kyle-chalmers/ticketwright"
+Documentation = "https://github.com/kyle-chalmers/ticketwright/blob/main/docs/README.md"
+Changelog = "https://github.com/kyle-chalmers/ticketwright/blob/main/CHANGELOG.md"
 Issues = "https://github.com/kyle-chalmers/ticketwright/issues"
+Security = "https://github.com/kyle-chalmers/ticketwright/blob/main/SECURITY.md"
 
 [project.scripts]
 ticketwright = "ticketwright.cli:main"

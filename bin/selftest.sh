@@ -795,8 +795,9 @@ for a in configure-workspace onboard-teammate start-ticket qc-review deliver-tic
 done
 [ -z "$al_bad" ] && ok "12 deprecated v1 alias stubs removed (v3)" || bad "v1 alias stub still present:$al_bad"
 # A fresh plugin install gets exactly what this tree ships, so a retired name must not exist as a
-# skill or command ANYWHERE in it: the plugin's skills/ and commands/ (symlinks into .claude/), and
-# every emitted runtime fixture. The list comes from bin/retired_skills.py, never a second copy.
+# skill or command ANYWHERE in it: .claude/ (which plugin.json points at), a root skills/ or
+# commands/ (the loader's default scan still reads one if it reappears), and every emitted runtime
+# fixture. The list comes from bin/retired_skills.py, never a second copy.
 rs_list="$(python3 -c "import sys; sys.path.insert(0,'bin'); import retired_skills as r; print(' '.join(r.RETIRED_SKILLS))" 2>/dev/null)"
 rs_ship=""
 [ -n "$rs_list" ] || rs_ship="could not read RETIRED_SKILLS"
@@ -827,9 +828,51 @@ sys.exit(0 if ok else 1)
 MKPY
 [ $? -eq 0 ] && ok 'marketplace source starts "./" and description lives under metadata (installable on CC 2.0.x-2.1.x)' \
   || bad 'marketplace.json regressed to a shape older Claude Code rejects (source "." or root description)'
-# auto-discovery symlinks must resolve into .claude/* (loader rejected custom .claude paths in the manifest)
-{ [ -L commands ] && [ -L skills ] && [ -L agents ] && [ -d commands ] && [ -d skills ] && [ -d agents ]; } \
-  && ok "component symlinks resolve (commands/skills/agents → .claude/*)" || bad "plugin component symlinks broken"
+# Components load from .claude/ through plugin.json paths, not root symlinks. The Claude plugin
+# directory blocks a submission whose loaded components are symlinks, and `claude plugin validate`
+# reads nothing behind one. (These symlinks existed because a 2026-06 loader rejected custom .claude/
+# manifest paths; 2.1.195, 2.1.258 and 2.1.310 all load the manifest form.)
+tw_links=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  tw_links="$(git ls-files -s | awk '$1 == "120000" {print $4}')"
+fi
+for l in skills agents commands; do [ -L "$l" ] && tw_links="$tw_links $l"; done
+[ -z "$tw_links" ] && ok "no symlinks in the tree (the plugin directory refuses symlinked components)" \
+  || bad "a symlink is tracked; the plugin directory blocks one the plugin loads" "$tw_links"
+# Agents REPLACE the default scan and take files, not directories, so a new .claude/agents/*.md that
+# is not listed would silently never load. Commands replace the default scan too: one must be declared.
+python3 - <<'MCPY'
+import json, os, sys
+m = json.load(open('.claude-plugin/plugin.json'))
+as_list = lambda v: [] if v is None else ([v] if isinstance(v, str) else list(v))
+skills = [p.rstrip('/') + '/' for p in as_list(m.get('skills'))]
+agents = sorted(as_list(m.get('agents')))
+want_agents = sorted('./.claude/agents/' + f for f in os.listdir('.claude/agents') if f.endswith('.md'))
+cmds = sorted(f for f in os.listdir('.claude/commands') if f.endswith('.md'))
+decl = m.get('commands')
+cmd_paths = ([v.get('source', '') for v in decl.values() if isinstance(v, dict)] if isinstance(decl, dict)
+             else as_list(decl))
+cmd_paths = [p for p in cmd_paths if p]
+covered = lambda f: any(p.rstrip('/') in ('./.claude/commands', './.claude/commands/' + f) for p in cmd_paths)
+paths = skills + agents + cmd_paths
+bad = []
+if './.claude/skills/' not in skills: bad.append('skills does not name ./.claude/skills/')
+if agents != want_agents: bad.append('agents %s != .claude/agents/*.md %s' % (agents, want_agents))
+missing = [f for f in cmds if not covered(f)]
+if missing: bad.append('.claude/commands/%s not declared under commands in plugin.json' % missing)
+bad += ['%s: must start ./ and stay inside the plugin' % p for p in paths if not p.startswith('./') or '..' in p]
+bad += ['%s: does not exist' % p for p in paths if not os.path.exists(p)]
+if bad: print('\n'.join(bad))
+sys.exit(1 if bad else 0)
+MCPY
+[ $? -eq 0 ] && ok "plugin.json loads .claude/skills/ and lists every .claude/agents/*.md (no command left undeclared)" \
+  || bad "plugin.json component paths drifted from .claude/ (an unlisted agent or command never loads)"
+# A CLAUDE.md at the plugin root is never loaded as plugin context, and the directory flags it. The
+# contributor import lives in .claude/, where an import resolves relative to the file: `@AGENTS.md`
+# there would name .claude/AGENTS.md and load nothing.
+{ [ ! -e CLAUDE.md ] && grep -qx '@\.\./AGENTS\.md' .claude/CLAUDE.md; } \
+  && ok "contributor CLAUDE.md lives in .claude/ and imports @../AGENTS.md (none at the plugin root)" \
+  || bad "a CLAUDE.md is at the plugin root, or .claude/CLAUDE.md does not import @../AGENTS.md"
 # every hook script the plugin manifest declares must exist
 hk=1; for h in db_write_guard regenerate_ticket_index session_context ticket_index_context; do [ -f ".claude/hooks/$h.py" ] || hk=0; done
 [ "$hk" = 1 ] && ok "all plugin-declared hook scripts present" || bad "a plugin-declared hook script is missing"
@@ -3749,7 +3792,7 @@ grep -qiE 'conflict.*before offering any team-config edit' <<<"$skflat" \
 { grep -q 'only Ticketwright trace is' "$SK" && grep -qi 'enablement is how the kit arrives' "$SK"; } \
   && ok "adopt-vs-fresh boundary: settings.json-only enablement is FRESH" \
   || bad "the adopt-vs-fresh boundary is not written down at the routing"
-# (D) one question rule, stated for every mode of this skill (section 60 pins its capability gate).
+# (D) one question rule, stated for every mode of this skill (section 61 pins its capability gate).
 grep -qi 'How setup talks to the person: every mode' "$SK" \
   && ok "the question rule is stated for every mode" || bad "the every-mode question rule is missing"
 # (E) teammate.md is the per-person flow: sole writer, versioned tier 3, names-only, honest verify.
@@ -4559,7 +4602,7 @@ grep -q 'github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md' "$SK3
   && ok "the setup report prints the doc's GitHub URL (docs/ is not in the PyPI package)" \
   || bad "the setup report would print a bare docs/ path that a pip install does not have"
 # (H) no skill names a runtime's question tool — frontmatter allowed-tools AND body text. Setup asks
-# with the runtime's own tool when the runtime adapter declares one (section 60 pins the gate), so
+# with the runtime's own tool when the runtime adapter declares one (section 61 pins the gate), so
 # the tool's NAME lives in adapters/runtime/*.md and nowhere in a skill.
 auq38="$(grep -rn 'AskUserQuestion' .claude/skills/ 2>/dev/null || true)"
 [ -z "$auq38" ] \
@@ -6782,10 +6825,10 @@ done
 # doc, is retired — its exemption became the PROMPT- prefix). 'empower' is allowed only inside the
 # verbatim mission sentence (pinned above); the technical noun "agent harness" is not filler and
 # is deliberately NOT grepped.
-filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/PROMPT-' || true)"
+filler="$(grep -rniEw 'robust|comprehensive|seamless|streamline[sd]?|streamlining|unlock(s|ed|ing)?|leverag(e[sd]?|ing)|moreover|furthermore|worth noting' README.md docs/ --include='*.md' | grep -v '^docs/maintainers/PROMPT-' || true)"
 [ -z "$filler" ] && ok "no marketing filler in README + docs/ user-facing prose" \
   || bad "marketing filler in user-facing docs (voice audit, PROMPT 9 rider 1)" "$filler"
-emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/PROMPT-' | grep -v 'empowers a team to do a high volume' || true)"
+emp="$(grep -rni 'empower' README.md docs/ --include='*.md' | grep -v '^docs/maintainers/PROMPT-' | grep -v 'empowers a team to do a high volume' || true)"
 [ -z "$emp" ] && ok "'empower' appears only inside the verbatim mission sentence" \
   || bad "'empower' used outside the mission sentence" "$emp"
 
@@ -10702,9 +10745,11 @@ grep -q 'git commit' "$RVG57" && grep -qi 'deliberately NOT' "$RVG57" \
 hdr "58 · the README is a two-minute read: a prose budget, the two visuals, and links that resolve"
 # The README is the overview; the detail lives in docs/getting-started.md and docs/how-it-works.md.
 # Without a budget it regrows one caveat at a time (it reached 7,300 words that way). PROSE is what
-# a person reads line by line, so fenced blocks (the diagram, the scaffold tree, commands), HTML
-# comments, badge lines and link URLs do not count; link text does.
-README_BUDGET=600
+# a person reads line by line, so fenced blocks (the scaffold tree, commands, example prompts), HTML
+# comments, image and badge lines and link URLs do not count; link text does. The budget rose from
+# 600 to 900 when the README became the Claude plugin directory's listing text too: the listing
+# must carry the data-and-network disclosure, example prompts and the other-agent install itself.
+README_BUDGET=900
 cat > "$TMP/s58-wc.py" <<'PY'
 import re, sys
 t = open(sys.argv[1], encoding="utf-8").read()
@@ -10726,8 +10771,32 @@ python3 "$TMP/s58-wc.py" "$TMP/s58-fenced.md" > "$TMP/s58.f"; python3 "$TMP/s58-
   && ok "the word counter ignores fenced blocks and counts added prose (the budget can fail)" \
   || bad "the README word counter is miscounting" "fenced=$(cat "$TMP/s58.f") padded=$(cat "$TMP/s58.p")"
 # The visuals are why the README can be short: the system diagrams and the working-repo tree,
-# which must show the team scale (more than one owner) and a ticket folder labeled by phase.
-{ grep -q '^```mermaid' README.md && grep -q '^your-repo/' README.md && grep -q 'stack.yaml' README.md \
+# which must show the team scale (more than one owner) and a ticket folder labeled by phase. The
+# diagrams are branded PNGs (scripts/readme_media/), not mermaid, because the same README is the
+# PyPI page and the plugin directory listing, where mermaid shows as raw code. So every image is an
+# absolute main-branch URL whose file exists here, with alt text a screen reader can use.
+python3 - README.md <<'PY' > "$TMP/s58.img" 2>&1
+import os, re, sys
+t = open(sys.argv[1], encoding="utf-8").read()
+base = "https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/"
+bad, shown = [], set()
+for alt, url in re.findall(r'!\[([^\]]*)\]\(([^)\s]+)\)', t):
+    if "img.shields.io" in url or "/actions/workflows/" in url:
+        continue  # live badges, not bundled images
+    if not url.startswith(base):
+        bad.append("image is not an absolute main-branch URL: %s" % url); continue
+    path = url[len(base):].split("#")[0]
+    shown.add(path)
+    if not os.path.isfile(path): bad.append("no such file: %s" % path)
+    if len(alt.strip()) < 20: bad.append("alt text too thin for %s" % path)
+for want in ("docs/images/lifecycle.png", "docs/images/tool-slots.png"):
+    if want not in shown: bad.append("README does not show %s" % want)
+print(" | ".join(bad))
+PY
+[ -z "$(cat "$TMP/s58.img")" ] \
+  && ok "README images are absolute main-branch URLs to files that exist, with real alt text" \
+  || bad "a README image would break on PyPI or the directory listing" "$(cat "$TMP/s58.img")"
+{ grep -q '^your-repo/' README.md && grep -q 'stack.yaml' README.md \
   && [ "$(LC_ALL=C grep -cE '^ {4}[^ ]+ [a-z]+/$' README.md)" -ge 2 ] \
   && grep -qE 'README\.md +/ticket' README.md && grep -qE 'qc_queries/ +/build' README.md; } \
   && ok "README carries the diagrams and the team-scale repo tree, with ticket files labeled by phase" \
@@ -11160,7 +11229,7 @@ done
   && ok "guard golden corpus has no doubled modal ('would could' / 'would would')" \
   || bad "tests/guard/golden.json contains a doubled modal; the bypass message prefixes a verb PLAIN_CHANGE already carries"
 
-hdr "60 · setup a person can follow: the map, questions that explain themselves, checked before writing"
+hdr "61 · setup a person can follow: the map, questions that explain themselves, checked before writing"
 # The first clean-profile run (a fake analyst on a fresh Mac) asked "why aren't you asking me these
 # interactive questions?", was told only one chat tool could get per-ticket recipients, was offered
 # invented tracker keys, and learned about a refused folder name only after the files were written.
@@ -11327,6 +11396,72 @@ python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p, pa
 # (h) the suite's own git config is hermetic (the leak a per-user GIT_CONFIG_GLOBAL exposed).
 case "$GIT_CONFIG_GLOBAL" in "$TMP"/*) ok "the suite reads an empty, suite-owned git config (no contributor identity leaks in)" ;;
   *) bad "GIT_CONFIG_GLOBAL is not suite-owned" "$GIT_CONFIG_GLOBAL" ;; esac
+
+hdr "60 · the plugin directory listing: icon, listing links, disclosure, example prompts"
+# The Claude plugin directory reads plugin.json's listing fields and shows README.md as the listing
+# text, and its security scan checks the plugin against what that README discloses. These pins keep
+# the listing true as the kit changes. (The directory's structural rules, such as no symlinked
+# components, are CI's validate job, not this section.)
+python3 - <<'PY' > "$TMP/s60.out" 2>&1
+import json, os, re, struct
+bad = []
+m = json.load(open(".claude-plugin/plugin.json"))
+# (a) the icon: a square PNG of 512 to 2048 px, under 2 MB. It becomes the listing icon only once,
+#     at the first save in the developer portal, so a wrong one is hard to take back.
+icon = m.get("icon", "")
+path = icon[2:] if icon.startswith("./") else ""
+if not path or not os.path.isfile(path):
+    bad.append("plugin.json icon is missing or not a ./ path: %r" % icon)
+else:
+    head = open(path, "rb").read(24)
+    if head[:8] != b"\x89PNG\r\n\x1a\n":
+        bad.append("the icon is not a PNG")
+    else:
+        w, h = struct.unpack(">II", head[16:24])
+        if w != h or not 512 <= w <= 2048:
+            bad.append("the icon is %dx%d; it must be square, 512 to 2048 px" % (w, h))
+    if os.path.getsize(path) >= 2 * 1024 * 1024:
+        bad.append("the icon is 2 MB or more")
+# (b) listing links are https, and a link into this repo names a file that exists
+base = "https://github.com/kyle-chalmers/ticketwright/blob/main/"
+for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl"):
+    url = m.get(key, "")
+    if not url.startswith("https://"):
+        bad.append("%s is missing or not https" % key)
+    elif url.startswith(base) and not os.path.isfile(url[len(base):].split("#")[0]):
+        bad.append("%s names a file that does not exist: %s" % (key, url))
+# (c) those fields belong in plugin.json only; the validator flags them in a marketplace entry
+for entry in json.load(open(".claude-plugin/marketplace.json")).get("plugins", []):
+    for key in ("icon", "documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"):
+        if key in entry:
+            bad.append("the marketplace entry carries %s" % key)
+# (d) every hook the plugin registers appears in the full hooks table the README links to
+readme = open("README.md", encoding="utf-8").read()
+hooks = open("docs/how-it-works.md", encoding="utf-8").read().split("## Hooks, in full", 1)[-1]
+hooks = hooks.split("\n## ", 1)[0]
+scripts = sorted(set(re.findall(r"\.claude/hooks/([a-z_]+\.py)", json.dumps(m.get("hooks", {})))))
+if len(scripts) < 3:
+    bad.append("found only %d hook scripts in plugin.json" % len(scripts))
+for script in scripts:
+    if script not in hooks:
+        bad.append("hook %s is missing from how-it-works' Hooks, in full" % script)
+# (e) the README carries the disclosure and links the trust files, which exist
+for need in ("## Data and network", "## Safety rails", "docs/how-it-works.md#hooks-in-full",
+             "no telemetry", "(PRIVACY.md)", "(SECURITY.md)", "(SUPPORT.md)"):
+    if need.lower() not in readme.lower():
+        bad.append("README lacks %r" % need)
+for f in ("PRIVACY.md", "SECURITY.md", "SUPPORT.md", "CODE_OF_CONDUCT.md", "docs/README.md"):
+    if not os.path.isfile(f):
+        bad.append("missing %s" % f)
+# (f) at least three runnable example prompts under ## Try it (the directory policy asks for three)
+try_it = readme.split("## Try it", 1)[-1].split("\n## ", 1)[0]
+if len(re.findall(r"(?m)^/ticketwright:[a-z]+", try_it)) < 3:
+    bad.append("## Try it shows fewer than 3 /ticketwright: prompts")
+print(" | ".join(bad))
+PY
+[ -z "$(cat "$TMP/s60.out")" ] \
+  && ok "directory listing: square PNG icon, https listing links to real files, every hook in the table, disclosure, 3+ example prompts" \
+  || bad "the plugin directory listing drifted" "$(cat "$TMP/s60.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

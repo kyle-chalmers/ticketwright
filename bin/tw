@@ -53,8 +53,8 @@ is_kit() {
   [ -n "${1:-}" ] && [ -f "$1/bin/kit_paths.py" ] && [ -d "$1/adapters" ] && [ -d "$1/templates" ]
 }
 
-# This script's own directory, with symlinks resolved (the repo ships skills/ agents/ commands/ as
-# symlinks, and a launcher copied into a project may be one too).
+# This script's own directory, with symlinks resolved (a launcher copied into a project may be a
+# symlink).
 self_dir() {
   local src="$0" dir
   while [ -L "$src" ]; do

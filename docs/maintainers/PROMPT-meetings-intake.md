@@ -1,5 +1,9 @@
 # PROMPT — Meetings as an intake source, and a `meetings` tool slot
 
+> **Historical brief, shipped.** This was the implementation brief for the `meetings` tool slot, `adapters/meetings/`. It is
+> kept as the design record for maintainers and is not user documentation; the status line
+> below is as it stood when written.
+
 STATUS: DRAFT for maintainer review. Not scheduled. Written 2026-08-22 at the close of the
 waves-A-I change set (v3.6.0), codex-reviewed 2026-08-22 with findings folded in. This document
 is SELF-CONTAINED: the planning document that used to carry the standing constraints

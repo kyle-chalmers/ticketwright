@@ -1,0 +1,90 @@
+name: Bug report
+description: Ticketwright did something wrong (a skill, hook, adapter, engine or the setup).
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. A complete report gets fixed fastest.
+
+        **Never paste credentials, warehouse or tracker identifiers, or real data.** A fictional
+        example with `TEST-` ticket keys is enough. Security problems go to
+        [private reporting](https://github.com/kyle-chalmers/ticketwright/security/advisories/new) instead.
+  - type: input
+    id: version
+    attributes:
+      label: Ticketwright version
+      description: "`ticketwright --version`, or the `version` in the installed plugin's `.claude-plugin/plugin.json`."
+      placeholder: "4.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is Ticketwright installed?
+      multiple: true
+      options:
+        - Claude Code plugin, project scope
+        - Claude Code plugin, user scope
+        - PyPI package (ticketwright init / install --runtime)
+        - Vendored copy or git checkout
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Coding agent
+      options:
+        - Claude Code (terminal)
+        - Claude Code (desktop app or IDE)
+        - Codex CLI
+        - Cursor
+        - Antigravity
+        - OpenCode
+        - Devin
+        - Cline
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - /setup
+        - /ticket
+        - /build
+        - /review
+        - /ship
+        - /refresh or the ticket index
+        - /skillify
+        - A hook (a guard or the session banner)
+        - An adapter (tracker, warehouse, chat, docs, meetings, git)
+        - Install or upgrade
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Plugin doctor output
+      description: |
+        Run `python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py` (or
+        `bash bin/tw plugin_doctor.py` inside a configured repo) and paste the output. It reads
+        local files only and sends nothing.
+      render: text
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you ran or asked, in order.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true

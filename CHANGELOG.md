@@ -33,6 +33,13 @@ All notable changes to this project are documented here. Format loosely follows
   only after asking.
 - The selftest suite now reads an empty git config of its own. A per-user `GIT_CONFIG_GLOBAL`
   used to leak a git identity into the "no identity at all" check.
+- The plugin loads its skills and agent from `.claude/` through `plugin.json` (`skills` and
+  `agents`) instead of the root `skills`, `agents` and `commands` symlinks, which the Claude
+  plugin directory blocks. The same 7 skills and the `qc-reviewer` agent load, checked from
+  `--plugin-dir` on Claude Code 2.1.195, 2.1.258 and 2.1.310, and from a marketplace install on
+  2.1.310. Older clients are untested: on 2.0.45, `--plugin-dir` loaded neither the old layout nor
+  the new one, so that check could not compare them. The contributor `CLAUDE.md` moved to
+  `.claude/CLAUDE.md`, because the directory flags one at the plugin root.
 - Guard prompts, the session banner, `verify_stack`, the doctor, config errors and the `/ship`
   and `/review` say-this text now lead with what happened and what to do, in plain words, with
   technical detail after "Details:". `verify_stack` says "All tools reachable" instead of
@@ -57,7 +64,7 @@ All notable changes to this project are documented here. Format loosely follows
   origin host only, synced-drive mount roots without their contents, Obsidian, analysis apps).
 - `bin/setup_draft_check.sh`: checks the draft config in a throwaway copy before the plan is
   shown, so a refused character in a folder name or a missing destination comes back as a question
-  instead of an error after the files are written. Selftest section 60 covers both scripts and the
+  instead of an error after the files are written. Selftest section 61 covers both scripts and the
   setup flow.
 - A team that shares results through more than one chat tool (for example Gmail and Slack) can now
   choose the destination and recipients on each ticket. Mark each such chat target
@@ -68,9 +75,52 @@ All notable changes to this project are documented here. Format loosely follows
   that sets both a standing destination and `destination: per_ticket` fails `verify_stack`, and a
   target with neither still fails, with a message naming both ways forward. Standing and per-ticket
   targets can share one slot. Selftest section 51e covers it.
+- CI runs the plugin directory's checks (`claude plugin validate --profile directory --strict`,
+  pinned 2.1.305) on the committed tree, with a negative control that plants a symlinked
+  component, and validates skill and agent content by pointing the validator at `.claude/`, since
+  a manifest path is never read for content.
+- `publish.yml` fast-forwards a `directory` branch to each final release tag once PyPI has it
+  (a prerelease tag leaves it alone); the plugin directory listing follows that branch.
+  `docs/maintainers/pypi-setup.md` describes the flow, the icon that locks at the first portal
+  save, and why the listing is Claude Code only: claude.ai chat and Cowork refuse a plugin with a
+  top-level `bin/`.
 - Selftest section 59 checks the plain part of the messages a person reads against a term list
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.
+
+### Docs
+- **The README is ready to be the Claude plugin directory listing.** It opens with a KC AI Labs
+  branded banner and a rendered walkthrough GIF (labeled as rendered, not recorded), says "Claude
+  Code plugin" in its first line, and gives a quick start for Claude Code and for Codex, Cursor and
+  the other agents (`pip install ticketwright`, `ticketwright init`, `ticketwright install
+  --runtime`), with an honest line on what other agents get today. New sections: example prompts
+  to try, a skills overview, and **Data and network**, which says what the skills read, which of
+  your tools they contact and when, what the hooks read locally, and what gets committed. The
+  mermaid diagrams are now branded images that render on GitHub, PyPI and the listing alike.
+- New trust and community files: `SECURITY.md` (private vulnerability reporting, and what the
+  guards do and don't promise), `SUPPORT.md`, `PRIVACY.md`, `CODE_OF_CONDUCT.md`, and bug and
+  feature issue forms.
+- `plugin.json` has a plain description, `author.url`, the 1024px listing icon
+  (`.claude-plugin/icon.png`) and the directory's `documentationUrl`, `supportUrl` and
+  `privacyPolicyUrl` fields. CI's plugin-validate job pins Claude Code 2.1.296, since versions
+  before 2.1.281 fail `--strict` on those fields. `pyproject.toml` gains Documentation, Changelog
+  and Security links.
+- `docs/README.md` indexes every doc by what you're trying to do. The shipped implementation
+  briefs, the 2026-06 hardening review, the `meetings` slot judgment and the PyPI runbook moved to
+  `docs/maintainers/`.
+- Fixed stale docs: the roadmap's "where we are" now describes v4.2, not v1.2; troubleshooting no
+  longer tells project-scope installs to run `claude plugin update`, and points plugin users at
+  `bin/tw` instead of kit scripts they don't have; architecture counts 6 hooks, not 4; the
+  how-it-works tool table lists only tools with shipped adapters; "Installing without the plugin"
+  is rewritten as short bullets.
+- `scripts/readme_media/` holds the maintainer-only tooling that renders the logo, icon, diagrams,
+  GIF and social preview from source (`brand.py`, `diagrams.html`, `claude_flow.py`). It is not
+  part of the kit or the wheel.
+- Selftest section 58 raises the README prose budget from 600 to 900 words and checks that every
+  README image is an absolute main-branch URL to a file that exists, with real alt text. New
+  section 60 pins the listing: a square PNG icon, https listing links to real files, every
+  registered hook in the hooks table, the disclosure and trust links, and at least three example
+  prompts.
 
 ## [4.2.0] — 2026-10-03
 

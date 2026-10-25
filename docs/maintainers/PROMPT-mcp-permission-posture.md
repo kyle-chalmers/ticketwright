@@ -1,5 +1,9 @@
 # PROMPT — MCP permission posture: advisory enforcement for the transport hooks cannot see
 
+> **Historical brief, shipped.** This was the implementation brief for the MCP posture sections in the warehouse adapters and the rendered `AGENTS.md` posture table. It is
+> kept as the design record for maintainers and is not user documentation; the status line
+> below is as it stood when written.
+
 STATUS: DRAFT for maintainer review. Not scheduled. Written 2026-08-24, the day four teammates
 onboarded and the db_write_guard's Bash-only jurisdiction was documented (see the 3.7.1 batch).
 Direction set by the maintainer in that session: on the MCP path, enforcement does not disappear —

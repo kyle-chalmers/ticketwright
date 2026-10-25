@@ -96,11 +96,11 @@ It works with **your** tools, through one config file:
 | Tool slot | Works with |
 |---|---|
 | Tracker | Jira · Azure DevOps · Linear · Asana · Monday · GitHub Issues · etc. — or **none at all** |
-| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse · Supabase · DuckDB · etc. — or **none at all** |
+| Warehouse | Snowflake · BigQuery · Databricks · Postgres · Redshift · Synapse · etc., or **none at all** |
 | Chat | Slack · Teams · email (Gmail · Outlook) · etc. |
 | Docs | Google Drive · SharePoint · Dropbox · S3 · Box · etc. — mounted, or mountless via rclone |
 | Meetings | Zoom · Fireflies · Granola · Teams · Notion — optional; any provider via a new adapter file |
-| Git | GitHub · GitLab · Azure Repos · Bitbucket · etc. |
+| Git | GitHub · GitLab · Azure Repos · etc. |
 
 - **The lists are examples, not a whitelist** — any tool that fills a slot works. The first six
   trackers, six warehouses, and the Slack/Teams/Gmail/Outlook/Drive/SharePoint/GitHub/GitLab/Azure-Repos

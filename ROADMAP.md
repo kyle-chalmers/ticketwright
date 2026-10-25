@@ -4,9 +4,20 @@
 > item: stay **lightweight** (stdlib-only Python, bash-3.2-safe, no embeddings / vector DB / servers)
 > and **tool-agnostic** (skills never name a tool; seams swap via one adapter file).
 
-## Where we are — v1.2 (June 2026)
+## Where we are: v4.2 (October 2026)
 
-The ticket index is **active**, not just browsable, and observable.
+The release-by-release detail lives in [CHANGELOG.md](CHANGELOG.md); this is the shape of it. Seven
+skills (`setup`, `ticket`, `build`, `review`, `ship`, `skillify`, `refresh`) run one fixed
+lifecycle, with `/ticket` as the front door. Six tool slots (tracker, warehouse, chat, docs,
+meetings, git) are filled by adapters. Config resolves through three tiers (team, person,
+machine). The kit installs as a Claude Code plugin or from PyPI, and `ticketwright install
+--runtime` translates the skills for six other coding agents. Hooks guard destructive SQL, raw
+source material, and shipping without an approving review.
+
+Next up: a listing in the Claude plugin directory, and a setup path that does not need Claude Code
+(see [installing without the plugin](docs/getting-started.md#installing-without-the-plugin)).
+
+The ticket index is **active**, not just browsable, and observable:
 
 - **Prior-art recall** (`/ticket --recall`, engine `bin/recall.py`) with **IDF object down-weighting** (eval-tuned),
   an advisory verdict line, and a read-only **`--eval`** recall-quality diagnostic.
@@ -28,7 +39,8 @@ Lineage: Ticketwright is the canonical evolution of earlier prototypes — the a
 - **Plugin packaging** — installable as a Claude Code plugin (`.claude-plugin/plugin.json` +
   `marketplace.json`): `claude plugin install ticketwright@ticketwright`. Components auto-discover via
   top-level symlinks into `.claude/`; bin/ scripts dual-mode (`${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR}`)
-  so the vendored `cp -r` install still works. Validated with `claude plugin validate` + install.
+  so the vendored `cp -r` install still works. *(That dual-mode token was later found to break every
+  plugin install, and was replaced by the project-owned `bin/tw` launcher; `AGENTS.md` records why.)* Validated with `claude plugin validate` + install.
 - **Role-mode AGENTS.md** (generalist / analyst / engineer / scientist) — `/setup`
   tailors the rendered rules to the team's persona via short role-focus snippets.
 - **CI scrub + structure + manifest checks** — self-test §14/§15 (79 checks total).
@@ -129,7 +141,7 @@ artifact it touches:
   release" promise is false, so the docs now say upgrading is uninstall, install, relaunch, and every
   release note must say the same until the upstream gap closes.
 
-## Next — v1.4+ (harden the tracker contract)
+## Next: harden the tracker contract
 
 Surfaced by a two-AI (Codex + agent-panel) review as the top *coverage* gaps — the abstraction is
 solid for keyed trackers (Jira/Linear) and good-with-caveats for integer/label ones:
@@ -204,7 +216,7 @@ contract, a distinct lifecycle responsibility, its own auth/verification semanti
 common use that it is not just an option on an existing slot — with a written judgment,
 adversarially adjudicated by an external model (codex; final adjudication YES on all four legs,
 after three earlier rounds whose findings were fixed, not argued past). The full argument and
-the verbatim adjudication rounds: [docs/meetings-bar-judgment.md](docs/meetings-bar-judgment.md).
+the verbatim adjudication rounds: [docs/maintainers/meetings-bar-judgment.md](docs/maintainers/meetings-bar-judgment.md).
 The record, per leg:
 
 - **Verb contract — YES, as re-drafted.** The v3.6 objection was `extract_actions` (model

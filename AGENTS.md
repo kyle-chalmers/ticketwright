@@ -1,7 +1,9 @@
 # AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) and other coding agents when working in
-this repository. (`CLAUDE.md` is a one-line `@AGENTS.md` import so Claude Code loads these rules.)
+this repository. (`.claude/CLAUDE.md` is a one-line `@../AGENTS.md` import so Claude Code loads these
+rules. It lives in `.claude/` because the repo root is also the plugin root, where the plugin directory
+flags a `CLAUDE.md`.)
 
 This is the **development repo for Ticketwright itself** — the tool-agnostic AI layer for
 ticket-driven work repos. Do not confuse it with a repo that *uses* Ticketwright: here you are
@@ -47,15 +49,23 @@ bash bin/selftest.sh                       # THE gate — kit integrity + hook/e
 python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
 bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
 claude plugin validate .claude-plugin/marketplace.json --strict   # marketplace schema ONLY
+claude plugin validate .claude --strict    # skill + agent CONTENT (the only target that reads it)
+claude plugin validate --profile directory --strict .   # the plugin directory's checks (Claude Code 2.1.305+)
 python3 -m build                           # build the sdist + wheel (needs the `dev` extra: pip install -e ".[dev]")
 ```
 
-`claude plugin validate .` does NOT validate this plugin. The repo is both a plugin and a
-single-plugin marketplace, and a root target resolves to `marketplace.json` in preference to
-`plugin.json`, so it reads no skills, agents or hooks — a garbage `SKILL.md` passes, exit 0.
-Pointing it at `plugin.json` does not help either: `skills`/`agents`/`commands` are symlinks
-into `.claude/` and the validator does not follow symlinks. CI validates a dereferenced copy
-(see the `plugin-validate` job). Locally, `bash bin/selftest.sh` is the gate that matters.
+`claude plugin validate .` does NOT validate this plugin's content. The repo is both a plugin and
+a single-plugin marketplace, and a root target resolves to `marketplace.json` in preference to
+`plugin.json`. Pointing it at `plugin.json` checks the manifest and that its component paths exist,
+but still reads no skill or agent content: the validator reads content only in the default
+`skills/` and `agents/` folders, and `plugin.json` points into `.claude/` instead. A garbage
+`SKILL.md` passes both, exit 0. Point it at `.claude` to read the content; CI does all three, with a
+negative control (the `plugin-validate` job), and runs the directory profile on the committed tree
+(the `plugin-directory` job). Components are real files under `.claude/`, never root symlinks: the
+plugin directory blocks a symlinked component. A new `.claude/agents/*.md` must also be listed
+under `agents` in `plugin.json`, because that key replaces the default scan and takes files only;
+selftest section 15 fails on an unlisted one. Locally, `bash bin/selftest.sh` is the gate that
+matters.
 
 `selftest.sh` is authoritative and self-contained: read-only, no network, no credentials, bash 3.2-safe.
 "3.2-safe" is enforced, not aspirational: stock macOS `/bin/bash` (3.2.57) mis-parses a heredoc nested
@@ -77,7 +87,7 @@ prefix, an `sh` prefix, and the executable in bare command position — `verify_
 that last one needs no interpreter), but it matches TEXT, so indirection through a variable or `eval`
 slips past it; 53 also pins that the allowlist grows no tracker/warehouse
 CLI (`git` is listed deliberately — `kit_paths` shells out to `rev-parse`).
-`selftest.sh` needs `yq` and `python3` only. It is organized into ~23 numbered sections (config resolution, adapter
+`selftest.sh` needs `yq` and `python3` only. It is organized into 59 numbered sections, plus lettered sub-sections such as 21b (config resolution, adapter
 verb coverage, tool-name isolation, every hook, the index/recall engines, the render gate, the Obsidian
 graph layer, version sync, …). **When you change behavior, add or update the matching numbered section** —
 a green selftest is the contract this kit ships on. It must print `0 failed`.
@@ -194,6 +204,8 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 - `review_verdict_guard.py` (PreToolUse/Bash) — asks before `git push` / a PR opens or merges for a
   ticket that has deliverables but no APPROVE verdict on file; `bin/review_verdict.py` is the
   classifier the skills call too (highest-numbered `qc_queries/<n>_review_verdict.md`, `verdict:` line).
+- `source_material_guard.py` (PreToolUse/Bash): asks before a raw meeting transcript in a ticket's
+  `source_materials/` is staged for commit or copied into a docstore backup.
 - `regenerate_ticket_index.py` (PostToolUse/Write·Edit) — re-renders the index when a ticket changes.
 - `session_context.py` + `ticket_index_context.py` (SessionStart) — prime the stack + catalog banner.
 
@@ -223,6 +235,14 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 
 - Conventional-commit titles (`feat:`/`fix:`/`docs:`…). Update `docs/` and `README.md` when behavior
   changes; keep `CHANGELOG.md` current for anything user-facing.
+- The README is the plugin directory's listing text and the PyPI page, so it has a **900-word prose
+  budget** (selftest §58; fences, image lines and comments don't count) and every image is an
+  absolute `raw.githubusercontent.com/.../main/docs/images/...` URL. Detail goes in `docs/`, indexed
+  by `docs/README.md`. Its `## Data and network` section must name everything the plugin runs, sends
+  or fetches: the directory's security scan checks the plugin against it.
+- `scripts/readme_media/` is maintainer-only tooling for the logo, icon, diagrams, GIF and social
+  preview (KC AI Labs brand tokens in `_common.py`). It runs through `uv run --with ...`, never ships
+  in the wheel, and is not bound by the stdlib-only rule. Its `README.md` has the commands.
 - Skill/command/adapter frontmatter must be valid, parseable YAML with a `description` — a broken
   flow-node silently drops all metadata when loaded as a plugin (selftest section 14 checks this).
 - The v1 command names (`/start-ticket`, `/qc-review`, …) were retired in v3; the surface is 7 skills
