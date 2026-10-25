@@ -271,7 +271,9 @@ before it is paid.
   `split_and_export.sh`, `handoff.sh` (the review-gate opener),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
   (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), the runtime installer
-  (`emit_runtime.py` + its shell convenience `install.sh` — see the next section), and the
+  (`emit_runtime.py` + its shell convenience `install.sh` — see the next section), the runtime
+  surface picker (`adapter_surface.py`: which tool names an MCP adapter's verbs use on the agent
+  running now, see [adapters/README.md](../adapters/README.md) § Runtime surfaces), and the
   index/recall engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`,
   `recall.py`) — all stdlib-only.
 - **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via

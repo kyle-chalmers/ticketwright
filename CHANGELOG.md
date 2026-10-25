@@ -87,8 +87,35 @@ All notable changes to this project are documented here. Format loosely follows
 - Selftest section 59 checks the plain part of the messages a person reads against a term list
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.
+- Selftest section 62 pins the runtime-surface mapping name by name for gmail, slack and notion,
+  checks that a surface is used whole and carries its own safety rules (always_include, explicit
+  send, no bcc, the verbatim transcript-privacy rule), and exercises selection and refusal.
+  Section 3 now fails a skill that names a runtime's connector namespace, and section 20's
+  literal-server check allows a server name only on a runtime surface's declared `server:` line.
 
 ### Fixed
+- **The Gmail, Slack and Notion adapters work on Codex CLI.** Codex lists connected ChatGPT apps
+  under one MCP server, `codex_apps`, with an app prefix on every tool (`gmail_create_draft`,
+  `slack_slack_send_message_draft`, `notion_notion_query_meeting_notes`), and its Gmail app is a
+  different connector with different arguments (string recipients, a MIME `payload`, a
+  `from_address` that now pins the sender to `identity`). Each adapter carries those names in a
+  `## Runtime surface: codex-cli` section, and the new `bin/adapter_surface.py` picks the section
+  for the agent running now (`--verb`, `--probe`, `--json`; `--surface default` for a server
+  connected directly). Nothing changes in `stack.yaml`, so teammates on different agents share one
+  config, and `/setup` no longer has a reason to edit a vendored adapter: the rendered `AGENTS.md`
+  and the setup interview say to report a missing tool name instead, and on a fresh repo the
+  interview leaves `mcp: TODO` rather than writing this agent's prefix for everyone.
+  When more than one agent's signals are set and they would pick different tool names (a Codex
+  session started from inside Claude Code carries both), the picker prints no call (exit 7) and
+  asks for `--runtime`. A runtime section may name a server only when its runtime adapter declares
+  it (`connector_server: codex_apps` on `adapters/runtime/codex-cli.md`).
+- The default sections now match the connectors as Claude lists them. Notion's tools are
+  `notion-fetch` and `notion-query-meeting-notes` (with a structured `filter`), and
+  `fetch_transcript` passes `include_transcript=true`: without it the connector returns a link
+  placeholder where the transcript should be, which read like a notes-only page. The Gmail
+  connector has no contacts search, so `lookup_user` and `lookup_channel` are the manual fallback
+  (ask for the exact address, never search the mailbox for one), and drafts put the linked body in
+  `htmlBody`.
 - **Codex CLI now loads the `qc-reviewer` agent.** `ticketwright install --runtime codex-cli`
   wrote `.codex/agents/qc-reviewer.toml` with an `instructions` key and no `name`, so Codex 0.162
   skipped it with "Ignoring malformed agent role definition ... must define

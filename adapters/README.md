@@ -15,7 +15,10 @@ skill  ──calls──▶  verb (e.g. tracker.fetch_ticket)
 
 A skill resolves a verb like this:
 1. Read the MERGED config (`bin/effective_config.py`, not raw `stack.yaml`) → `seams.<seam>.adapter`.
-2. Open that adapter, find the verb's section.
+2. Open that adapter, find the verb's section. For an MCP adapter, take the section from
+   `bin/adapter_surface.py --adapter <path> --verb <verb>`: one connector can carry different tool
+   names on different agents, and that command picks the section written for the agent running now
+   (§ Runtime surfaces, below).
 3. Run the command shown there, substituting `{tokens}` from `stack.yaml` + skill args.
 4. If `seams.<seam>.verify` fails first (hybrid preflight), **halt** with the adapter's auth notes.
 
@@ -484,7 +487,71 @@ the claim those configs exist to keep honest.
 > **MCP-transport adapters** (Asana, Linear, Monday, Teams, Slack, Gmail, Outlook, and the
 > meetings seam's Fireflies / Teams / Notion / Zoom-MCP routes) reference each operation with a
 > server-namespaced placeholder like `mcp__<server>__<op>`. The exact tool name + parameters depend on
-> your connected MCP server — confirm them once and adjust the adapter (never the skills).
+> your connected MCP server and on the agent that lists it. Where an agent lists a connector under
+> other names, the adapter records them in a runtime surface (below); a name your session does not
+> have is a gap to report for the kit, not a local edit to a vendored adapter (and never a skill edit).
+
+### Runtime surfaces: one tool, the names each agent lists
+
+The same connector can reach a session under different tool names depending on the agent. Claude
+Code lists the Gmail connector's tools as `mcp__<server>__create_draft`; Codex CLI lists ChatGPT apps
+under one server, `codex_apps`, with an app prefix on every tool (`gmail_create_draft`, a different
+connector with a different argument shape), and does the same for Slack (`slack_slack_*`) and Notion
+(`notion_fetch`, `notion_notion_*`).
+
+That is not a new tool, so it is not a new adapter, and it is not a team choice either: which agent
+runs is per-machine (two teammates on one repo may run different ones), so it can never be selected
+in `stack.yaml`. A variant adapter picked by setup would be committed config, and the next teammate
+on another agent would get the wrong names. The difference lives inside the adapter instead:
+
+```markdown
+---
+default_surface: claude-code   # the runtime the `## verb:` sections were checked on
+surfaces: [codex-cli]          # one `## Runtime surface:` section per listed runtime
+---
+## verb: draft                 # the DEFAULT surface: the connector's own names, `mcp__{mcp}__…`
+…
+## Runtime surface: codex-cli
+
+server: codex_apps             # the runtime's fixed namespace; the slot's `mcp:` is not used here
+
+### verb: draft                # one `### verb:` subsection for EVERY verb the adapter has
+### verb: send
+…
+### Read-only probe            # this runtime's read call, linted like every posture probe
+```
+
+`bin/adapter_surface.py --adapter <path>` picks the surface: `--surface <name>` when given (never a
+fallback), else the detected runtime's own section (`bin/kit_paths.py`, the one authority on which
+agent is running, aliases included), else the default. `--verb <verb>` prints that verb's section,
+`--probe` the read-only probe, `--json` everything. A verb or probe printed from a runtime section
+carries that section's opening paragraph with it, since that is where it says which rules still
+hold. On a runtime that is neither the default's
+`default_surface` nor a listed surface, it says the default's names are unchecked there and asks for
+a report, never an edit.
+
+Rules, each checked by selftest section 62:
+
+- **A surface is used whole.** It carries a `### verb:` subsection for every `## verb:` the adapter
+  has, so no call ever mixes two agents' tool names. A missing verb is a malformed adapter (exit 6),
+  never a quiet fall-back to the default's name.
+- **Each subsection stands alone.** An agent may read only the section the command prints, so the
+  rules that bind a verb travel with it: draft-first, `{always_include}`, the no-bcc rule for email,
+  and the transcript-privacy rule, verbatim, in every `fetch_transcript`.
+- **The server is declared, then checked.** A surface names one `server:`, it must equal the
+  `connector_server:` its runtime adapter declares (`adapters/runtime/codex-cli.md`), and every
+  `mcp__<server>__` call in it must use that server. This is the one place an adapter may name a
+  server literally, because it is the runtime's fixed namespace rather than a name a person chose.
+- **An ambiguous agent is a refusal.** Detection takes the first runtime whose signal is set, and a
+  Codex session started from inside Claude Code carries both signals. When the agents whose
+  signals are set would pick different surfaces, the picker prints no call (exit 7) and asks for
+  `--runtime`. Signals that agree on a surface pass.
+- **Surface names are runtime ids** from `adapters/runtime/`, and the frontmatter list and the
+  sections agree.
+
+A runtime's own namespace is not the only way to reach a connector on it: a Codex user who connected
+a server directly (not as a ChatGPT app) has that server's own names, so `--surface default` is the
+honest choice there.
 
 ## Runtime adapters — the directory that has no verbs
 

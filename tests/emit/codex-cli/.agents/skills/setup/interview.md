@@ -46,6 +46,15 @@ connector's display name, not its prefix, and a friendly name that matches no co
 makes every rendered tool name point at nothing, with no error until a skill tries to call one.
 When the connector is not connected yet, write `mcp: TODO` with a comment saying to connect it and
 re-run `/setup tool <slot>`, and list it as a thing to finish.
+Before writing it, check the adapter with
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path>`.
+When it says this agent uses its own tool names, the adapter already names this agent's server
+and the slot's `mcp:` value is not used here. Then keep an existing `mcp:` value (a teammate on
+another agent needs it), and on a fresh repo write `mcp: TODO` with a comment naming the agents
+that still need it. Never write this agent's own prefix there: the next teammate on another agent
+would get tool names that point at nothing.
+Never edit an adapter to match the tool names in this session: a name the command prints that the
+session does not have is a gap to report for the kit, listed as a thing to finish.
 
 ## Suggestions from past usage (opt-in, counts only)
 

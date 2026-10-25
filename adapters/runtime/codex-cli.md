@@ -24,6 +24,7 @@ hook_protocol: codex-json      # PreToolUse deny via hookSpecificOutput.permissi
 hook_wiring_caveat: hooks must be reviewed and trusted BY HASH before they run — installed is not armed, and an edit re-arms the review; Codex's own docs call hooks a guardrail, not a complete enforcement boundary.
 model_cmd: "codex exec --sandbox read-only --skip-git-repo-check {prompt}"
 model_sandbox: read-only   # verified against `codex exec --help`: --sandbox read-only
+connector_server: codex_apps   # the one MCP server connected ChatGPT apps arrive under (observed 2026-10-24); an adapter's codex-cli runtime surface must name exactly this
 auth: |
   An authenticated Codex CLI install.
   Verify: `command -v codex`.
@@ -66,6 +67,15 @@ auth: |
   and trusted *by hash* before it runs, and any edit re-arms that review.
 - The vendor's own documentation declines to call this an enforcement boundary, and some tool paths
   opt out of the hook path entirely. Treat it as a strong guardrail, not a guarantee.
+- **Connectors arrive under one MCP server, `codex_apps`, with an app prefix on every tool.** A
+  ChatGPT app connected to the account shows up under the server `codex_apps` as `<app>_<tool>`: Gmail as
+  `gmail_create_draft` (a different connector from Claude's, with different arguments), Slack as
+  `slack_slack_send_message_draft`, Notion as `notion_fetch` and `notion_notion_query_meeting_notes`
+  (observed 2026-10-24 in a Codex CLI session, from the connectors' own tool declarations). The
+  chat and meetings adapters record these names in their `## Runtime surface: codex-cli` sections,
+  and `bin/adapter_surface.py` selects them when Codex CLI is the detected runtime, so nothing in
+  `stack.yaml` changes. A server connected directly in Codex's own MCP config keeps that server's
+  own names instead; pass `--surface default` for it.
 - **An emitted agent is not a loaded agent.** Codex skips a role file that breaks its schema and
   says so only as an `Ignoring malformed agent role definition` warning in the session's event
   stream, and `/review` then has no `qc-reviewer` role to spawn. Before 2026-10-25 the emitter

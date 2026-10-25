@@ -1,19 +1,23 @@
 ---
 seam: chat
 tool: gmail
-transport: mcp         # a Gmail MCP server ({mcp}) — draft/send/contacts tools
+transport: mcp         # a Gmail MCP server ({mcp}) — draft/send tools (no contacts search on the connectors described here)
 requires: [mcp, identity, default_mode]   # destination (to) + recipients are per-ticket (delivery-plan.yaml); `identity` is the team sending mailbox
 channel_key: to        # THIS tool's destination key — ONE address string (a person or a distribution list), read by delivery routing
 sender_key: identity   # THIS tool's sender key — routing surfaces it on the plan line and pins it in the fingerprint
 user_keys: []             # tier-3 overridable: nothing here is machine-local; the sending identity is a team decision and credentials live in the MCP server's own auth
+default_surface: claude-code   # the runtime the `## verb:` sections were checked on (the Gmail connector's own tool names, 2026-10-25)
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
 auth: |
   The Gmail MCP server must be connected, authenticated as (or delegated to) `{identity}`.
-  Verify: a read-only `mcp__{mcp}__search_threads` call returns without error.
+  Verify: a read-only `mcp__{mcp}__search_threads` call returns without error (on a runtime with
+  its own section below, that section's probe instead: `bin/adapter_surface.py --probe` prints it).
 note: |
   THE VERB MAPPING, HONESTLY — email is not Slack, and this table does not pretend it is:
   - `draft` / `send` map DIRECTLY: Gmail has native draft objects, so draft-first is real here,
     not staged-in-a-folder.
-  - `lookup_user` maps to the ADDRESS BOOK (contacts search). Close enough to be the same verb.
+  - `lookup_user` maps to the ADDRESS BOOK where a server has one. Neither Gmail connector this
+    adapter describes exposes a contacts search, so here it is the ask-the-human fallback.
   - `lookup_channel` -> a DISTRIBUTION LIST is a STRETCH. Email has no channels: a list address is
     opaque, so resolving one proves the address exists, NOT who reads it — a channel's membership
     is inspectable, a list's is not. Treat the result as an address, never as an audience.
@@ -93,35 +97,97 @@ gitignored `.claude/config/posture.local.yaml`.
 
 ## verb: draft   (the default — policy chat_default_draft, and `default_mode: draft` set explicitly)
 ```
-mcp__{mcp}__create_draft(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<body>)
+mcp__{mcp}__create_draft(to=["{to}"], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<plain-text body>, htmlBody=<the same body as HTML>)
 ```
-Body rules: plain text or simple HTML; **hyperlink everything** — ticket IDs
-(`[TEST-123](https://<site>/browse/TEST-123)`), docstore files, PRs. Honor `word_limits.chat` (<100).
-Name every routed recipient in the body too (`--check-draft` reads the draft, not the API call).
-The draft sits in `{identity}`'s Drafts folder for a human to open and send.
+Body rules: `body` is plain text (no Markdown); `htmlBody` carries the linked version:
+**hyperlink everything** with `<a href>`: ticket IDs (`https://<site>/browse/TEST-123`), docstore
+files, PRs. Honor `word_limits.chat` (<100). Name every routed recipient in the body too
+(`--check-draft` reads the draft, not the API call). The draft sits in `{identity}`'s Drafts
+folder for a human to open and send. The tool also takes `bcc`; never pass it.
 
 ## verb: send    (ONLY on explicit "send it"/"post it" — an email cannot be unsent)
 ```
-mcp__{mcp}__send_message(to=[{to}], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<body>)
+mcp__{mcp}__send_message(draftId=<the reviewed draft's id>)       # sends exactly what the human reviewed
+mcp__{mcp}__send_message(to=["{to}"], cc=[{always_include} (+ the shipper when include_self)], subject=<[TEST-123] summary>, body=<plain-text body>, htmlBody=<the same body as HTML>)   # no draft exists
 ```
+When a draft was reviewed, send it by id so what goes out is exactly what the human read. The tool
+also takes `bcc`; never pass it.
 
 ## verb: lookup_user
-```
-mcp__{mcp}__search_contacts(query=<name or email>)    # → address for the To/Cc lines
-```
+The Gmail connector exposes no contacts search (its tool list has none, checked 2026-10-25), so
+this verb is the manual fallback: **ask the human for the exact address** for the To/Cc lines.
+Never infer an address from a name, and never search the mailbox to find one. A different Gmail
+server that does offer a contacts search is a different tool: give it its own adapter.
 
 ## verb: lookup_channel   (a distribution list — the STRETCH named above)
-```
-mcp__{mcp}__search_contacts(query=<list name>)        # → the list's address, e.g. team-updates@acme.example
-```
-Resolving a list proves the address exists, not who reads it. When the audience matters — and for
-email it always does — confirm the list's membership with its owner once, outside this kit.
+No contacts search here either (see `lookup_user`): ask the human for the list's exact address,
+e.g. team-updates@acme.example. Even a looked-up list proves only that the address exists, not
+who reads it. When the audience matters (and for email it always does), confirm the list's
+membership with its owner once, outside this kit.
 
 ## gotchas
-- Exact tool names and parameters vary by Gmail MCP server (some spell `send_email`, some take a
-  single `recipients` list). Confirm once against your connected server and adjust **here**, never
-  in a skill.
+- Tool names and argument shapes differ by agent: Codex CLI lists Gmail as a different connector
+  under other names (its section is below). `bin/adapter_surface.py --adapter adapters/chat/gmail.md`
+  picks the right section for the agent running now. A name missing from your session's tool list
+  is a gap to report so the kit can record it, never a local edit to this file: an edited copy
+  silently drifts from the kit on the next upgrade.
 - Threading: replies need the prior message's thread id — a fresh draft starts a fresh thread,
   which is usually right for a per-ticket update.
 - A Gmail alias or delegated mailbox must be configured server-side; this adapter cannot grant
   send-as rights, only use them.
+
+## Runtime surface: codex-cli
+
+server: codex_apps
+
+Codex CLI reaches Gmail through the ChatGPT Gmail app: every tool sits under the one server
+`codex_apps` with a `gmail_` prefix, and it is a different connector from the one the verb
+sections above describe, so the argument shapes differ as well: `to` and `cc` are strings, the
+body is a MIME `payload`, and there is a `from_address`. Observed 2026-10-24 from the connector's
+own tool declarations in a Codex CLI session. The rules of the default sections hold unchanged
+here: draft first, `{always_include}` as visible Cc, no bcc mapping, `{to}` is ONE address, and a
+routing failure never falls back.
+
+### verb: draft
+```
+mcp__codex_apps__gmail_create_draft(to="{to}", cc="<{always_include} (+ the shipper when include_self), comma-joined>", from_address="{identity}", subject="<[TEST-123] summary>", payload={"mime_type": "text/html", "body": {"content": <body as HTML>}})
+```
+Body rules, the same on every runtime: **hyperlink everything** with `<a href>`, honor
+`word_limits.chat` (<100), and name every routed recipient in the body (`--check-draft` reads the
+draft). `from_address` pins the sender to `{identity}`. If the connector refuses it, STOP and
+report; never retry without it, because that sends as whoever the app is signed in as. The tool
+also takes `bcc`; never pass it.
+
+### verb: send
+ONLY on explicit "send it"/"post it": an email cannot be unsent.
+```
+mcp__codex_apps__gmail_send_email(to="{to}", cc="<{always_include} (+ the shipper when include_self), comma-joined>", from_address="{identity}", subject="<[TEST-123] summary>", payload={"mime_type": "text/html", "body": {"content": <body as HTML>}})
+```
+When a draft was reviewed, send exactly that body and recipient list, character for character: the
+human approved the draft, not a new message. (The connector also lists a `gmail_send_draft` tool;
+its arguments were not captured, so check its declaration in the session before using it.)
+`from_address` pins the sender to `{identity}`. If the connector refuses it, STOP and report;
+never retry without it, because that sends as whoever the app is signed in as. The tool also takes
+`bcc`; never pass it.
+
+### verb: lookup_user
+No contacts tool on this connector either (its tool list has none). Manual fallback: ask the human
+for the exact address. Never infer one from a name, and never search the mailbox to find one.
+
+### verb: lookup_channel
+The same fallback: ask for the list's exact address, and confirm its membership with its owner
+(the STRETCH above).
+
+### Permission posture on this runtime
+The control is the Gmail app's connection for the signed-in ChatGPT account: which account it is
+signed in as, and whether its grant includes send. That grant is NOT introspectable from inside
+the session, so the posture record caps at `status: unverified` exactly as above; confirm it where
+the app was connected and record the outcome in `.claude/config/posture.local.yaml`.
+
+### Read-only probe
+```
+mcp__codex_apps__gmail_get_profile({})                                          # read-only: the signed-in account
+mcp__codex_apps__gmail_search_emails(query="<a recent subject>", max_results=1)   # read-only
+```
+Compare the profile's address with `{identity}`: a different account means mail would go out as
+someone else unless the connector accepts `from_address`.

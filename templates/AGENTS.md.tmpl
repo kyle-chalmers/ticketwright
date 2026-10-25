@@ -44,6 +44,11 @@ warehouse, no chat, …) stay in this table with the `/setup` command that enabl
 them cleanly. Skills target abstract
 verbs and resolve them through the adapter for the configured tool — **never hardcode a tool, CLI,
 or ID in a skill**; put it in the config/adapter.
+An MCP tool can carry different tool names on different agents, so read the adapter as always,
+and take each MCP call from
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path> --verb <verb>`,
+which prints the section written for the agent running now. When your session lacks a tool name it
+prints, report the gap; do not edit the adapter to match your session.
 
 ## Installing this plugin (read this if you are the agent helping someone install)
 
