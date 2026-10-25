@@ -229,7 +229,7 @@ project `stack.yaml` it does nothing at all.
 | Claude Code plugin (user scope) | `claude plugin update ticketwright` | defaults to `--scope user`, matching a no-`--scope` install |
 | Claude Code plugin (local scope) | reinstall at project scope | a per-person override in `.claude/settings.local.json`, written by the desktop app or by `--scope local`; it takes precedence over the committed project declaration, so removing it restores what the team declared |
 | pip | `pip install --upgrade ticketwright`, then `ticketwright init` in the repo | `init` preserves your `stack.yaml` and never overwrites edited files without asking |
-| vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin |
+| vendored `cp -r` (legacy) | re-copy from a fresh clone | no tracking — consider switching to the plugin. Leave out the clone's `.claude/CLAUDE.md`: it is the kit's own contributor file and would replace yours (`ticketwright init` never copies it) |
 
 **Installed at the wrong scope?** Both `claude plugin marketplace add` and `claude plugin install`
 default to `--scope user`, so leaving the flag off installs Ticketwright into your own

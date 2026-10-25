@@ -7,6 +7,13 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- The plugin loads its skills and agent from `.claude/` through `plugin.json` (`skills` and
+  `agents`) instead of the root `skills`, `agents` and `commands` symlinks, which the Claude
+  plugin directory blocks. The same 7 skills and the `qc-reviewer` agent load, checked from
+  `--plugin-dir` on Claude Code 2.1.195, 2.1.258 and 2.1.310, and from a marketplace install on
+  2.1.310. Older clients are untested: on 2.0.45, `--plugin-dir` loaded neither the old layout nor
+  the new one, so that check could not compare them. The contributor `CLAUDE.md` moved to
+  `.claude/CLAUDE.md`, because the directory flags one at the plugin root.
 - Guard prompts, the session banner, `verify_stack`, the doctor, config errors and the `/ship`
   and `/review` say-this text now lead with what happened and what to do, in plain words, with
   technical detail after "Details:". `verify_stack` says "All tools reachable" instead of
@@ -27,6 +34,15 @@ All notable changes to this project are documented here. Format loosely follows
 - Fixed "carries a additive statement" in the database-write prompt.
 
 ### Added
+- CI runs the plugin directory's checks (`claude plugin validate --profile directory --strict`,
+  pinned 2.1.305) on the committed tree, with a negative control that plants a symlinked
+  component, and validates skill and agent content by pointing the validator at `.claude/`, since
+  a manifest path is never read for content.
+- `publish.yml` fast-forwards a `directory` branch to each final release tag once PyPI has it
+  (a prerelease tag leaves it alone); the plugin directory listing follows that branch.
+  `docs/maintainers/pypi-setup.md` describes the flow, the icon that locks at the first portal
+  save, and why the listing is Claude Code only: claude.ai chat and Cowork refuse a plugin with a
+  top-level `bin/`.
 - Selftest section 59 checks the plain part of the messages a person reads against a term list
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.

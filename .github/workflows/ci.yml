@@ -75,19 +75,16 @@ jobs:
       - name: Marketplace manifest (strict)
         run: claude plugin validate .claude-plugin/marketplace.json --strict
 
-      # skills/, agents/ and commands/ are symlinks into .claude/, and the validator does not
-      # follow symlinks -- it reads nothing and passes. Validate a dereferenced copy instead.
-      # CLAUDE.md is stripped from the copy only: the validator rejects it at a plugin root,
-      # but the real file is a deliberate @AGENTS.md import for contributors (AGENTS.md:3).
-      - name: Plugin manifest + skills + agents (strict, dereferenced)
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-          rsync -aL --exclude '.git/' --exclude '.claude/worktrees/' --exclude '.venv/' \
-                --exclude '*_cache/' ./ "$tmp/tw/"
-          rm -f "$tmp/tw/.claude-plugin/marketplace.json" "$tmp/tw/CLAUDE.md"
-          claude plugin validate "$tmp/tw" --strict
+      # The manifest and its component paths: each must start ./, stay inside the plugin and exist.
+      # This reads no skill or agent CONTENT: the validator only reads content in the default
+      # skills/ and agents/ folders, and plugin.json points into .claude/ instead.
+      - name: Plugin manifest (strict)
+        run: claude plugin validate .claude-plugin/plugin.json --strict
+
+      # The content the manifest points at. Pointed at a directory, the validator reads the
+      # skills/, agents/ and commands/ inside it, which here is .claude/.
+      - name: Skills + agents (strict)
+        run: claude plugin validate .claude --strict
 
       # Negative control: proves the step above reads skill content. Without it, a regression
       # back to a content-blind target is indistinguishable from a passing gate.
@@ -96,19 +93,75 @@ jobs:
           set -euo pipefail
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
-          rsync -aL --exclude '.git/' --exclude '.claude/worktrees/' --exclude '.venv/' \
-                --exclude '*_cache/' ./ "$tmp/tw/"
-          rm -f "$tmp/tw/.claude-plugin/marketplace.json" "$tmp/tw/CLAUDE.md"
-          victim="$(find "$tmp/tw/skills" -type f -name SKILL.md | sort | head -n 1)"
+          # Named .claude like the gate's target: the validator reads a folder by its name.
+          rsync -a --exclude 'worktrees/' --exclude 'settings.local.json' .claude/ "$tmp/.claude/"
+          victim="$(find "$tmp/.claude/skills" -type f -name SKILL.md | sort | head -n 1)"
           test -f "$victim"
           cp tests/plugin-validate-negative/broken-SKILL.md "$victim"
           out="$tmp/validate.out"
-          if claude plugin validate "$tmp/tw" --strict >"$out" 2>&1; then
+          if claude plugin validate "$tmp/.claude" --strict >"$out" 2>&1; then
             echo "::error::Negative control PASSED. The gate is not reading skill content."
             cat "$out"; exit 1
           fi
           # A non-zero exit alone is not proof: an unrelated failure is also non-zero.
-          if ! grep -qF "${victim#"$tmp"/tw/}" "$out" || ! grep -qiE 'frontmatter|yaml' "$out"; then
+          if ! grep -qF "${victim#"$tmp"/.claude/}" "$out" || ! grep -qiE 'frontmatter|yaml' "$out"; then
+            echo "::error::Validation failed for the wrong reason."
+            cat "$out"; exit 1
+          fi
+          echo "Negative control OK."
+
+  # The Claude plugin directory's own checks, on the tree it will read: the committed files at the
+  # repo root, which is the plugin root. `git archive` gives exactly the tracked files, as GitHub
+  # archives them, so nothing a local or CI run leaves behind is judged.
+  # Docs: docs/maintainers/pypi-setup.md.
+  plugin-directory:
+    name: Plugin directory checks (--profile directory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Pinned separately from plugin-validate: --profile first shipped in 2.1.305 (2026-10-20),
+      # the oldest release that has it. Pinned because this executes the package on the runner.
+      - name: Install Claude Code CLI 2.1.305 (pinned)
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.305
+          installed="$(claude --version)"
+          case "$installed" in
+            2.1.305*) echo "claude $installed" ;;
+            *) echo "::error::Expected claude 2.1.305, got '$installed'"; exit 1 ;;
+          esac
+
+      - name: Directory profile on the committed tree (strict)
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          mkdir "$tmp/tw"
+          git archive HEAD | tar -x -C "$tmp/tw"
+          out="$tmp/validate.out"
+          rc=0; claude plugin validate --profile directory --strict "$tmp/tw" >"$out" 2>&1 || rc=$?
+          cat "$out"
+          # The root also holds marketplace.json. Prove the directory's rules ran on the plugin
+          # rather than the folder being read as a marketplace only.
+          if ! grep -qF "Plugin directory checks for" "$out"; then
+            echo "::error::The directory profile did not run on the plugin."; exit 1
+          fi
+          exit "$rc"
+
+      # Negative control: a symlinked component (the shape this repo used to ship) must fail.
+      - name: "Negative control: a symlinked component must fail the profile"
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          mkdir "$tmp/tw"
+          git archive HEAD | tar -x -C "$tmp/tw"
+          ln -s .claude/skills "$tmp/tw/skills"
+          out="$tmp/validate.out"
+          if claude plugin validate --profile directory --strict "$tmp/tw" >"$out" 2>&1; then
+            echo "::error::Negative control PASSED. The profile does not see a symlinked component."
+            cat "$out"; exit 1
+          fi
+          if ! grep -qi "symlink" "$out"; then
             echo "::error::Validation failed for the wrong reason."
             cat "$out"; exit 1
           fi
