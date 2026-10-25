@@ -18,6 +18,13 @@ trap 'rm -rf "$TMP"' EXIT
 # Sections that exercise resolution order still override it per invocation.
 export XDG_CONFIG_HOME="$TMP/xdg-home"
 mkdir -p "$XDG_CONFIG_HOME"
+# Same reason for git: whoami reads `git config user.email`, and a GIT_CONFIG_GLOBAL in the
+# contributor's environment survives every per-invocation `HOME=` override below. A clean-profile
+# test run (a per-user GIT_CONFIG_GLOBAL) failed the "no identity at all" check that way. Every
+# commit in this suite passes its own `-c user.*`, so an empty global config costs nothing — CI has
+# none either.
+: > "$TMP/gitconfig-empty"
+export GIT_CONFIG_GLOBAL="$TMP/gitconfig-empty" GIT_CONFIG_NOSYSTEM=1
 
 ok()   { PASS=$((PASS+1)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
 # `return 0` matters: bad() used to end on the `[ -n "$2" ]` test, so a one-arg call returned
@@ -2724,7 +2731,8 @@ rt_bad=""
 for f in adapters/runtime/*.md; do
   [ -f "$f" ] || continue
   for k in seam tool detect_env skills_root session_start tool_gate subagents structured_questions \
-           gate_ask_tier gate_fail_mode subagent_isolation reads_foreign_skills global_skills_root plan_mode; do
+           gate_ask_tier gate_fail_mode subagent_isolation reads_foreign_skills global_skills_root plan_mode \
+           question_tool question_limits; do
     grep -q "^$k:" "$f" || rt_bad="$rt_bad $(basename "$f"):$k"
   done
   [ "$(grep -c '^## verb:' "$f")" = "0" ] || rt_bad="$rt_bad $(basename "$f"):has-verbs"
@@ -3741,9 +3749,9 @@ grep -qiE 'conflict.*before offering any team-config edit' <<<"$skflat" \
 { grep -q 'only Ticketwright trace is' "$SK" && grep -qi 'enablement is how the kit arrives' "$SK"; } \
   && ok "adopt-vs-fresh boundary: settings.json-only enablement is FRESH" \
   || bad "the adopt-vs-fresh boundary is not written down at the routing"
-# (D) interviews are prose, stated for every mode of this skill.
-grep -qi 'Every interview in this skill is prose' "$SK" \
-  && ok "the prose-interview rule is stated for every mode" || bad "the prose-interview rule is missing"
+# (D) one question rule, stated for every mode of this skill (section 60 pins its capability gate).
+grep -qi 'How setup talks to the person: every mode' "$SK" \
+  && ok "the question rule is stated for every mode" || bad "the every-mode question rule is missing"
 # (E) teammate.md is the per-person flow: sole writer, versioned tier 3, names-only, honest verify.
 { grep -qi "written only by a person" <<<"$tmflat" && grep -qi 'carve-out' "$TM"; } \
   && ok "per-person flow: tiers 2+3 written only by a person's own flow, carve-outs named honestly" \
@@ -4550,13 +4558,13 @@ sed -n '/^## Learn more/,/^## /p' README.md | grep -q 'docs/obsidian.md' \
 grep -q 'github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md' "$SK38" \
   && ok "the setup report prints the doc's GitHub URL (docs/ is not in the PyPI package)" \
   || bad "the setup report would print a bare docs/ path that a pip install does not have"
-# (H) the AskUserQuestion sweep held: interviews are prose everywhere in the skill surface —
-# frontmatter allowed-tools AND body text. (Runtime capability docs under adapters/runtime/ and
-# docs/ legitimately DESCRIBE the tool; they are not skills and are not scanned.)
+# (H) no skill names a runtime's question tool — frontmatter allowed-tools AND body text. Setup asks
+# with the runtime's own tool when the runtime adapter declares one (section 60 pins the gate), so
+# the tool's NAME lives in adapters/runtime/*.md and nowhere in a skill.
 auq38="$(grep -rn 'AskUserQuestion' .claude/skills/ 2>/dev/null || true)"
 [ -z "$auq38" ] \
-  && ok "no skill authors an interview as a structured tool-call (AskUserQuestion fully swept)" \
-  || bad "AskUserQuestion survives in a skill" "$auq38"
+  && ok "no skill names Claude Code's question tool (it comes from the runtime adapter)" \
+  || bad "AskUserQuestion is named in a skill" "$auq38"
 # (I) round 5's two new keys are wired end to end: schema row, template token, scaffold guidance,
 # and the intake consumer in /ticket's priming — a key nothing consumes is configuration theater.
 { grep -q '{{analysis_tools}}' templates/AGENTS.md.tmpl \
@@ -4586,9 +4594,9 @@ grep -i 'permissions.allow' "$IV" | grep -qi 'not' \
   && grep -q 'stack.example.multi-audience.yaml' "$IV"; } \
   && ok "email delivery records provider + identity + audience in a commented target block, honestly unactivated" \
   || bad "the email question's recorded-answers contract is incomplete in interview.md"
-grep -qi 'configured but not' <<<"$skflat38" \
-  && ok "the Phase-4 report states email is configured but not yet activated" \
-  || bad "the report step never says email is configured-but-not-activated"
+{ grep -qi 'drafts only' <<<"$skflat38" && grep -qi 'configured but not yet activated' <<<"$skflat38"; } \
+  && ok "the Phase-4 report says email goes out as drafts only (and handles an older not-yet-activated block)" \
+  || bad "the report step's email wording is missing or still says email cannot send"
 
 hdr "39 · runtime installer skeleton (emit_runtime.py — verify-only vs translate-on-emit)"
 # The installer is the compatibility layer between the canonical .claude/skills/ source and each
@@ -7120,13 +7128,15 @@ ship48="$(grep -c 'scan_source_materials.py' .claude/skills/ship/SKILL.md || tru
   || bad "/ship scans at only one risk point (found $ship48)"
 
 # --- (G) structural pin: one intake question, not two ------------------------------------------
+# Intake is ONE multi-select question in round 2 ("how does work reach you?"); meeting notes are an
+# option of it, and the meetings provider is its follow-up, never a separate intake round.
 IV48=".claude/skills/setup/interview.md"
-{ grep -q 'meetings' "$IV48" && grep -qi 'never a new one' "$IV48"; } \
-  && ok "pin: the meetings option rides round 4's existing intake question" \
-  || bad "the meetings option is not stated as an addition to the existing question"
-[ "$(grep -c '^14\. \*\*Email' "$IV48")" -eq 1 ] \
-  && ok "pin: round 4 still has exactly one intake/delivery question" \
-  || bad "round 4's single intake question was split"
+{ grep -q 'meeting notes or transcripts' "$IV48" && grep -q 'Meeting notes picked → one follow-up' "$IV48"; } \
+  && ok "pin: meeting notes are an option of the one intake question, with the provider as its follow-up" \
+  || bad "the meetings option is not stated as part of the intake question"
+[ "$(grep -c 'How does work reach you' "$IV48")" -ge 1 ] && [ "$(grep -c '^3\. \*\*"How does work reach you' "$IV48")" -eq 1 ] \
+  && ok "pin: there is exactly one intake question" \
+  || bad "the intake question was split or is missing"
 
 # --- (H) structural pin: the enforcement table carries the new column ---------------------------
 enf48=""
@@ -9012,6 +9022,197 @@ tk51flat="$(tr '\n' ' ' < "$TK51")"
   || bad "ticket/SKILL.md's meetings rule is a pointer, not the complete rule"
 
 
+hdr "51e · several chat tools, each with destinations chosen per ticket (destination: per_ticket)"
+# A team that shares results by Gmail AND Slack, with recipients that differ per analysis, needs the
+# tool-only shape on more than one tool. `destination: per_ticket` is that shape, one named target at
+# a time. It is an explicit opt-in: a target that omits its destination by accident must still fail,
+# so these tests prove both halves by BEHAVIOR (the opt-in routes from the ticket's plan, and the
+# absence without it is still an error), through the same CLI sections 45 and 46 drive. Fixtures live
+# under $TMP: a new shipped stack.example.*.yaml would change what other sections iterate and count.
+DP51E="$KIT/bin/delivery_plan.py"
+E51="$TMP/pt51e"; mkdir -p "$E51/.claude/config" "$E51/tk"
+S51E="$E51/.claude/config/stack.yaml"; P51E="$E51/tk/delivery-plan.yaml"
+# pt51e <extra slack-target lines> <extra gmail-target lines> [slot-level lines]
+# Each argument is printf %b text: `\n` ends a line, and an empty string adds nothing.
+pt51e() {
+  printf 'project:\n  key_prefix: TEST\nseams:\n  chat:\n    default: team\n    default_mode: draft\n%b    targets:\n      team:\n        audience: team\n        tool: slack\n        adapter: adapters/chat/slack.md\n        transport: mcp\n        mcp: slack\n%b        verify: null\n      stakeholders:\n        audience: stakeholders\n        tool: gmail\n        adapter: adapters/chat/gmail.md\n        transport: mcp\n        mcp: gmail\n        identity: reports@example.invalid\n        default_mode: draft\n%b        verify: null\n' \
+    "${3:-}" "$1" "$2" > "$S51E"
+}
+PT51E='        destination: per_ticket\n'
+v51e() { V51E="$(safe_verify_stack "$S51E" --dry-run 2>&1)"; V51ERC=$?; }
+r51e() { R51E="$(python3 "$DP51E" --root "$E51" --plan "$P51E" --quiet "$@" 2>/dev/null)"; R51ERC=$?; }
+g51e() { printf '%s' "$R51E" | python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
+GM51E='schema_version: 1\naudience: stakeholders\nchat:\n  target: stakeholders\n  channel: "ops-review@example.invalid"\n  recipients: [pm@example.invalid]\n'
+
+# --- (A) Gmail + Slack, both chosen per ticket: verify_stack and the audit are clean -------------
+pt51e "$PT51E" "$PT51E"
+v51e
+{ [ "$V51ERC" -eq 0 ] && ! printf '%s' "$V51E" | grep -q '✗'; } \
+  && ok "a Gmail + Slack slot with both targets destination: per_ticket verifies clean (no ✗ line)" \
+  || bad "a per-ticket Gmail + Slack slot did not verify clean" "rc=$V51ERC $(printf '%s' "$V51E" | grep '✗' | head -3)"
+[ -z "$(python3 "$DP51E" --stack "$S51E" --audit --quiet 2>/dev/null)" ] \
+  && ok "the delivery audit has no finding for it (no missing destination, no missing always_include)" \
+  || bad "the audit still reports a per-ticket target" "$(python3 "$DP51E" --stack "$S51E" --audit --quiet 2>/dev/null | head -3)"
+
+# --- (B) routing reads the ticket's own destination + recipients, for whichever target is declared
+printf "$GM51E" > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 0 ] && [ "$(g51e "d['target']")" = "stakeholders" ] && [ "$(g51e "d['tool']")" = "gmail" ] \
+  && [ "$(g51e "d['destination']")" = "ops-review@example.invalid" ] && [ "$(g51e "d['destination_key']")" = "to" ] \
+  && [ "$(g51e "d['recipients']")" = "['pm@example.invalid']" ] && [ "$(g51e "d['sender']")" = "reports@example.invalid" ]; } \
+  && ok "audience stakeholders routes to gmail, to the ticket's own address and recipients, sent as the team identity" \
+  || bad "per-ticket gmail routing wrong" "rc=$R51ERC $(g51e "(d.get('target'), d.get('destination'), d.get('recipients'), d.get('error'))")"
+FP51E="$(g51e "d['resolution_fingerprint']")"
+printf 'schema_version: 1\naudience: team\nchat:\n  target: team\n  channel: "#analysis-42"\n  recipients: [Alice, Bob]\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 0 ] && [ "$(g51e "d['target']")" = "team" ] && [ "$(g51e "d['tool']")" = "slack" ] \
+  && [ "$(g51e "d['destination']")" = "#analysis-42" ] && [ "$(g51e "d['destination_key']")" = "default_channel" ] \
+  && [ "$(g51e "d['recipients']")" = "['Alice', 'Bob']" ]; } \
+  && ok "audience team routes to slack, in the ticket's own channel, to the ticket's own recipients" \
+  || bad "per-ticket slack routing wrong" "rc=$R51ERC $(g51e "(d.get('target'), d.get('destination'), d.get('recipients'), d.get('error'))")"
+# The approval pin still binds. The destination now lives in the plan, so a plan edit after the
+# approval must refuse exactly like a stack.yaml edit does.
+printf "$GM51E" > "$P51E"
+r51e --seam chat --expect-target stakeholders --expect-fingerprint "$FP51E"
+[ "$R51ERC" -eq 0 ] && ok "re-routing the approved per-ticket plan unchanged matches its pin" \
+  || bad "an unchanged per-ticket plan failed its own pin" "rc=$R51ERC fp=$FP51E"
+printf 'schema_version: 1\naudience: stakeholders\nchat:\n  target: stakeholders\n  channel: "someone-else@example.invalid"\n  recipients: [pm@example.invalid]\n' > "$P51E"
+r51e --seam chat --expect-target stakeholders --expect-fingerprint "$FP51E"
+{ [ "$R51ERC" -eq 8 ] && [ "$(g51e "d['destination']")" = "None" ]; } \
+  && ok "editing the ticket's chat.channel after approval refuses (exit 8), with no destination emitted" \
+  || bad "a per-ticket destination moved after approval and still routed" "rc=$R51ERC"
+# A target that keeps a standing list too adds it AFTER the ticket's own recipients.
+pt51e "$PT51E" "$PT51E"'        always_include: [manager@example.invalid]\n'
+printf "$GM51E" > "$P51E"
+r51e --seam chat
+[ "$(g51e "d['recipients']")" = "['pm@example.invalid', 'manager@example.invalid']" ] \
+  && ok "a per-ticket target's own always_include is added after the ticket's recipients" \
+  || bad "a per-ticket target's always_include was dropped or misordered" "rc=$R51ERC to=$(g51e "d.get('recipients')")"
+pt51e "$PT51E" "$PT51E"'        always_include: []\n'
+v51e
+[ "$V51ERC" -ne 0 ] && ok "an always_include a per-ticket target DOES write is still validated (an empty list fails)" \
+  || bad "an empty always_include on a per-ticket target was accepted"
+
+# --- (B2) a chat block that does not name its target never routes under a changed audience ------
+# The reviewer's repro: a plan written for one per-ticket target (no chat.target:), then its
+# audience edited to another. Without the halt, the first target's address went out from the
+# second target's mailbox. A named per-ticket target now requires chat.target: to be itself.
+printf 'schema_version: 1\naudience: stakeholders\nchat:\n  channel: "cfo@client.example.invalid"\n  recipients: [cfo@client.example.invalid]\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 9 ] && [ "$(g51e "d['destination']")" = "None" ] && printf '%s' "$(g51e "d.get('error')")" | grep -q 'chat.target: stakeholders'; } \
+  && ok "a per-ticket target whose plan omits chat.target: halts (exit 9), naming the line to add, and routes nothing" \
+  || bad "a per-ticket target routed a chat block that never said which target it was for" "rc=$R51ERC $(g51e "(d.get('destination'), d.get('error'))")"
+# --- (C) audience declared, destination missing: HALT (exit 9), never another target, never inherited
+pt51e "$PT51E" "$PT51E"
+printf 'schema_version: 1\naudience: stakeholders\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 9 ] && [ "$(g51e "d['target']")" = "None" ] && [ "$(g51e "d['destination']")" = "None" ] \
+  && printf '%s' "$R51E" | grep -q 'chat.channel' && printf '%s' "$R51E" | grep -q 'chat\[stakeholders\]'; } \
+  && ok "audience declared but no chat.channel: exit 9, no target or destination, and the halt names the target and the field" \
+  || bad "a per-ticket target with no channel did not halt cleanly" "rc=$R51ERC $(g51e "d.get('error')")"
+printf 'schema_version: 1\naudience: stakeholders\nchat:\n  target: stakeholders\n  channel: "ops-review@example.invalid"\n  recipients: []\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 9 ] && [ "$(g51e "d['recipients']")" = "None" ] && [ "$(g51e "d['destination']")" = "None" ]; } \
+  && ok "an empty chat.recipients halts too (exit 9): never send with no stakeholder list" \
+  || bad "a per-ticket target routed with no recipients" "rc=$R51ERC"
+# Beside a routable standing target AND a slot-level channel, the halt borrows neither.
+pt51e "$PT51E" '        to: updates@example.invalid\n        always_include: [pm@example.invalid]\n' '    default_channel: CSHARED\n'
+printf 'schema_version: 1\naudience: team\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 9 ] && [ "$(g51e "d['target']")" = "None" ] && [ "$(g51e "d['destination']")" = "None" ] \
+  && ! printf '%s' "$R51E" | grep -q 'CSHARED\|updates@example.invalid'; } \
+  && ok "the halt never falls back to the other target's address or inherits the slot-level channel" \
+  || bad "a per-ticket halt fell back to another target or an inherited channel" "rc=$R51ERC $(g51e "(d.get('target'), d.get('destination'))")"
+# A plan whose chat block was written for one target is never reused by another.
+pt51e "$PT51E" "$PT51E"
+printf 'schema_version: 1\naudience: stakeholders\nchat:\n  target: team\n  channel: "#analysis-42"\n  recipients: [Alice]\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 4 ] && [ "$(g51e "d['destination']")" = "None" ] && printf '%s' "$R51E" | grep -q 'chat.target'; } \
+  && ok "a chat block written for target team is refused (exit 4) when the audience routes to stakeholders" \
+  || bad "a plan's chat block was reused by a target it was not written for" "rc=$R51ERC $(g51e "d.get('destination')")"
+
+# --- (D) a per-ticket channel or recipient carrying a shell metacharacter is refused -------------
+printf 'schema_version: 1\naudience: team\nchat:\n  target: team\n  channel: "#eng;rm"\n  recipients: [Alice]\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 4 ] && printf '%s' "$R51E" | grep -q "';'" && printf '%s' "$R51E" | grep -q 'chat.channel' \
+  && printf '%s' "$R51E" | grep -q 'delivery-plan.yaml' && [ "$(g51e "d['destination']")" = "None" ]; } \
+  && ok "a per-ticket chat.channel carrying ; is refused (exit 4), naming the character and the delivery plan" \
+  || bad "a per-ticket channel with a shell metacharacter was not refused cleanly" "rc=$R51ERC $(g51e "d.get('error')")"
+printf 'schema_version: 1\naudience: stakeholders\nchat:\n  target: stakeholders\n  channel: "ops-review@example.invalid"\n  recipients: ["pm@example.invalid$(id)"]\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 4 ] && printf '%s' "$R51E" | grep -q 'chat.recipients' && [ "$(g51e "d['recipients']")" = "None" ]; } \
+  && ok "a per-ticket recipient carrying shell metacharacters is refused (exit 4) and blamed on chat.recipients" \
+  || bad "a per-ticket recipient with shell metacharacters was not refused cleanly" "rc=$R51ERC $(g51e "d.get('error')")"
+
+# --- (E) the opt-in is explicit: neither a destination nor destination: per_ticket still FAILS ----
+pt51e "$PT51E" ''
+v51e
+printf '%s\n' "$V51E" | grep '✗' | grep 'has no destination' | sed 's/^ *✗ //' > "$TMP/51e-neither.txt"
+sed 's/ Details:.*$//' "$TMP/51e-neither.txt" > "$TMP/51e-neither-plain.txt"
+{ [ "$V51ERC" -ne 0 ] && grep -q '^chat\[stakeholders\]' "$TMP/51e-neither.txt" \
+  && ! grep -q 'chat\[team\]' "$TMP/51e-neither.txt" \
+  && grep -qF 'standing one with `to:`' "$TMP/51e-neither-plain.txt" \
+  && grep -qF '`destination: per_ticket`' "$TMP/51e-neither-plain.txt"; } \
+  && ok "a target with neither a destination nor destination: per_ticket fails verify, and the plain part names both ways forward" \
+  || bad "the missing-destination failure is absent or does not name both ways forward" "rc=$V51ERC $(cat "$TMP/51e-neither.txt")"
+python3 "$KIT/tests/plain_language/check.py" --text "$TMP/51e-neither.txt" > "$TMP/51e-neither.out" 2>&1 \
+  && ok "that message leads in plain words (tests/plain_language/check.py)" \
+  || bad "the missing-destination message uses internal terms in its plain part" "$(head -3 "$TMP/51e-neither.out")"
+pt51e "$PT51E" '        destination: perticket\n'
+v51e
+{ [ "$V51ERC" -ne 0 ] && printf '%s' "$V51E" | grep '✗' | grep -q 'accepts only `per_ticket`'; } \
+  && ok "a misspelled destination value fails rather than quietly becoming a standing target" \
+  || bad "a misspelled destination: value was accepted" "rc=$V51ERC"
+
+# --- (F) both a standing destination and destination: per_ticket: refused, pick one --------------
+pt51e "$PT51E" "$PT51E"'        to: updates@example.invalid\n'
+v51e
+{ [ "$V51ERC" -ne 0 ] && printf '%s' "$V51E" | grep '✗' | grep 'chat\[stakeholders\]' | grep -q 'Pick one'; } \
+  && ok "a target with both a standing destination (to:) and destination: per_ticket fails verify (pick one)" \
+  || bad "a target with both destination shapes was accepted" "rc=$V51ERC $(printf '%s' "$V51E" | grep '✗' | head -2)"
+printf "$GM51E" > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 4 ] && [ "$(g51e "d['destination']")" = "None" ] && printf '%s' "$R51E" | grep -q 'Pick one'; } \
+  && ok "routing re-checks it at the point of use: the same config refuses (exit 4) with no verify run" \
+  || bad "routing resolved a target carrying both destination shapes" "rc=$R51ERC $(g51e "d.get('destination')")"
+
+# --- (G) a mixed slot: one standing target, one chosen per ticket -------------------------------
+pt51e '        default_channel: C0TEAM\n        always_include: [Alice]\n' "$PT51E"
+v51e
+{ [ "$V51ERC" -eq 0 ] && ! printf '%s' "$V51E" | grep -q '✗'; } \
+  && ok "a mixed slot (standing slack with its own always_include, per-ticket gmail) verifies clean" \
+  || bad "a mixed standing + per-ticket slot did not verify clean" "rc=$V51ERC $(printf '%s' "$V51E" | grep '✗' | head -2)"
+printf 'schema_version: 1\naudience: team\nchat:\n  target: team\n  channel: "#somewhere-else"\n  recipients: [Mallory]\n' > "$P51E"
+r51e --seam chat
+{ [ "$R51ERC" -eq 0 ] && [ "$(g51e "d['destination']")" = "C0TEAM" ] && [ "$(g51e "d['recipients']")" = "['Alice']" ]; } \
+  && ok "the standing target still routes to its own channel and list; a plan's chat block cannot re-point it" \
+  || bad "a plan's chat block re-pointed a standing target" "rc=$R51ERC $(g51e "(d.get('destination'), d.get('recipients'))")"
+pt51e '        default_channel: C0TEAM\n' "$PT51E"
+v51e
+printf '%s\n' "$V51E" | grep '✗' > "$TMP/51e-mixed.txt"
+{ [ "$V51ERC" -ne 0 ] && grep -q 'chat\[team\].*always_include' "$TMP/51e-mixed.txt" \
+  && ! grep -q 'chat\[stakeholders\]' "$TMP/51e-mixed.txt"; } \
+  && ok "in a mixed slot the standing target still requires its own always_include, and the per-ticket one is not blamed" \
+  || bad "the mixed slot's always_include rule is wrong" "rc=$V51ERC $(cat "$TMP/51e-mixed.txt")"
+# A personal, machine-local file cannot flip a standing target to per-ticket: that would move WHERE
+# a message goes, so the resolver refuses the key and routing stays on the team's channel.
+pt51e '        default_channel: C0TEAM\n        always_include: [Alice]\n' "$PT51E"
+printf 'seams:\n  chat:\n    targets:\n      team:\n        destination: per_ticket\n' > "$E51/.claude/config/connections.local.yaml"
+r51e --seam chat
+python3 "$KIT/bin/effective_config.py" --root "$E51" --json > /dev/null 2> "$TMP/51e-t3.err"
+{ [ "$R51ERC" -eq 0 ] && [ "$(g51e "d['destination']")" = "C0TEAM" ] \
+  && grep -q 'seams.chat.targets.team.destination' "$TMP/51e-t3.err"; } \
+  && ok "a machine-local destination: per_ticket is refused, and routing stays on the team's channel" \
+  || bad "a personal config flipped a standing target to per-ticket" "rc=$R51ERC dest=$(g51e "d.get('destination')") $(head -2 "$TMP/51e-t3.err")"
+rm -f "$E51/.claude/config/connections.local.yaml"
+# The check above also passes through Slack's empty user_keys, so pin the reserved key directly:
+# removing `destination` from the reserved set must fail here, not pass silently.
+python3 -c 'import sys; sys.path.insert(0, "bin"); import effective_config as e; print("destination" in e.RESERVED_SEAM_KEYS)' \
+  > "$TMP/51e-reserved.out" 2>&1
+[ "$(cat "$TMP/51e-reserved.out")" = "True" ] \
+  && ok "destination is a reserved key (no adapter can declare it personal)" \
+  || bad "destination is not reserved: an adapter listing it in user_keys would let a machine file flip routing" "$(cat "$TMP/51e-reserved.out")"
+
 hdr "52 · selftest itself parses under stock macOS bash 3.2 (self-lint)"
 # bash 3.2 — /bin/bash on every Mac — mis-scans a heredoc nested inside $( ): backticks,
 # apostrophes, or parens in the BODY desync the parser, hundreds of sections print ✓, and the run
@@ -9504,6 +9705,13 @@ PATH="$PD_OLD:$SAFEBIN" claude plugin install --help 2>&1 | grep -q -- '--scope'
 # A real plugin payload the install records can legitimately point at.
 PD_PAYLOAD="$PD/payload"; mkdir -p "$PD_PAYLOAD/.claude-plugin"
 printf '{"name":"acme","version":"3.5.0"}' > "$PD_PAYLOAD/.claude-plugin/plugin.json"
+# A healthy payload is a COMPLETE one: install_payload also checks the files setup opens.
+python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p; print("\n".join(p.REQUIRED_PAYLOAD))' \
+  > "$TMP/pd-required.txt" 2>/dev/null
+while IFS= read -r rel; do
+  [ -n "$rel" ] || continue
+  mkdir -p "$PD_PAYLOAD/$(dirname "$rel")" && : > "$PD_PAYLOAD/$rel"
+done < "$TMP/pd-required.txt"
 
 # pd_repo <dir> <git|gitfile|nogit> <git-source|github-source|two|none>
 pd_repo() {
@@ -9719,6 +9927,17 @@ pd_case "payload present" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json
   && { pd_is install_payload ok \
        && ok "control: a record pointing at a real payload passes (the fail above is not vacuous)" \
        || bad "a healthy payload was reported as broken" "$PD_OUT"; }
+# A partial copy (plugin.json present, a skill file missing) fails here, named, with the reinstall.
+[ -s "$TMP/pd-required.txt" ] && ok "the required-payload list is importable ($(wc -l < "$TMP/pd-required.txt" | tr -d ' ') files)" \
+  || bad "plugin_doctor.REQUIRED_PAYLOAD could not be read"
+mv "$PD_PAYLOAD/.claude/skills/setup/interview.md" "$TMP/pd-held.md"
+pd_case "partial payload" "$PD_MODERN" --root "$PDR" --config-root "$PDC" --json --no-probe \
+  && { { pd_is install_payload fail && grep -q 'incomplete' "$TMP/pd.out" \
+         && grep -q 'interview.md' "$TMP/pd.out" \
+         && grep -q 'claude plugin uninstall acme@acmehub --scope project' "$TMP/pd.out"; } \
+       && ok "a payload missing a file setup opens → install_payload fail, naming the file and the reinstall" \
+       || bad "an incomplete payload was not caught" "$PD_OUT"; }
+mv "$TMP/pd-held.md" "$PD_PAYLOAD/.claude/skills/setup/interview.md"
 
 # --- (d) the CLI that is too old for --scope ------------------------------------------------------
 # These two runs deliberately DROP --no-probe: they are what exercises the shim, and the tripwire is
@@ -10940,6 +11159,174 @@ done
 ! grep -qE 'would (could|would)' tests/guard/golden.json \
   && ok "guard golden corpus has no doubled modal ('would could' / 'would would')" \
   || bad "tests/guard/golden.json contains a doubled modal; the bypass message prefixes a verb PLAIN_CHANGE already carries"
+
+hdr "60 · setup a person can follow: the map, questions that explain themselves, checked before writing"
+# The first clean-profile run (a fake analyst on a fresh Mac) asked "why aren't you asking me these
+# interactive questions?", was told only one chat tool could get per-ticket recipients, was offered
+# invented tracker keys, and learned about a refused folder name only after the files were written.
+SK60=".claude/skills/setup/SKILL.md"; IV60=".claude/skills/setup/interview.md"
+# (a) the question tool comes from the RUNTIME ADAPTER, never from a skill.
+python3 - <<'PY' >"$TMP/q60.out" 2>&1
+import sys, re, pathlib
+sys.path.insert(0, "bin")
+from kit_paths import read_frontmatter
+bad = []
+for f in sorted(pathlib.Path("adapters/runtime").glob("*.md")):
+    if f.name == "README.md":
+        continue
+    fm = read_frontmatter(f)
+    qt, ql, sq = fm.get("question_tool", ""), fm.get("question_limits", ""), fm.get("structured_questions")
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", qt or ""):
+        bad.append(f"{f.name}: question_tool={qt!r}")
+    if sq == "yes" and qt == "none":
+        bad.append(f"{f.name}: structured_questions yes but question_tool none")
+    if sq != "yes" and qt != "none":
+        bad.append(f"{f.name}: question_tool set but structured_questions={sq}")
+    if qt == "none" and ql != "none":
+        bad.append(f"{f.name}: no question tool, so question_limits must be none (got {ql!r})")
+    if qt != "none" and ql != "unknown" and not re.match(r"^max_questions=\d+ max_options=\d+$", ql or ""):
+        bad.append(f"{f.name}: question_limits={ql!r}")
+print("\n".join(bad))
+PY
+[ -z "$(tr -d '[:space:]' < "$TMP/q60.out")" ] && ok "every runtime adapter declares question_tool + question_limits, consistent with structured_questions" \
+  || bad "a runtime adapter's question metadata is missing or inconsistent" "$(cat "$TMP/q60.out")"
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=claude-code python3 bin/kit_paths.py --json \
+  > "$TMP/kp60.json" 2>/dev/null
+env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME=no-such-runtime python3 bin/kit_paths.py --json \
+  > "$TMP/kp60-unknown.json" 2>/dev/null
+python3 - "$TMP/kp60.json" "$TMP/kp60-unknown.json" <<'PY' >"$TMP/kp60.out" 2>&1
+import json, sys
+k = json.load(open(sys.argv[1]))["capabilities"]; u = json.load(open(sys.argv[2]))["capabilities"]
+print(k.get("question_tool"), k.get("question_limits"), "|", u.get("question_tool"), u.get("question_limits"))
+PY
+[ "$(cat "$TMP/kp60.out")" = "AskUserQuestion max_questions=4 max_options=4 | none none" ] \
+  && ok "kit_paths --json carries the question tool and its limits, flooring to none/none for an unknown runtime" \
+  || bad "kit_paths does not expose question_tool/question_limits as setup expects" "$(cat "$TMP/kp60.out")"
+qt60=""
+for t in $(grep -h '^question_tool:' adapters/runtime/*.md | awk '{print $2}' | sort -u); do
+  [ "$t" = "none" ] && continue
+  # A tool spelled as a plain word ("question") is indistinguishable from prose; the distinctive
+  # spellings (CamelCase, snake_case) are what a hard-coded call would carry.
+  case "$t" in *[A-Z_]*) ;; *) continue ;; esac
+  grep -rqw "$t" .claude/skills .claude/commands 2>/dev/null && qt60="$qt60 $t"
+done
+[ -z "$qt60" ] && ok "no skill names a runtime's question tool (setup reads it from kit_paths)" \
+  || bad "a skill hard-codes a runtime question tool name" "$qt60"
+grep -q 'capabilities.question_tool' "$SK60" && grep -q 'one question at a' "$SK60" \
+  && ok "setup asks with the runtime's tool when it has one, one question at a time otherwise" \
+  || bad "setup's question rule lost its capability gate or its prose fallback"
+# (b) the map comes first, every step narrates, setup ends on a named state.
+m60="$(grep -n 'Setup has four steps' "$SK60" | head -1 | cut -d: -f1)"
+p60="$(grep -n '^### Phase 1' "$SK60" | head -1 | cut -d: -f1)"
+{ [ -n "$m60" ] && [ -n "$p60" ] && [ "$m60" -lt "$p60" ]; } \
+  && ok "the four-step map is written before Phase 1's first probe" \
+  || bad "the setup map is missing or placed after Phase 1" "map=${m60:-none} phase1=${p60:-none}"
+st60="$(grep -n '^## Start here, in the default mode: show the map' "$SK60" | head -1 | cut -d: -f1)"
+la60="$(grep -n '^## Ensure the launcher' "$SK60" | head -1 | cut -d: -f1)"
+{ [ -n "$st60" ] && [ -n "$la60" ] && [ "$st60" -lt "$la60" ]; } \
+  && ok "the 'show the map first' section comes before the launcher's run-this-first command" \
+  || bad "the map instruction is missing or placed after the launcher (agents run the launcher first)" "start=${st60:-none} launcher=${la60:-none}"
+{ grep -q 'not connected here yet' "$SK60" && grep -q 'Never move a detected option' "$SK60" \
+  && grep -q "edit the kit's own files" "$SK60" && grep -q 'exact command to run in' "$SK60" \
+  && grep -q 'follow-up question listing the next' "$SK60" && grep -q 'never behind "Show more"' "$SK60" \
+  && grep -q 'No git name or email?' "$SK60"; } \
+  && ok "setup offers undetected supported tools, never hides detected ones, hands refused commands to the person, never edits the kit" \
+  || bad "a run-2 rule is missing (undetected tools, hidden options, refused commands, kit edits)"
+{ grep -q 'Ready for your first ticket' "$SK60" && grep -q 'things to finish' "$SK60"; } \
+  && ok "setup ends on a named state (ready, or ready with N things to finish)" \
+  || bad "setup's named end states are missing"
+python3 tests/plain_language/check.py --marked "$SK60" --marked "$IV60" > "$TMP/pl60.out" 2>&1 \
+  && ok "setup's say-this blocks (the map, the usage question) are marked and plain" \
+  || bad "a setup say-this block uses internal terms" "$(head -5 "$TMP/pl60.out")"
+{ grep -q 'Every question explains itself' "$SK60" && grep -q 'Never invent a value' "$SK60" \
+  && grep -q 'None / we don' "$SK60" && grep -q 'All of these' "$SK60" && grep -q 'Show more' "$SK60" \
+  && grep -q 'Talk about the work, not the kit' "$SK60"; } \
+  && ok "the option rules are stated: explain, recommend, none, all, show more, never invented" \
+  || bad "one of setup's option rules is missing"
+# (c) the interview asks about the work, and the kit's limits never become the person's choice.
+{ grep -q 'How does work reach you' "$IV60" && grep -q 'Where does your data live' "$IV60" \
+  && grep -q 'How do you share results' "$IV60" && grep -q "We don't have one" "$IV60" \
+  && grep -q 'never ask the person to type it' "$IV60" && grep -q 'destination: per_ticket' "$IV60" \
+  && grep -q 'even when no activity is found' "$IV60"; } \
+  && ok "the interview is work-first: arrival, data, sharing (several tools), dev 'none', listed projects" \
+  || bad "a work-first interview element is missing from interview.md"
+grep -q 'counts only' "$IV60" && grep -q "won't read any messages" "$IV60" \
+  && ok "suggestions from past usage are opt-in and counts-only" \
+  || bad "the usage-suggestion consent question or its counts-only limit is missing"
+# (d) a folder that is not a repository gets an offer, not a dead end.
+{ grep -q 'Start a new repository here' "$SK60" && grep -q 'git init' "$SK60" \
+  && grep -q '\*\*private\*\*' "$SK60"; } \
+  && ok "setup offers git init (and a remote only on its own yes, private by default)" \
+  || bad "setup's no-repository offer is missing"
+# (e) setup_detect.py: one read-only probe; origin host only, mount roots without their contents.
+SD60="$TMP/sd60"; mkdir -p "$SD60/home/Library/CloudStorage/GoogleDrive-pat@example.test/My Drive" \
+  "$SD60/home/GoogleDrive" "$SD60/plain" "$SD60/repo"
+: > "$SD60/home/Library/CloudStorage/GoogleDrive-pat@example.test/My Drive/SECRET-budget.xlsx"
+: > "$SD60/home/GoogleDrive/SECRET-budget.xlsx"
+git -C "$SD60/repo" init -q 2>/dev/null
+git -C "$SD60/repo" remote add origin https://github.com/acme-private/secret-repo.git 2>/dev/null
+HOME="$SD60/home" python3 bin/setup_detect.py --root "$SD60/plain" --json > "$TMP/sd60-plain.json" 2>/dev/null
+HOME="$SD60/home" python3 bin/setup_detect.py --root "$SD60/repo" --json > "$TMP/sd60-repo.json" 2>/dev/null
+python3 - "$TMP/sd60-plain.json" "$TMP/sd60-repo.json" <<'PY' >"$TMP/sd60.out" 2>&1
+import json, sys
+p = json.load(open(sys.argv[1])); r = json.load(open(sys.argv[2]))
+print(p["git"]["repo"], r["git"]["repo"], r["git"]["origin_host"], r["git"]["origin_public_host"],
+      len(r["mounts"]) >= 1, isinstance(r["clis"], dict))
+PY
+[ "$(cat "$TMP/sd60.out")" = "False True github.com True True True" ] \
+  && ok "setup_detect: no repo vs repo, origin host + public-host flag, a mount root found" \
+  || bad "setup_detect reported the wrong facts" "$(cat "$TMP/sd60.out")"
+! grep -q 'secret-repo\|acme-private' "$TMP/sd60-repo.json" \
+  && ok "setup_detect reports the origin HOST only, never the repository path" \
+  || bad "setup_detect leaked the origin's path (it can name a private org or repo)"
+! grep -q 'SECRET-budget' "$TMP/sd60-repo.json" "$TMP/sd60-plain.json" \
+  && ok "setup_detect names mount roots, never anything inside them" \
+  || bad "setup_detect listed a file inside a synced drive"
+# (f) setup_draft_check.sh checks the DRAFT's own machine file, not the real repo's.
+DC60="$TMP/dc60"; mkdir -p "$DC60/real/.claude/config" "$DC60/draft"
+git -C "$DC60/real" init -q 2>/dev/null
+cp .claude/config/stack.yaml "$DC60/draft/stack.yaml"
+cp .claude/config/stack.yaml "$DC60/real/.claude/config/stack.yaml"
+printf 'person: alice\nschema_version: 1\nmode: overrides\nseams:\n  docstore:\n    mount_root: "%s"\n' "$DC60/clean-mount" \
+  > "$DC60/real/.claude/config/connections.local.yaml"
+printf 'person: alice\nschema_version: 1\nmode: overrides\nseams:\n  docstore:\n    mount_root: "%s"\n' "$DC60/a&b" \
+  > "$DC60/draft/dirty.local.yaml"
+printf 'person: alice\nschema_version: 1\nmode: overrides\nseams:\n  docstore:\n    mount_root: "%s"\n' "$DC60/clean-mount" \
+  > "$DC60/draft/clean.local.yaml"
+( cd "$DC60/real" && CLAUDE_PROJECT_DIR="$DC60/real" bash "$KIT/bin/setup_draft_check.sh" \
+    "$DC60/draft/stack.yaml" "$DC60/draft/dirty.local.yaml" ) > "$TMP/dc60-dirty.out" 2>&1; dc60d=$?
+( cd "$DC60/real" && CLAUDE_PROJECT_DIR="$DC60/real" bash "$KIT/bin/setup_draft_check.sh" \
+    "$DC60/draft/stack.yaml" "$DC60/draft/clean.local.yaml" ) > "$TMP/dc60-clean.out" 2>&1
+{ [ "$dc60d" -ne 0 ] && grep -q 'docstore.*metacharacters' "$TMP/dc60-dirty.out"; } \
+  && ok "the draft check catches a refused character in the DRAFT machine file, though the real one is clean" \
+  || bad "the draft check missed the draft's refused character (did it read the real repo's file?)" "$(grep docstore "$TMP/dc60-dirty.out")"
+! grep -q 'docstore.*metacharacters' "$TMP/dc60-clean.out" \
+  && ok "…and a clean draft machine file passes that same check" \
+  || bad "a clean draft was refused" "$(grep docstore "$TMP/dc60-clean.out")"
+[ "$(cat "$DC60/real/.claude/config/connections.local.yaml" | grep -c 'clean-mount')" = "1" ] && [ ! -e "$DC60/real/.claude/config/stack.yaml.bak" ] \
+  && ok "the draft check leaves the real repository untouched" \
+  || bad "the draft check modified the real repository"
+mkdir -p "$DC60/plain"
+mkdir -p "$DC60/failbin" && printf '#!/bin/sh\nexit 1\n' > "$DC60/failbin/mktemp" && chmod +x "$DC60/failbin/mktemp"
+( cd "$DC60/plain" && PATH="$DC60/failbin:$PATH" bash "$KIT/bin/setup_draft_check.sh" "$DC60/draft/stack.yaml" ) > /dev/null 2>&1; dc60t=$?
+{ [ "$dc60t" -eq 2 ] && [ ! -e "$DC60/plain/.git" ]; } \
+  && ok "when no scratch folder can be made, the draft check stops (exit 2) and never runs git init in the caller's folder" \
+  || bad "a failed mktemp let the draft check touch the caller's folder" "rc=$dc60t"
+HOME="$SD60/no-such-home" python3 bin/setup_detect.py --root "$SD60/plain" --json > "$TMP/sd60-nohome.json" 2>&1; sd60h=$?
+{ [ "$sd60h" -eq 0 ] && grep -q '"mounts": \[\]' "$TMP/sd60-nohome.json"; } \
+  && ok "setup_detect survives a missing home folder (exit 0, no mounts) instead of crashing" \
+  || bad "setup_detect crashed or reported mounts without a home folder" "rc=$sd60h $(head -3 "$TMP/sd60-nohome.json")"
+bash bin/setup_draft_check.sh > /dev/null 2>&1; [ $? -eq 2 ] \
+  && ok "setup_draft_check without a draft is a usage error (exit 2)" \
+  || bad "setup_draft_check without arguments did not exit 2"
+# (g) the doctor's completeness list names only files the kit really ships.
+python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p, pathlib; print("\n".join(r for r in p.REQUIRED_PAYLOAD if not pathlib.Path(r).is_file()))' \
+  > "$TMP/rp60.out" 2>&1
+[ -z "$(tr -d '[:space:]' < "$TMP/rp60.out")" ] && ok "every file the install check requires ships in the kit" \
+  || bad "plugin_doctor requires a file the kit does not ship (a real install would fail)" "$(cat "$TMP/rp60.out")"
+# (h) the suite's own git config is hermetic (the leak a per-user GIT_CONFIG_GLOBAL exposed).
+case "$GIT_CONFIG_GLOBAL" in "$TMP"/*) ok "the suite reads an empty, suite-owned git config (no contributor identity leaks in)" ;;
+  *) bad "GIT_CONFIG_GLOBAL is not suite-owned" "$GIT_CONFIG_GLOBAL" ;; esac
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

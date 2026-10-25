@@ -55,8 +55,8 @@ seams:
         always_include: [Dana]          # fixed stakeholder list (never a self-tag)
         # include_self: false           # also mention the shipper, in addition to always_include
         verify: null
-      # Email is a CHAT TARGET, not a sixth tool slot — the activated form of the commented
-      # `seams.chat.targets.email` block the setup interview writes on an email-out answer.
+      # Email is a CHAT TARGET, not a sixth tool slot. This is the STANDING-destination form (a
+      # fixed address and list); the setup interview's default is a `destination: per_ticket` target.
       # An email cannot be unsent, so `default_mode: draft` is set EXPLICITLY on every email
       # target: an unset default_mode is not documented as meaning draft.
       email:

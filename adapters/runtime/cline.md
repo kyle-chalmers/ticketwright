@@ -10,6 +10,8 @@ session_start: unknown
 tool_gate: unknown
 subagents: no
 structured_questions: unknown
+question_tool: none
+question_limits: none   # no structured question tool a skill can call: ask in prose
 plan_mode: native          # Plan mode: reads and searches, cannot modify files or run commands; Act mode executes (docs.cline.bot/features/plan-and-act, 2026-09-11)
 gate_ask_tier: unknown      # the gate API itself is in flux; no return schema documented
 gate_fail_mode: unknown

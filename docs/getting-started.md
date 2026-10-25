@@ -345,17 +345,31 @@ ticket folder holds, so they stay out of git by default, and a guard asks before
 or copied into a docstore backup. It reads filenames and document shape, **not meaning**, so it
 catches the bulk artifact and does not pretend to be a confidentiality review.
 
-**What it then asks — in rounds, detected answers pre-selected.** Four rounds always run: **who**
-(you, confirmed from identity resolution, and who else is on the team), **where work comes from**
-(tracker or *none*, key prefix, the tracker's "done" state, how catalog rows link back), **where
-the data lives** (warehouse or *none*, its required keys, a dev target), and **where work goes**
-(git host confirmed from `origin`, docstore, chat and its stakeholder include-list, and one
-question covering email intake and delivery plus whether an AI notetaker carries work in). Two
-more are individually skippable, each skip labeled with its cost — **how you work** (role,
-domain, analysis tools) and **house rules** (the two
-policies whose defaults most often differ by team). A skipped round becomes a `# TODO` in the
-config plus a punch-list entry naming the command that finishes it later (`/setup role`,
-`/setup policies`). The other eight policies ship as commented defaults you can edit any time.
+**How it runs.** Setup opens with a four-step map (check this machine, your work, review the
+plan, write and check) and says at each step what it's doing and whether it will ask anything.
+Every question says why it's asked and what each answer changes. Where the agent has a clickable
+question tool, the questions use it; otherwise they come one at a time as a numbered list. A folder
+that isn't a git repository yet gets an offer to run `git init` (or to stop so you can clone the
+team's repo), not a dead end.
+
+**What it then asks, in rounds, in your words.** Four rounds always run: **who** (you, and who
+else is on the team), **how work reaches you** (a tracker, email, meeting notes, chat, or people
+just asking, and which tracker project holds the tickets, picked from the tracker's own list),
+**where your data lives** (one or more warehouses, which you use most, and where test tables go,
+including "we don't have one"), and **how you share results and where files are kept** (every tool
+you share through: pick Slack and email both and both are set up, with who gets each result chosen
+when you ship it; the drive folder; the code host, confirmed from `origin`). Two more are
+individually skippable, each skip labeled with its cost: **how you work** (role, domain, analysis
+tools) and **house rules** (the two policies whose defaults most often differ by team, with each
+option explained). A skipped round becomes a `# TODO` in the config plus a punch-list entry naming
+the command that finishes it later (`/setup role`, `/setup policies`). The other eight policies
+ship as commented defaults you can edit any time. Setup can rank options by what you've used
+recently, only if you say yes, and only by counting: it never reads messages, notes or file
+contents.
+
+**Before you see the plan** it checks the draft config in a throwaway copy, so a folder name with a
+character the kit refuses, or a missing setting, comes back as a question instead of an error after
+the files are written.
 
 **What it writes:**
 
@@ -373,10 +387,13 @@ config plus a punch-list entry naming the command that finishes it later (`/setu
   CSVs committed by default, PII opting out via `*.private.csv` or a `private/` folder.
 - **The AI-layer index and a seeded ticket index.**
 
-**Then it verifies and hands off:** two clearly-labelled checks — `selftest.sh` for kit integrity and
-`verify_stack.sh` for whether *your* tools are actually reachable (an unreachable tool isn't fatal at
-setup time; it prints the auth fix) — then offers to commit the scaffold, since an uncommitted setup
-means later ticket PRs reference rules that aren't in the repo's history.
+**Then it verifies and hands off:** `verify_stack.sh` checks that *your* tools are actually
+reachable (an unreachable tool isn't fatal at setup time; it prints the fix). The kit's own files
+were already checked for completeness in step 1, so the several-minute `selftest.sh` runs only when
+you ask for it (useful on a vendored or edited kit). Setup ends on a named state, **Ready for your
+first ticket** or **Ready, with N things to finish** plus the command for each, and offers to commit
+the scaffold either way, since an uncommitted setup means later ticket PRs reference rules that
+aren't in the repo's history.
 
 ### Project-scoped by default
 

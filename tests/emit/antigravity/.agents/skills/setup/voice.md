@@ -42,7 +42,7 @@ at the `project.voice_profiles.path` (default `voices/{profile_id}.md`), rendere
    handle — happens here, once, via the tracker adapter if useful; write it into the frontmatter. Do
    **not** make `/ship` resolve it live.)
 
-4. **Interview (≤5 short questions, asked in prose).** Fill the template's sections: tone &
+4. **Interview (≤5 short questions, asked per the question rules in [SKILL.md](SKILL.md)).** Fill the template's sections: tone &
    register, bullets-vs-prose + greeting/sign-off, emoji, favored phrasings, banned words/tics.
    Keep answers terse — this is a style guide, not an essay. (The cap is deliberate: a style
    interview is a genuinely short feature, unlike the repo interview, which runs in rounds.)
