@@ -31,6 +31,40 @@ All notable changes to this project are documented here. Format loosely follows
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.
 
+### Docs
+- **The README is ready to be the Claude plugin directory listing.** It opens with a KC AI Labs
+  branded banner and a rendered walkthrough GIF (labeled as rendered, not recorded), says "Claude
+  Code plugin" in its first line, and gives a quick start for Claude Code and for Codex, Cursor and
+  the other agents (`pip install ticketwright`, `ticketwright init`, `ticketwright install
+  --runtime`), with an honest line on what other agents get today. New sections: example prompts
+  to try, a skills overview, and **Data and network**, which says what the skills read, which of
+  your tools they contact and when, what the hooks read locally, and what gets committed. The
+  mermaid diagrams are now branded images that render on GitHub, PyPI and the listing alike.
+- New trust and community files: `SECURITY.md` (private vulnerability reporting, and what the
+  guards do and don't promise), `SUPPORT.md`, `PRIVACY.md`, `CODE_OF_CONDUCT.md`, and bug and
+  feature issue forms.
+- `plugin.json` has a plain description, `author.url`, the 1024px listing icon
+  (`.claude-plugin/icon.png`) and the directory's `documentationUrl`, `supportUrl` and
+  `privacyPolicyUrl` fields. CI's plugin-validate job pins Claude Code 2.1.296, since versions
+  before 2.1.281 fail `--strict` on those fields. `pyproject.toml` gains Documentation, Changelog
+  and Security links.
+- `docs/README.md` indexes every doc by what you're trying to do. The shipped implementation
+  briefs, the 2026-06 hardening review, the `meetings` slot judgment and the PyPI runbook moved to
+  `docs/maintainers/`.
+- Fixed stale docs: the roadmap's "where we are" now describes v4.2, not v1.2; troubleshooting no
+  longer tells project-scope installs to run `claude plugin update`, and points plugin users at
+  `bin/tw` instead of kit scripts they don't have; architecture counts 6 hooks, not 4; the
+  how-it-works tool table lists only tools with shipped adapters; "Installing without the plugin"
+  is rewritten as short bullets.
+- `scripts/readme_media/` holds the maintainer-only tooling that renders the logo, icon, diagrams,
+  GIF and social preview from source (`brand.py`, `diagrams.html`, `claude_flow.py`). It is not
+  part of the kit or the wheel.
+- Selftest section 58 raises the README prose budget from 600 to 900 words and checks that every
+  README image is an absolute main-branch URL to a file that exists, with real alt text. New
+  section 60 pins the listing: a square PNG icon, https listing links to real files, every
+  registered hook in the hooks table, the disclosure and trust links, and at least three example
+  prompts.
+
 ## [4.2.0] — 2026-10-03
 
 ### Changed

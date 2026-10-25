@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticketwright README diagrams</title>
+<!-- Rendered by render_diagrams.py: each <svg class="diagram"> becomes docs/images/<id>.png at 2x.
+     KC AI Labs palette: lime is the kit, orange is only what a person does or approves. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  svg.diagram { display: block; margin-bottom: 40px; }
+  svg text { font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif; }
+  .bg { fill: #030303; }
+  .grid { fill: url(#dots); }
+  .card { fill: #0a0a0a; stroke: #303030; stroke-width: 1.5; }
+  .brain { fill: #141414; stroke: #c4ff00; stroke-width: 2; }
+  .kicker { fill: #b8b8b8; font-size: 15px; font-weight: 500; letter-spacing: .02em; }
+  .h { fill: #f5f5f5; font-size: 19px; font-weight: 600; }
+  .lime { fill: #c4ff00; }
+  .cmd { fill: #c4ff00; font-family: "JetBrains Mono", Menlo, monospace; font-size: 15px; font-weight: 600; }
+  .mono { fill: #f5f5f5; font-family: "JetBrains Mono", Menlo, monospace; font-size: 13px; }
+  .body { fill: #b8b8b8; font-size: 14px; }
+  .num { fill: #030303; font-size: 15px; font-weight: 700; }
+  .flow { stroke: #c4ff00; stroke-width: 2.5; fill: none; }
+  .loop { stroke: #c4ff00; stroke-width: 2.5; fill: none; stroke-dasharray: 7 6; }
+  .label { fill: #f5f5f5; font-size: 14px; font-weight: 500; }
+  .you { fill: rgba(228, 125, 91, .12); stroke: #e47d5b; stroke-width: 1.5; }
+  .youtext { fill: #e47d5b; font-size: 13.5px; font-weight: 600; }
+  .guard { fill: #0a0a0a; stroke: #c4ff00; stroke-width: 1.5; stroke-dasharray: 4 4; }
+  .chip { fill: #141414; stroke: #303030; stroke-width: 1; }
+  .chiph { fill: #c4ff00; font-size: 13.5px; font-weight: 600; }
+  .chipt { fill: #f5f5f5; font-size: 13px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.1" fill="#f5f5f5" fill-opacity=".07"/>
+    </pattern>
+    <marker id="head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#c4ff00"/>
+    </marker>
+  </defs>
+</svg>
+
+<!-- ============ banner.png: the README hero, readable on light and dark pages ============ -->
+<svg id="banner" class="diagram" xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330">
+  <defs>
+    <radialGradient id="bannerglow" cx="50%" cy="38%" r="60%">
+      <stop offset="0" stop-color="#c4ff00" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#c4ff00" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bannerwarm" cx="96%" cy="118%" r="45%">
+      <stop offset="0" stop-color="#e47d5b" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#e47d5b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect class="bg" width="1200" height="330" rx="22"/>
+  <rect class="grid" width="1200" height="330" rx="22"/>
+  <rect width="1200" height="330" rx="22" fill="url(#bannerglow)"/>
+  <rect width="1200" height="330" rx="22" fill="url(#bannerwarm)"/>
+  <image href="../../docs/images/logo-dark.svg" x="390" y="66" width="420" height="72"/>
+  <text x="600" y="200" text-anchor="middle" style="font-size:34px;font-weight:600;fill:#f5f5f5;letter-spacing:-.01em">The <tspan fill="#c4ff00">Claude Code</tspan> plugin for ticket-driven analysis</text>
+  <text x="600" y="246" text-anchor="middle" style="font-size:19px;fill:#b8b8b8">Prior work recalled  ·  every result reviewed  ·  nothing sent without your go-ahead</text>
+  <text x="1160" y="304" text-anchor="end" style="font-size:13px;letter-spacing:.08em;fill:#b8b8b8">A <tspan fill="#c4ff00" font-weight="600">KC AI LABS</tspan> PROJECT</text>
+</svg>
+
+<!-- ============ lifecycle.png ============ -->
+<svg id="lifecycle" class="diagram" xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+  <rect class="bg" width="1200" height="600"/>
+  <rect class="grid" width="1200" height="600"/>
+  <text class="kicker" x="40" y="52">EVERY TICKET, THE SAME FIVE PHASES. EACH SHIPPED TICKET FEEDS THE NEXT.</text>
+  <image href="../../docs/images/logo-dark.svg" x="984" y="30" width="176" height="30"/>
+
+  <!-- team brain -->
+  <rect class="brain" x="36" y="130" width="176" height="210" rx="14"/>
+  <text class="h lime" x="56" y="170">Team brain</text>
+  <text class="mono" x="56" y="205">tickets/</text>
+  <text class="mono" x="56" y="227">INDEX.md</text>
+  <text class="mono" x="56" y="249">OBJECTS.md</text>
+  <text class="body" x="56" y="287">every past ticket,</text>
+  <text class="body" x="56" y="307">searchable by</text>
+  <text class="body" x="56" y="327">people and agents</text>
+
+  <!-- brain -> phase 1 -->
+  <path class="flow" d="M214 235H294" marker-end="url(#head)"/>
+  <text class="label" x="254" y="208" text-anchor="middle" style="font-size:13px">closest</text>
+  <text class="label" x="254" y="224" text-anchor="middle" style="font-size:13px">prior work</text>
+
+  <!-- five phases -->
+  <g>
+    <rect class="card" x="300" y="130" width="160" height="210" rx="12"/>
+    <circle class="lime" cx="326" cy="158" r="14"/><text class="num" x="326" y="163.5" text-anchor="middle">1</text>
+    <text class="h" x="318" y="205">Open the work</text>
+    <text class="cmd" x="318" y="232">/ticket</text>
+    <text class="body" x="318" y="268">loads the context</text>
+    <text class="body" x="318" y="288">and prior work,</text>
+    <text class="body" x="318" y="308">writes the plan</text>
+  </g>
+  <path class="flow" d="M462 235H478" marker-end="url(#head)"/>
+  <g>
+    <rect class="card" x="482" y="130" width="160" height="210" rx="12"/>
+    <circle class="lime" cx="508" cy="158" r="14"/><text class="num" x="508" y="163.5" text-anchor="middle">2</text>
+    <text class="h" x="500" y="205">Do the work</text>
+    <text class="cmd" x="500" y="232">/build</text>
+    <text class="body" x="500" y="268">runs the approved</text>
+    <text class="body" x="500" y="288">plan, then calls</text>
+    <text class="body" x="500" y="308">/review itself</text>
+  </g>
+  <path class="flow" d="M644 235H660" marker-end="url(#head)"/>
+  <g>
+    <rect class="card" x="664" y="130" width="160" height="210" rx="12"/>
+    <circle class="lime" cx="690" cy="158" r="14"/><text class="num" x="690" y="163.5" text-anchor="middle">3</text>
+    <text class="h" x="682" y="205">Quality-check</text>
+    <text class="cmd" x="682" y="232">/review</text>
+    <text class="body" x="682" y="268">re-runs each query,</text>
+    <text class="body" x="682" y="288">walks the validation</text>
+    <text class="body" x="682" y="308">pyramid to a verdict</text>
+  </g>
+  <path class="flow" d="M826 235H842" marker-end="url(#head)"/>
+  <g>
+    <rect class="card" x="846" y="130" width="148" height="210" rx="12"/>
+    <circle class="lime" cx="872" cy="158" r="14"/><text class="num" x="872" y="163.5" text-anchor="middle">4</text>
+    <text class="h" x="864" y="205">Deliver</text>
+    <text class="cmd" x="864" y="232">/ship</text>
+    <text class="body" x="864" y="268">backup, tracker</text>
+    <text class="body" x="864" y="288">comment, commit</text>
+    <text class="body" x="864" y="308">and pull request</text>
+  </g>
+  <path class="flow" d="M996 235H1012" marker-end="url(#head)"/>
+  <g>
+    <rect class="card" x="1016" y="130" width="144" height="210" rx="12"/>
+    <circle class="lime" cx="1042" cy="158" r="14"/><text class="num" x="1042" y="163.5" text-anchor="middle">5</text>
+    <text class="h" x="1034" y="205">Announce</text>
+    <text class="cmd" x="1034" y="232">/ship</text>
+    <text class="body" x="1034" y="268">a chat message</text>
+    <text class="body" x="1034" y="288">for your team,</text>
+    <text class="body" x="1034" y="308">drafted for you</text>
+  </g>
+
+  <!-- the person's three moments -->
+  <rect class="you" x="300" y="356" width="160" height="30" rx="15"/>
+  <text class="youtext" x="380" y="376" text-anchor="middle">you approve the plan</text>
+  <rect class="you" x="664" y="356" width="160" height="30" rx="15"/>
+  <text class="youtext" x="744" y="376" text-anchor="middle">you sign off</text>
+  <rect class="you" x="846" y="356" width="314" height="30" rx="15"/>
+  <text class="youtext" x="1003" y="376" text-anchor="middle">you say go ahead before anything is sent</text>
+
+  <!-- shipped ticket feeds the brain -->
+  <path class="loop" d="M920 388V448H135V346" marker-end="url(#head)"/>
+  <rect x="368" y="436" width="364" height="26" fill="#030303"/>
+  <text class="label" x="550" y="454" text-anchor="middle">files the ticket, its assumptions and its QC verdict</text>
+
+  <!-- hooks -->
+  <rect class="guard" x="40" y="500" width="1120" height="62" rx="12"/>
+  <text class="h lime" x="64" y="538" style="font-size:17px">Hooks ask first</text>
+  <text class="body" x="210" y="537" style="font-size:14.5px">destructive warehouse SQL  ·  a push with no approving review  ·  a raw transcript about to be committed or backed up</text>
+</svg>
+
+<!-- ============ tool-slots.png ============ -->
+<svg id="tool-slots" class="diagram" xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
+  <rect class="bg" width="1200" height="520"/>
+  <rect class="grid" width="1200" height="520"/>
+  <text class="kicker" x="40" y="52">SKILLS SPEAK TO TOOL SLOTS, NEVER TO A VENDOR</text>
+  <image href="../../docs/images/logo-dark.svg" x="984" y="30" width="176" height="30"/>
+
+  <rect class="card" x="40" y="110" width="186" height="300" rx="14"/>
+  <text class="h" x="62" y="148">Skills</text>
+  <text class="cmd" x="62" y="190">/ticket</text>
+  <text class="cmd" x="62" y="218">/build</text>
+  <text class="cmd" x="62" y="246">/review</text>
+  <text class="cmd" x="62" y="274">/ship</text>
+  <text class="body" x="62" y="322">written once,</text>
+  <text class="body" x="62" y="342">against verbs</text>
+
+  <path class="flow" d="M228 260H322" marker-end="url(#head)"/>
+  <text class="mono" x="277" y="196" text-anchor="middle" style="font-size:12px">fetch_ticket</text>
+  <text class="mono" x="277" y="214" text-anchor="middle" style="font-size:12px">query</text>
+  <text class="mono" x="277" y="232" text-anchor="middle" style="font-size:12px">backup</text>
+  <text class="mono" x="277" y="296" text-anchor="middle" style="font-size:12px">draft</text>
+  <text class="mono" x="277" y="314" text-anchor="middle" style="font-size:12px">commit</text>
+
+  <rect class="brain" x="328" y="110" width="210" height="300" rx="14"/>
+  <text class="h lime" x="350" y="148">stack.yaml</text>
+  <text class="body" x="350" y="190">which tool fills</text>
+  <text class="body" x="350" y="210">each slot, plus the</text>
+  <text class="body" x="350" y="230">team's policies</text>
+  <text class="mono" x="350" y="282" style="font-size:12px">tracker: jira</text>
+  <text class="mono" x="350" y="302" style="font-size:12px">warehouse: snowflake</text>
+  <text class="mono" x="350" y="322" style="font-size:12px">chat: slack</text>
+  <text class="mono" x="350" y="342" style="font-size:12px">…</text>
+
+  <path class="flow" d="M540 260H580" marker-end="url(#head)"/>
+
+  <rect class="card" x="586" y="110" width="220" height="300" rx="14"/>
+  <text class="h" x="608" y="148">Adapters</text>
+  <text class="mono" x="608" y="182" style="font-size:12px">adapters/&lt;slot&gt;/&lt;tool&gt;.md</text>
+  <text class="body" x="608" y="222">map each verb to</text>
+  <text class="body" x="608" y="242">the tool's real</text>
+  <text class="body" x="608" y="262">command, plus a</text>
+  <text class="body" x="608" y="282">read-only check</text>
+  <text class="body" x="608" y="322">a new tool is one</text>
+  <text class="body" x="608" y="342">more adapter file</text>
+
+  <path class="flow" d="M808 260H864" marker-end="url(#head)"/>
+
+  <g>
+    <rect class="card" x="870" y="110" width="290" height="300" rx="14"/>
+    <text class="h" x="892" y="148">Your tools</text>
+    <rect class="chip" x="890" y="166" width="250" height="34" rx="8"/>
+    <text class="chiph" x="904" y="188">Tracker</text><text class="chipt" x="992" y="188">Jira · Linear · ADO</text>
+    <rect class="chip" x="890" y="206" width="250" height="34" rx="8"/>
+    <text class="chiph" x="904" y="228">Warehouse</text><text class="chipt" x="992" y="228">Snowflake · BigQuery</text>
+    <rect class="chip" x="890" y="246" width="250" height="34" rx="8"/>
+    <text class="chiph" x="904" y="268">Chat</text><text class="chipt" x="992" y="268">Slack · Teams · email</text>
+    <rect class="chip" x="890" y="286" width="250" height="34" rx="8"/>
+    <text class="chiph" x="904" y="308">Docs</text><text class="chipt" x="992" y="308">Drive · SharePoint</text>
+    <rect class="chip" x="890" y="326" width="250" height="34" rx="8"/>
+    <text class="chiph" x="904" y="348">Meetings</text><text class="chipt" x="992" y="348">Zoom · Granola</text>
+    <rect class="chip" x="890" y="366" width="250" height="34" rx="8"/>
+    <text class="chiph" x="904" y="388">Git</text><text class="chipt" x="992" y="388">GitHub · GitLab</text>
+  </g>
+
+  <text class="label" x="600" y="462" text-anchor="middle" style="font-size:16px">Swapping a tool is one line in stack.yaml and one adapter file. No skill changes.</text>
+</svg>
+</body>
+</html>

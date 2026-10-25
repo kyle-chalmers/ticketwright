@@ -1,5 +1,9 @@
 # PROMPT — A visible "release available" notice, until upstream autoUpdate re-installs
 
+> **Historical brief, shipped.** This was the implementation brief for `bin/update_notice.py` and its SessionStart line. It is
+> kept as the design record for maintainers and is not user documentation; the status line
+> below is as it stood when written.
+
 STATUS: DRAFT for maintainer review. Not scheduled. Written 2026-08-23 after reproducing the gap
 live; codex-reviewed the same day with findings folded in. SELF-CONTAINED — the retired planning
 document's standing constraints are restated at the end.

@@ -57,14 +57,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # Pinned: this step executes the package and its lifecycle scripts on the runner.
-      - name: Install Claude Code CLI 2.1.258 (pinned)
+      # Pinned: this step executes the package and its lifecycle scripts on the runner. At least
+      # 2.1.281, because older versions warn on plugin.json's directory listing fields (icon,
+      # documentationUrl, supportUrl, privacyPolicyUrl), which fails --strict.
+      - name: Install Claude Code CLI 2.1.296 (pinned)
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.258
+          npm install -g @anthropic-ai/claude-code@2.1.296
           installed="$(claude --version)"
           case "$installed" in
-            2.1.258*) echo "claude $installed" ;;
-            *) echo "::error::Expected claude 2.1.258, got '$installed'"; exit 1 ;;
+            2.1.296*) echo "claude $installed" ;;
+            *) echo "::error::Expected claude 2.1.296, got '$installed'"; exit 1 ;;
           esac
 
       # Marketplace only. A root target resolves to marketplace.json in preference to

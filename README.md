@@ -1,10 +1,24 @@
-# Ticketwright
+<!-- markdownlint-disable MD033 MD041 -->
+![Ticketwright: the Claude Code plugin for ticket-driven analysis. Prior work recalled, every result reviewed, nothing sent without your go-ahead. A KC AI Labs project.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/banner.png)
 
-[![CI](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/tag/kyle-chalmers/ticketwright?label=release&sort=semver&color=blue)](https://github.com/kyle-chalmers/ticketwright/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib--only-3776AB)
-![tool-agnostic](https://img.shields.io/badge/works%20with-your%20tracker%20%C2%B7%20warehouse%20%C2%B7%20chat%20%C2%B7%20docs%20%C2%B7%20meetings%20%C2%B7%20git-success)
+<div align="center">
+
+[Get started](#get-started) · [Try it](#try-it) · [Skills](#the-skills) · [Safety](#safety-rails) · [Data and network](#data-and-network) · [Docs](docs/README.md) · [Changelog](CHANGELOG.md)
+
+</div>
+
+[![CI](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/ticketwright?label=pypi&color=c4ff00&labelColor=030303)](https://pypi.org/project/ticketwright/) [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-c4ff00?labelColor=030303)](#get-started) [![Python 3.9+, stdlib only](https://img.shields.io/badge/python-3.9%2B%20%C2%B7%20stdlib%20only-c4ff00?labelColor=030303)](pyproject.toml) [![License: MIT](https://img.shields.io/badge/license-MIT-c4ff00?labelColor=030303)](LICENSE)
+
+![A rendered walkthrough of one ticket in a Claude Code chat. /ticket opens TEST-130, ranks bob's TEST-118 as the closest prior work, writes the plan and waits for approval. /build runs the plan. /review walks the validation pyramid (dialect lint, counts and duplicates, reconciliation, an independent re-run) to the person's sign-off and an APPROVE. /ship shows its delivery plan and stops until the person says go ahead, then files the ticket into the team index.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/demo.gif)
+
+<sub>A rendered walkthrough drawn from the skills' own wording, not a screen recording.</sub>
+
+**Ticketwright is a Claude Code plugin for teams whose work product is an answer.** Every ticket
+follows the same five phases, every result is re-run and signed off before it ships, and every
+finished ticket is filed where the next person or agent can find it.
+
+> **Quick start:** run the two commands in [Get started](#get-started), restart Claude Code, then
+> run `/ticketwright:setup`. On another agent, see [Other coding agents](#other-coding-agents).
 
 ## Mission
 
@@ -14,10 +28,13 @@
 
 **Any new or experienced member can pick up any analysis and be productive the same day, because the team's past work is written down and organized, and AI can trace it.**
 
----
+**This is for you if:**
 
-Built for analysts, BI, ops, research and reporting teams whose work product is an answer rather
-than a feature. It sits beside your tracker, warehouse and dashboards.
+- ✅ you're an analytics, BI, ops or reporting team closing many tickets a week
+- ✅ you want every number re-run and signed off before it leaves
+- ✅ you want past work to surface when a similar ticket arrives
+- ✅ you want to keep your tracker, warehouse, chat and drive
+- ❌ you ship software features, or want an agent that posts on its own
 
 ## What it builds: a team brain
 
@@ -28,30 +45,13 @@ prior work already ranked. Details: [docs/how-it-works.md](docs/how-it-works.md)
 
 ## The lifecycle is the map
 
-Every ticket moves through the same five phases, and each shipped ticket feeds the next:
-
-```mermaid
-flowchart LR
-    B[("Team brain<br/>tickets/ + INDEX.md")] -- "closest prior work" --> P1
-    P1["1 · Open the work<br/>/ticket"] --> P2["2 · Do the work<br/>/build"] --> P3["3 · Quality-check<br/>/review"] --> P4["4 · Deliver<br/>/ship"] --> P5["5 · Announce<br/>/ship"]
-    P4 -- "files the ticket, its assumptions and QC verdict" --> B
-```
+![The Ticketwright lifecycle. The team brain (tickets/, INDEX.md, OBJECTS.md) feeds the closest prior work into five phases: 1 Open the work (/ticket), 2 Do the work (/build), 3 Quality-check (/review), 4 Deliver (/ship) and 5 Announce (/ship). You approve the plan, sign off the numbers, and say go ahead before anything is sent. Each shipped ticket is filed back into the brain with its assumptions and QC verdict. Hooks ask first before destructive warehouse SQL, a push with no approving review, or a raw transcript being committed or backed up.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/lifecycle.png)
 
 Quality checking has no slot of its own: `/review` borrows the warehouse to re-run your queries,
-then a person signs off.
+then a person signs off. Skills speak to tool slots, never to a vendor, so swapping a tool is one
+config line and one adapter file:
 
-Skills speak to tool slots, never to a vendor, so swapping a tool is one config line and one
-adapter file:
-
-```mermaid
-flowchart LR
-    S["Skills<br/>/ticket · /build · /review · /ship"] -- "verbs: fetch_ticket,<br/>query, backup, draft" --> Y["stack.yaml<br/>which tool fills<br/>each slot"]
-    Y --> A["adapters/slot/tool.md<br/>verb to real command"]
-    A --> T["Your tools<br/>Jira · Snowflake · Slack<br/>GitHub · Drive · ..."]
-    H{{"Hooks ask first:<br/>destructive SQL,<br/>unreviewed push"}} -. guard .-> T
-```
-
-Cloud-drive backup needs one machine-local step: [docs/drive-mount.md](docs/drive-mount.md).
+![Skills (/ticket, /build, /review, /ship) call verbs such as fetch_ticket, query, backup, draft and commit. stack.yaml names which tool fills each slot, adapters map each verb to the tool's real command, and your tools do the work: tracker, warehouse, chat, docs, meetings and git.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/tool-slots.png)
 
 | Tool slot | Works with |
 |---|---|
@@ -63,12 +63,51 @@ Cloud-drive backup needs one machine-local step: [docs/drive-mount.md](docs/driv
 | Git | GitHub, GitLab, Azure Repos |
 
 These adapters ship today; another tool is [one more adapter file](adapters/README.md).
+Desktop-sync backup needs one local step: [docs/drive-mount.md](docs/drive-mount.md).
+
+## Try it
+
+Plain requests work too. A few to start with:
+
+```text
+/ticketwright:ticket TEST-130
+    Open the ticket, load its context and the closest prior work, write the plan, wait for my OK.
+
+/ticketwright:ticket --recall --object RETURNS
+    Which past tickets touched the RETURNS table, and what can I reuse?
+
+/ticketwright:review --deep
+    Re-check this ticket's numbers with one independent reviewer per validation layer.
+
+/ticketwright:ship
+    Show me exactly what will be sent and where, then wait for "go ahead".
+
+What did we learn last time someone measured late orders by region?
+```
+
+## The skills
+
+```
+/ticket <id>        opens or resumes the ticket, auto-loads its context + closest prior work,
+                    writes the plan (and the spec when the plan calls for one), and waits for
+                    your approval before anything is built ↓
+/build              executes the approved plan or spec in fresh context, then runs /review itself
+/review [--deep]    the independent QC pass /build runs for you: re-runs queries, walks the validation
+                    pyramid → APPROVE / REQUEST-CHANGES; run it directly to re-check or go --deep
+                    …and at the top of that pyramid, opens the deliverables in YOUR apps and waits
+/ship [--go]        backup → tracker comment → chat draft → commit + PR, a HARD HALT before anything
+                    external; warns, waits for a typed `ship unreviewed`, and records it when no
+                    review verdict is on file
+/setup              configure once, or onboard a teammate
+/refresh            rebuild the catalog
+/skillify           turn a recurring workflow into its own skill
+```
+
+On a plugin install, prefix each one: `/ticketwright:ticket`.
 
 ## What a working repo looks like
 
-`/setup` writes the top half once. The `tickets/` half grows as the team works: one folder per
-person, one folder per ticket, and the same shape inside every ticket. The labels show which step
-writes each piece.
+`/setup` writes the top half once; the `tickets/` half grows as the team works.
 
 ```
 your-repo/
@@ -101,33 +140,12 @@ your-repo/
             └── delivery-plan.yaml     /ship     who received it, and where
 ```
 
-Nobody maintains the catalog by hand. `/ship` files each finished ticket into `INDEX.md`,
-`OBJECTS.md` and the graph, and `/ticket` searches every owner's past work, not only yours. When
-Alice's TEST-130 mentions Bob's TEST-118, the two are linked, so her reviewer can trace the numbers
-back to his. A new teammate adds one `people/` file and gets their own folder. Nothing else changes.
-
-## How work flows
-
-```
-/ticket <id>        opens or resumes the ticket, auto-loads its context + closest prior work,
-                    writes the plan (and the spec when the plan calls for one), and waits for
-                    your approval before anything is built ↓
-/build              executes the approved plan or spec in fresh context, then runs /review itself
-/review [--deep]    the independent QC pass /build runs for you: re-runs queries, walks the validation
-                    pyramid → APPROVE / REQUEST-CHANGES; run it directly to re-check or go --deep
-                    …and at the top of that pyramid, opens the deliverables in YOUR apps and waits
-/ship [--go]        backup → tracker comment → chat draft → commit + PR — HARD HALT before anything
-                    external; warns, waits for a typed `ship unreviewed`, and records it when no
-                    review verdict is on file
-```
-
-Also: `/setup` (configure once, onboard a teammate), `/refresh` (rebuild the catalog), and
-`/skillify` (turn a recurring workflow into its own skill). On a plugin install, prefix each one:
-`/ticketwright:ticket`.
+Nobody maintains the catalog by hand. Because Alice's TEST-130 cites Bob's TEST-118, her reviewer
+can trace the numbers back to his.
 
 ## Get started
 
-Install project-scoped, from the root of the repo you work tickets in:
+Install project-scoped, from the root of your ticket repo, so the whole team runs one version:
 
 ```bash
 claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project
@@ -135,34 +153,75 @@ claude plugin install ticketwright@ticketwright --scope project
 ```
 
 Run `/reload-plugins` (or fully quit the app; a new chat is not a restart), then
-`/ticketwright:setup`, which detects your tools and interviews you before writing anything. First
-person in a repo (Track 1) or joining one (Track 2): [docs/getting-started.md](docs/getting-started.md)
-has both, with a prompt to paste to your agent. `autoUpdate` never upgrades the plugin:
-[uninstall, install, relaunch](docs/troubleshooting.md#upgrading).
+`/ticketwright:setup`; it detects your tools and interviews you before writing anything. Steps
+for the first person and for joiners: [docs/getting-started.md](docs/getting-started.md).
+Upgrading: [uninstall, install, relaunch](docs/troubleshooting.md#upgrading).
+
+### Other coding agents
+
+The same kit installs from PyPI for Codex, Cursor, OpenCode, Cline, Devin and Antigravity:
+
+```bash
+pip install ticketwright
+ticketwright init                         # copy the kit into this repo
+ticketwright install --runtime codex-cli  # write the skills where your agent reads them
+```
+
+You get the skills and the command-line engines. `/setup` runs in Claude Code, so elsewhere you
+write the config yourself, and the guards are proven only in Claude Code. Details:
+[docs/runtimes.md](docs/runtimes.md) and
+[installing without the plugin](docs/getting-started.md#installing-without-the-plugin).
 
 ## Safety rails
 
-- Destructive warehouse SQL run through a CLI asks first, even when it's hidden in a `-f` file.
+- Destructive warehouse SQL run through a CLI asks first, even hidden in a `-f` file; verifiably
+  read-only SQL runs without a prompt.
 - `/ship` stops before any external post and shows exactly what it will send.
-- Pushing a ticket's deliverables with no approving review on file asks first.
+- Pushing deliverables with no approving review on file asks first.
+- Committing or backing up a raw meeting transcript asks first.
 
-Every hook is listed in [docs/how-it-works.md](docs/how-it-works.md#hooks-in-full).
+Hooks fail open, never loosen your own deny rules, and see shell commands only, so SQL sent
+through an MCP tool falls under that tool's permissions. All of them:
+[docs/how-it-works.md](docs/how-it-works.md#hooks-in-full).
+
+## Data and network
+
+No telemetry, and no service of its own: Ticketwright's hooks, skills and engines make no network
+calls. Installing fetches it from GitHub or PyPI; everything else goes through tools you
+configured, under your own sign-in.
+
+- **Your coding agent.** What the skills read (ticket text, query results, notes) goes to your
+  agent's model provider under your account's terms, as does the ticket text
+  `ticketwright enrich` sends to the model command you configure.
+- **Your tools, named in `stack.yaml`.** `/ticket` reads the ticket, `/build` and `/review` query
+  the warehouse, and `/ship` backs up, comments, drafts the chat message (sent only on "send it")
+  and opens a pull request.
+- **Local reads.** Hooks read the repo, any `-f` SQL file a command names, your viewer and people
+  config, and Claude Code's `installed_plugins.json`. They write nothing outside the repo.
+- **Committed by default:** ticket folders, deliverable CSVs and voice profiles. Raw transcripts
+  and `*.private.csv` files are not.
+
+Full statement: [PRIVACY.md](PRIVACY.md).
 
 ## See it as a graph (Obsidian)
 
-The index also writes `tickets/graph/` and `tickets/objects/`, so opening the repo as an Obsidian
-vault shows which tickets touched which tables. See [docs/obsidian.md](docs/obsidian.md).
+The index also writes `tickets/graph/` and `tickets/objects/`: open the repo as an Obsidian vault
+to see which tickets touched which tables ([docs/obsidian.md](docs/obsidian.md)).
 
 ## Learn more
 
-- [docs/getting-started.md](docs/getting-started.md): install tracks, what setup writes, adopting
-  a repo, pip and other runtimes
+- [docs/README.md](docs/README.md): every doc, grouped by what you're trying to do
 - [docs/how-it-works.md](docs/how-it-works.md): the lifecycle, voice profiles, every hook
 - [docs/architecture.md](docs/architecture.md): adapters, the verb contract, adding a tool
-- [docs/troubleshooting.md](docs/troubleshooting.md): failed skills, unreachable tools, upgrades
 - [docs/obsidian.md](docs/obsidian.md) and [docs/drive-mount.md](docs/drive-mount.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 
+## Support and security
+
+Questions and bugs: [SUPPORT.md](SUPPORT.md). Vulnerabilities, privately: [SECURITY.md](SECURITY.md).
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-MIT, see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE). A [KC AI Labs](https://kclabs.ai) project by Kyle Chalmers, not
+affiliated with Anthropic or any vendor named above.

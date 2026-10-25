@@ -254,7 +254,9 @@ before it is paid.
   user-definable subagents or an isolation posture of `none`/`unknown`, `/review` walks the same
   checklist inline and the verdict records `review_mode: inline-same-context` as the weaker check
   (`unestablished` isolation still fans out, recorded verbatim).
-- **4 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`).
+- **6 hooks + settings** (`.claude/hooks/`, `.claude/settings.json.tmpl`, `.claude/statusline.sh`):
+  three PreToolUse guards (`db_write_guard`, `source_material_guard`, `review_verdict_guard`), the
+  PostToolUse index regenerator, and two SessionStart banners.
 - **38 adapters** (`adapters/`) across 8 directories — full verb coverage each, including a `local`
   tracker whose "API" is the ticket folder itself, three `viewer` adapters (one per OS), and five
   read-only `meetings` adapters. Seven of

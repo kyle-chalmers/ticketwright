@@ -77,7 +77,7 @@ prefix, an `sh` prefix, and the executable in bare command position — `verify_
 that last one needs no interpreter), but it matches TEXT, so indirection through a variable or `eval`
 slips past it; 53 also pins that the allowlist grows no tracker/warehouse
 CLI (`git` is listed deliberately — `kit_paths` shells out to `rev-parse`).
-`selftest.sh` needs `yq` and `python3` only. It is organized into ~23 numbered sections (config resolution, adapter
+`selftest.sh` needs `yq` and `python3` only. It is organized into 59 numbered sections, plus lettered sub-sections such as 21b (config resolution, adapter
 verb coverage, tool-name isolation, every hook, the index/recall engines, the render gate, the Obsidian
 graph layer, version sync, …). **When you change behavior, add or update the matching numbered section** —
 a green selftest is the contract this kit ships on. It must print `0 failed`.
@@ -194,6 +194,8 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 - `review_verdict_guard.py` (PreToolUse/Bash) — asks before `git push` / a PR opens or merges for a
   ticket that has deliverables but no APPROVE verdict on file; `bin/review_verdict.py` is the
   classifier the skills call too (highest-numbered `qc_queries/<n>_review_verdict.md`, `verdict:` line).
+- `source_material_guard.py` (PreToolUse/Bash): asks before a raw meeting transcript in a ticket's
+  `source_materials/` is staged for commit or copied into a docstore backup.
 - `regenerate_ticket_index.py` (PostToolUse/Write·Edit) — re-renders the index when a ticket changes.
 - `session_context.py` + `ticket_index_context.py` (SessionStart) — prime the stack + catalog banner.
 
@@ -223,6 +225,14 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 
 - Conventional-commit titles (`feat:`/`fix:`/`docs:`…). Update `docs/` and `README.md` when behavior
   changes; keep `CHANGELOG.md` current for anything user-facing.
+- The README is the plugin directory's listing text and the PyPI page, so it has a **900-word prose
+  budget** (selftest §58; fences, image lines and comments don't count) and every image is an
+  absolute `raw.githubusercontent.com/.../main/docs/images/...` URL. Detail goes in `docs/`, indexed
+  by `docs/README.md`. Its `## Data and network` section must name everything the plugin runs, sends
+  or fetches: the directory's security scan checks the plugin against it.
+- `scripts/readme_media/` is maintainer-only tooling for the logo, icon, diagrams, GIF and social
+  preview (KC AI Labs brand tokens in `_common.py`). It runs through `uv run --with ...`, never ships
+  in the wheel, and is not bound by the stdlib-only rule. Its `README.md` has the commands.
 - Skill/command/adapter frontmatter must be valid, parseable YAML with a `description` — a broken
   flow-node silently drops all metadata when loaded as a plugin (selftest section 14 checks this).
 - The v1 command names (`/start-ticket`, `/qc-review`, …) were retired in v3; the surface is 7 skills

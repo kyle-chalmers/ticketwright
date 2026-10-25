@@ -7,7 +7,7 @@ past; the verdicts are appended verbatim at the end.
 
 Judged 2026-08-25 against the rubric in the implementation plan §2.1 (as amended by V3 fix 6),
 which operationalizes the bar recorded in `ROADMAP.md:189-223` and originally stated in
-`docs/PROMPT-meetings-intake.md:39-51`: a new slot KIND needs (1) a stable tool-independent verb
+`docs/maintainers/PROMPT-meetings-intake.md` (its Stage 2 section): a new slot KIND needs (1) a stable tool-independent verb
 contract, (2) a distinct lifecycle responsibility, (3) its own auth/verification semantics, and
 (4) enough common use that it is not just an option on an existing slot. All four legs must flip
 for YES. A NO on any leg ends the stream: ROADMAP records the outcome and nothing else ships.

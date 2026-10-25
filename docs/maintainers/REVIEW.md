@@ -1,5 +1,7 @@
 # Hardening review — 2026-06
 
+> **Historical record** of the June 2026 hardening review, kept for maintainers.
+
 Before the first public release, the kit went through a **multi-agent review** combining three
 independent passes. This record documents the method and the outcome (all findings were fixed).
 
