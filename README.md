@@ -5,9 +5,9 @@
 
 [Get started](#get-started) · [Try it](#try-it) · [Skills](#the-skills) · [Safety](#safety-rails) · [Data and network](#data-and-network) · [Docs](docs/README.md) · [Changelog](CHANGELOG.md)
 
-</div>
-
 [![CI](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/ticketwright/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/ticketwright?label=pypi&color=c4ff00&labelColor=030303)](https://pypi.org/project/ticketwright/) [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-c4ff00?labelColor=030303)](#get-started) [![Python 3.9+, stdlib only](https://img.shields.io/badge/python-3.9%2B%20%C2%B7%20stdlib%20only-c4ff00?labelColor=030303)](pyproject.toml) [![License: MIT](https://img.shields.io/badge/license-MIT-c4ff00?labelColor=030303)](LICENSE)
+
+</div>
 
 ![A rendered walkthrough of one ticket in a Claude Code chat. /ticket opens TEST-130, ranks bob's TEST-118 as the closest prior work, writes the plan and waits for approval. /build runs the plan. /review walks the validation pyramid (dialect lint, counts and duplicates, reconciliation, an independent re-run) to the person's sign-off and an APPROVE. /ship shows its delivery plan and stops until the person says go ahead, then files the ticket into the team index.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/demo.gif)
 
@@ -186,9 +186,9 @@ through an MCP tool falls under that tool's permissions. All of them:
 
 ## Data and network
 
-No telemetry, and no service of its own: Ticketwright's hooks, skills and engines make no network
-calls. Installing fetches it from GitHub or PyPI; everything else goes through tools you
-configured, under your own sign-in.
+No telemetry, and no service of its own: Ticketwright's own code makes no network calls.
+Installing fetches it from GitHub or PyPI; everything else goes through tools you configured,
+under your own sign-in.
 
 - **Your coding agent.** What the skills read (ticket text, query results, notes) goes to your
   agent's model provider under your account's terms, as does the ticket text
