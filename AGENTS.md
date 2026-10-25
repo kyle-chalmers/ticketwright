@@ -1,7 +1,9 @@
 # AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) and other coding agents when working in
-this repository. (`CLAUDE.md` is a one-line `@AGENTS.md` import so Claude Code loads these rules.)
+this repository. (`.claude/CLAUDE.md` is a one-line `@../AGENTS.md` import so Claude Code loads these
+rules. It lives in `.claude/` because the repo root is also the plugin root, where the plugin directory
+flags a `CLAUDE.md`.)
 
 This is the **development repo for Ticketwright itself** — the tool-agnostic AI layer for
 ticket-driven work repos. Do not confuse it with a repo that *uses* Ticketwright: here you are
@@ -47,15 +49,23 @@ bash bin/selftest.sh                       # THE gate — kit integrity + hook/e
 python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
 bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
 claude plugin validate .claude-plugin/marketplace.json --strict   # marketplace schema ONLY
+claude plugin validate .claude --strict    # skill + agent CONTENT (the only target that reads it)
+claude plugin validate --profile directory --strict .   # the plugin directory's checks (Claude Code 2.1.305+)
 python3 -m build                           # build the sdist + wheel (needs the `dev` extra: pip install -e ".[dev]")
 ```
 
-`claude plugin validate .` does NOT validate this plugin. The repo is both a plugin and a
-single-plugin marketplace, and a root target resolves to `marketplace.json` in preference to
-`plugin.json`, so it reads no skills, agents or hooks — a garbage `SKILL.md` passes, exit 0.
-Pointing it at `plugin.json` does not help either: `skills`/`agents`/`commands` are symlinks
-into `.claude/` and the validator does not follow symlinks. CI validates a dereferenced copy
-(see the `plugin-validate` job). Locally, `bash bin/selftest.sh` is the gate that matters.
+`claude plugin validate .` does NOT validate this plugin's content. The repo is both a plugin and
+a single-plugin marketplace, and a root target resolves to `marketplace.json` in preference to
+`plugin.json`. Pointing it at `plugin.json` checks the manifest and that its component paths exist,
+but still reads no skill or agent content: the validator reads content only in the default
+`skills/` and `agents/` folders, and `plugin.json` points into `.claude/` instead. A garbage
+`SKILL.md` passes both, exit 0. Point it at `.claude` to read the content; CI does all three, with a
+negative control (the `plugin-validate` job), and runs the directory profile on the committed tree
+(the `plugin-directory` job). Components are real files under `.claude/`, never root symlinks: the
+plugin directory blocks a symlinked component. A new `.claude/agents/*.md` must also be listed
+under `agents` in `plugin.json`, because that key replaces the default scan and takes files only;
+selftest section 15 fails on an unlisted one. Locally, `bash bin/selftest.sh` is the gate that
+matters.
 
 `selftest.sh` is authoritative and self-contained: read-only, no network, no credentials, bash 3.2-safe.
 "3.2-safe" is enforced, not aspirational: stock macOS `/bin/bash` (3.2.57) mis-parses a heredoc nested

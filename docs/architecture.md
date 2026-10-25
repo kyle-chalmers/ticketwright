@@ -287,10 +287,11 @@ defaulted (recorded in the project's planning document, now retired into git his
 to anyone adopting or extending the kit:
 
 - **Three things anchor the layout.** `pyproject.toml` force-includes the `.claude/*` paths into the
-  wheel, `.claude-plugin/plugin.json` wires the hooks by their `.claude/hooks/` path, and the
-  repo-root `skills/` symlink already gives other tools a neutral alias to the same files. Moving
-  the source would churn all three for zero functional gain, because the installer translates to
-  each runtime's layout anyway.
+  wheel, `.claude-plugin/plugin.json` wires the hooks by their `.claude/hooks/` path, and the same
+  manifest loads the skills and agents from `.claude/skills/` and `.claude/agents/` (real files,
+  not root symlinks: the Claude plugin directory blocks a symlinked component). Moving the source
+  would churn all three for zero functional gain, because the installer translates to each
+  runtime's layout anyway.
 - **Emit only where the runtime cannot already see the canonical copy.** The split is per-runtime
   DATA (`reads_foreign_skills` / `skills_root` in `adapters/runtime/*.md` frontmatter), never a
   name in code: claude-code reads the canonical copy natively, and cursor, opencode, cline and

@@ -29,6 +29,10 @@
   "documentationUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/docs/README.md",
   "supportUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/SUPPORT.md",
   "privacyPolicyUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/PRIVACY.md",
+  "skills": "./.claude/skills/",
+  "agents": [
+    "./.claude/agents/qc-reviewer.md"
+  ],
   "hooks": {
     "PreToolUse": [
       {

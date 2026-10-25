@@ -788,8 +788,9 @@ for a in configure-workspace onboard-teammate start-ticket qc-review deliver-tic
 done
 [ -z "$al_bad" ] && ok "12 deprecated v1 alias stubs removed (v3)" || bad "v1 alias stub still present:$al_bad"
 # A fresh plugin install gets exactly what this tree ships, so a retired name must not exist as a
-# skill or command ANYWHERE in it: the plugin's skills/ and commands/ (symlinks into .claude/), and
-# every emitted runtime fixture. The list comes from bin/retired_skills.py, never a second copy.
+# skill or command ANYWHERE in it: .claude/ (which plugin.json points at), a root skills/ or
+# commands/ (the loader's default scan still reads one if it reappears), and every emitted runtime
+# fixture. The list comes from bin/retired_skills.py, never a second copy.
 rs_list="$(python3 -c "import sys; sys.path.insert(0,'bin'); import retired_skills as r; print(' '.join(r.RETIRED_SKILLS))" 2>/dev/null)"
 rs_ship=""
 [ -n "$rs_list" ] || rs_ship="could not read RETIRED_SKILLS"
@@ -820,9 +821,51 @@ sys.exit(0 if ok else 1)
 MKPY
 [ $? -eq 0 ] && ok 'marketplace source starts "./" and description lives under metadata (installable on CC 2.0.x-2.1.x)' \
   || bad 'marketplace.json regressed to a shape older Claude Code rejects (source "." or root description)'
-# auto-discovery symlinks must resolve into .claude/* (loader rejected custom .claude paths in the manifest)
-{ [ -L commands ] && [ -L skills ] && [ -L agents ] && [ -d commands ] && [ -d skills ] && [ -d agents ]; } \
-  && ok "component symlinks resolve (commands/skills/agents → .claude/*)" || bad "plugin component symlinks broken"
+# Components load from .claude/ through plugin.json paths, not root symlinks. The Claude plugin
+# directory blocks a submission whose loaded components are symlinks, and `claude plugin validate`
+# reads nothing behind one. (These symlinks existed because a 2026-06 loader rejected custom .claude/
+# manifest paths; 2.1.195, 2.1.258 and 2.1.310 all load the manifest form.)
+tw_links=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  tw_links="$(git ls-files -s | awk '$1 == "120000" {print $4}')"
+fi
+for l in skills agents commands; do [ -L "$l" ] && tw_links="$tw_links $l"; done
+[ -z "$tw_links" ] && ok "no symlinks in the tree (the plugin directory refuses symlinked components)" \
+  || bad "a symlink is tracked; the plugin directory blocks one the plugin loads" "$tw_links"
+# Agents REPLACE the default scan and take files, not directories, so a new .claude/agents/*.md that
+# is not listed would silently never load. Commands replace the default scan too: one must be declared.
+python3 - <<'MCPY'
+import json, os, sys
+m = json.load(open('.claude-plugin/plugin.json'))
+as_list = lambda v: [] if v is None else ([v] if isinstance(v, str) else list(v))
+skills = [p.rstrip('/') + '/' for p in as_list(m.get('skills'))]
+agents = sorted(as_list(m.get('agents')))
+want_agents = sorted('./.claude/agents/' + f for f in os.listdir('.claude/agents') if f.endswith('.md'))
+cmds = sorted(f for f in os.listdir('.claude/commands') if f.endswith('.md'))
+decl = m.get('commands')
+cmd_paths = ([v.get('source', '') for v in decl.values() if isinstance(v, dict)] if isinstance(decl, dict)
+             else as_list(decl))
+cmd_paths = [p for p in cmd_paths if p]
+covered = lambda f: any(p.rstrip('/') in ('./.claude/commands', './.claude/commands/' + f) for p in cmd_paths)
+paths = skills + agents + cmd_paths
+bad = []
+if './.claude/skills/' not in skills: bad.append('skills does not name ./.claude/skills/')
+if agents != want_agents: bad.append('agents %s != .claude/agents/*.md %s' % (agents, want_agents))
+missing = [f for f in cmds if not covered(f)]
+if missing: bad.append('.claude/commands/%s not declared under commands in plugin.json' % missing)
+bad += ['%s: must start ./ and stay inside the plugin' % p for p in paths if not p.startswith('./') or '..' in p]
+bad += ['%s: does not exist' % p for p in paths if not os.path.exists(p)]
+if bad: print('\n'.join(bad))
+sys.exit(1 if bad else 0)
+MCPY
+[ $? -eq 0 ] && ok "plugin.json loads .claude/skills/ and lists every .claude/agents/*.md (no command left undeclared)" \
+  || bad "plugin.json component paths drifted from .claude/ (an unlisted agent or command never loads)"
+# A CLAUDE.md at the plugin root is never loaded as plugin context, and the directory flags it. The
+# contributor import lives in .claude/, where an import resolves relative to the file: `@AGENTS.md`
+# there would name .claude/AGENTS.md and load nothing.
+{ [ ! -e CLAUDE.md ] && grep -qx '@\.\./AGENTS\.md' .claude/CLAUDE.md; } \
+  && ok "contributor CLAUDE.md lives in .claude/ and imports @../AGENTS.md (none at the plugin root)" \
+  || bad "a CLAUDE.md is at the plugin root, or .claude/CLAUDE.md does not import @../AGENTS.md"
 # every hook script the plugin manifest declares must exist
 hk=1; for h in db_write_guard regenerate_ticket_index session_context ticket_index_context; do [ -f ".claude/hooks/$h.py" ] || hk=0; done
 [ "$hk" = 1 ] && ok "all plugin-declared hook scripts present" || bad "a plugin-declared hook script is missing"
