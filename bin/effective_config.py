@@ -129,6 +129,9 @@ RESERVED_SEAM_KEYS = {
     # route and fingerprint on. Neither may come from a gitignored file: a tier-3 override of
     # either silently re-points a delivery, which is the same hole `drive_folder` closes.
     "remote_path", "base_path",
+    # `destination: per_ticket` turns a chat target's standing destination off and reads it from
+    # each ticket instead: a per-machine file flipping it would move WHERE a message goes.
+    "destination",
 }
 # Whole blocks no overlay may contribute, at any tier.
 RESERVED_BLOCKS = {"policies", "project"}

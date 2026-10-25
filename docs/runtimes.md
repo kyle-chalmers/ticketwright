@@ -36,7 +36,7 @@ have installed.
 | **Session-start callback** | whether `session_context` / `ticket_index_context` can exist at all |
 | **Pre-execution tool gate** | whether `db_write_requires_approval` is **mechanical** or **guidance** |
 | **Subagents** | whether `qc-reviewer` is an independent second context, or degrades to an inline pass |
-| **Structured questions** | whether an interview can be a picker, or must be authored as numbered prose |
+| **Structured questions** | whether an interview can be a picker, or must be authored as numbered prose. The adapter's `question_tool` names the tool (`none` when there is none) and `question_limits` its caps (`unknown` until verified; `/setup` then asks one question per call with at most four options); both come from the per-runtime sections below |
 
 The third axis is the load-bearing one. `db_write_guard.py` is currently the *only* mechanical
 enforcement of `db_write_requires_approval`; everywhere it cannot run, the policy degrades to the

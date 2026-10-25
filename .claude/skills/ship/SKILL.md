@@ -99,18 +99,25 @@ works regardless of the underlying tools.
    enabler, exactly as before. Exit **0** → use the returned `target`, `destination`, `recipients`,
    `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes.
    **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
-   - **9 (nothing declared)** — the plan declares nothing this slot can route on. Two shapes, and the
+   - **9 (nothing declared)** — the plan declares nothing this slot can route on. Three shapes, and the
      CLI's message names which:
      - *A `targets:` slot* has no `audience:`/`classification:`. Show the configured values the CLI
        lists and ask the user which one this ticket is.
      - *A tool-only chat seam* (the default shape — the stack names the tool, not a standing channel)
-       has no `chat.channel:`/`chat.recipients:`. Ask the user, in prose, **where this goes and who
+       has no `chat.channel:`/`chat.recipients:`. Ask the user (with the runtime's question tool when it has one, otherwise in chat) **where this goes and who
        it is for**: the destination (channel / DM / address) and the recipient list. This is the
        per-communication decision the tool-only shape exists for — who a result goes to depends on
        who the analysis is for, so it is asked each ship, never configured once.
-     Either way, write the answer into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md`
-     § The delivery plan) — the `audience:` for a targets slot, or the `chat:` block
-     (`channel:` + a non-empty `recipients:`) for a tool-only seam — then re-run. **Never infer** the
+     - *A per-ticket chat target* (the declared audience selected a target marked
+       `destination: per_ticket`, which the CLI's message names) has no `chat.channel:`/
+       `chat.recipients:`. Ask the same question as for a tool-only seam, for that target's tool:
+       **where this goes and who it is for**. If the person picks an audience whose target is
+       per-ticket, ask for its destination and recipients in the same turn rather than re-running
+       twice.
+     In each case, write the answer into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md`
+     § The delivery plan) — the `audience:` for a targets slot, the `chat:` block
+     (`channel:` + a non-empty `recipients:`) for a tool-only seam, or both plus `chat.target:` naming
+     the routed target for a per-ticket target — then re-run. **Never infer** the
      audience, the channel, OR the recipients from the ticket README, channel names, a label, or how
      the work "feels" — an inferred destination is exactly how a result reaches the wrong room.
      "I could not tell, so I picked the first one" is not available.
@@ -167,7 +174,10 @@ execute — nothing the steps don't do may appear in it:
      identity — WHO the message goes out as is part of what the human authorizes), and
      draft-vs-send mode. When the target came from `--chat <target>` rather than the ticket's
      declaration, say so on the line — the CLI returns that as a warning, and an override that the
-     ticket does not record is a fact the approver should see;
+     ticket does not record is a fact the approver should see. For a tool-only seam or a
+     `destination: per_ticket` target the channel and recipients are the ones this ticket's plan
+     declares, routed in step 4(a): print them on the same line, never a placeholder, so the person
+     approves the exact destination and list;
    - **vcs** — tool, target, the branch, and that a PR opens;
    - then the exact actions, in order (the numbered steps below).
 

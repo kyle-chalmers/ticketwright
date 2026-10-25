@@ -14,7 +14,7 @@ regression test, and a hard halt before any external post. `/refresh index` + th
 flag of `bin/build_ticket_index.py` surface candidates ("this object shows up in 7 tickets").
 
 ## Phase 1 — Interview the workflow (reduce_assumptions)
-Ask, in prose (runtimes that render structured options show chips; others a numbered list), for:
+Ask, with the runtime's own question tool when it has one (`bin/tw kit_paths.py --json` → `capabilities.question_tool`), otherwise as a numbered list one question at a time, for:
 - **Name & cadence** (→ kebab skill name) and the **parameters** that change each run (e.g.
   `--period`, `--as-of-date`, `--ticket`, an input file) — with formats + validation rules.
 - **Steps**: the ordered phases. For each, what it reads, what it writes, and whether it has

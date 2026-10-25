@@ -11,6 +11,8 @@ session_start: no
 tool_gate: yes
 subagents: yes
 structured_questions: unknown
+question_tool: none
+question_limits: none   # no structured question tool a skill can call: ask in prose
 plan_mode: native          # plan execution mode: /plan prefix, read-only tools, Plan Artifact for approval (antigravity.google/docs/cli/modes, 2026-09-11)
 gate_ask_tier: yes          # richest gate researched: allow, deny, ask, force_ask, deny_unless_prior_grant
 gate_fail_mode: unknown     # hook-failure behavior undocumented — stated, never assumed

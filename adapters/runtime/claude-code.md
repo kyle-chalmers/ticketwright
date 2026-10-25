@@ -10,6 +10,8 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: yes
+question_tool: AskUserQuestion
+question_limits: max_questions=4 max_options=4   # the tool's own caps; it always adds a free-text "Other"
 plan_mode: native          # plan mode (Shift+Tab / the planning tool): only its own plan file is writable inside it; LEAVE it before writing ticket artifacts — leaving it is the approval
 gate_ask_tier: yes
 gate_fail_mode: open        # hooks fail open by design: a hook error never blocks a session

@@ -312,7 +312,11 @@ protocol — **per cell, each with its own ledger line; promote only what was se
 ### 5. Devin — the documented fail-open, the banner, the config location
 
 Status: OPEN
-Covers: `devin.hook_wiring`
+Covers: `devin.hook_wiring` `devin.question_limits`
+
+_Also covers: the `ask_user_question` tool's caps (how many questions per call, how many options,
+whether multi-select exists). Until confirmed, `/setup` treats them as one question per call with at
+most four options._
 
 **Claim to verify.** (a) The documented fail-open exit table holds live: exit 0 continues, exit 2
 blocks, any **other** nonzero is logged and does not block — which is exactly why the shim maps
@@ -361,7 +365,11 @@ caveat re-dated; `docs/runtimes.md` re-dated.
 
 Status: OPEN
 Covers: `opencode.wired.db_write_guard` `opencode.wired.source_material_guard`
-`opencode.wired.review_verdict_guard` `opencode.agents_root`
+`opencode.wired.review_verdict_guard` `opencode.agents_root` `opencode.question_limits`
+
+_Also covers: the built-in `question` tool's caps (questions per call, options per question,
+multi-select). Until confirmed, `/setup` treats them as one question per call with at most four
+options._
 
 **Claim to verify.** (a) The emitted `.opencode/plugins/ticketwright-db-write-guard.js` wrapper
 is actually **loaded**, and throwing from `tool.execute.before` actually prevents execution;
