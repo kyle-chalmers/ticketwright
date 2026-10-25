@@ -10,6 +10,8 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: no
+question_tool: none
+question_limits: none   # no structured question tool a skill can call: ask in prose
 plan_mode: native          # Plan Mode (Shift+Tab): researches, asks, writes a reviewable plan file before code (cursor.com/docs/agent/plan-mode, 2026-09-11)
 gate_ask_tier: yes
 gate_fail_mode: open        # documented: hooks fail open unless failClosed true is set

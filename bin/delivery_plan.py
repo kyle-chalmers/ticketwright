@@ -42,8 +42,8 @@ or recipient carrying shell metacharacters — the tier-3 injection refusal, inh
 effective_config, never re-derived) · 7 slot not configured (the one case a caller may degrade, the
 way /ship already skips an absent chat/docstore) · 8 the declared value matches no configured
 target, or an unknown `--override` · 9 nothing is declared for this slot (a `targets:` slot with no
-plan declaration, or a TOOL-ONLY chat seam whose plan declares no `chat.channel:`/`chat.recipients:`
-— whether or not a plan file exists).
+plan declaration, or a TOOL-ONLY chat seam or a chat target marked `destination: per_ticket` whose
+plan declares no `chat.channel:`/`chat.recipients:`, whether or not a plan file exists).
 0/2/3/4/7/8 carry the same meanings as the resolver's published family; **9 is a delivery-plan
 EXTENSION**, not part of that family — a missing declaration is a state only a persisted plan
 resolves.
@@ -54,6 +54,16 @@ in the stack) reads its destination + recipients from the plan's `chat:` block, 
 per-communication, and HALTS (exit 9) when the plan declares none — never a silent empty channel. A
 single mapping that DOES set a standing destination still routes to itself and needs no plan file, so
 a repo that never adopts either shape ships exactly as it does today.
+
+PER-TICKET CHAT TARGETS. A named chat target under `targets:` may carry `destination: per_ticket`
+instead of a standing destination key: the tool-only shape, one target at a time, so a slot can
+hold Gmail AND Slack with recipients that differ per analysis. It is an explicit OPT-IN on purpose:
+a target that omits its destination by accident must still fail the audit, so the absence is
+declared, never inferred. Such a target reads `chat.channel:` + a non-empty `chat.recipients:` from
+the plan (the same fields, and the same code path, as the tool-only single mapping), halts (exit 9)
+when they are missing, and never falls back to another target. Setting a standing destination AND
+`destination: per_ticket` is refused (pick one). Its own `always_include:`, when present, is added
+after the plan's recipients.
 
 ON EVERY NON-ZERO EXIT, `target` AND `destination` ARE NULL. A caller cannot pick a usable
 destination out of a failed routing, whether or not it checks the exit code.
@@ -92,6 +102,10 @@ ROUTING_KEY = {"chat": "audience", "docstore": "classification"}
 # than duplicated, so no skill ever has to know which tool it is talking to.
 DESTINATION_FRONTMATTER = {"chat": "channel_key", "docstore": "destination_key"}
 SHARING_SCOPES = ("team", "org", "external")
+# The one value `destination:` accepts on a chat target: "this target's destination and recipients
+# are chosen on each ticket". A target ALWAYS declares this on itself (read from the target's own
+# mapping, never from inherited values), exactly like a routing key.
+DESTINATION_MODE_KEY, PER_TICKET = "destination", "per_ticket"
 
 # An adapter-supplied key NAME is executable input, not documentation (the wave-A lesson: a markdown
 # file reads as inert in code review). It is validated before it is ever used as a lookup, and an
@@ -132,6 +146,41 @@ def _str_list(value: Any) -> list[str] | None:
             return None
         out.append(str(item).strip())
     return out
+
+
+def per_ticket_mode(seam_name: str, mapping: dict) -> tuple[bool, str | None]:
+    """(per_ticket, error) for ONE mapping's own `destination:` key.
+
+    Absent means a standing destination (today's shape). `per_ticket` is the only accepted value,
+    and only chat has it: a docstore backup lands in a team-owned store, never one a ticket names.
+    Anything else is an error rather than a guess: a misspelled opt-in must not quietly become a
+    standing target, and a standing-looking value here must not be mistaken for a destination.
+    """
+    if DESTINATION_MODE_KEY not in mapping:
+        return False, None
+    raw = mapping.get(DESTINATION_MODE_KEY)
+    if seam_name != "chat":
+        return False, (f"only chat can choose its destination on each ticket; remove "
+                       f"`{DESTINATION_MODE_KEY}:` from this {seam_name} config. Details: a "
+                       f"{seam_name} destination is always set in the tool slot config.")
+    if isinstance(raw, str) and raw.strip() == PER_TICKET:
+        return True, None
+    return False, (f"`{DESTINATION_MODE_KEY}:` accepts only `{PER_TICKET}`. Set "
+                   f"`{DESTINATION_MODE_KEY}: {PER_TICKET}` to choose the destination on each "
+                   f"ticket, or remove it and set a standing destination. Details: got "
+                   f"{raw!r}.")
+
+
+def _both_message(label: str, dkey: str) -> str:
+    """Both a standing destination and the per-ticket opt-in: refused, never resolved by precedence.
+
+    Either choice of winner would ignore a key someone wrote: sending to the standing value makes
+    the opt-in a dead letter, and reading the plan makes the standing value one.
+    """
+    return (f"{label}: sets both a standing destination (`{dkey}:`) and "
+            f"`{DESTINATION_MODE_KEY}: {PER_TICKET}`. Pick one: remove `{dkey}:` to choose where it "
+            f"goes on each ticket, or remove `{DESTINATION_MODE_KEY}: {PER_TICKET}` to always send "
+            f"to `{dkey}`.")
 
 
 def destination_key(seam_name: str, adapter_rel: str | None, root: Path) -> tuple[str | None, str | None]:
@@ -282,6 +331,17 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for seam_name in ("chat", "docstore"):
         seam = res.seams.get(seam_name)
+        if isinstance(seam, dict) and not _is_multi(seam) and DESTINATION_MODE_KEY in seam:
+            # The ONE single-mapping rule, and it binds only on the new key: a single mapping that
+            # writes `destination:` gets it honored or gets an error, never silently ignored (a
+            # shipped config carries no such key, so nothing that validated before stops validating).
+            pt, pt_err = per_ticket_mode(seam_name, seam)
+            if pt_err:
+                out.append(("error", f"{seam_name}: {pt_err}"))
+            elif pt:
+                dkey, _ = destination_key(seam_name, seam.get("adapter"), res.root)
+                if dkey and dkey in seam:
+                    out.append(("error", _both_message(seam_name, dkey)))
         if not _is_multi(seam):
             continue
         rkey = ROUTING_KEY[seam_name]
@@ -297,6 +357,13 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
         if seam_name == "chat" and "always_include" in seam:
             out.append(("warn", "chat: slot-level `always_include:` has no effect under `targets:` "
                                 "(a list is never inherited) — declare it on each target"))
+        if DESTINATION_MODE_KEY in seam:
+            # Like a routing key, the per-ticket opt-in is never inherited: each target says for
+            # itself whether its destination is standing or chosen per ticket.
+            out.append(("warn", f"{seam_name}: `{DESTINATION_MODE_KEY}:` set for the whole slot does "
+                                f"nothing when the slot has named targets. Set it on each target "
+                                f"that chooses its destination per ticket. Details: it is never "
+                                f"inherited."))
 
         seen_route: dict[str, str] = {}
         seen_dest: dict[tuple[str, str], str] = {}
@@ -331,10 +398,18 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
             #    — but an inherited value must never be what a routed message goes to, or two
             #    audiences quietly share one room. So inheritance stays true of the resolved values
             #    while a routable target is required to name its own destination.
+            #    A chat target may instead DECLARE that it has none (`destination: per_ticket`): the
+            #    ticket's plan names it, so there is nothing standing to own or to collide on.
+            per_ticket, pt_err = per_ticket_mode(seam_name, target)
+            if pt_err:
+                out.append(("error", f"{label}: {pt_err}"))
             dkey, dkey_err = destination_key(seam_name, vals.get("adapter"), res.root)
             dest = None
             if dkey_err:
                 out.append(("error", f"{label}: {dkey_err}"))
+            elif per_ticket:
+                if dkey in target:
+                    out.append(("error", _both_message(label, dkey)))
             else:
                 dest = target.get(dkey)
                 # docstore composes `base_path` from a tier-3 mount; the TEAM-owned key is the
@@ -347,11 +422,24 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                                          f"{type(dest).__name__}"))
                 elif dest is None or not dest.strip():
                     inherited = vals.get(dkey)
-                    out.append(("error", f"{label}: no `{dkey}:` on this target"
-                                         + (f" — the slot-level `{dkey}: {inherited}` is inherited "
-                                            f"as a value but is not a routable destination; declare "
-                                            f"this target's own" if inherited not in (None, "")
-                                            else " — this target has no destination")))
+                    why = (f"the slot-level `{dkey}: {inherited}` is inherited as a value but is "
+                           f"not a routable destination; declare this target's own"
+                           if inherited not in (None, "") else "this target has no destination")
+                    if seam_name == "chat":
+                        # Two ways forward, both stated, because the per-ticket opt-in is explicit:
+                        # a person meeting this error must learn it exists, not have it applied.
+                        detail = (f"the slot-level `{dkey}: {inherited}` is inherited as a value "
+                                  f"but is never a routed target's destination"
+                                  if inherited not in (None, "") else
+                                  f"`{dkey}` is this tool's destination key (`channel_key:` in "
+                                  f"`{vals.get('adapter')}`)")
+                        out.append(("error", f"{label}: this target has no destination. Set a "
+                                             f"standing one with `{dkey}:` on this target, or add "
+                                             f"`{DESTINATION_MODE_KEY}: {PER_TICKET}` so each "
+                                             f"ticket's delivery plan names where it goes and who "
+                                             f"it is for. Details: {detail}."))
+                    else:
+                        out.append(("error", f"{label}: no `{dkey}:` on this target — {why}"))
                 elif _unsafe(dest):
                     folder = "rename the target folder or " if seam_name == "docstore" else ""
                     out.append(("error", f"{label}: `{dkey}` value contains {ec.offending_chars(dest)} — "
@@ -370,11 +458,14 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
             if seam_name == "chat":
                 # 3) always_include: ENFORCED, non-empty, and the target's OWN. This replaces a
                 #    prose convention with a check; a prose requirement replacing an unenforced
-                #    prose convention would change nothing.
+                #    prose convention would change nothing. A per-ticket target is the exception
+                #    to "required": its non-empty recipient list comes from each ticket's plan, and
+                #    routing halts without one. A list it DOES write is still validated.
                 if "always_include" not in target:
-                    out.append(("error", f"{label}: no `always_include:` — every chat target "
-                                         f"declares its own stakeholder list (the never-solo-DM "
-                                         f"rule); it is never inherited from another target"))
+                    if not per_ticket:
+                        out.append(("error", f"{label}: no `always_include:` — every chat target "
+                                             f"declares its own stakeholder list (the never-solo-DM "
+                                             f"rule); it is never inherited from another target"))
                 else:
                     names = _str_list(target.get("always_include"))
                     if names is None:
@@ -508,7 +599,8 @@ def route(res: "ec.Resolution", seam_name: str, declared: str | None,
             sel_err.setdefault("configured", names)
             out["error"] = sel_err
             return out, sel_err
-        filled, ferr = _fill(out, res, seam_name, unit, "override", self_name, targets.get(unit["target"]))
+        filled, ferr = _fill(out, res, seam_name, unit, "override", self_name, targets.get(unit["target"]),
+                             plan_chat=plan_chat)
         if not ferr:
             # An override IS an explicit human choice, so it routes — but it leaves no record with
             # the ticket, and an unrecorded routing decision is not a finished phase. Say so rather
@@ -550,7 +642,8 @@ def route(res: "ec.Resolution", seam_name: str, declared: str | None,
     if sel_err or unit is None:
         out["error"] = sel_err
         return out, sel_err
-    return _fill(out, res, seam_name, unit, "declared", self_name, targets.get(unit["target"]))
+    return _fill(out, res, seam_name, unit, "declared", self_name, targets.get(unit["target"]),
+                 plan_chat=plan_chat)
 
 
 def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
@@ -582,9 +675,20 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         out["warnings"].append(f"the tool's setup notes (`{vals.get('adapter')}`) declare no "
                                f"`{DESTINATION_FRONTMATTER[seam_name]}:`, so this slot's destination "
                                f"cannot be resolved automatically. Add it to the setup notes.")
+    # PER-TICKET: a chat mapping that DECLARES `destination: per_ticket` on itself (a named target's
+    # own mapping, never an inherited value) reads its destination + recipients from the plan, on the
+    # tool-only path below. Re-checked here, not trusted from the audit: an invalid value, or a
+    # standing destination written alongside it, refuses at the point of use.
+    per_ticket, pt_err = per_ticket_mode(seam_name, own if own is not None else vals)
+    if pt_err:
+        return _fail(out, _err("malformed", f"{unit['label']}: {pt_err}"))
+    if per_ticket and dkey and dkey in (own if own is not None else vals):
+        return _fail(out, _err("malformed", _both_message(unit["label"], dkey)))
     # A NAMED target reads its OWN destination; an inherited one is a value, never a routing
     # destination (two audiences sharing one inherited channel is a separation that does not exist).
-    dest = (own.get(dkey) if own is not None else vals.get(dkey)) if dkey else None
+    # A per-ticket target has none by declaration, so an inherited slot-level value is not read.
+    dest = None if per_ticket else (
+        (own.get(dkey) if own is not None else vals.get(dkey)) if dkey else None)
     if dest is not None and (not isinstance(dest, str) or not dest.strip()):
         # `channel: []`, a mapping, an int, `""` — not places a message can go. A named target
         # carrying one REFUSES (junk in the leak-relevant path is a halt); a single mapping
@@ -598,13 +702,45 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
     # destination is authored PER-COMMUNICATION in the plan's `chat.channel:` — never a standing
     # default. Absent → HALT (exit 9: declare it and re-run), never a silent empty channel. A config
     # that DOES set the destination skips this entirely (config wins), so existing repos are
-    # unchanged. `tool_only` also gates the recipient source below.
+    # unchanged. `tool_only` also gates the recipient source below. A NAMED per-ticket target takes
+    # this same path (the same fields, the same halt) and never another target's values.
     tool_only = False
-    if dest is None and selected_by == "single" and seam_name == "chat":
+    if dest is None and seam_name == "chat" and (selected_by == "single" or per_ticket):
         tool_only = True
-        cand = (plan_chat or {}).get("channel")
+        pc = plan_chat or {}
+        bound = pc.get("target")
+        if own is not None and isinstance(bound, str) and bound.strip() \
+                and bound.strip() != unit["target"]:
+            # The plan's `chat:` block says which target it was written for. A destination authored
+            # for one target is never reused by another (an address meant for one mailbox, or a
+            # stale echo of a standing target's channel, must not become this target's `to`).
+            err = _err("malformed",
+                       f"{unit['label']}: the delivery plan's `chat:` block was written for "
+                       f"`{bound.strip()}`, not `{unit['target']}`. Update `chat.target:`, "
+                       f"`chat.channel:` and `chat.recipients:` for `{unit['target']}` and re-run.")
+            return _fail(out, err)
+        if own is not None and per_ticket and not (isinstance(bound, str) and bound.strip()):
+            # A NAMED per-ticket target only takes a `chat:` block that says it was written for this
+            # target. Without `chat.target:`, a channel and recipients written for one audience
+            # would route under another the moment `audience:` changed (a client's address sent from
+            # the internal mailbox). Halt and ask, exactly like a missing channel.
+            err = _err("no_declaration",
+                       f"{unit['label']} takes its destination from each ticket, and this ticket's "
+                       f"`chat:` block does not say which target it is for. Add "
+                       f"`chat.target: {unit['target']}` beside `chat.channel:` and "
+                       f"`chat.recipients:` in the delivery plan (after checking they are meant for "
+                       f"`{unit['target']}`) and re-run.")
+            return _fail(out, err)
+        cand = pc.get("channel")
         if isinstance(cand, str) and cand.strip():
             dest = cand.strip()
+        elif per_ticket and own is not None:
+            err = _err("no_declaration",
+                       f"{unit['label']} takes its destination from each ticket, and this ticket "
+                       f"names none. Declare `chat.channel:` (and `chat.recipients:`) in the "
+                       f"delivery plan and re-run (see `adapters/README.md`, section `The delivery "
+                       f"plan`); routing never invents a channel or borrows another target's.")
+            return _fail(out, err)
         else:
             err = _err("no_declaration",
                        "chat names a tool but no standing destination. Declare `chat.channel:` "
@@ -672,6 +808,18 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                            "`chat.recipients:` (a non-empty list) in the delivery plan and re-run; "
                            "a message is never sent with no stakeholder list")
                 return _fail(out, err)
+            plan_names = list(names)
+            if per_ticket and own is not None and "always_include" in own:
+                # A per-ticket target MAY keep a standing list too (a manager on every email). It
+                # is applied after the ticket's own recipients, and validated exactly like a
+                # standard target's: a list someone wrote is honored or refused, never skipped.
+                extra = _str_list(own.get("always_include"))
+                if extra is None:
+                    err = _err("malformed", f"{unit['label']}: `always_include` must be a non-empty "
+                                            f"list of names when it is set; refusing to route "
+                                            f"with a stakeholder list nobody can read")
+                    return _fail(out, err)
+                names = names + [n for n in extra if n not in names]
         else:
             names = _str_list(vals.get("always_include")) or []
             if own is not None and not _str_list(own.get("always_include")):
@@ -681,6 +829,7 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                 err = _err("malformed", f"{unit['label']}: declares no non-empty `always_include:` — "
                                         f"refusing to route a message with no stakeholder list")
                 return _fail(out, err)
+            plan_names = []
         team_names = list(names)   # before the shipper is appended: which names the CONFIG supplied
         if self_name and str(vals.get("include_self")).lower() in ("true", "1"):
             if self_name not in names:
@@ -689,10 +838,10 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
         if bad:
             out["unsafe"] = bad
             shown = ", ".join(f"{n} ({ec.offending_chars(n)})" for n in bad)
-            # Source per name: config-supplied names (team_names) came from the plan under a tool-only
-            # slot, else from always_include; anything else was appended from --self.
-            srcs = {(("`chat.recipients:` in the ticket's delivery-plan.yaml" if tool_only
-                      else "`always_include` in the tool slot config") if n in team_names
+            # Source per name: the plan's `chat.recipients:` first (tool-only and per-ticket), then
+            # the target's always_include; anything else was appended from --self.
+            srcs = {("`chat.recipients:` in the ticket's delivery-plan.yaml" if n in plan_names
+                     else "`always_include` in the tool slot config" if n in team_names
                      else "your own display name (`--self`, person config)") for n in bad}
             err = _err("malformed", f"{unit['label']}: recipient(s) carry shell metacharacters: "
                                     f"{shown} — remove them from {'; '.join(sorted(srcs))}")

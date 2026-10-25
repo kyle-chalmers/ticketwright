@@ -2,9 +2,27 @@
 
 Six rounds. **Rounds 1–4 always run; rounds 5–6 are individually skippable**, each skip labeled
 with its cost at that round's header. Phase 1 detection has already produced the facts these
-questions depend on — never ask something a probe already answered. Every question is prose the
-person answers in chat: runtimes that render structured options show chips, every other runtime
-shows a numbered list. Present detected answers pre-selected and defaults visible.
+questions depend on, never ask something a probe already answered. How a question is shown (the
+runtime's question tool, or a numbered list one at a time) and the option rules (recommended first,
+"None / we don't have one", multi-select, "All of these", "Show more", nothing invented) are in
+[SKILL.md](SKILL.md) § "How setup talks to the person"; this file says what to ask.
+
+**The rounds are about the person's work, in their words.** Each round opens with one line saying
+what it covers and why, and the questions name things the way a data team does. The mapping to the
+kit's config is this file's job, never the person's:
+
+| The person is asked | It configures |
+|---|---|
+| Who are you, and who else is on the team? (round 1) | `people/<id>.yaml`, the machine pin |
+| How does work reach you? (round 2) | the tracker, `project.intake` |
+| Where does your data live? (round 3) | the warehouse, its default, the dev target |
+| How do you share results, and where are finished files kept? (round 4) | chat, docstore, VCS |
+| What kind of work, and what do you analyze with? (round 5) | `role`, `domain`, `analysis_tools` |
+| When should I ask before acting? (round 6) | the two policies |
+
+When an answer needs something the kit configures in a particular way (one meeting provider that
+fetches notes automatically, say), set it up and say what was done in one plain line of the plan.
+Never turn a kit limit into a choice the person must make ("only one of these can …").
 
 ## The rule that decides what gets asked
 
@@ -21,20 +39,40 @@ it in later" is always a valid answer: write the key as a `# TODO` and keep goin
 `verify_stack.sh` names every unset required key as a warning on every run, so a deferred key is a
 tracked choice, not a silent hole.
 
-One key deserves a precision note wherever it is asked: a slot's **`mcp:` value must be the
+One key deserves a precision note wherever it applies: a slot's **`mcp:` value must be the
 runtime's exact tool prefix** — the `<name>` in `mcp__<name>__*` — because adapters render tool
-names from it. Tell the person to copy it from a tool name they can see, not from a UI label; a
-friendly name that matches no connected server makes every rendered tool name point at nothing,
-and nothing errors until a skill tries to call one.
-Check the adapter first with
-`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path>`:
-when it says this agent uses its own tool names, the adapter already names this agent's server and
-the slot's `mcp:` value is not used here. Then keep an existing `mcp:` value (a teammate on another
-agent needs it), and on a fresh repo write `mcp:` as a `# TODO` that says which agents still need
-it. Never write this agent's own prefix there: the next teammate on another agent would get tool
-names that point at nothing. Never edit an adapter to match the tool names in this session: a name the command
-prints that the session does not have is a gap to report for the kit, listed in the report's punch
-list.
+names from it. **Read it from your own tool list; never ask the person to type it.** They see a
+connector's display name, not its prefix, and a friendly name that matches no connected server
+makes every rendered tool name point at nothing, with no error until a skill tries to call one.
+When the connector is not connected yet, write `mcp: TODO` with a comment saying to connect it and
+re-run `/setup tool <slot>`, and list it as a thing to finish.
+Before writing it, check the adapter with
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path>`.
+When it says this agent uses its own tool names, the adapter already names this agent's server
+and the slot's `mcp:` value is not used here. Then keep an existing `mcp:` value (a teammate on
+another agent needs it), and on a fresh repo write `mcp: TODO` with a comment naming the agents
+that still need it. Never write this agent's own prefix there: the next teammate on another agent
+would get tool names that point at nothing.
+Never edit an adapter to match the tool names in this session: a name the command prints that the
+session does not have is a gap to report for the kit, listed as a thing to finish.
+
+## Suggestions from past usage (opt-in, counts only)
+
+Ranking options by what the person actually uses saves them reading long lists, and it is also the
+easiest way for setup to overreach. So it is one explicit question, asked once, the first time a
+ranking would help (usually round 2):
+
+<!-- ticketwright:user-facing:begin -->
+Can I look at your recent activity to put the options you use most at the top? I'd only count which projects and datasets you've used recently. I won't read any messages, notes or file contents.
+<!-- ticketwright:user-facing:end -->
+
+- **Yes** → use only the counts-only verbs the adapters define for this
+  (`rank_projects_by_activity` for the tracker today). A tool with no such verb gets no ranking:
+  show its options in their natural order. Never improvise a usage query against a mailbox, a
+  notes tool or a drive.
+- **No** → plain lists. Nothing is lost: the person picks as usual.
+- Either way, what setup reads during the interview stays names and counts. Message bodies, meeting
+  notes and file contents are never read during setup, whatever the answer.
 
 Never promise a question count, in this file or in any report — a stated number becomes the
 binding constraint on correctness, which is exactly the defect this round structure replaced.
@@ -49,8 +87,11 @@ below has to land **before** anyone types a colleague's work email.
    - `resolved` → **confirm rather than ask**, with the one-line display ("Working as Alice Smith
      (alice) — new analyses go in `tickets/alice/` unless told otherwise").
    - `miss` → run the self-healing bind interview: ask one question ("I don't recognize
-     `<identity>`. Who are you?", offering every id under `people/` plus "someone new"), then
-     `whoami.py --bind <id>`. Confirming-rather-than-asking describes the *resolved* path only —
+     `<identity>`. Who are you?", offering every id under `people/` plus "someone new"). On a
+     fresh repo, recommend an id made from the git name (the first name, lowercased: "Alice
+     Smith" → `alice`) as the first option, with free text for another; then
+     `whoami.py --bind <id>`, and say what that saved: "I've noted who you are in a file on
+     this machine that git ignores, and added you to the team list." Confirming-rather-than-asking describes the *resolved* path only;
      never suppress this interview; it is what makes identity self-healing.
    - `ambiguous` → ask which of the named candidates they are. Never rank, never guess.
 2. **The roster: ask explicitly who else is on the team.** A first-class question, not a
@@ -68,134 +109,175 @@ below has to land **before** anyone types a colleague's work email.
      prefer handles or short names over work emails as ids and display names"), the same
      convention `whoami --bind`'s own warning uses. Never claim to know the repo is public.
 
-## Round 2 — Where work comes from
+## Round 2: How work reaches you
 
-3. **Tracker** (detected options first) — or *none*, which selects the `local` tracker: the ticket
-   folder itself. Choosing *none* sets `id_mode: slug` and `ticket_url_template: null`, and skips
-   the key-prefix question.
-   - **Offer ranked options, not a blank.** Call the tracker adapter's
-     `rank_projects_by_activity` verb (auth plus an account-level scope is all it needs) and
-     present the returned containers most-active-first — the adapter's `container_key:`
-     frontmatter names which config key the chosen container fills. Where the verb reports
-     `unsupported` or `unavailable`, **fall back silently to a plain question** — the ranking is a
-     convenience, never an error to surface.
-   - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
-     show the chosen adapter's "Permission posture (MCP)" section (the native control + the
-     recommended setting) and carry its read-only probe's outcome into the Phase-4 report next to
-     that slot's verify_stack result. A tracker connector's grant is not introspectable
-     in-session, so the outcome caps at the recorded third state — say where a human confirms it.
-4. **Ticket key prefix** — the chosen container's key is the default. Skipped entirely for the
-   `local` tracker, where the folder name is the id.
+Open with: "First, how does work reach your team? This decides where tickets come from and what I
+check when a new one starts."
+
+3. **"How does work reach you?"** Multi-select: requests in a tracker (name each detected one:
+   "Jira at <site>", "GitHub Issues on this repo", …), email, meeting notes or transcripts, chat
+   messages, and "people just ask me (no tracker)". Recommend what detection found.
+   - A tracker picked → that tool fills the tracker. More than one tracker picked → ask which one
+     holds the tickets this repo works from; the others are noted as places requests also arrive
+     (tracker routing is one tool per repo today; say so in one line of the plan, not here).
+   - "People just ask me" with no tracker → the `local` tracker: the ticket folder itself. Set
+     `id_mode: slug` and `ticket_url_template: null`, and skip the key questions below.
+   - Email, meeting notes or chat picked → add each to `project.intake` (`email`, `meetings`,
+     `chat`). Say what that means while you have their attention: drop the request into the
+     ticket's `source_materials/` (meeting notes as `YYYY-MM-DD-<slug>-meeting.md`, trimmed to
+     decisions and action items) and `/ticket` reads it when work starts. Raw full transcripts stay
+     out of git by default and are checked before any commit or backup, mention that the check
+     reads filenames and document shape, **not meaning**, so it is not a substitute for reading what
+     gets committed.
+   - **Meeting notes picked → one follow-up:** "Want tickets to point at a meeting by its id, so
+     `/ticket` fetches the notes itself instead of someone exporting a file each time?" Offer each
+     connected provider that has a meetings adapter, plus "No, we'll export notes by hand". A
+     provider picked configures `seams.meetings` now (provider, adapter path, its required keys, a
+     read-only `verify:`, `null` for an MCP-only transport, with the standard warning). One
+     provider fetches automatically; if they use several, the one they use most is the recommended
+     pick and the rest are exported by hand, say that in one plan line. A provider with no
+     adapter is offered as "export by hand" only, never as if it fetched. The slot stays OPTIONAL
+     and read-only; curated excerpts are committed, raw transcripts are not; `/setup tool meetings`
+     adds or changes it later.
+   - **MCP transport? surface the posture.** When the tracker's transport includes MCP, show the
+     chosen adapter's "Permission posture (MCP)" section (the native control + the recommended
+     setting) and carry its read-only probe's outcome into the Phase-4 report next to that slot's
+     verify_stack result. A tracker connector's grant is not introspectable in-session, so the
+     outcome caps at the recorded third state, say where a human confirms it.
+4. **Which project holds the tickets?** Always from the tracker's own list, never invented. Call
+   the tracker adapter's `rank_projects_by_activity` verb (with the person's yes from § Suggestions
+   from past usage; without it, its listing step alone). Its first step lists the projects; show
+   them **even when no activity is found**, most active first when ranked, otherwise as listed,
+   with "Show more" past the limit. The adapter's `container_key:` frontmatter names which config
+   key the chosen project fills (the ticket key prefix, for Jira). Where the verb reports
+   `unsupported` or `unavailable`, ask plainly and **check a typed key against whatever the tracker
+   can list** before writing it. A key that is not in the tracker yet gets: "I don't see <KEY> on
+   <site>. Create it first and I'll check again, or pick one that exists?" Write it only if they
+   say it will exist, with a `# TODO` and an item in the Phase-4 list.
 5. **`ticket_url_template`** — how every `tickets/INDEX.md` row links back to the tracker. A dead
    index link is the textbook silent-wrong failure: the catalog renders confidently either way.
    Derive it where the adapter's shape allows (an issues-style tracker needs the repo and the
-   `{id}`/number token) and confirm; where it is not derivable, ask for it, and accept "no link"
-   as `null`.
-6. **`terminal_status`** — ask plainly ("What does your workflow call the done state — `Done`,
-   `Closed`, something else?"). There is no tool-agnostic way to detect workflow states, so never
-   phrase this as confirming a detected value.
+   `{id}`/number token) and confirm it as the recommended option; where it is not derivable, ask
+   for it, and accept "no link" as `null`.
+6. **`terminal_status`**: "What does your workflow call a finished ticket?" Offer `Done`,
+   `Closed`, `Resolved` and free text. There is no tool-agnostic way to detect workflow states, so
+   never phrase this as confirming a detected value.
 
 `default_epic` is **not asked**: it is null-defaultable, most trackers have no epic concept, and a
 parent id nobody has yet is noise. It stays a commented default in `stack.yaml`.
 
-## Round 3 — Where the data lives
+## Round 3: Where your data lives
 
-7. **Warehouse** (detected options first) — or *none*; non-data repos are fine, and the skills
-   degrade cleanly.
-   - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
-     show the chosen adapter's "Permission posture (MCP)" section — for a warehouse the probe is a
-     real read-only privilege introspection with a written comparison rule, so its outcome is
-     worth carrying into the Phase-4 report next to that slot's verify_stack result.
-8. **The chosen adapter's required keys** — tier-1 values only: which data the *team* reads.
-   Never a named profile, connection, or local path — those are machine-tier values the person
-   flow writes into `.claude/config/connections.local.yaml`; if detection surfaced one, display
-   it and route it there.
-9. **`dev_target`** — where dev DDL goes. This *is* a team value (target selection may never be
-   personal), and its absence means dev work has no separate home from prod.
-10. **More than one warehouse?** If yes, branch into the `targets:` shape —
-    `stack.schema.md` § "Named targets" has the schema and a worked example ships as
-    `stack.example.multi-warehouse.yaml`.
+Open with: "Next, where your data lives. This decides where queries run and where test tables go so
+they never touch real data."
 
-## Round 4 — Where work goes
+7. **"Where does your data live?"** Multi-select, detected warehouses first (each with what was
+   detected, e.g. "command-line tool signed in"), plus "No database, we work from files". None is
+   fine: non-data repos work, and the skills skip query re-runs cleanly.
+   - **More than one picked** → the `targets:` shape (`stack.schema.md` § "Named targets", worked
+     example `stack.example.multi-warehouse.yaml`), then ask **"Which do you use most?"** for the
+     default (listed first).
+   - **One target per connection, not per dataset.** A configured dataset / catalog / schema is
+     only where *unqualified* table names resolve: any other dataset on the same connection is still
+     reachable by its full name. Say that in one line, then ask which one they use most for the
+     default. Add a second target only when the connection itself differs (another account,
+     workspace or project the CLI reaches separately), never one per catalog.
+   - **MCP transport? surface the posture.** When the warehouse's transport includes MCP, show the
+     chosen adapter's "Permission posture (MCP)" section, for a warehouse the probe is a real
+     read-only privilege introspection with a written comparison rule, so its outcome is worth
+     carrying into the Phase-4 report next to that slot's verify_stack result.
+8. **The chosen adapter's required keys.** Tier-1 values only: which data the *team* reads. Offer
+   them from the warehouse's own read-only listing where the CLI can list (projects, datasets,
+   catalogs, SQL warehouses), with "Show more" and free text; never invent one. A listing that
+   fails (an expired login) is a "sign in, then I'll list them" step with the exact sign-in command
+   the adapter's auth notes give, **not** a request to type IDs by hand. Never a named profile,
+   connection, or local path in `stack.yaml`, those are machine values the person flow writes
+   into `.claude/config/connections.local.yaml`; if detection surfaced one, display it and route it
+   there.
+9. **`dev_target`**: "Where should test tables go, so test work never touches real data?" This
+   *is* a team value (target selection may never be personal). Options: a listed dev dataset /
+   schema if one exists, free text, and **"We don't have one"**, which writes `dev_target: null`
+   with the comment `# no dev environment: on purpose, not a TODO` so nobody later reads it as
+   forgotten.
 
-11. **VCS — confirm, don't ask.** Phase 1 read `origin`, which yields the host, and the default
-    branch from `git symbolic-ref refs/remotes/origin/HEAD`. Show the conclusion and let the
-    person correct it.
-12. **Docstore** (or *none*). Split the destination the way the tiers require: the **team folder
-    identity** (e.g. `drive_folder` — which destination) is tier 1 and goes in `stack.yaml`; the
-    **machine mount root** (where it is mounted on this machine) is tier 3. If Phase 1 detected a
-    mount root, display it and route it to the person flow — never write it to `stack.yaml`.
-    A team that cannot run a desktop sync agent is not stuck: the `rclone` adapter fills this slot
-    with no mount at all (`remote_path` tier 1, the remote NAME tier 3). Mount install steps and the
-    mountless route both live at <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>.
-    The same offer applies when the stack is *already* configured but `mount_root` cannot be
-    resolved on this machine — the sync agent isn't installed, or (increasingly common) it needs
-    an IT device approval that hasn't landed yet. Don't dead-end there: offer the mountless route
-    on the spot — the `rclone` adapter fills this slot with no mount, same tier split as above —
-    and note they can switch back to the mounted slot once the approval comes through.
-13. **Chat** (or *none*): which **tool** fills the slot, its transport, and the adapter's required
-    connection keys — nothing more. **Do NOT ask for a standing channel or a fixed stakeholder
-    list.** Who a result goes to, and where, varies per analysis — it depends on who the analysis
-    is *for* — so the destination and recipients are declared **per-communication** at `/ship` and
-    recorded in the ticket's `delivery-plan.yaml` (`chat.channel:` + a non-empty `chat.recipients:`).
-    Routing **halts and asks** when a ticket declares none, rather than sending to a standing default
-    that may be wrong. Write the seam as a **tool-only single mapping** (tool + transport +
-    connection keys; no `default_channel`, no `always_include`).
-    - *A team that genuinely wants fixed, pre-declared audiences* adopts the `targets:` shape
-      (`stack.example.multi-audience.yaml`), where each audience declares its own destination and
-      recipient list — an extension, not the default.
-    - **MCP transport? surface the posture.** When the configured slot's transport includes MCP,
-      show the chosen adapter's "Permission posture (MCP)" section and carry its read-only probe's
-      outcome into the Phase-4 report next to that slot's verify_stack result. A chat connector's
-      grant is not introspectable in-session — the posture record caps at the third state and the
-      draft/send policies stay guidance on that path; the section names the settings surface where
-      a human confirms the grant.
-14. **Email — one question, covering both directions:** "Does email carry work *into* this team,
-    *out* to stakeholders, both, or neither?" Never split intake and delivery into separate
-    rounds — that reads as being asked about email twice.
-    - **In (or both):** add `email` to `project.intake`. The consumer is `/ticket`'s priming
-      step, which reads `source_materials/` for material a human dropped in — intake beyond the
-      tracker arrives as files, not API calls.
-    - **Add one more option to this same question, never a new one:** "…and does an AI notetaker
-      (meeting notes or transcripts) carry work in?" The anti-split rule above is why it rides
-      here — a separate meetings round reads as being asked about intake twice. A yes adds
-      `meetings` to `project.intake`. Say what the convention is while you have their attention:
-      export the notes or a curated excerpt to the ticket's `source_materials/` as
-      `YYYY-MM-DD-<slug>-meeting.md`, trimmed to decisions and action items. Raw full transcripts
-      stay out of git by default and are gated before any commit or docstore copy — mention that
-      the gate reads filenames and document shape, **not meaning**, so it is not a substitute for
-      reading what gets committed.
-    - **On that yes only** (never asked otherwise — the anti-split rule again): offer the
-      `meetings` tool slot as the step past hand-exports — "want tickets to *reference* meetings
-      by id (`meeting_ref:` in a source_materials stub) so `/ticket` fetches the transcript to
-      context itself, instead of someone exporting a file each time?" A yes configures
-      `seams.meetings` now: which provider, the adapter path, its adapter-required keys, and a
-      read-only `verify:` (`null` for an MCP-only transport, with the standard warning). A no
-      costs nothing — the file-backed export path just documented keeps working, and
-      `/setup tool meetings` adds the slot later. Either way the slot stays OPTIONAL and
-      read-only, and the transcript-privacy rule is the same: curated excerpts are committed,
-      raw transcripts are not.
-    - **Out (or both):** the email adapters ship (`adapters/chat/gmail.md` /
-      `adapters/chat/outlook.md`), but activating email delivery means converting the chat slot
-      to `targets:` form with a declared audience on EVERY target — a deliberate config change,
-      not an interview side effect. So run the configuration questions now and record the
-      answers: **which provider** (`gmail` | `outlook`), the **sending identity** (or shared
-      mailbox — the adapters' `sender_key: identity`), and the **declared audience** plus its
-      recipient list (which becomes that target's `always_include`). Write them into a commented
-      `seams.chat.targets.email` block ending with a `# TODO` that names what is missing — the
-      activation — and points at `stack.example.multi-audience.yaml` (the activated form). Say
-      plainly, here and in the Phase-4 report, that email is **configured but not yet
-      activated**: no draft will send until someone converts the slot.
+## Round 4: How you share results, and where files are kept
+
+Open with: "Last of the required questions: how finished work leaves your hands. Nothing is ever
+sent without you seeing it first."
+
+10. **"How do you share results with the people who asked?"** Multi-select: each detected chat
+    or email tool ("Slack", "Microsoft Teams", "Gmail", "Outlook", whichever are connected or
+    detected), plus "A shared folder only", "A pull request only", and "We don't share from here".
+    Who receives a result, and where, varies per analysis, so **never ask for a standing channel or
+    a fixed recipient list** here: the destination and recipients are chosen per result at `/ship`
+    and recorded in that ticket's `delivery-plan.yaml`, and `/ship` stops and asks when a ticket
+    has none. Write what they picked:
+    - **One tool** → a tool-only single mapping: tool + transport + the adapter's required
+      connection keys, `default_mode: draft`, no `default_channel`, no `always_include`.
+    - **Two or more tools** → the `targets:` shape with one target per tool, each marked
+      `destination: per_ticket` (chosen per ticket, never a standing destination), each with its
+      own `audience:` naming the tool (`email`, `slack`, `teams`), `default_mode: draft` on every
+      target, and the adapter's sender key where it declares one (ask the email tools' **sending
+      identity**: "Which mailbox should drafts come from?", offering the addresses detection saw
+      plus free text). `default:` is the one they use most. The ticket's delivery plan names the
+      audience, so each result goes out through the tool that ticket chose.
+    - **Email alone** → the same single mapping, with `identity:` and `default_mode: draft` set
+      explicitly, because an email cannot be unsent.
+    - A team that genuinely wants **fixed, pre-declared audiences** (internal channel vs client
+      mailbox, each with its own standing recipient list) adopts the standing-destination form in
+      `stack.example.multi-audience.yaml`, an extension, never the interview's default.
+    - **MCP transport? surface the posture.** When a chosen tool's transport includes MCP, show its
+      adapter's "Permission posture (MCP)" section and carry its read-only probe's outcome into the
+      Phase-4 report next to its verify_stack result. A chat connector's grant is not
+      introspectable in-session, the posture record caps at the third state and the draft/send
+      policies stay guidance on that path; the section names the settings surface where a human
+      confirms the grant.
+11. **"Where should finished files be kept?"** (the docstore, or *none*): a synced drive folder,
+    a cloud folder reached without a desktop app, or "Just this repository". Split the answer the
+    way the tiers require: the **team folder** (e.g. `drive_folder`, which destination) is tier 1
+    and goes in `stack.yaml`; the **mount root** (where that drive sits on this machine) is tier 3.
+    - **Offer folders that exist.** A new folder in a shared drive is visible to everyone the
+      drive is shared with: say so on that option. Ask once before looking inside someone's drive ("Can I list the
+      folders at the top of your drive to pick from?"), then list **folder names only**, never file
+      names; offer "Create a new folder: <name>" as an option they type. Folder names can't contain any of
+      `;` `|` `&` `$` `<` `>` `(` `)`, a backslash or a backtick, check a typed name now and offer a clean spelling ("Sales and Ops
+      Tickets") rather than finding out after the files are written.
+    - If Phase 1 found a mount root, display it and route it to the machine file, never to
+      `stack.yaml`. A team that cannot run a desktop sync agent is not stuck:
+      the `rclone` adapter fills this slot with no mount at all (`remote_path` tier 1, the remote NAME tier 3). Mount
+      install steps and the mountless route both live at
+      <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>.
+    - The same offer applies when the stack is *already* configured but `mount_root` cannot be
+      resolved on this machine, the sync agent isn't installed, or (increasingly common) it needs
+      an IT device approval that hasn't landed yet. Don't dead-end there: offer the mountless route
+      on the spot, the `rclone` adapter fills this slot with no mount, same tier split as above,
+      and note they can switch back to the mounted slot once the approval comes through.
+12. **Code hosting, confirm, don't ask.** Phase 1's probe gave the origin host and the default
+    branch (and whether that branch came from the remote or is the current branch because nothing
+    has been pushed). Show the conclusion as the recommended option and let the person correct it.
+    No remote yet: confirm the host they intend to use, and leave the remote for later unless they
+    already said yes to creating one in Phase 1.
+
+Older configs and the commented email block: a repo set up before per-ticket targets existed may
+carry a commented `seams.chat.targets.email` block whose header says email is **configured but not
+yet activated**, with the provider, sending identity and audience recorded. When you meet one, offer
+to activate it in the current form (a `destination: per_ticket` target, as above) and point at
+`stack.example.multi-audience.yaml` for the standing-destination alternative; never activate it
+silently. Ask for each chosen adapter's required keys as you go (gmail and outlook both declare a
+sender key).
 
 ## Round 5 — How you work (skippable)
 
 **Offer the skip at this header, labeled with its cost:** "Skip this and `AGENTS.md` ships the
 generic persona (`generalist`, `data analysis`) and lists no analysis tools."
 
-15. **Role + domain, as one question** — and be honest about the blast radius: `role` fills
+13. **Role + domain, as one question**, with the roles as options: **Analyst** (questions
+    answered with queries, metrics and reports), **Engineer** (pipelines, models, data
+    infrastructure), **Scientist** (experiments, statistics, modeling), **Generalist**, and
+    "Skip this round", plus free text for the domain phrase. Be honest about the blast radius: `role` fills
     exactly one token, `{{role_focus}}`, from a three-to-six-line `templates/roles/<role>.md`
     snippet; `domain` fills one word in one sentence. Nothing else reads either.
-16. **Analysis tools** — "Which tools does the team do the actual analysis in?" (transformation
+14. **Analysis tools**: "Which tools does the team do the actual analysis in?" (transformation
     frameworks, notebooks, spreadsheets, BI apps — whatever applies). **Seed this from Phase 1
     detection, but only with tools that are NOT already filling a tool slot** — a detected CLI that
     became the warehouse belongs there, not duplicated here. What this catches is the tool the team
@@ -216,11 +298,27 @@ generic persona (`generalist`, `data analysis`) and lists no analysis tools."
 shipped defaults — destructive warehouse SQL prompts only for high-risk statements, and
 deliverables open for human sign-off at `/review` only."
 
-17. **`db_write_requires_approval`** (`off` | `high_risk` | `all`) and
+15. **`db_write_requires_approval`** (`off` | `high_risk` | `all`) and
     **`human_review_handoff`** (`off` | `review` | `all`) — the two policies whose default is
     plausibly wrong for a given team. The other eight policies stay commented defaults with their
     "when to change this" notes; asking all ten is the wall the old question cap existed to
-    prevent.
+    prevent. Ask them in plain words, with the options already explained, so the person never has to
+    ask what one means:
+    - "When should I ask you before changing data in your warehouse? Reading data never asks."
+      - **Before risky changes** (recommended, `high_risk`): asks before anything that changes or
+        removes existing data or permissions (updating or deleting rows, dropping or replacing
+        tables, changing columns, granting access) and before anything it can't recognize. Adding
+        new things (creating a new table, inserting rows) runs without asking.
+      - **Before any change** (`all`): also asks before creating tables or inserting rows.
+      - **Never** (`off`).
+      Say where the check applies: commands run in the terminal. A database connector inside the
+      AI app follows that connector's own permissions instead.
+    - "When should finished files open on your screen for you to look over?"
+      - **At the final check** (recommended, `review`): the SQL and CSV deliverables open once,
+        when `/review` finishes, for your sign-off.
+      - **Every time** (`all`): also while building (each query before its first run, each
+        export after it's written).
+      - **Never** (`off`): you open files yourself.
 
 ## Skipping a round
 
@@ -247,7 +345,7 @@ project:
   ticket_path: "tickets/{assignee}/{id}"
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
-  intake: [tracker, email, meetings]  # round 4: email + an AI notetaker carry work in
+  intake: [tracker, email, meetings]  # round 2: email + meeting notes also carry work in
   role: analyst                       # round 5
   domain: data analysis
   analysis_tools: [notebooks, spreadsheets]
@@ -284,16 +382,8 @@ seams:
     mcp: chatserver
     default_mode: draft               # policy, not a destination — the draft/send default stays here
     verify: null
-    # targets:                        # round 4: email delivery, configured but NOT YET ACTIVATED
-    #   email:
-    #     provider: gmail             # gmail | outlook
-    #     identity: reports@acme.example
-    #     audience: stakeholders
-    #     always_include: [pm@acme.example]
-    #     # TODO: not yet activated — nothing sends. Activating means converting this chat
-    #     # slot to `targets:` form (a declared audience on EVERY target, `provider:` becomes
-    #     # `tool:` + `adapter:`, `default_mode: draft` set explicitly on the email target).
-    #     # The activated form is stack.example.multi-audience.yaml.
+    # Two or more ways of sharing results → `targets:` with one `destination: per_ticket` target per
+    # tool instead (round 4, item 10); one tool stays this single mapping.
   vcs:
     tool: github
     adapter: adapters/vcs/github.md

@@ -3,8 +3,8 @@
 # Jira / Snowflake / Slack + Teams + Gmail / Google Drive + SharePoint / GitHub. Internal updates
 # go to Slack and are archived on the team's Drive; client-facing delivery goes to a Teams channel
 # shared with the client and lands in the SharePoint library the client can see; a stakeholder
-# summary goes out BY EMAIL from a shared identity (the `email` target below — the activated form
-# of the commented `seams.chat.targets.email` block the setup interview writes).
+# summary goes out BY EMAIL from a shared identity (the `email` target below: the standing-destination
+# form; the setup interview's default is a `destination: per_ticket` target instead).
 #
 # This file exists to prove one claim: ONE tool slot can hold more than one TOOL, and which one a
 # given ticket uses is DECLARED, never guessed. The chat slot below holds three different products
@@ -90,8 +90,8 @@ seams:
         # include_self: false            # also mention the shipper, IN ADDITION to always_include
         verify: null
       # Email is a CHAT TARGET, not a sixth tool slot: same verbs, same routing, same draft-first
-      # rule. This is the activated form of the commented `seams.chat.targets.email` block the
-      # setup interview writes on an email-out answer (`provider:` becomes `tool:` + `adapter:`).
+      # rule. This is the standing-destination form (a fixed `to:` and `always_include`); the setup
+      # interview writes a `destination: per_ticket` target instead, with recipients chosen per ticket.
       # An email is the least recoverable delivery — it cannot be unsent — so `default_mode: draft`
       # is set EXPLICITLY here: an unset default_mode is not documented as meaning draft.
       email:

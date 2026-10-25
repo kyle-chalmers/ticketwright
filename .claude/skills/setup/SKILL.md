@@ -74,12 +74,84 @@ committed file.
 > follows, **not** a mechanical block: no runtime enforces it, which is why it is written here where
 > the agent reads it, and why the default path's Phase 3 prints the specifics.
 
-**Every interview in this skill is prose — team modes included.** State questions as prose the
-person answers in chat: runtimes that render structured options show chips, every other runtime
-shows a numbered list, and the interview means the same thing everywhere. Never author a question
-as a structured tool-call payload.
+## How setup talks to the person: every mode
+The person may know nothing about Ticketwright, and may not be a programmer. Trust comes from saying
+plainly what is about to happen and why, before it happens.
+
+1. **Show the map first** (default mode), before the first probe. Use this block, in these words:
+   <!-- ticketwright:user-facing:begin -->
+   Setup has four steps:
+   1. **Check this machine.** I look at what's installed. No questions, unless this folder isn't a git repository yet (then I ask before starting one).
+   2. **Your work.** A few questions about how work reaches your team, where your data lives, and how you share results. Each one says why it's asked.
+   3. **Review the plan.** I show every file I'd create. Nothing is written until you say yes.
+   4. **Write and check.** I create the files, check that each tool connects, and tell you anything left to finish.
+   You can stop at any point. Your team's settings aren't written until you say yes in step 3.
+   <!-- ticketwright:user-facing:end -->
+   The other modes open with one line instead: what this run changes, and whether it asks anything.
+2. **Open and close every step with one line each.** Open: what this step does and whether it asks
+   anything. Close: what got done, and what comes next.
+3. **Every question explains itself.** One line on what it decides and why it matters; each option
+   says what choosing it changes. A detected value is the recommended option (first, marked
+   recommended, with where it came from), never the answer: the person still picks.
+4. **Ask with the runtime's own question tool when it has one.** Read the runtime's capabilities:
+   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/kit_paths.py" --json`
+   - `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+     ask with that tool, within `capabilities.question_limits` (when that says `unknown`: one
+     question per call, at most four options). Group up to the limit only questions that do not
+     depend on each other's answers; ask a dependent question after the one it depends on.
+   - Otherwise (`no` / `unknown`) → ask in chat as a short numbered list, **one question at a
+     time**, and wait for an explicit answer before the next. A detected value is still only a
+     recommendation.
+   The question content is the same either way; only how it is shown changes. This skill never
+   names a runtime's tool itself, the runtime's own adapter (`adapters/runtime/<name>.md`) does.
+   A question tool is not available inside a subagent, so an interview never runs in one.
+5. **Option rules** (both presentations):
+   - Options come from detection, from the person's own words, or from the fixed choices a question
+     defines. **Never invent a value** (a project key, a folder, a dataset, a channel) and offer it
+     as if it existed. A typed value that detection can check is checked before it is written.
+   - Offer **"None / we don't have one"** whenever absence is a real answer.
+   - Use **multi-select** whenever more than one answer can be true, and add **"All of these"**
+     when a multi-select has three or more options.
+   - More real options than fit: show the most likely first plus a **"Show more"** option that
+     pages through the rest: when it is picked, ask a follow-up question listing the next options
+     (the same multi-select, with what was already picked carried over), never "type them in
+     Other". "None / we don't have one" stays on the first page, never behind "Show more". Never move a detected option into the question's wording instead
+     ("Postgres: type it in Other"); that hides it. Free text is always possible for a value not
+     listed (the question tool's own "Other", or "or type your own" in prose).
+   - A question about which tool the team uses offers every tool the kit has setup notes for in
+     that slot, detected or not. Detected ones come first with what was found; an undetected one
+     is labeled "not connected here yet", and choosing it adds a connect-it item to the list of
+     things to finish. Never make the person type the name of a common tool the kit supports.
+6. **Talk about the work, not the kit.** Questions use the person's words: tickets, data, results,
+   files, the team. "Tool slot", "target", "tier", "seam" and "adapter" do not appear in a question.
+   When a kit limit shapes the answer, configure around it and say in one line of the plan what was
+   set up and why, never hand the person the limit as a choice to make.
+7. **When the runtime refuses a command** (a sandbox that blocks creating `.git`, a credential
+   store it cannot write), do not route around it: give the person the exact command to run in
+   their own terminal, say what it does in one line, and wait for them to say it is done. And never
+   edit the kit's own files (its setup notes, templates or scripts) during setup: everything this
+   repository needs, including a connector's exact name, goes in `stack.yaml` or the machine file.
+   When a connector's tools are named differently from what its setup notes expect (another
+   agent's version of the same connector, say), do not rewrite the notes to match: record that
+   tool as a thing to finish, naming the tool names you can see, so the mismatch is fixed once in
+   the kit instead of silently in one repository.
+8. **Privacy while detecting.** Setup never reads message bodies, meeting notes or file contents.
+   Listing names inside someone's own space (their drive's folders, their projects) is fine after
+   asking, names only. Suggestions from past usage are opt-in and counts-only
+   ([interview.md](interview.md) § Suggestions from past usage).
+9. **End on a named state** (Phase 4, step 8): **"Ready for your first ticket"**, or **"Ready, with
+   N things to finish"** followed by each item and the command that finishes it.
+
+## Start here, in the default mode: show the map before anything else
+The very first thing a default-mode run outputs is the four-step map in "How setup talks to the
+person" above, word for word, before the launcher command below, before the repository check and
+before any question. A run that opens with a command or a question has skipped the one thing that
+tells the person what setup is about to do. (Other modes open with their one line instead.)
 
 ## Ensure the launcher — run this FIRST in every mode, before opening any reference file
+(After the map, in the default mode. When the folder is not a git repository yet, ask Phase 1's
+repository question first and run this block once the repository exists, so a person who stops
+there is left with nothing copied.)
 Every reference file (`scaffold.md`, `teammate.md`, `voice.md`) and every rendered artifact invokes
 kit scripts as `bash "$(git rev-parse --show-toplevel)/bin/tw" <script>`. That resolves only if the
 project has the launcher. **This file's body is the one place the plugin token is substituted**, so
@@ -125,7 +197,7 @@ an existing `stack.yaml`. (This is a first-class mode, **not** a tool slot — `
 ## Mode: `tool <tracker|warehouse|chat|docstore|meetings|vcs>` — add one tool slot to the team config (team-wide)
 E.g. `/setup tool chat`. Detect candidates for just that tool slot, then run only that slot's
 interview round from [interview.md](interview.md) (round 2 for tracker, round 3 for warehouse,
-round 4 for chat/docstore/meetings, round 4's VCS question for vcs — including the slot's
+round 4 for chat/docstore, round 2's meetings follow-up for meetings, round 4's code-host question for vcs, including the slot's
 adapter-required keys), add the block to committed `stack.yaml`, verify it, and re-render
 `AGENTS.md`. Nothing else changes.
 **`tracker` and `vcs` are re-entry slots too, and they are the ones people need most.** The
@@ -174,14 +246,33 @@ which prints the resolved commands without launching anything. Never commit this
 
 ## Default mode — configure the repo
 
-### Phase 1 — Detect (no questions yet)
+(The map was already printed, per "Start here" above. Then the launcher step, then Phase 1.)
+
+### Phase 1: Check this machine (no questions unless the folder is not a repository yet)
+Open with the map from "How setup talks to the person" above, then say this step's one line:
+"First I'll look at what's installed on this machine. This step asks nothing unless this folder isn't
+a git repository yet."
+
 0. **Preflight — the ways a run is doomed before it starts.** Both probes are read-only and cheap;
-   run them before anything else, because neither failure is fixable by anything this skill writes.
-   - **Is this a clone?** `!git rev-parse --show-toplevel` — a non-zero exit means there is no
-     repository here. **Halt**, and say why: "There is no `.git` in this folder. If it came from a
-     Download-ZIP button (the folder name usually ends in `-main`), Ticketwright cannot branch,
-     commit, or open a PR from it, and no config would fix that. Clone the repo instead —
-     `git clone <the repository's URL>` — then re-run `/setup` inside the clone."
+   run them before anything else.
+   - **Is this a repository?** `!git rev-parse --show-toplevel`: a non-zero exit means there is
+     no `.git` here. Ticketwright branches, commits and opens pull requests, so it needs one. Do
+     **not** halt: ask, with these three options (the first is the recommended one only when the
+     folder is empty apart from the plugin's own `.claude/settings.json`):
+     1. **Start a new repository here**: "I'll run `git init` in this folder. Nothing is shared
+        anywhere until you add a remote."
+     2. **I'll clone my team's existing repository**: "Stop here; clone it with
+        `git clone <the repository's URL>`, then run `/setup` inside the clone."
+     3. **Stop**: nothing is changed.
+     On option 1: run `git init`, then ask once whether to connect a remote now. Creating a new
+     remote repository (for example on a code host) is an outward-facing action: only on its own
+     explicit yes, **private** unless the person says otherwise, and never as part of another
+     answer. "Not now" is a fine answer; the first push can come later.
+     Keep the ZIP case visible: if the folder name ends in `-main` or holds files but no `.git`
+     (files other than the kit's own install, which `ticketwright init` or the plugin put there), say
+     "If this folder came from a Download-ZIP button, it has no history to branch from, clone the
+     repository instead (`git clone <the repository's URL>`) and run `/setup` there," and offer
+     option 2 first.
    - **Is the kit installed and usable here?**
      `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/plugin_doctor.py" --json` — one
      read-only pass over the install prerequisites (it never installs anything, and makes no
@@ -191,34 +282,44 @@ which prints the resolved commands without launching anything. Never commit this
      - `scope_supported` — the agent CLI is too old to install a plugin for one repo; the fix names
        both the in-session install route and the update command for how it was installed;
      - `repo_install` — nothing is installed for this repository;
-     - `install_payload` — the install record points at a directory that does not exist.
+     - `install_payload`: the install record points at a directory that does not exist, or the
+       payload is missing files setup needs (this is the install-completeness check Phase 4 relies
+       on).
      Everything else (`warn`, `unknown`, a global-only install, a stale catalog) is reported and
-     the run continues. On a non-plugin install — a vendored kit, a pip install — the install
-     checks answer `unknown`: that is the expected answer there, not a failure. If the script is
+     the run continues. On a non-plugin install (a vendored kit, a pip install) the install
+     checks answer `unknown`: that is the expected answer there, not a failure, so leave those
+     out of what you tell the person instead of listing them. If the script is
      absent (an older kit copy), say so in one line and carry on.
-   - **`yq`** — when `yq_present` is not `ok`, Phase 4's kit-integrity check cannot run at all.
-     Print the platform install command the doctor gives, and **offer to run it now**, while it is
-     still cheap — not at the moment the check fails. Say in the same breath what that check costs:
-     it runs 1,200+ assertions over several minutes, longer than a typical tool timeout, so give it
-     the background or a raised timeout and judge it by its **exit code**, never by whether the
-     tail of its output looks green.
+   - **`yq`**: needed only by the kit's full self-check (`bin/selftest.sh`), which setup no longer
+     runs by default (Phase 4). When `yq_present` is not `ok` on a vendored or edited kit, print the
+     platform install command the doctor gives and offer to run it now; on a plugin install, mention
+     it once and move on.
    Identity routing is unchanged: it happens at step 4 below.
-1. **CLIs:** `!for c in snow acli gh glab bq databricks yq jq git rclone; do command -v $c >/dev/null && echo "✓ $c" || echo "– $c"; done`
-2. **MCP servers** connected this session (tracker / chat / warehouse servers).
-3. **Repo facts — probes, not questions.**
-   - **Origin:** read the `origin` remote URL — one probe, two facts: whether the remote sits on
-     a **public code host** (the same offline heuristic `whoami --bind` uses — true visibility
-     cannot be checked without a network call, so round 1's roster warning is phrased "if this
-     repo is public", never "it is") and the VCS host round 4
-     confirms instead of asking. The default branch comes from
-     `git symbolic-ref refs/remotes/origin/HEAD` — **not** `git symbolic-ref HEAD`, which reports
-     whatever branch happens to be checked out and would misconfigure any setup run from a
-     feature branch. On a repo nothing has been pushed to yet that probe exits 128 ("not a
-     symbolic ref") — fall back to the current local branch and confirm it in prose; never leave the
-     agent to improvise on a failed probe.
-   - **Obsidian:** installed or not (e.g. `command -v obsidian`, or the OS application folder).
-     Never a question — `graph_notes`/`graph_config` already default correctly; this only decides
-     which one-liner the Phase-4 report prints (step 8).
+1. **CLIs and machine facts, in one probe:**
+   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/setup_detect.py" --json`
+   reports the command-line tools on PATH, the git facts (repository, branch, origin **host** only,
+   default branch and where that answer came from, whether a git name and email are set), the
+   synced-drive folders (names and paths of the mount roots, never their contents), Obsidian, and
+   the analysis apps installed here. Use its answers; do not re-probe by hand, and never state a
+   fact it did not report (a "no synced drive" claim needs this probe's empty `mounts` list behind
+   it). If the script is absent (an older kit), fall back to the CLI probe below and say the other
+   facts are unknown:
+   `!for c in snow acli gh glab bq databricks yq jq git rclone; do command -v $c >/dev/null && echo "✓ $c" || echo "– $c"; done`
+   **No git name or email?** When the probe reports `name_set` or `email_set` false, ask before
+   round 1 (they are what identity and every commit use): "Git doesn't know your name or email on
+   this machine yet. What should your commits show?", offering the name and address detection saw
+   elsewhere plus free text. Set them for this repository only (`git config user.name "<name>"`,
+   `git config user.email "<email>"`), the same fix [teammate.md](teammate.md) step 0.5 uses.
+2. **MCP servers** connected this session (tracker / chat / warehouse / docs / meeting servers):
+   the one thing a shell probe cannot see. List them by the name the person would recognize.
+3. **What the facts mean (probes, not questions).**
+   - **Origin:** `origin_public_host` decides the roster privacy warning (phrased "if this repo is
+     public", never "it is", visibility cannot be checked offline), and the origin host is the
+     VCS answer round 4 confirms instead of asking. The default branch comes from
+     `refs/remotes/origin/HEAD` when there is one; on a repo nothing has been pushed to yet the probe
+     reports the current branch and says so, confirm it rather than stating it.
+   - **Obsidian:** never a question; `graph_notes`/`graph_config` already default correctly; this
+     only decides which one-liner the Phase-4 report prints (step 8).
    - **Docstore mount roots:** REPORT-ONLY. A cloud-storage mount root is a machine-local
      (tier-3) value: display what was found and route it to the person flow
      (`.claude/config/connections.local.yaml`, [teammate.md](teammate.md) steps 3–4). Writing it
@@ -228,6 +329,17 @@ which prints the resolved commands without launching anything. Never commit this
      adapter. Never a bare `docs/` path: `docs/` does not ship in the PyPI package.
    - **Names only, here too:** report profile/connection/mount *names* and paths — never echo a
      tool config file's contents anywhere; those files can hold plaintext secrets.
+   **After step 4 below, close this step with this list**: print it as a bulleted list, one line
+   per area, filled in with what the probes found. Not a one-sentence summary ("I've mapped out your
+   tools: …"), and not a raw tool inventory:
+   ```text
+   Here's what I found on this machine:
+   - Work comes from: <the trackers and request sources found>
+   - Data lives in: <the warehouses found, and whether each is signed in>
+   - Results go out through: <the chat and email connections found>
+   - Files are kept in: <synced drive folders found, or none>
+   Next, a few questions about how your team works.
+   ```
 4. **Existing state — five routes, checked in order.** First write the boundary down: the ADOPT
    triggers are evidence of prior ticket work — ticket-looking folders, an existing index, or
    custom `.claude/commands` / `.claude/skills`. A repo whose only Ticketwright trace is
@@ -245,7 +357,7 @@ which prints the resolved commands without launching anything. Never commit this
       - `miss` → this is a **teammate new to this repo**: switch to [teammate.md](teammate.md)
         automatically. Editing the team's shared config must never be a new cloner's first
         offered action. (`--teammate` stays the explicit re-run.)
-      - `ambiguous` → ask which of the named candidates they are (in prose), bind with
+      - `ambiguous` → ask which of the named candidates they are (per the question rules above), bind with
         `whoami.py --bind <id>`, then re-run the check.
       - `conflict` → surface whoami's warning verbatim and resolve the identity first — fix the
         stale side (the machine pin, or this repo's git config; step 0 of
@@ -264,7 +376,7 @@ confirm rather than onboard:
 1. **Collect candidates** from `project.assignee_dir`, any legacy `project.voice_profiles.map`
    entries, existing `tickets/<owner>/` folders, and recent `git log` authors. Author names and
    emails are DISPLAY HINTS for the confirmation only — choosing an id is each person's own job.
-2. **Confirm in prose:** "This repo has work by <display hints>. Which of these are current
+2. **Confirm with the person:** "This repo has work by <display hints>. Which of these are current
    teammates — and which one is you?" An id must be a plain identifier (letters, digits, dot,
    dash, underscore): it names `people/<id>.yaml` and `tickets/<id>/`.
 3. **For each confirmed teammate who is not present**, write the identity-free placeholder the
@@ -277,11 +389,13 @@ confirm rather than onboard:
 This is what distinguishes "this repo just upgraded" (seed, confirm, carry on with what they
 asked for) from "this person is new" (the teammate route above).
 
-### Phase 2 — Interview, in rounds (detected answers pre-selected, defaults visible)
-Run the interview in [interview.md](interview.md). Six rounds, cut by whether skipping is
-survivable: **rounds 1–4 always run** (who · where work comes from · where the data lives · where
-work goes — round 4's one intake/delivery question covers email *and* whether an AI notetaker
-carries work in, which writes `meetings` into `project.intake`), **rounds 5–6 are individually skippable** (how you work · house rules), the skip
+### Phase 2: Your work (questions; detected answers recommended, defaults visible)
+Open with one line: "Now a few questions about how your team works. Each says why it's asked, and
+nothing is written yet." Then run the interview in [interview.md](interview.md), following the
+question rules in "How setup talks to the person" above. Six rounds, cut by whether skipping is
+survivable: **rounds 1–4 always run** (who · how work reaches you, where the one intake question
+covers the tracker, email, meeting notes and chat, and writes `project.intake` · where the data
+lives · how results are shared and where files are kept), **rounds 5–6 are individually skippable** (how you work · house rules), the skip
 offered at that round's header and labeled with its cost — never as a global "take defaults for
 the rest". What earns a question is the rule at the top of this file, not a count. Every chosen
 adapter's required keys are asked; "I'll fill it in later" writes the key as a `# TODO` and keeps
@@ -293,12 +407,28 @@ its re-entry command (`/setup role` for round 5, `/setup policies` for round 6; 
 Everything the interview does not ask ships as a **commented default** the user can edit later:
 `default_epic`, word limits, the other eight policies — each with its "when to change this" note.
 
+**Check the draft before showing the plan.** Compose the draft `stack.yaml` and the draft machine
+file (`connections.local.yaml`: the person pin plus any profile, connection or mount values) in the
+session's scratch space, never in the repo, and run:
+`!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/setup_draft_check.sh" <draft stack.yaml> <draft connections.local.yaml>`
+It copies both into a throwaway repository and runs the tool check there without contacting any
+tool, so a refused character in a folder name, a missing destination or an unset required key shows
+up now, while it is still a question, instead of after the files are written. For each problem it
+reports, go back to the question that produced the value and ask again in plain words (for example:
+"Folder names can't contain `&`. Use 'Sales and Ops Tickets' instead?"). Unreachable tools are not
+problems here: nothing is contacted yet. Phase 3 starts only when the draft check has no ✗ lines
+other than ones the person chose to leave for later.
+
 ### Phase 3 — Write & scaffold (HARD HALT → confirm the plan before the first write)
 This is the default path's instance of the **model-invocation confirm gate** above — the fresh-repo
 path writes the most (committed team config + scaffold), so its plan is the most detailed. **Print
 the resolved setup plan, then stop and wait for the user — nothing is written until they confirm.**
-The human authorizes THE PLAN, not merely the idea of setup. The plan names:
-- the tool slot resolved for each seam (and any left as a commented default);
+The human authorizes THE PLAN, not merely the idea of setup. Open with one line: "Here's everything
+I'd set up. Nothing is written until you say yes." The plan names:
+- **what they told you → what gets configured**, as a short table in their words (for example
+  "You share results by email and Slack → both are set up; you pick who gets each result when you
+  ship it"), with any tool left for later and the command that adds it;
+- the result of the draft check (clean, or the items the person chose to finish later);
 - every file this phase will create **or change** — `.claude/config/stack.yaml`, `AGENTS.md`,
   `CLAUDE.md`, the human-facing `README.md` (or `README.ticketwright.md` if a README already
   exists — never overwritten), `.claude/settings.json`, `.gitignore`, the AI-layer index, the
@@ -343,12 +473,15 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    halt — record it and list the pin with the deferred `.claude/` files rather than stopping there.
 
 ### Phase 4 — Verify & hand off
-7. **Two distinct checks — keep them labeled as such in the report:**
-   - `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/selftest.sh"` — **kit integrity**. It
-     validates the plugin's *own bundled example* stacks, **not** your repo's config. A failure here
-     is fatal. It runs 1,200+ assertions and takes several minutes — longer than a typical
-     tool timeout, so run it in the background or with a raised timeout, and judge it by its exit
-     code (non-zero on any failure), not by whether the tail of its output looks green.
+7. **Check that each tool connects, and say which check is which.** Open with one line: "Now I'll
+   check that each of your tools answers."
+   - **The kit itself was already checked** in Phase 1: the doctor's `install_payload` confirmed the
+     installed plugin has every file setup and the first ticket open. That is a completeness check,
+     not a content check; the released kit is tested before it ships. The kit's full self-check,
+     `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/selftest.sh"`
+     (1,400+ assertions, several minutes, needs `yq`), is **not** run by default. Offer it only on
+     a vendored or edited kit; when it runs, run it in the background or with a raised timeout and
+     judge it by its exit code, never by whether the tail of its output looks green.
    - `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/verify_stack.sh" .claude/config/stack.yaml`
      — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
@@ -364,8 +497,11 @@ Only on explicit confirmation, execute — **source of truth first, derived file
      always record the introspection cap — a connector's grant set cannot be read from inside a
      session — with a pointer to where a human confirms the grant. A posture the policy does not
      expect is reported and recorded, not a stop.
-8. **Report:** name which check is which (selftest = kit integrity; verify_stack = *your* tool slots), then
-   the chosen stack, files written, and any `# TODO` keys. Include, when they apply:
+8. **Report, ending on a named state.** Lead with the state: **"Ready for your first ticket"** when
+   every tool connected (or was deliberately left for later), or **"Ready, with N things to
+   finish"** followed by each item, in plain words, with the exact command or step that finishes
+   it. Then say which check was which (the install check = the kit's files; the tool check = *your*
+   tools), the chosen stack, files written, and any `# TODO` keys. Include, when they apply:
    - **The punch list** — one entry per skipped round, each naming its re-entry command
      (`/setup role` for round 5, `/setup policies` for round 6). Deferring must be trackable;
      "took defaults" must never be indistinguishable from "chose".
@@ -374,11 +510,12 @@ Only on explicit confirmation, execute — **source of truth first, derived file
      exists, the owner of new work is whoever `whoami` resolves, and a person it does not
      recognize is a stop (`/setup --teammate`) rather than a fall-back to this key — so say that,
      and never describe it as something setup is refusing to touch.
-   - **Email, when round 4 recorded delivery:** say plainly that email is **configured but not
-     yet activated** — the commented target block holds the answers, and nothing will send until
-     someone deliberately activates it: convert the chat slot to `targets:` form with a declared
-     audience on EVERY target (worked example: `stack.example.multi-audience.yaml`; the email
-     adapters ship as `adapters/chat/gmail.md` / `adapters/chat/outlook.md`).
+   - **Email, when round 4 set it up:** say plainly that email goes out as **drafts only**, from
+     the sending identity chosen in round 4, to whoever is chosen for each result at `/ship`, and
+     that nothing sends until the person says send. A repo still carrying an older commented
+     `seams.chat.targets.email` block (configured but not yet activated) gets interview.md's offer
+     to activate it as a per-ticket target; the standing-destination alternative is
+     `stack.example.multi-audience.yaml`.
    - **Obsidian — one line, never a question.** Detected: "this repo already opens as an Obsidian
      vault — the graph layer is in `tickets/graph/` + `tickets/objects/`." Not detected: the graph
      layer still renders; print the guide as its full GitHub URL —
@@ -386,7 +523,8 @@ Only on explicit confirmation, execute — **source of truth first, derived file
      `docs/obsidian.md` path, because `docs/` does not ship in the PyPI package, so on a pip
      install that relative path points at nothing.
    Then the next step — `/ticket <id>` to start work, or `/setup --teammate` for a new person.
-9. **Offer to commit the scaffold.** What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
+9. **Offer to commit the scaffold, even when some items are still to finish** (a pending login or a
+   tracker project someone still has to create is not a reason to leave the scaffold uncommitted). What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
    index, **`bin/tw` + `bin/kit_paths.py`** — plus, on a vendored install, the kit itself) is untracked;
    **the launcher pair is not optional**: every command in `AGENTS.md` and every reference file routes

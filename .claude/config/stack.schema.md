@@ -297,13 +297,56 @@ never case-folded, never fuzzy — against the value each target declares:
 | `classification` | docstore target | Same, for deliverables — e.g. `internal_archive` vs `client_delivery`. |
 | `always_include` | chat target | This target's own non-empty stakeholder list, applied **after** routing. Never inherited from the slot or another target. |
 | `sharing_scope` | docstore target | `team` \| `org` \| `external` — the **declared** scope of the destination, printed at the `/ship` approval. |
-| *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter (Slack `default_channel`, Teams `channel`, the Gmail/Outlook email adapters `to`). Each target must set its own. |
+| *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter (Slack `default_channel`, Teams `channel`, the Gmail/Outlook email adapters `to`). Each target must set its own, unless it is a chat target marked `destination: per_ticket`. |
+| `destination` | chat target | Only `per_ticket`: this target has no standing destination; each ticket's delivery plan names where it goes and who it is for (below). Declared on the target itself, never inherited from the slot. |
+
+**Chat targets whose destination is chosen per ticket.** When the recipients differ per analysis but
+the team uses more than one chat tool (say Gmail for stakeholders and Slack for the team), mark each
+such target `destination: per_ticket` instead of giving it a standing destination:
+
+```yaml
+  chat:
+    default: team
+    default_mode: draft
+    targets:
+      team:
+        audience: team
+        tool: slack
+        adapter: adapters/chat/slack.md
+        transport: mcp
+        mcp: slack
+        destination: per_ticket            # no default_channel: each ticket names the channel
+        verify: null
+      stakeholders:
+        audience: stakeholders
+        tool: gmail
+        adapter: adapters/chat/gmail.md
+        transport: mcp
+        mcp: gmail
+        identity: reports@example.invalid  # the sender is still a team decision, and still required
+        destination: per_ticket            # no `to:`: each ticket names the address and recipients
+        default_mode: draft
+        verify: null
+```
+
+A ticket then declares `audience:` plus the same `chat.channel:` and non-empty `chat.recipients:`
+the tool-only shape below uses, and `/ship` asks for them when they are missing. The rules: the
+opt-in is explicit, so a target with neither a destination nor `destination: per_ticket` still fails
+`verify_stack.sh` (its message names both ways forward); setting a standing destination AND
+`destination: per_ticket` fails (pick one); `always_include` is optional on such a target and, when
+set, is added after the ticket's recipients; the adapter's sender key (`identity` for email) is
+still required; the duplicate-destination rule skips it (it has no standing destination); a
+`chat.channel:` carrying shell metacharacters is refused. A missing `chat.channel:` or an empty
+`chat.recipients:` halts routing (exit 9) and never falls back to another target; a plan whose
+`chat.target:` names a different target than the one routed halts too (exit 4). A standing target
+and a per-ticket target can share one slot.
 
 **Email is a chat target, not a slot of its own.** The `gmail`/`outlook` adapters fill a chat target
 whose destination key is `to` — ONE address string (a person or a distribution list); extra
 recipients belong in that target's `always_include`, rendered as visible Cc. Give an email target
-its own `audience:` and its own non-empty `always_include:` like any other, plus an `identity:` —
-the shared mailbox mail goes out AS (the adapters' `sender_key:`); routing refuses a named email
+its own `audience:` and its own non-empty `always_include:` like any other (or mark it
+`destination: per_ticket`, above, so each ticket names the address and recipients), plus an
+`identity:` — the shared mailbox mail goes out AS (the adapters' `sender_key:`); routing refuses a named email
 target without one, prints it on the `/ship` plan line, and pins it in the fingerprint. Set
 `default_mode: draft` on it **explicitly** — an unset `default_mode` is not documented as meaning
 draft, and an email cannot be unsent. Worked examples: `stack.example.multi-audience.yaml` (Gmail)
@@ -338,7 +381,9 @@ tool-only** — the stack names the tool and transport, with no standing `defaul
 the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at `/ship`, and
 routing halts (exit 9) when a ticket declares none. A single mapping that *does* set a standing
 `default_channel` still validates and routes to itself exactly as before (an omitted `always_include`
-is allowed there too). `bin/verify_stack.sh` enforces the multi-target rules and **fails** on a
+is allowed there too). A single mapping may also write `destination: per_ticket` as an explicit
+spelling of the tool-only shape; writing it next to a standing destination fails (pick one).
+`bin/verify_stack.sh` enforces the multi-target rules and **fails** on a
 violation (the full table is in `adapters/README.md`).
 
 **A docstore needs no desktop mount.** The `gdrive`/`sharepoint` adapters write into a sync folder,

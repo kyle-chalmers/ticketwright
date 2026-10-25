@@ -14,12 +14,14 @@ gate keeps writing viewer config, and team setup may seed identity-free `display
 placeholders under the scope invariant. Nothing else writes these tiers, and this flow **never
 edits committed `stack.yaml`**: when a team value looks wrong, say so and point at
 `/setup tool <name>` — a team decision does not get fixed from inside one person's onboarding.
-Every question below is prose the person answers in chat, never a structured tool-call payload.
+Every question below follows the question rules in [SKILL.md](SKILL.md) § "How setup talks to the
+person": the runtime's own question tool when it has one, otherwise a numbered list one question
+at a time, with a one-line reason on each question and nothing invented as an option.
 
 ## 0 · Who is this?
 `!bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py --root . --json`
 - `resolved` → show the one-line "Working as …" display and continue.
-- `miss` → ask, in prose. When `observed` is non-empty, name what was looked for: "I don't
+- `miss` → ask (per the question rules above). When `observed` is non-empty, name what was looked for: "I don't
   recognize `<observed[0]>`. Who are you?" When it is **empty** — a fresh machine with git
   identity and `$USER` all unset, the very case step 0.5 below covers — do not invent one; ask
   "I can't tell who you are on this machine. Who are you?" (`identity` is always null on a miss,
@@ -92,7 +94,7 @@ perfectly healthy machine.
 > profile/connection **names** only — never echo, copy, log, or paste the file's contents or a
 > listing command's full output into a report, a summary, a PR body, or any committed file.
 
-Then ask (in prose) which profile/connection fills each personal key. "The team defaults are
+Then ask which profile/connection fills each personal key, offering the names detection found. "The team defaults are
 fine" is a valid answer, recorded as such in the next step.
 
 ## 4 · Write their machine file — a versioned document, not a bag of keys

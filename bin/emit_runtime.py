@@ -458,6 +458,17 @@ def emit_skills(kit: Path, emit_root: Path, tool: str, version: str,
     return emitted
 
 
+# A TOML multi-line literal string admits no control character except tab, LF and a CRLF pair.
+TOML_LITERAL_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]|\r(?!\n)")
+
+
+def toml_basic(s: str) -> str:
+    """A TOML basic string. json.dumps escapes quotes, backslashes and C0 controls the way TOML
+    does; ensure_ascii=False keeps an astral character literal, because its default \\ud83d-style
+    surrogate escapes are invalid TOML, and DEL, which JSON leaves raw, is escaped by hand."""
+    return json.dumps(s, ensure_ascii=False).replace("\x7f", "\\u007f")
+
+
 def emit_agents(kit: Path, project: Path, fm: dict, tool: str, version: str,
                 foreign: list[Path]) -> int:
     """Emit .claude/agents/*.md as runtime-native agent definitions wherever the adapter declares
@@ -508,30 +519,41 @@ def emit_agents(kit: Path, project: Path, fm: dict, tool: str, version: str,
             note = ("tools: carried verbatim — whether the runtime honors it is live-verification "
                     "work" if tools_line else "no tools: line in the source")
         else:
-            if "'''" in body or "'''" in tools:
-                print(f"emit_runtime: {src} contains a TOML literal-string delimiter (''') and "
-                      f"cannot be emitted as {tool} TOML — rewrite the source without it.",
-                      file=sys.stderr)
+            if "'''" in body or "'''" in tools or TOML_LITERAL_BAD.search(body + tools):
+                print(f"emit_runtime: {src} contains a TOML literal-string delimiter (''') or a "
+                      f"control character and cannot be emitted as {tool} TOML — rewrite the "
+                      f"source without it.", file=sys.stderr)
                 rc = 2
                 continue
+            desc = agent_fm.get("description", "").strip()
+            if not desc:
+                # Codex ignores a role file with a blank description, so emitting one would
+                # install an agent nothing can spawn.
+                print(f"emit_runtime: {src} has no description: line — skipping.", file=sys.stderr)
+                continue
+            # A standalone Codex role file must define name, description and
+            # developer_instructions, and rejects any key its config schema does not know, so
+            # emit exactly those three (adapters/runtime/codex-cli.md § Metadata mapping).
             content = (
                 f"# {prov}\n"
                 f"#\n"
                 f"# Canonical source: {CANONICAL_AGENTS}/{name}.md, which restricts this agent to\n"
-                f"# tools: {tools or '(none declared)'}. No documented field of this format carries a tool\n"
-                f"# restriction, so it is NOT mechanically enforced here — the restriction is restated\n"
-                f"# in the instructions, and whether this definition is accepted at all is\n"
-                f"# live-verification work (see adapters/runtime/{tool}.md § Metadata mapping).\n"
+                f"# tools: {tools or '(none declared)'}. A {tool} custom agent inherits the parent\n"
+                f"# session's sandbox and permissions, and no field of this format narrows it to\n"
+                f"# those tools, so the restriction is NOT mechanically enforced here. It is restated\n"
+                f"# in developer_instructions (see adapters/runtime/{tool}.md § Metadata mapping).\n"
                 f"\n"
-                f"description = {json.dumps(agent_fm.get('description', ''))}\n"
+                f"name = {toml_basic(name)}\n"
+                f"description = {toml_basic(desc)}\n"
                 f"\n"
-                f"instructions = '''\n"
+                f"developer_instructions = '''\n"
                 f"READ-ONLY BY DESIGN — not mechanically enforced on this runtime. Use only\n"
                 f"capabilities equivalent to: {tools or 'Read, Bash, Glob, Grep'}. Never edit files;"
                 f" never post externally.\n"
                 f"{body}'''\n"
             )
-            note = "tools: lost — no documented field; the loss is restated inside the file"
+            note = (f"tools: lost, since a {tool} custom agent inherits the parent's sandbox; "
+                    f"the loss is restated inside the file")
         out = project / root / f"{name}.{fmt}"
         if write_emitted(out, content, foreign):
             print(f"  emitted   {out} (agent definition; {note})")

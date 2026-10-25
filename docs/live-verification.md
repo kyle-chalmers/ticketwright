@@ -186,8 +186,8 @@ the full record); `docs/runtimes.md` re-dated.
 ### 2. Codex CLI — qc-reviewer addressable by name; isolation posture probed
 
 Status: OPEN
-Covers: `.codex/agents/qc-reviewer.toml` (acceptance itself is entry 9; this entry decides
-addressability)
+Covers: `.codex/agents/qc-reviewer.toml` (loading is entry 13 and spawning is entry 9; this entry
+decides addressability)
 
 **Claim to verify.** (a) Whether a custom subagent defined in `.codex/agents/qc-reviewer.toml`
 can be **invoked by name** from a session (the upstream issue was open as of 2026-08-19). This
@@ -312,7 +312,11 @@ protocol — **per cell, each with its own ledger line; promote only what was se
 ### 5. Devin — the documented fail-open, the banner, the config location
 
 Status: OPEN
-Covers: `devin.hook_wiring`
+Covers: `devin.hook_wiring` `devin.question_limits`
+
+_Also covers: the `ask_user_question` tool's caps (how many questions per call, how many options,
+whether multi-select exists). Until confirmed, `/setup` treats them as one question per call with at
+most four options._
 
 **Claim to verify.** (a) The documented fail-open exit table holds live: exit 0 continues, exit 2
 blocks, any **other** nonzero is logged and does not block — which is exactly why the shim maps
@@ -361,7 +365,11 @@ caveat re-dated; `docs/runtimes.md` re-dated.
 
 Status: OPEN
 Covers: `opencode.wired.db_write_guard` `opencode.wired.source_material_guard`
-`opencode.wired.review_verdict_guard` `opencode.agents_root`
+`opencode.wired.review_verdict_guard` `opencode.agents_root` `opencode.question_limits`
+
+_Also covers: the built-in `question` tool's caps (questions per call, options per question,
+multi-select). Until confirmed, `/setup` treats them as one question per call with at most four
+options._
 
 **Claim to verify.** (a) The emitted `.opencode/plugins/ticketwright-db-write-guard.js` wrapper
 is actually **loaded**, and throwing from `tool.execute.before` actually prevents execution;
@@ -507,13 +515,14 @@ Status: OPEN
 Covers: `.codex/agents/qc-reviewer.toml` `.cursor/agents/qc-reviewer.md`
 `.devin/agents/qc-reviewer.md` `.agents/agents/qc-reviewer.md` — the three
 "mapped (unverified)" `tools:` rows in the cursor/devin/antigravity Metadata-mapping tables,
-and the codex TOML schema
+and an actual spawn of the codex role (its loading is entry 13)
 
 **Claim to verify.** Acceptance, not just emission: (a) a skill emitted with mapped frontmatter
 actually loads on codex-cli and antigravity (`.agents/skills/`, shared emission — the frontmatter
 must satisfy both); (b) the emitted qc-reviewer agent definition is accepted and spawnable on
-each runtime that got one — the TOML schema on codex (assembled from documented fields, never
-seen accepted), the markdown form on cursor/devin/antigravity; (c) the `tools:` key carried
+each runtime that got one — on codex the role file's LOADING is recorded in entry 13 (split out
+2026-10-25), so what stays open there is an actual spawn; the markdown form on
+cursor/devin/antigravity; (c) the `tools:` key carried
 verbatim into those definitions is **honored** — every adapter's mapping table marks it
 "mapped (unverified)"; (d) `--global` artifacts are found at each declared `global_skills_root`
 (`~/.agents/skills` codex, `~/.cursor/skills` cursor, `~/.config/opencode/skills` opencode,
@@ -630,6 +639,48 @@ selftest coverage in section 43) in the same commit as the recorded observation.
 with the date and runtime versions; any widening lands with a section 43 case proving the new
 name gates.
 
+### 13. Codex CLI — the emitted qc-reviewer role file loads
+
+Status: VERIFIED 2026-10-25 — codex-cli 0.162.0 — maintainer (Claude Code session)
+Covers: `.codex/agents/qc-reviewer.toml` (the loading half of entry 9 (b) for codex, split out
+under the partial-pass rule)
+
+**Claim to verify.** Codex reads the emitted `.codex/agents/qc-reviewer.toml` as a custom agent
+role, with no `Ignoring malformed agent role definition` warning, and offers it to `spawn_agent`.
+Spawning it, and whether `tools:` holds, stay with entries 2 and 9.
+
+**Preconditions.** `codex` on `PATH`. No credentials and no model call: Codex loads agent roles
+before its first request, so a throwaway `CODEX_HOME` and a stub provider are enough.
+
+**Steps.**
+1. In a fresh git repo, `python3 bin/emit_runtime.py --runtime codex-cli --root <repo>`.
+2. Make an empty directory for `CODEX_HOME` and give it a `config.toml` that trusts the repo:
+   `[projects."<repo, as pwd -P prints it>"]` with `trust_level = "trusted"`.
+3. Start a stub on `127.0.0.1:<port>` that saves each POST body and answers HTTP 400.
+4. From the repo: `CODEX_HOME=<dir> codex exec --json --sandbox read-only -c
+   'model_providers.stub={name="stub",base_url="http://127.0.0.1:<port>/v1",wire_api="responses"}'
+   -c model_provider=stub "reply OK" </dev/null`.
+5. Check the event stream for `Ignoring malformed agent role definition`, and the captured request
+   for the role list in `spawn_agent`'s `agent_type` description.
+6. Repeat without the `config.toml` (an untrusted repo).
+
+**PASS looks like.** No malformed-role warning, and `qc-reviewer:` with its description in the
+`agent_type` role list.
+
+Evidence: run on 2026-10-25 against codex-cli 0.162.0 (macOS, Homebrew). The pre-fix file
+(`description` + `instructions`, no `name`) produced ``Ignoring malformed agent role definition:
+agent role file at <repo>/.codex/agents/qc-reviewer.toml must define `developer_instructions` ``
+as an `item.completed` error event, and the role was absent.
+The regenerated file (`name`, `description`, `developer_instructions`) produced no warning, and the
+captured request listed `qc-reviewer` first under "Available roles:" in `spawn_agent`'s
+`agent_type` parameter, ahead of the built-in `default`, `explorer` and `worker`. With the repo
+untrusted, the role was absent and Codex printed no warning. Probe files in `CODEX_HOME/agents/`
+showed a missing `name` and an unknown top-level key (`unknown field`) are each rejected the same
+way, while a probe file that also set `instructions` drew no warning (the schema knows that key).
+Field rules match
+the vendor's [subagents page](https://learn.chatgpt.com/docs/agent-configuration/subagents) and
+`codex-rs/agent-roles/src/agent_role_config.rs` in `openai/codex`, both read 2026-10-25.
+
 ---
 
 ## Adjacent parked work — NOT live verification
@@ -644,11 +695,13 @@ explicitly out of this list's scope (it is code hardening, not a runtime observa
 ## Count, against the plan
 
 The U6 spec in the now-retired planning document (`docs/PLANNED-CHANGES.md`, in git history)
-listed 11 entries. This page carries **12**; the delta was recorded as a dated amendment there
-before retirement:
+listed 11 entries. This page carries **13**; the first delta was recorded as a dated amendment
+there before retirement:
 
 - **+1**: entry 12 (the jurisdiction-list check) was routed to U6 by the adversarial review of
   #46 after the U6 spec was written.
+- **+1** (2026-10-25, after the plan's retirement): entry 13 is the codex half of entry 9 (b),
+  split out under the partial-pass rule when the role file's loading was observed.
 - **Widened, not split**: entry 4 also covers the Antigravity PostToolUse regen cell (a WIRED
   cell the promotion protocol needs an owner for) and entry 6 also covers `opencode.agents_root`
   (an `unknown` U5 landed that the spec's list predates). Entries 2/5/6/7 grew sub-items for

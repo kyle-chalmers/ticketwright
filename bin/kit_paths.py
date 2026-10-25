@@ -46,6 +46,11 @@ CAPABILITY_KEYS = (
     # in (`native`), documents that it has none (`none`), or is unresearched (`unknown`). A UI /
     # workflow feature, never an enforcement boundary — leaving it is the approval step.
     "plan_mode",
+    # How an interview reaches the person. `question_tool` names the runtime's own structured
+    # question tool (or `none`), so a skill can say "use the runtime's question tool" without ever
+    # naming one; `question_limits` carries that tool's caps (`none` when there is no tool; `unknown` when the tool's caps are
+    # undocumented, which a caller treats as one question per call with at most four options).
+    "question_tool", "question_limits",
 )
 
 # Floors for a runtime we cannot identify, per key. A generic "no" is not a legal value for the
@@ -60,6 +65,7 @@ _FLOOR = {
     "subagent_isolation": "unknown", "global_skills_root": "unknown",
     "reads_foreign_skills": "none",
     "plan_mode": "unknown",
+    "question_tool": "none", "question_limits": "none",
 }
 
 

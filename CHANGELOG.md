@@ -7,6 +7,32 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- `/setup` now walks a person through it instead of interviewing them. It opens with a four-step
+  map (check this machine, your work, review the plan, write and check), says at every step what
+  it is doing and whether it will ask anything, and gives every question a one-line reason and an
+  effect for each option. Questions use the agent's clickable question tool where the runtime has
+  one (read from the runtime adapter's new `question_tool` and `question_limits` keys through
+  `kit_paths.py --json`), and come one at a time as a numbered list everywhere else. Options are
+  never invented: a tracker project comes from the tracker's own list (shown even when there is no
+  recent activity), and "None / we don't have one", "All of these" and "Show more" appear where
+  they apply. Setup ends on a named state: "Ready for your first ticket", or "Ready, with N things
+  to finish" with the command for each.
+- The interview asks about the work in the person's words (how work reaches you, where your data
+  lives, how you share results and where files are kept) and maps the answers to tool slots
+  itself. Picking several ways to share results sets all of them up with per-ticket recipients.
+  Warehouses get one target per connection (a dataset or catalog is only the default for
+  unqualified names), and the test-table question has a "We don't have one" answer. The two policy
+  questions explain each option in plain words.
+- A folder that is not a git repository yet gets an offer to run `git init` (or to stop and clone
+  the team's repository), and creating a remote is a separate, explicit, private-by-default yes.
+- Setup no longer runs the several-minute `bin/selftest.sh` by default. The doctor's
+  `install_payload` check now also confirms the installed plugin has every file setup and the
+  first ticket open, and the full self-check is offered for vendored or edited kits.
+- Suggestions from past usage are opt-in behind one question and counts-only. Setup never reads
+  message bodies, meeting notes or file contents, and lists folder names inside someone's drive
+  only after asking.
+- The selftest suite now reads an empty git config of its own. A per-user `GIT_CONFIG_GLOBAL`
+  used to leak a git identity into the "no identity at all" check.
 - The plugin loads its skills and agent from `.claude/` through `plugin.json` (`skills` and
   `agents`) instead of the root `skills`, `agents` and `commands` symlinks, which the Claude
   plugin directory blocks. The same 7 skills and the `qc-reviewer` agent load, checked from
@@ -33,31 +59,22 @@ All notable changes to this project are documented here. Format loosely follows
   command in the project, not only SQL.
 - Fixed "carries a additive statement" in the database-write prompt.
 
-### Fixed
-- **The Gmail, Slack and Notion adapters work on Codex CLI.** Codex lists connected ChatGPT apps
-  under one MCP server, `codex_apps`, with an app prefix on every tool (`gmail_create_draft`,
-  `slack_slack_send_message_draft`, `notion_notion_query_meeting_notes`), and its Gmail app is a
-  different connector with different arguments (string recipients, a MIME `payload`, a
-  `from_address` that now pins the sender to `identity`). Each adapter carries those names in a
-  `## Runtime surface: codex-cli` section, and the new `bin/adapter_surface.py` picks the section
-  for the agent running now (`--verb`, `--probe`, `--json`; `--surface default` for a server
-  connected directly). Nothing changes in `stack.yaml`, so teammates on different agents share one
-  config, and `/setup` no longer has a reason to edit a vendored adapter: the rendered `AGENTS.md`
-  and the setup interview say to report a missing tool name instead, and on a fresh repo the
-  interview leaves `mcp:` as a `# TODO` rather than writing this agent's prefix for everyone.
-  When more than one agent's signals are set and they would pick different tool names (a Codex
-  session started from inside Claude Code carries both), the picker prints no call (exit 7) and
-  asks for `--runtime`. A runtime section may name a server only when its runtime adapter declares
-  it (`connector_server: codex_apps` on `adapters/runtime/codex-cli.md`).
-- The default sections now match the connectors as Claude lists them. Notion's tools are
-  `notion-fetch` and `notion-query-meeting-notes` (with a structured `filter`), and
-  `fetch_transcript` passes `include_transcript=true`: without it the connector returns a link
-  placeholder where the transcript should be, which read like a notes-only page. The Gmail
-  connector has no contacts search, so `lookup_user` and `lookup_channel` are the manual fallback
-  (ask for the exact address, never search the mailbox for one), and drafts put the linked body in
-  `htmlBody`.
-
 ### Added
+- `bin/setup_detect.py`: one read-only probe for setup's first step (CLIs, git facts with the
+  origin host only, synced-drive mount roots without their contents, Obsidian, analysis apps).
+- `bin/setup_draft_check.sh`: checks the draft config in a throwaway copy before the plan is
+  shown, so a refused character in a folder name or a missing destination comes back as a question
+  instead of an error after the files are written. Selftest section 61 covers both scripts and the
+  setup flow.
+- A team that shares results through more than one chat tool (for example Gmail and Slack) can now
+  choose the destination and recipients on each ticket. Mark each such chat target
+  `destination: per_ticket` instead of giving it a standing channel or address; the ticket's
+  delivery plan then names `chat.target:`, `chat.channel:` and `chat.recipients:`, and `/ship` asks for
+  them when they are missing (a `chat:` block that does not name its target never routes, so a
+  destination written for one audience cannot go out under another). Routing stops (exit 9) rather than falling back to another target, a target
+  that sets both a standing destination and `destination: per_ticket` fails `verify_stack`, and a
+  target with neither still fails, with a message naming both ways forward. Standing and per-ticket
+  targets can share one slot. Selftest section 51e covers it.
 - CI runs the plugin directory's checks (`claude plugin validate --profile directory --strict`,
   pinned 2.1.305) on the committed tree, with a negative control that plants a symlinked
   component, and validates skill and agent content by pointing the validator at `.claude/`, since
@@ -70,11 +87,47 @@ All notable changes to this project are documented here. Format loosely follows
 - Selftest section 59 checks the plain part of the messages a person reads against a term list
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.
-- Selftest section 61 pins the runtime-surface mapping name by name for gmail, slack and notion,
+- Selftest section 62 pins the runtime-surface mapping name by name for gmail, slack and notion,
   checks that a surface is used whole and carries its own safety rules (always_include, explicit
   send, no bcc, the verbatim transcript-privacy rule), and exercises selection and refusal.
   Section 3 now fails a skill that names a runtime's connector namespace, and section 20's
   literal-server check allows a server name only on a runtime surface's declared `server:` line.
+
+### Fixed
+- **The Gmail, Slack and Notion adapters work on Codex CLI.** Codex lists connected ChatGPT apps
+  under one MCP server, `codex_apps`, with an app prefix on every tool (`gmail_create_draft`,
+  `slack_slack_send_message_draft`, `notion_notion_query_meeting_notes`), and its Gmail app is a
+  different connector with different arguments (string recipients, a MIME `payload`, a
+  `from_address` that now pins the sender to `identity`). Each adapter carries those names in a
+  `## Runtime surface: codex-cli` section, and the new `bin/adapter_surface.py` picks the section
+  for the agent running now (`--verb`, `--probe`, `--json`; `--surface default` for a server
+  connected directly). Nothing changes in `stack.yaml`, so teammates on different agents share one
+  config, and `/setup` no longer has a reason to edit a vendored adapter: the rendered `AGENTS.md`
+  and the setup interview say to report a missing tool name instead, and on a fresh repo the
+  interview leaves `mcp: TODO` rather than writing this agent's prefix for everyone.
+  When more than one agent's signals are set and they would pick different tool names (a Codex
+  session started from inside Claude Code carries both), the picker prints no call (exit 7) and
+  asks for `--runtime`. A runtime section may name a server only when its runtime adapter declares
+  it (`connector_server: codex_apps` on `adapters/runtime/codex-cli.md`).
+- The default sections now match the connectors as Claude lists them. Notion's tools are
+  `notion-fetch` and `notion-query-meeting-notes` (with a structured `filter`), and
+  `fetch_transcript` passes `include_transcript=true`: without it the connector returns a link
+  placeholder where the transcript should be, which read like a notes-only page. The Gmail
+  connector has no contacts search, so `lookup_user` and `lookup_channel` are the manual fallback
+  (ask for the exact address, never search the mailbox for one), and drafts put the linked body in
+  `htmlBody`.
+- **Codex CLI now loads the `qc-reviewer` agent.** `ticketwright install --runtime codex-cli`
+  wrote `.codex/agents/qc-reviewer.toml` with an `instructions` key and no `name`, so Codex 0.162
+  skipped it with "Ignoring malformed agent role definition ... must define
+  `developer_instructions`" and `/review` had no reviewer role to spawn. The file now carries the
+  three fields Codex requires, `name`, `description` and `developer_instructions`, and nothing
+  else, since Codex also drops a file with a key it does not know. Re-run the install to replace
+  an existing copy. Checked offline on codex-cli 0.162.0: the role is listed for `spawn_agent`,
+  once the project is trusted in Codex (an untrusted project's `.codex/agents/` is not read).
+  Selftest section 41 checks the three fields; `docs/live-verification.md` entry 13 has the steps.
+  For an agent a team adds to `.claude/agents/`, the emitter now keeps an emoji in the description
+  as written (its old escape was invalid TOML) and refuses an agent whose text holds a control
+  character a TOML string cannot carry, instead of writing a file Codex would skip.
 
 ### Docs
 - **The README is ready to be the Claude plugin directory listing.** It opens with a KC AI Labs

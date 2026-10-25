@@ -97,6 +97,25 @@ TIMEOUT = 10
 
 # THE PINNED ORDER. This list is the contract shared with docs/getting-started.md and
 # templates/AGENTS.md.tmpl, whose install checklists tag each line with `<!-- doctor-check: <id> -->`;
+# What `/setup` and the first ticket actually open from an installed payload. `install_payload`
+# checks these exist, so a partial copy fails HERE, named, instead of halfway through setup. This is
+# a completeness check, not an integrity check: it does not prove a file's contents are right (the
+# released kit is CI-tested; the full `bin/selftest.sh` stays available for vendored or edited kits).
+REQUIRED_PAYLOAD = (
+    ".claude/skills/setup/SKILL.md", ".claude/skills/setup/interview.md",
+    ".claude/skills/setup/scaffold.md", ".claude/skills/setup/teammate.md",
+    ".claude/skills/ticket/SKILL.md", ".claude/skills/build/SKILL.md",
+    ".claude/skills/review/SKILL.md", ".claude/skills/ship/SKILL.md",
+    ".claude/skills/skillify/SKILL.md", ".claude/skills/refresh/SKILL.md",
+    ".claude/config/stack.schema.md", ".claude/settings.json.tmpl",
+    "adapters/README.md",
+    "templates/AGENTS.md.tmpl", "templates/CLAUDE.md.tmpl",
+    "templates/project-README.md.tmpl", "templates/gitignore.tmpl",
+    "bin/tw", "bin/kit_paths.py", "bin/verify_stack.sh", "bin/effective_config.py",
+    "bin/whoami.py", "bin/render.sh", "bin/build_ticket_index.py",
+    "bin/setup_detect.py", "bin/setup_draft_check.sh",
+)
+
 # selftest section 55(k) asserts the three lists are equal, in order. Renaming or reordering an id
 # means editing all three.
 CHECK_IDS = [
@@ -588,7 +607,16 @@ class Doctor:
         # PRIVACY: the path is judged, never printed.
         target = Path(location)
         if target.is_dir() and (target / ".claude-plugin" / "plugin.json").is_file():
-            return "ok", "the install record points at a real plugin payload", []
+            missing = [rel for rel in REQUIRED_PAYLOAD if not (target / rel).is_file()]
+            if not missing:
+                return "ok", "the install record points at a complete plugin payload", []
+            return ("fail",
+                    f"the plugin's files are incomplete: {len(missing)} of {len(REQUIRED_PAYLOAD)} "
+                    f"files setup needs are missing (first: `{missing[0]}`), so setup would stop "
+                    "partway. Reinstall the plugin",
+                    self._update_fix()[:1] + [
+                        f"claude plugin uninstall {self.ref} --scope {scope} "
+                        f"&& claude plugin install {self.ref} --scope {scope}"])
         why = ("the install record points at a directory that does not exist"
                if not target.exists() else
                "the install directory carries no .claude-plugin/plugin.json")

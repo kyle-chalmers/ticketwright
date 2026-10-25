@@ -10,6 +10,8 @@ session_start: yes
 tool_gate: yes
 subagents: yes
 structured_questions: no
+question_tool: none
+question_limits: none   # no structured question tool a skill can call: ask in prose
 plan_mode: native          # /plan or Shift+Tab collaboration mode: read-only, drafts a plan, writes nothing until approved (openai/codex plan mode, 2026-09-11)
 gate_ask_tier: no           # permissionDecision "ask" is parsed but not supported yet
 gate_fail_mode: unknown     # docs state the deny paths, not what a crashing hook does
@@ -43,7 +45,10 @@ auth: |
   treating this as parity with Claude Code.
 - **Subagents** — `.codex/agents/*.toml`, spawned via `spawn_agent`. The docs describe separate
   agent threads returning summaries; they never state "own context window" as a spec line, so the
-  isolation guarantee is **unestablished**, not merely undocumented-in-passing.
+  isolation guarantee is **unestablished**, not merely undocumented-in-passing. A standalone role
+  file must define `name` (what `spawn_agent` calls the role), `description` and
+  `developer_instructions` (the agent's instructions); every other top-level key must be one
+  Codex's config schema knows. The emitter writes exactly those three keys.
 - **Structured questions** — none available to a skill author. `tool/requestUserInput` exists but is
   an experimental app-server protocol method for host clients, so **author every interview as a
   numbered prose list**.
@@ -71,6 +76,18 @@ auth: |
   and `bin/adapter_surface.py` selects them when Codex CLI is the detected runtime, so nothing in
   `stack.yaml` changes. A server connected directly in Codex's own MCP config keeps that server's
   own names instead; pass `--surface default` for it.
+- **An emitted agent is not a loaded agent.** Codex skips a role file that breaks its schema and
+  says so only as an `Ignoring malformed agent role definition` warning in the session's event
+  stream, and `/review` then has no `qc-reviewer` role to spawn. Before 2026-10-25 the emitter
+  wrote `instructions` and no `name`, and Codex 0.162 dropped the file that way. Codex also reads
+  a project's `.codex/agents/` only once the project is trusted: in an untrusted project the role
+  is absent with no warning at all (both observed on codex-cli 0.162.0, 2026-10-25,
+  `docs/live-verification.md` entry 13).
+- **The role inherits the parent's sandbox.** A custom agent runs with the parent session's
+  sandbox, approvals and MCP servers; the docs say its instructions "don't create a separate
+  read-only sandbox". The `features.*` keys can switch off a whole capability (shell, apps,
+  plugins, memories, permission requests), but the reviewer needs the shell to re-run queries,
+  so none of them yields read-only.
 - **What a *crashing* hook does is undocumented** — the docs state the deny paths
   (`permissionDecision: "deny"`, exit 2), not the failure behavior, so `gate_fail_mode` is declared
   `unknown` rather than assumed either way.
@@ -85,4 +102,4 @@ user-invocable-only skills it is restated inside the emitted artifact itself.
 |---|---|---|
 | `allowed-tools` (skill frontmatter) | lost | this skill format carries only `name` + `description` — no per-skill tool restriction exists; named in the install report |
 | `disable-model-invocation` (skill frontmatter) | lost | no equivalent field — the skill is emitted anyway, with a topmost warning block stating that model invocation is not mechanically prevented here |
-| `tools:` (agent definition, qc-reviewer) | lost | no documented field of the `.codex/agents/*.toml` format carries a tool restriction — restated as a comment and inside `instructions` in the emitted file; whether the runtime accepts the definition at all is live-verification work |
+| `tools:` (agent definition, qc-reviewer) | lost | a Codex custom agent inherits the parent session's sandbox and permissions, and no field of the `.codex/agents/*.toml` format narrows it to a tool list (the `features.*` switches remove whole capabilities, including the shell the reviewer needs); restated as a comment and inside `developer_instructions` in the emitted file. The file itself (`name`, `description`, `developer_instructions`) loads and is offered as a spawnable role on codex-cli 0.162.0 (observed 2026-10-25, live-verification entry 13) |

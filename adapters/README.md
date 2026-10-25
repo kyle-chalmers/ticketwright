@@ -312,19 +312,28 @@ reads its `channel:` + `recipients:` from the plan's `chat:` block, authored per
 routing **halts (exit 9)** when the plan declares none — who a result goes to varies per analysis, so
 it is asked at `/ship`, never a standing default. A single-mapping slot that DOES set a standing
 destination still routes to itself and needs no plan file, so a repo on either shape behaves as it
-did. The schema:
+did. **The same per-ticket shape works one target at a time**: a named chat target marked
+`destination: per_ticket` (and no standing destination key) reads the same `chat.channel:` +
+`chat.recipients:` once a ticket's `audience:` selects it, and halts (exit 9) without them, so one
+slot can hold Gmail and Slack with recipients that differ per analysis. It never falls back to
+another target, and a `chat.target:` naming a different target than the one routed halts (exit 4).
+The schema:
 
     schema_version: 1
     audience: internal                 # DECLARED by a person (in the spec, or at the /ship approval).
                                        # NEVER inferred from prose, channel names, or labels.
     classification: internal_archive   # docstore routing input, e.g. internal_archive | client_delivery
     chat:
-      target: internal                 # chosen chat target (null for a single mapping / tool-only seam)
-      channel: "#eng-updates"          # the destination — authored HERE for a tool-only seam (asked
-                                       # at /ship), or the resolved echo when the seam holds `targets:`
-      recipients: [Alice]              # the recipient list — authored here for a tool-only seam
-                                       # (non-empty; never solo-DM), else the target's always_include
-                                       # as applied (+ the shipper when include_self is set)
+      target: internal                 # chosen chat target (null for a single mapping / tool-only seam);
+                                       # for a per-ticket target, the target this block was written for
+      channel: "#eng-updates"          # the destination — authored HERE for a tool-only seam or a
+                                       # `destination: per_ticket` target (asked at /ship), else the
+                                       # resolved echo of a standing target's own destination
+      recipients: [Alice]              # the recipient list — authored here for a tool-only seam or a
+                                       # per-ticket target (non-empty; never solo-DM), else the target's
+                                       # always_include as applied (+ the shipper when include_self is
+                                       # set). A per-ticket target's own always_include, when set, is
+                                       # added after these
     docstore:
       target: archive                  # chosen docstore target (null when single)
       destination: "Shared drives/Tickets/TEST-1234 example-analysis"
@@ -361,7 +370,9 @@ Rules (these are the contract, not commentary):
   not infer protection the kit does not provide.
 - **Each chat target declares its own audience, channel, and `always_include`**, applied after
   routing and never inherited from another target. The non-empty-`always_include` requirement binds
-  only when `targets:` is present — a single-target chat seam that omits it keeps validating.
+  only when `targets:` is present — a single-target chat seam that omits it keeps validating. A
+  target marked `destination: per_ticket` declares its audience and no channel; its recipients come
+  from each ticket, and its `always_include` is optional (validated when written).
 - **Seam-level `default_channel` / `default_mode` under `targets:`** are inherited by targets that
   do not define their own (the standard inheritance rule) and are never a silent fallback when
   routing fails. Inheritance stays true of the resolved *values*; what a **routable** target may not
@@ -376,9 +387,10 @@ Rules (these are the contract, not commentary):
 | each target declares its own `audience:` / `classification:` | chat / docstore | it is the routing key; an undeclared target is unreachable |
 | that value is unique across the slot's targets | chat / docstore | a duplicate makes selection ambiguous, and silently so |
 | no `audience:` / `classification:` at slot level | chat / docstore | a slot-level scalar is inherited, and a routing key must never be |
-| each target declares its own non-empty `always_include:` | chat | the never-solo-DM list, applied after routing; `[]` is worse than absent because it reads as a decision |
-| each target names its own destination key | chat / docstore | two targets sharing one inherited channel is a separation that does not exist |
-| no two targets resolve to the same tool + destination | chat / docstore | same reason, stated the other way |
+| each target declares its own non-empty `always_include:` (optional on a `destination: per_ticket` target, still validated when written) | chat | the never-solo-DM list, applied after routing; `[]` is worse than absent because it reads as a decision. A per-ticket target's list comes from each ticket, and routing halts without one |
+| each target names its own destination key, or declares `destination: per_ticket` | chat / docstore (per-ticket: chat only) | two targets sharing one inherited channel is a separation that does not exist; the per-ticket opt-in is explicit so an omitted destination is still an error |
+| never both a standing destination and `destination: per_ticket`; `destination:` accepts only `per_ticket` | chat | either winner would ignore a key someone wrote |
+| no two targets resolve to the same tool + destination | chat / docstore | same reason, stated the other way (per-ticket targets have no standing destination, so they are skipped) |
 | each target declares `sharing_scope:` (`team`/`org`/`external`) | docstore | `/ship` prints it for authorization; an undeclared scope makes that line unanswerable |
 | no destination or recipient carrying shell metacharacters | chat / docstore | the tier-3 injection refusal, inherited from the resolver rather than re-derived |
 
@@ -518,7 +530,7 @@ hold. On a runtime that is neither the default's
 `default_surface` nor a listed surface, it says the default's names are unchecked there and asks for
 a report, never an edit.
 
-Rules, each checked by selftest section 61:
+Rules, each checked by selftest section 62:
 
 - **A surface is used whole.** It carries a `### verb:` subsection for every `## verb:` the adapter
   has, so no call ever mixes two agents' tool names. A missing verb is a malformed adapter (exit 6),
