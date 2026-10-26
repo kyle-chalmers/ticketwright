@@ -12258,5 +12258,76 @@ grep -q '"TEST-1"' "$TMP/s65r.out" && grep -q '"TEST-12"' "$TMP/s65r.out" \
   && ok "recall by the bare table name still finds both tickets" \
   || bad "recall by the bare table name broke" "$(head -c 400 "$TMP/s65r.out")"
 
+hdr "66 · version skew: one folder per version, worktrees, and unused cache folders"
+# A real first run loaded skills from another repo's later install: Claude Code keeps ONE cache
+# folder per version, so two repos installing 4.4.0 at different commits share it and the last one
+# wins while both records keep their own commit. The version string agrees everywhere, so only the
+# recorded commits can show it. Built on fixtures under $TMP; no real config is read.
+V66="$TMP/skew66"; CR66="$V66/config"; KIT66="$CR66/plugins/cache/mk/ticketwright"
+mkdir -p "$KIT66/1.0.0/.claude-plugin" "$KIT66/0.9.0" "$KIT66/notes" \
+  "$CR66/plugins/marketplaces/mk/.claude-plugin"
+for m in bin/kit_paths.py bin/tw adapters templates .claude-plugin/plugin.json; do
+  case "$m" in */*.*|bin/tw) mkdir -p "$KIT66/1.0.0/$(dirname "$m")"; : > "$KIT66/1.0.0/$m";;
+               *) mkdir -p "$KIT66/1.0.0/$m";; esac
+done
+printf '{"name":"ticketwright","version":"1.0.0"}' > "$CR66/plugins/marketplaces/mk/.claude-plugin/plugin.json"
+for r in older newer; do
+  mkdir -p "$V66/$r/.claude"
+  ( cd "$V66/$r" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init ) 2>/dev/null
+  printf '{"extraKnownMarketplaces":{"mk":{"autoUpdate":true}},"enabledPlugins":{"ticketwright@mk":true}}' \
+    > "$V66/$r/.claude/settings.json"
+  ( cd "$V66/$r" && git add .claude/settings.json && git -c user.email=t@t -c user.name=t commit -q -m settings ) 2>/dev/null
+done
+OLD66="$(cd "$V66/older" && pwd -P)"; NEW66="$(cd "$V66/newer" && pwd -P)"; INST66="$(cd "$KIT66/1.0.0" && pwd -P)"
+printf '{"version":2,"plugins":{"ticketwright@mk":[{"scope":"project","projectPath":"%s","installPath":"%s","version":"1.0.0","gitCommitSha":"aaaaaaa1111","lastUpdated":"2026-10-26T21:16:00Z"},{"scope":"project","projectPath":"%s","installPath":"%s","version":"1.0.0","gitCommitSha":"bbbbbbb2222","lastUpdated":"2026-10-26T21:52:00Z"}]}}' \
+  "$OLD66" "$INST66" "$NEW66" "$INST66" > "$CR66/plugins/installed_plugins.json"
+
+n66o="$(python3 bin/update_notice.py --root "$OLD66" --config-root "$CR66" 2>&1)"
+n66n="$(python3 bin/update_notice.py --root "$NEW66" --config-root "$CR66" 2>&1)"
+{ grep -q 'commit bbbbbbb, not this repo.s aaaaaaa' <<<"$n66o" && grep -q 'claude plugin uninstall ticketwright@mk --scope project' <<<"$n66o" \
+  && [ "$(printf '%s' "$n66o" | wc -l | tr -d ' ')" = "0" ]; } \
+  && ok "the banner says, in one line, that an older install's files were rewritten by a later one at another commit" \
+  || bad "the update notice misses a same-version, different-commit overwrite" "$n66o"
+[ -z "$n66n" ] \
+  && ok "…and stays silent for the repo whose install is the one on disk" \
+  || bad "the update notice nags the repo whose files are the ones on disk" "$n66n"
+
+python3 bin/plugin_doctor.py --root "$OLD66" --config-root "$CR66" --plugin ticketwright --marketplace mk \
+  --no-probe --json > "$TMP/s66d.json" 2>&1
+python3 - "$TMP/s66d.json" "$NEW66" "$INST66" <<'PY' >"$TMP/s66d.out"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+res = {r["id"]: r for r in doc["checks"]} if isinstance(doc, dict) and "checks" in doc else {r["id"]: r for r in doc}
+ic, sc = res["install_commit"], res["stale_cache"]
+raw = open(sys.argv[1]).read()
+print("ic=" + ic["status"] + ("+sha" if "bbbbbbb" in ic["detail"] and "aaaaaaa" in ic["detail"] else ""))
+print("sc=" + sc["status"] + ("+090" if "0.9.0" in sc["detail"] else "") + ("+notes" if "notes" in sc["detail"] else ""))
+print("fix=" + str(sum("0.9.0" in f for f in sc["fix"])))
+print("leak=" + str(sys.argv[2] in raw or sys.argv[3] in raw))
+PY
+grep -q '^ic=warn+sha$' "$TMP/s66d.out" \
+  && ok "plugin_doctor install_commit warns and names both commits" \
+  || bad "plugin_doctor install_commit missed the overwrite" "$(cat "$TMP/s66d.out")"
+{ grep -q '^sc=warn+090$' "$TMP/s66d.out" && grep -q '^fix=1$' "$TMP/s66d.out"; } \
+  && ok "stale_cache lists the unused version folder with its removal line, and counts an odd-named folder without printing it" \
+  || bad "stale_cache did not list unused versions correctly" "$(cat "$TMP/s66d.out")"
+grep -q '^leak=False$' "$TMP/s66d.out" \
+  && ok "…and no other repo's path or the install folder's path appears in the output" \
+  || bad "plugin_doctor printed a path read from installed_plugins.json"
+[ -d "$KIT66/0.9.0" ] && [ -d "$KIT66/notes" ] \
+  && ok "…and nothing was deleted: the doctor names cache folders, the person removes them" \
+  || bad "plugin_doctor removed a cache folder"
+
+( cd "$OLD66" && git worktree add -q "$V66/wt" -b wt66 ) 2>/dev/null
+WT66="$(cd "$V66/wt" 2>/dev/null && pwd -P)"
+n66w="$(python3 bin/update_notice.py --root "$WT66" --config-root "$CR66" 2>&1)"
+[ -n "$WT66" ] && [ "$n66w" = "$n66o" ] \
+  && ok "a linked worktree reads its main checkout's install record (the banner matches the main checkout's)" \
+  || bad "a worktree of an installed repo reads as not installed" "$n66w"
+k66="$(CLAUDE_CONFIG_DIR="$CR66" python3 -c 'import sys; sys.path.insert(0, "bin"); import kit_paths; from pathlib import Path; print(kit_paths._plugin_kit(Path(sys.argv[1])) or "")' "$WT66" 2>&1)"
+[ "$k66" = "$INST66" ] \
+  && ok "kit_paths resolves the plugin kit from a worktree through the main checkout's record" \
+  || bad "kit_paths found no kit from a worktree of an installed repo" "$k66"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

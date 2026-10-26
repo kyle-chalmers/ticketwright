@@ -217,7 +217,33 @@ def install_rows(config_root: Path, plugin: str, marketplace: str) -> list:
 REPO_SCOPES = ("project", "local")
 
 
-def repo_install_matches(rows: object, root: Path) -> list:
+def main_checkout(root: Path) -> Path | None:
+    """The main checkout `root` belongs to when `root` is a linked git worktree, else None.
+
+    An install record names the folder the plugin was installed from, which is the main checkout.
+    A session in `.claude/worktrees/<name>` has a different top folder, so an exact match misses and
+    a repo that IS installed reads as not installed. Git itself says where the shared repository
+    lives (`--git-common-dir`); its parent is the main checkout. Anything unexpected is None.
+    """
+    try:
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute",
+                              "--git-common-dir"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not out:
+        return None
+    common = Path(out)
+    if common.name != ".git":
+        return None                          # a bare repo or an unusual layout: do not guess
+    try:
+        main = common.parent.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    return main if main != root else None
+
+
+def repo_install_matches(rows: object, root: Path, _worktree: bool = True) -> list:
     """Every record in `rows` that installs INTO `root` (scope `project` or `local`).
 
     Returned in manifest order. Callers that need one answer go through `select_repo_install`,
@@ -271,6 +297,12 @@ def repo_install_matches(rows: object, root: Path) -> list:
                 matches.append(rec)
         except (OSError, ValueError, RuntimeError):
             continue  # missing, dead mount, unreadable parent, symlink loop — all unjudgeable
+    if not matches and _worktree and candidates:
+        # A linked worktree of an installed repo uses the main checkout's record. Only on a miss,
+        # so a worktree that has its OWN record still answers for itself.
+        main = main_checkout(root)
+        if main is not None:
+            return repo_install_matches(rows, main, _worktree=False)
     return matches
 
 
@@ -425,6 +457,45 @@ def is_newer(catalog: str, installed: str) -> bool:
     return a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
 
 
+def _resolved(p: str) -> Path:
+    try:
+        return Path(p).resolve()
+    except (OSError, RuntimeError):
+        return Path(p)
+
+
+def folder_sharing(rows: object, record: dict) -> tuple[int, str | None]:
+    """How many OTHER install records point at `record`'s plugin folder, and the commit now on disk
+    when it is not `record`'s own (else None).
+
+    Claude Code keeps one cache folder per VERSION. Two repos that install the same version at
+    different commits share that folder; the later install overwrites the earlier one's files while
+    both records keep their own `gitCommitSha`. The version agrees everywhere and the skills that
+    load are not the ones this repo's record names. The folder carries no commit of its own, so the
+    newest record pointing at it (by `lastUpdated`) is the best evidence of what is on disk.
+    Paths are compared, never returned.
+    """
+    location, sha = record.get("installPath"), record.get("gitCommitSha")
+    if not (isinstance(rows, list) and isinstance(location, str) and location
+            and isinstance(sha, str) and sha):
+        return 0, None
+    target = _resolved(location)
+    sharers = [r for r in rows
+               if isinstance(r, dict) and r is not record
+               and isinstance(r.get("installPath"), str) and r["installPath"]
+               and _resolved(r["installPath"]) == target]
+
+    def stamp(rec: dict) -> str:
+        value = rec.get("lastUpdated")
+        return value if isinstance(value, str) else ""
+
+    newest = max([record] + sharers, key=stamp)
+    on_disk = newest.get("gitCommitSha")
+    if newest is record or not isinstance(on_disk, str) or not on_disk or on_disk == sha:
+        return len(sharers), None
+    return len(sharers), on_disk
+
+
 def notice(root: Path, config_root: Path) -> str | None:
     """The one line, or None. This is the whole decision, in reading order."""
     pair = eligible_pair(_load_json(root / ".claude" / "settings.json"))
@@ -432,18 +503,28 @@ def notice(root: Path, config_root: Path) -> str | None:
         return None
     plugin, marketplace = pair
 
-    selected = select_repo_install(install_rows(config_root, plugin, marketplace), root)
-    catalog = catalog_version(config_root, plugin, marketplace)
-    if selected is None or not catalog:
+    rows = install_rows(config_root, plugin, marketplace)
+    selected = select_repo_install(rows, root)
+    if selected is None:
         return None
     installed, scope = selected
-    if not is_newer(catalog, installed):
-        return None
+    ref = f"{plugin}{PAIR_SEP}{marketplace}"
+    catalog = catalog_version(config_root, plugin, marketplace)
+    if not catalog or not is_newer(catalog, installed):
+        # Same version as the catalog (or no catalog), but the files on disk can still be another
+        # repo's later install of that version. Said only when the record and the folder disagree.
+        mine = repo_install_matches(rows, root)
+        _, on_disk = folder_sharing(rows, mine[0]) if len(mine) == 1 else (0, None)
+        if on_disk is None:
+            return None
+        recorded = str(mine[0].get("gitCommitSha"))[:7]
+        return (f"{plugin} {installed} here runs files from another repo's later install "
+                f"(commit {on_disk[:7]}, not this repo's {recorded}). "
+                f"Reinstall to match: {install_pair_command(ref, scope)}")
 
     # The RECORDED scope, never a hardcoded `project`. The desktop app writes `local` rows, and
     # `uninstall --scope project` against one of those answers "not found" — a remediation line that
     # sends the reader down a dead end is worse than the stale version it was trying to fix.
-    ref = f"{plugin}{PAIR_SEP}{marketplace}"
     return (f"{plugin} {catalog} is available — this repo is running {installed}. "
             f"Pick it up: {install_pair_command(ref, scope)}")
 

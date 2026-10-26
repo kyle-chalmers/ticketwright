@@ -43,6 +43,14 @@ All notable changes to this project are documented here. Format loosely follows
   then the lower ticket number. With neither, the link stays under Builds on as before. Only the
   graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
   (LABS-57)
+- **The kit now says when the plugin files on disk are not the ones this repo installed.**
+  Claude Code keeps one plugin folder per version, so when two repos install the same version at
+  different commits, the later install rewrites the folder for both. The version still matched
+  everywhere, so nothing said so. The session banner and `bin/plugin_doctor.py` (new check
+  `install_commit`) now compare the recorded commits and give the reinstall command. A new
+  `stale_cache` check lists cached version folders no install uses, with a removal line for each;
+  it deletes nothing. A session in a git worktree now finds its main checkout's install record, so
+  the kit resolves and the banner speaks there too.
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
