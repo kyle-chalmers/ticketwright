@@ -13007,15 +13007,22 @@ def at(needle):
 # (1) when it offers: the verdict words, the setting, the tracker, and what never triggers it.
 say("weak" in sq and "no prior art found" in sq and "verdict:" in sq,
     "2b triggers on recall's verdict line saying weak or no prior art found")
-say(all(w in sq for w in ("moderate", "clear leader", "strong")) and "never starts this step" in sq,
+say(all(w in sq for w in ("moderate", "clear leader", "strong")) and "never starts it" in sq,
     "2b says a moderate, clear leader or strong verdict never starts it")
 say("project.history_search" in sq and "`ask`" in sq and "`never`" in sq and "`local`" in sq
     and "history_search" in sq and "unset" in sq,
     "2b reads history_search (ask or never), treats a missing key by whether a tracker other than local is set, and names local")
 say("effective_config.py" in sq and "project.history_scope" in sq and "project.history_before" in sq,
     "2b reads the three saved values through the config resolver")
-say("at any time" in sq and "not `never`" in sq,
-    "2b lets the person ask at any time, and says that does not override a team's never")
+say(re.search(r"`never` only stops this automatic offer", sq) is not None and "automatic offer" in sq,
+    "2b says never only stops the automatic offer")
+say("ask for the search at any time, even when `history_search` is `never`" in sq
+    and "skips the verdict test, the setting and the question" in sq,
+    "2b lets the person ask at any time, even when history_search is never, skipping the verdict test, the setting and the question")
+say(re.search(r"even when `history_search` is `never`[^.]*\.[^.]*but not the date check in step 2; then search", sq) is not None,
+    "2b says an explicit ask still runs the date check, then searches")
+say("turned off" not in sq and "do not contact the tracker" not in sq and "never contacts" not in sq,
+    "2b no longer tells a person the search is turned off or that never keeps the tracker from being contacted")
 
 # (2) the date check runs before the tracker is called, and an unset date means no cutoff.
 guard = "The saved cutoff date isn't a date, so I'm using this repo's tickets only. Fix it with `/setup tool tracker`."
@@ -13059,8 +13066,23 @@ say("two or three distinctive words" in sq and "key nouns" in sq,
     "2b builds <text> from the ticket's key nouns, two or three distinctive words (some trackers match the whole text as one phrase)")
 say(sq.count("`mktemp`") + sq.count("mktemp") >= 2 and re.search(r"(never|not) inside the repo", sq) is not None,
     "2b writes the rows and the scored file to mktemp files, never inside the repo")
-say("JSON list" in sq and "did not run" in sq and "not empty" in sq,
-    "2b checks the rows file is not empty and holds a JSON list, and says the search did not run when no file came out")
+say("missing, empty (zero bytes) or not a JSON list means the search did not run" in sq
+    and 'never call it "nothing matched"' in sq and "go to step 7 with that as the reason" in sq,
+    "2b says a rows file that is missing, zero bytes or not a JSON list means the search did not run, never 'nothing matched'")
+say("`[]`" in sq and "nothing matched" in sq and "the adapter said it could not search" in sq,
+    "2b treats a valid empty list as nothing matched, unless the adapter said it could not search")
+say("If `<scored>` is `[]`" in sq and "nothing matched" in sq[sq.find("If `<scored>` is `[]`"):sq.find("If `<scored>` is `[]`") + 200],
+    "2b sends an empty scored file to step 7 as nothing matched")
+say("on every way out of this step" in sq and "a failure or when nothing matched" in sq and "Delete both `mktemp` files" in sq,
+    "2b deletes both mktemp files on every path: success, failure and nothing matched")
+say("hits 4 and 5" in sq and "key and title and no summary" in sq and "fewer lines than hits" in sq
+    and "with key and title only" in sq,
+    "2b gives hits 4 and 5 their key and title only, and shows a hit the summary command skipped the same way")
+say("names the form `<x>` takes" in sq and "ask once for that form" in sq and "exactly one filter" in sq
+    and "use the first and say so" in sq,
+    "2b writes the filter in the form the Filters line names, asks once for an email or id, and uses the first of two filters and says so")
+say("topic mode" in sq and '--query "<topic>"' in sq and "no ticket to pass to `--for`" in sq,
+    "2b covers topic mode: --query with the same text section 2 used, since there is no ticket for --for")
 cmds = [l.strip() for l in sec.split("\n") if ".py" in l and ("bash " in l or "python" in l)]
 say(len(cmds) >= 3 and all(c.startswith(LAUNCH) or c.startswith("#") for c in cmds),
     "every script call in 2b uses the standard bin/tw launcher line", cmds)
@@ -13096,6 +13118,13 @@ say(not re.search(r"JQL|WIQL|gh issue|haiku|sonnet|opus|AskUserQuestion|ask_user
 say(bool(sec) and not re.search(r"\b(jira|asana|linear|github|azure|monday|notion|snowflake)\b", sec, re.I),
     "2b names no vendor")
 
+# (8b) the schema row for history_search says never turns off only the automatic offer.
+sch = open(".claude/config/stack.schema.md", encoding="utf-8").read()
+hs = next((l for l in sch.split("\n") if l.startswith("| `history_search` |")), "")
+say("`never` turns off that automatic offer, and the tracker is searched only when someone asks for it" in hs
+    and "never contacts the tracker" not in hs,
+    "the history_search schema row says never turns off the automatic offer and the tracker is still searched when someone asks", hs[:200])
+
 # (9) the consumer exists: the schema rows name priming.md as their reader, and priming.md reads the keys.
 say(all(k in pr for k in ("history_search", "history_scope", "history_before")) and "search_history" in pr,
     "priming.md consumes history_search, history_scope, history_before and the search_history verb")
@@ -13108,6 +13137,11 @@ phrase = "offers the tracker's older tickets when recall is weak (priming §2b)"
 i_rec = [i for i, l in enumerate(sk) if l.lstrip().startswith("- **Recall**")]
 i_dom = [i for i, l in enumerate(sk) if l.lstrip().startswith("- **Domain slice**")]
 bullet = squash(" ".join(sk[i_rec[0]:i_dom[0]])) if len(i_rec) == 1 and len(i_dom) == 1 else ""
+added = [l for l in sk if "offers the tracker's older tickets" in l]
+say(len(added) == 1 and "\u2014" not in added[0] and "\u2013" not in added[0],
+    "the line added to /ticket's Recall bullet carries no em or en dash", added)
+say("   - **Recall** \u2014 rank prior art (`bin/recall.py`), read the top 2\u20134, note what to **reuse**;" in sk,
+    "/ticket's original Recall line is kept as it was, with the addition on its own line")
 say(phrase in bullet and i_rec and i_rec[0] + 1 > 41,
     "/ticket's Phase 3 Recall bullet says it offers the tracker's older tickets when recall is weak (priming §2b), below line 41",
     (i_rec, bullet[:200]))

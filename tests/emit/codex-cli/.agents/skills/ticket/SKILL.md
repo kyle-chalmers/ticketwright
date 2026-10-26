@@ -94,8 +94,8 @@ this before?", "which tickets touched VW_X?").
 ## Phase 3 — Prime context automatically (the part you never have to ask for)
 7. Follow [priming.md](priming.md), in order:
    - **Ticket slice** — the ticket body + folder + related prior tickets;
-   - **Recall** — rank prior art (`bin/recall.py`), read the top 2–4, note what to **reuse**; this step also
-     offers the tracker's older tickets when recall is weak (priming §2b);
+   - **Recall** — rank prior art (`bin/recall.py`), read the top 2–4, note what to **reuse**;
+     it also offers the tracker's older tickets when recall is weak (priming §2b);
    - **Domain slice** — glossary/rules for the ticket's topic (from `documentation/`);
    - **Warehouse slice** — schemas/samples/lineage for the specific objects in play (skip cleanly
      if no warehouse is configured).
