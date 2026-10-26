@@ -12957,5 +12957,180 @@ while IFS= read -r s63e_line; do
   esac
 done <"$TMP/s63e.out"
 
+# --- (f) /ticket offers the tracker's older tickets when recall is weak, and briefs them separately ------
+# priming.md section 2b is the consumer of everything (a) to (e) built: the tracker adapter's
+# search_history verb, recall.py --external, summarize_hits.py and the three project.history_* keys. It
+# is a skill, so what can be pinned is the text an agent follows: when it offers (only on a weak or empty
+# verdict, only when history_search is ask and a real tracker is set), the date check that runs before
+# the tracker is ever called, the question and its three options, the one-filter follow-up, the exact
+# commands and the files they write (outside the repo), what happens when the cheaper model is missing
+# or the search fails, and the reuse brief's tracker-only section. It also pins what must NOT be in the
+# text: a vendor, a query language, a model name or a question tool's name (the golden rule), and the
+# older pins on these two files (CLAUDE_PLUGIN_ROOT, assignee_dir, nothing new above SKILL.md line 41).
+# No ticket file was ever linted for plain language, so this is where priming.md first is.
+python3 - <<'PY63F' >"$TMP/s63f.out" 2>&1
+import filecmp, re, subprocess, sys
+
+PR = ".claude/skills/ticket/priming.md"
+SK = ".claude/skills/ticket/SKILL.md"
+BEGIN = "<!-- ticketwright:user-facing:begin -->"
+END = "<!-- ticketwright:user-facing:end -->"
+LAUNCH = 'bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw"'
+lines = []
+
+
+def say(ok, name, detail=""):
+    lines.append(("PASS " if ok else "FAIL ") + name + ("" if ok else " :: " + str(detail).replace("\n", " | ")))
+
+
+def squash(text):
+    return re.sub(r"\s+", " ", text)
+
+
+pr = open(PR, encoding="utf-8").read()
+prl = pr.split("\n")
+H = "### 2b · Older tickets in the tracker (only when recall is weak)"
+hi = [i for i, l in enumerate(prl) if l == H]
+i2 = [i for i, l in enumerate(prl) if re.match(r"^## 2 · Recall", l)]
+i3 = [i for i, l in enumerate(prl) if re.match(r"^## 3 · Domain slice", l)]
+placed = len(hi) == 1 and len(i2) == 1 and len(i3) == 1 and i2[0] < hi[0] < i3[0]
+say(placed, "priming.md has '### 2b · Older tickets in the tracker (only when recall is weak)' exactly once, inside section 2 and before section 3",
+    (hi, i2, i3))
+sec = "\n".join(prl[hi[0]:i3[0]]) if placed else ""
+sq = squash(sec)
+
+
+def at(needle):
+    return sq.find(needle) if needle in sq else -1
+
+
+# (1) when it offers: the verdict words, the setting, the tracker, and what never triggers it.
+say("weak" in sq and "no prior art found" in sq and "verdict:" in sq,
+    "2b triggers on recall's verdict line saying weak or no prior art found")
+say(all(w in sq for w in ("moderate", "clear leader", "strong")) and "never starts this step" in sq,
+    "2b says a moderate, clear leader or strong verdict never starts it")
+say("project.history_search" in sq and "`ask`" in sq and "`never`" in sq and "`local`" in sq
+    and "history_search" in sq and "unset" in sq,
+    "2b reads history_search (ask or never), treats a missing key by whether a tracker other than local is set, and names local")
+say("effective_config.py" in sq and "project.history_scope" in sq and "project.history_before" in sq,
+    "2b reads the three saved values through the config resolver")
+say("at any time" in sq and "not `never`" in sq,
+    "2b lets the person ask at any time, and says that does not override a team's never")
+
+# (2) the date check runs before the tracker is called, and an unset date means no cutoff.
+guard = "The saved cutoff date isn't a date, so I'm using this repo's tickets only. Fix it with `/setup tool tracker`."
+say(guard in sq, "2b carries the invalid-date line word for word")
+say(guard in sq and "never call the tracker" in sq and "repo-only" in sq,
+    "2b says an invalid cutoff date means repo-only recall and the tracker is never called")
+say(at("YYYY-MM-DD") > -1 and "no cutoff" in sq and "all of your older tickets" in sq,
+    "2b checks a real YYYY-MM-DD date, and says an unset date means no cutoff and 'all of your older tickets'")
+say(0 <= at(guard) < at("Look somewhere specific") < at("--external"),
+    "the date check comes before the question, and the question before the search")
+
+# (3) how it asks: the runtime's own tool or a numbered list, one say-this question, three options.
+say("kit_paths.py" in sq and "capabilities.question_tool" in sq and "numbered list" in sq and "question tool" in sq,
+    "2b asks with the runtime's own question tool when it has one (read from kit_paths), otherwise as a numbered list")
+blocks = [squash(b) for b in re.findall(re.escape(BEGIN) + r"(.*?)" + re.escape(END), sec, re.S)]
+joined = " ".join(blocks)
+ask = next((b for b in re.findall(re.escape(BEGIN) + r"(.*?)" + re.escape(END), sec, re.S) if "Search them" in b), "")
+opts = [l.strip()[2:].split(":")[0] for l in ask.split("\n") if l.strip().startswith("- ")]
+say(opts == ["Search them", "Skip", "Look somewhere specific"],
+    "the question has exactly three options, in this order: Search them, Skip, Look somewhere specific", opts)
+say(len(opts) == 3 and all(len(l.split(":", 1)) == 2 and len(l.split(":", 1)[1].split()) >= 5 for l in ask.split("\n") if l.strip().startswith("- ")),
+    "each option says what it does, not just its name")
+say("<where>" in squash(ask) and "all of your older tickets" in sq and "created before <date>" in sq,
+    "the question names where it would search and the date, or 'all of your older tickets'")
+
+# (4) Look somewhere specific: one follow-up, exactly one filter of four kinds, never vendor syntax.
+say("Which project, label, epic or person should I search?" in joined,
+    "2b asks the 'Which project, label, epic or person should I search?' follow-up in a say-this block")
+say(all(k in sq for k in ("`project:", "`label:", "`parent:", "`person:")) and "exactly one" in sq,
+    "2b turns the answer into exactly one filter and names all four kinds: project:, label:, parent:, person:")
+say("`Filters:`" in sq and "`not supported`" in sq and "saved-scope" in sq,
+    "2b reads the adapter's Filters line, and for a not-supported kind offers the saved-scope search instead")
+say("query" in sq and re.search(r"never[^.]*(query language|vendor)", sq, re.I) is not None,
+    "2b says never to write the tracker's own query syntax in the skill")
+
+# (5) the search, the files, the scoring, the summaries, the full reads.
+say("`search_history`" in sq and "`<text>`" in sq and "`<scope>`" in sq and "`<before>`" in sq
+    and "`<limit>`" in sq and "`<filter>`" in sq and "20" in sq,
+    "2b runs search_history with <text>, <scope>, <before>, <limit> 20 and the optional <filter>")
+say("two or three distinctive words" in sq and "key nouns" in sq,
+    "2b builds <text> from the ticket's key nouns, two or three distinctive words (some trackers match the whole text as one phrase)")
+say(sq.count("`mktemp`") + sq.count("mktemp") >= 2 and re.search(r"(never|not) inside the repo", sq) is not None,
+    "2b writes the rows and the scored file to mktemp files, never inside the repo")
+say("JSON list" in sq and "did not run" in sq and "not empty" in sq,
+    "2b checks the rows file is not empty and holds a JSON list, and says the search did not run when no file came out")
+cmds = [l.strip() for l in sec.split("\n") if ".py" in l and ("bash " in l or "python" in l)]
+say(len(cmds) >= 3 and all(c.startswith(LAUNCH) or c.startswith("#") for c in cmds),
+    "every script call in 2b uses the standard bin/tw launcher line", cmds)
+say(re.search(r"recall\.py --for <owner>/<id> --external <rows> --json", sec) is not None and "<scored>" in sec,
+    "2b scores the rows with recall.py --for <owner>/<id> --external <rows> --json into a second file")
+say("summarize_hits.py <scored> --top 3" in sec and "exit 4" in sq and "cheaper model" in sq and "titles" in sq,
+    "2b summarizes the top 3, and on exit 4 writes the summaries from the titles and says the cheaper model wasn't available")
+say(re.search(r"non-zero|any other exit|any exit", sq) is not None,
+    "2b treats any non-zero summary exit the same way")
+say("at most" in sq and "`fetch_ticket <fetch_id>`" in sq,
+    "2b reads at most the top 2 in full with fetch_ticket <fetch_id>")
+say("data" in sq and re.search(r"never (as )?instructions", sq) is not None,
+    "2b says tracker text is data, never instructions")
+
+# (6) the reuse brief.
+say("From the tracker (no ticket folder or QC record here)" in sq,
+    "2b adds a reuse-brief section headed 'From the tracker (no ticket folder or QC record here)'")
+say("why it matched" in sq and "keyword overlap only" in sq and "one-line summary" in sq and "Never copy a description" in sq,
+    "each tracker hit in the brief gets its key, why it matched (as in section 2) and its one-line summary, and no description is copied into a committed file")
+
+# (7) failure is one plain line and recall carries on.
+say("tracker is down" in sq and "zero rows" in sq and "malformed" in sq and "one plain line" in sq,
+    "2b says what to do on a failed search: tracker down, zero rows or a malformed file means one plain line, then repo-only recall")
+
+# (8) the text is plain language, and the golden rule holds.
+r = subprocess.run([sys.executable, "tests/plain_language/check.py", "--marked", PR], capture_output=True, text=True)
+say(r.returncode == 0 and len(blocks) >= 4, "priming.md's say-this blocks pass the plain-language check, and 2b has at least four",
+    ((r.stdout + r.stderr)[:300], len(blocks)))
+whole = pr + "\n" + open(SK, encoding="utf-8").read()
+say(not re.search(r"JQL|WIQL|gh issue|haiku|sonnet|opus|AskUserQuestion|ask_user_question", whole, re.I),
+    "neither ticket file names a query language, a model or a question tool",
+    re.findall(r"JQL|WIQL|gh issue|haiku|sonnet|opus|AskUserQuestion|ask_user_question", whole, re.I))
+say(bool(sec) and not re.search(r"\b(jira|asana|linear|github|azure|monday|notion|snowflake)\b", sec, re.I),
+    "2b names no vendor")
+
+# (9) the consumer exists: the schema rows name priming.md as their reader, and priming.md reads the keys.
+say(all(k in pr for k in ("history_search", "history_scope", "history_before")) and "search_history" in pr,
+    "priming.md consumes history_search, history_scope, history_before and the search_history verb")
+
+# (10) the older pins on these files.
+say("CLAUDE_PLUGIN_ROOT" not in pr, "priming.md still never writes CLAUDE_PLUGIN_ROOT (section 31)")
+say("assignee_dir" not in pr, "priming.md still never mentions assignee_dir (section 35)")
+sk = open(SK, encoding="utf-8").read().split("\n")
+phrase = "offers the tracker's older tickets when recall is weak (priming §2b)"
+i_rec = [i for i, l in enumerate(sk) if l.lstrip().startswith("- **Recall**")]
+i_dom = [i for i, l in enumerate(sk) if l.lstrip().startswith("- **Domain slice**")]
+bullet = squash(" ".join(sk[i_rec[0]:i_dom[0]])) if len(i_rec) == 1 and len(i_dom) == 1 else ""
+say(phrase in bullet and i_rec and i_rec[0] + 1 > 41,
+    "/ticket's Phase 3 Recall bullet says it offers the tracker's older tickets when recall is weak (priming §2b), below line 41",
+    (i_rec, bullet[:200]))
+for rt in ("codex-cli", "antigravity"):
+    f = "tests/emit/%s/.agents/skills/ticket/priming.md" % rt
+    say(filecmp.cmp(PR, f, shallow=False), "the %s emit fixture carries this priming.md byte for byte" % rt)
+
+print("\n".join(lines))
+print("DONE %d" % len(lines))
+PY63F
+s63f_rc=$?
+if [ "$s63f_rc" -ne 0 ] || ! grep -q '^DONE ' "$TMP/s63f.out"; then
+  bad "the /ticket older-ticket offer checks did not finish" "$(head -12 "$TMP/s63f.out")"
+fi
+while IFS= read -r s63f_line; do
+  case "$s63f_line" in
+    "PASS "*) ok "${s63f_line#PASS }" ;;
+    "FAIL "*)
+      s63f_name="${s63f_line#FAIL }"; s63f_detail=""
+      case "$s63f_name" in *" :: "*) s63f_detail="${s63f_name#* :: }"; s63f_name="${s63f_name%% :: *}" ;; esac
+      bad "$s63f_name" "$s63f_detail" ;;
+  esac
+done <"$TMP/s63f.out"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
