@@ -107,6 +107,13 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
   *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `build`
   so prior art surfaces automatically in PLAN. Lexical + stdlib (no embeddings); the rank → read-top-K
   shape is the retrieval path that scales past the point where the whole `INDEX.md` fits in context.
+  A brand-new ticket has no SQL yet, so recall also reads its **text** (the seed's README, plus any
+  `--text-file`: the fetched description on stdin, an attachment) and keeps the object names some
+  prior ticket already touched: a qualified name in any case (`db.schema.table`, `schema.table.column`),
+  or a bare name spelled the way `OBJECTS.md` spells it when that spelling has a capital letter; a
+  name in backticks counts in any case. An ordinary word such as "orders" in a sentence stays a
+  keyword, so a catalog spelled all in lower case needs backticks or a qualified name. The verdict line says **strong** only when the top hit shares an object few
+  tickets use (its weight stayed above the floor for common objects) or a cross-ref.
 - **`tickets/OBJECTS.md`** — reverse map: each data object → tickets that touched it
   (`/ticket --recall --object VW_X` queries it live). A ticket's `objects` = **enrichment** (the model names them)
   **∪** a **deterministic grep** of its `*.sql`/`*.py`, keyword-anchored (`FROM`/`JOIN`/… `schema.object`,
@@ -162,10 +169,11 @@ plain line and repo-only recall, and the tracker is never contacted.
    `fetch_id` (`130`), which is what `fetch_ticket` takes.
 2. **Score.** `recall.py --external` ranks the rows with the repo's own rules: a label counts as a tag
    (`Data Quality` matches the tag `data-quality`), the description counts as keywords, and a ticket
-   key the seed's README names counts as a cross-reference. A qualified SQL object name
-   (`schema.table`) found in a description also scores, at ×4 like a repo ticket's tables, when the
-   seed names the same object. A row whose key already has a ticket folder is dropped, so a ticket
-   shows once, from the repo. The top 5 are kept.
+   key the seed's README names counts as a cross-reference. A table named in a description also
+   scores, at ×4 like a repo ticket's tables, when the new ticket names the same table. Only names that
+   match a table some repo ticket already touched count, read the way recall reads a new ticket's own
+   text, so a description cannot add a table of its own. A row whose key already has a ticket folder
+   is dropped, so a ticket shows once, from the repo. The top 5 are kept.
 3. **Summarize.** `bin/summarize_hits.py` has the runtime's sandboxed model command write one line
    for each of the top 3. On Claude Code that is a cheaper model with every tool withheld. On Codex
    CLI it is the default model in a read-only sandbox, which can still read files. A runtime with no

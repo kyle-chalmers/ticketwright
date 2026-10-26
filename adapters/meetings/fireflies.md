@@ -94,6 +94,8 @@ comparison outcome is `unverified` by construction.
 
 ## gotchas
 
-- The MCP surface is one `query` operation; the GraphQL string is the real interface — confirm the
-  exact tool name against your connected server once and adjust here (never the skills).
+- The MCP surface is one `query` operation; the GraphQL string is the real interface. Check the
+  exact tool name against your connected server once; if yours names it differently, report it
+  so the kit can record it, or give that server its own adapter. Never edit this file or a skill
+  to match.
 - Fireflies ids are opaque strings; pass them exactly as `meeting_refs.py` validated them.

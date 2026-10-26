@@ -185,7 +185,7 @@ meetleaks="$(grep -REn -i '\bzoom\b|\bfireflies\b|\bgranola\b|\bnotion\b' \
 # A runtime's connector namespace is the same leak again: Codex CLI lists every ChatGPT app under
 # one server with app-prefixed tool names, and those names live in the adapters' runtime surfaces
 # (section 62). A skill naming one would work on one agent and break on every other.
-rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_|atlassian_[a-z]*jiraissue|atlassian_getaccessible' \
+rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_|atlassian_[a-z]*jiraissue|atlassian_getaccessible|microsoft_outlook_email_' \
             .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
 [ -z "$rtleaks" ] && ok "no runtime connector namespace or app-prefixed tool name appears in a skill/command/agent" \
   || bad "a skill names one runtime's connector tool names (they belong in an adapter's runtime surface)" "$rtleaks"
@@ -685,6 +685,68 @@ grep -q 'multiple owners' <<<"$amb" && ok "recall errors on ambiguous seed (no -
 # --recurring surfaces a frequently-touched object (VW_COMMON is in 7 of the IDF fixture's tickets)
 rec="$(CLAUDE_PROJECT_DIR="$I" python3 bin/build_ticket_index.py --recurring --min-tickets 3 2>/dev/null)"
 grep -q 'VW_COMMON' <<<"$rec" && ok "--recurring lists a frequently-touched object" || bad "--recurring missed it" "$rec"
+# A brand-new ticket has no SQL yet, so the only objects it can match on are the ones its TEXT names.
+# Six closed tickets all read S.ORDERS; only ENG-5 read S.PARTSUPP. A second owner's new ticket that
+# names PARTSUPP in its README must rank ENG-5 first on that object, not on keyword luck.
+X="$TMP/textobj"; mkdir -p "$X/.claude/config" "$X/tickets/bob/ENG-20" "$X/tickets/bob/ENG-21" "$X/tickets/bob/ENG-22"
+printf 'project:\n  key_prefix: ENG\n' > "$X/.claude/config/stack.yaml"
+for n in 1 2 3 4 5 6; do mkdir -p "$X/tickets/dana/ENG-$n"; printf '# ENG-%s: closed work %s\n\nAn older analysis, number %s.\n' "$n" "$n" "$n" > "$X/tickets/dana/ENG-$n/README.md"; printf 'SELECT * FROM S.ORDERS;\n' > "$X/tickets/dana/ENG-$n/q.sql"; done
+printf 'SELECT * FROM S.ORDERS JOIN S.PART;\n' > "$X/tickets/dana/ENG-4/q.sql"
+printf 'SELECT * FROM S.ORDERS JOIN S.PARTSUPP;\n' > "$X/tickets/dana/ENG-5/q.sql"
+printf '# ENG-20: Cheapest vendor per component\n\nFinance wants the lowest supply cost from PARTSUPP, as part of planning.\n' > "$X/tickets/bob/ENG-20/README.md"
+printf '# ENG-21: Monthly trend\n\nA monthly trend read from ORDERS for planning.\n' > "$X/tickets/bob/ENG-21/README.md"
+printf '# ENG-22: Vendor scorecard\n\nNew scorecard, details in the attachment.\n' > "$X/tickets/bob/ENG-22/README.md"
+CLAUDE_PROJECT_DIR="$X" python3 bin/build_ticket_index.py >/dev/null 2>&1
+tj="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-20 --json 2>/dev/null | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(d[0]['id'] + ' ' + ' '.join(d[0]['why']) if d else '')")"
+case "$tj" in "ENG-5 obj:s.partsupp"*) ok "recall reads object names from a new ticket's text and ranks the one ticket that used it first";;
+  *) bad "recall ignored the object a new ticket names in its text" "$tj";; esac
+tw_all="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-20 --json 2>/dev/null | python3 -c "import json,sys; print(' '.join(w for x in json.loads(sys.stdin.read() or '[]') for w in x['why']))")"
+grep -q 's\.part~' <<<"$tw_all" && bad "recall matched an ordinary word (part) to a table" "$tw_all" || ok "an ordinary lower-case word is not read as a table name"
+tv="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-20 2>/dev/null | grep '^verdict:')"
+grep -q 'strong' <<<"$tv" && ok "a match on an object only one prior ticket used reads as strong" || bad "rare shared object did not read as strong" "$tv"
+# Ticket text that never reached the README (a fetched description, an attachment) comes in on --text-file.
+tt="$(printf 'See the supply costs in `s.partsupp`.\n' | CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-22 --text-file - --json 2>/dev/null | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(d[0]['id'] + ' ' + ' '.join(d[0]['why']) if d else '')")"
+case "$tt" in "ENG-5 obj:s.partsupp"*) ok "recall --text-file - reads object names from fetched ticket text";;
+  *) bad "recall --text-file did not use the object the text names" "$tt";; esac
+# The verdict judges evidence AFTER the IDF discount: sharing only a table every ticket reads is not strong.
+uv="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-21 2>/dev/null)"
+grep -q 'obj:s.orders' <<<"$uv" && ok "a ubiquitous object named in the text still counts toward the score" || bad "the ubiquitous object was dropped" "$uv"
+grep '^verdict:' <<<"$uv" | grep -q 'strong' && bad "a match only on a table every ticket shares read as strong" "$(grep '^verdict:' <<<"$uv")" \
+  || ok "a match only on a table every ticket shares does not read as strong"
+cv="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for dana/ENG-1 2>/dev/null | grep '^verdict:')"
+grep -q 'strong' <<<"$cv" && bad "a closed ticket sharing only the ubiquitous ORDERS read as strong" "$cv" \
+  || ok "a closed ticket sharing only the ubiquitous table does not read as strong"
+# Pasted ticket text is not always UTF-8 (a Latin-1 export); stdin must not crash on it.
+printf 'caf\xe9 `s.partsupp`\n' | CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-22 --text-file - >"$TMP/tf_latin1.out" 2>&1 \
+  && grep -q 'obj:s.partsupp' "$TMP/tf_latin1.out" && ok "recall --text-file - reads text that is not valid UTF-8" \
+  || bad "recall --text-file - failed on text that is not valid UTF-8" "$(tail -2 "$TMP/tf_latin1.out")"
+# A table named through one of its columns (schema.table.column) still names the table.
+tc="$(printf 'Check s.partsupp.ps_supplycost values.\n' | CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-22 --text-file - --json 2>/dev/null | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(d[0]['id'] + ' ' + ' '.join(d[0]['why']) if d else '')")"
+case "$tc" in "ENG-5 obj:s.partsupp"*) ok "a column-qualified mention (schema.table.column) names its table";;
+  *) bad "a column-qualified mention missed its table" "$tc";; esac
+# A catalog spelled in lower case (dbt/Postgres style) has leaves that are ordinary words: a bare
+# "users" or "orders" in a sentence is not a table there; backticks or qualification are.
+L="$TMP/lowercat"; mkdir -p "$L/.claude/config" "$L/tickets/dana/ENG-1" "$L/tickets/dana/ENG-2" "$L/tickets/bob/ENG-9"
+printf 'project:\n  key_prefix: ENG\n' > "$L/.claude/config/stack.yaml"
+printf '# ENG-1: closed one\n\nOlder work.\n' > "$L/tickets/dana/ENG-1/README.md"; printf 'select * from public.users;\n' > "$L/tickets/dana/ENG-1/q.sql"
+printf '# ENG-2: closed two\n\nOlder work.\n' > "$L/tickets/dana/ENG-2/README.md"; printf 'select * from public.events;\n' > "$L/tickets/dana/ENG-2/q.sql"
+printf '# ENG-9: Churn survey\n\nAsk users about churn.\n' > "$L/tickets/bob/ENG-9/README.md"
+CLAUDE_PROJECT_DIR="$L" python3 bin/build_ticket_index.py >/dev/null 2>&1
+lw="$(CLAUDE_PROJECT_DIR="$L" python3 bin/recall.py --for bob/ENG-9 2>/dev/null)"
+grep -q 'obj:' <<<"$lw" && bad "a lower-case catalog turned an ordinary word into a table match" "$lw" || ok "in a lower-case catalog, an ordinary word in a sentence stays a keyword"
+lb="$(printf 'Read `users` first.\n' | CLAUDE_PROJECT_DIR="$L" python3 bin/recall.py --for bob/ENG-9 --text-file - 2>/dev/null)"
+grep -q 'obj:public.users' <<<"$lb" && ok "in a lower-case catalog, a name in backticks is read as the table" || bad "a backticked lower-case name was not read as a table" "$lb"
+# When EVERY object is ubiquitous the IDF discount has nothing to compare against; it must still not read strong.
+U="$TMP/allcommon"; mkdir -p "$U/.claude/config" "$U/tickets/bob/ENG-9"
+printf 'project:\n  key_prefix: ENG\n' > "$U/.claude/config/stack.yaml"
+for n in 1 2 3 4 5 6; do mkdir -p "$U/tickets/dana/ENG-$n"; printf '# ENG-%s: closed work %s\n\nOlder analysis %s.\n' "$n" "$n" "$n" > "$U/tickets/dana/ENG-$n/README.md"; printf 'SELECT * FROM S.ORDERS;\n' > "$U/tickets/dana/ENG-$n/q.sql"; done
+printf '# ENG-9: Monthly trend\n\nA monthly trend read from ORDERS.\n' > "$U/tickets/bob/ENG-9/README.md"
+CLAUDE_PROJECT_DIR="$U" python3 bin/build_ticket_index.py >/dev/null 2>&1
+av="$(CLAUDE_PROJECT_DIR="$U" python3 bin/recall.py --for bob/ENG-9 2>/dev/null | grep '^verdict:')"
+grep -q 'strong' <<<"$av" && bad "an archive where every ticket reads the same table called that match strong" "$av" \
+  || ok "an archive where every ticket reads the same table does not call that match strong"
+grep -q -- '--text-file' .claude/skills/ticket/priming.md && ok "/ticket priming passes the fetched ticket text to recall" || bad "/ticket priming does not pass the ticket text to recall"
+grep -q 'names the shared object' .claude/skills/ticket/priming.md && ok "the reuse brief names the shared object when that is why a ticket matched" || bad "the reuse brief can hide which object matched"
 
 hdr "12 · ingest validators (the LLM-record trust boundary)"
 G="$TMP/ingest"; mkdir -p "$G/.claude/config" "$G/tickets/dana/ENG-1"
@@ -11650,7 +11712,8 @@ hdr "62 · runtime surfaces: one connector, the tool names each agent lists (bin
 # bin/adapter_surface.py is the one place that picks a surface. Pinned here: every adapter's
 # surfaces parse (A), which adapters carry one (B), the mapping name by name (C), that a surface is
 # used whole and carries its own safety rules (D), the selection rules (E), the refusals (F), the
-# plain wording (G), and the wiring that sends agents through the picker (H).
+# plain wording (G), the wiring that sends agents through the picker (H), and that an adapter's
+# gotchas follow every action the picker prints, on every surface (I).
 # Every call runs with the kit and runtime overrides cleared: a stray TICKETWRIGHT_KIT would make
 # the picker read another kit's adapters, and TICKETWRIGHT_RUNTIME would pick for it.
 AS61="$KIT/bin/adapter_surface.py"
@@ -11671,8 +11734,8 @@ done
 
 # --- (B) the census: the four connectors Codex lists under other names, and only those -----------
 s61census="$(grep -l '^surfaces: \[codex-cli\]' adapters/*/*.md | tr '\n' ' ')"
-[ "$s61census" = "adapters/chat/gmail.md adapters/chat/slack.md adapters/meetings/notion.md adapters/tracker/jira.md " ] \
-  && ok "gmail, slack, notion and jira (and only those) declare a codex-cli runtime surface" \
+[ "$s61census" = "adapters/chat/gmail.md adapters/chat/outlook.md adapters/chat/slack.md adapters/meetings/notion.md adapters/tracker/jira.md " ] \
+  && ok "gmail, outlook, slack, notion and jira (and only those) declare a codex-cli runtime surface" \
   || bad "the codex-cli surface census moved (extend this section with it)" "$s61census"
 
 # --- (C) the mapping itself, pinned name by name, read back THROUGH the picker -------------------
@@ -11721,20 +11784,28 @@ adapters/tracker/jira.md|default|comment|mcp__{mcp}__getAccessibleAtlassianResou
 adapters/tracker/jira.md|default|comment|mcp__{mcp}__addOrEditJiraIssueComment(cloudId=<that cloudId>, issueIdOrKey=<id>
 adapters/tracker/jira.md|default|search|mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=
 adapters/tracker/jira.md|default|probe|mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=
+adapters/chat/outlook.md|codex-cli|draft|mcp__codex_apps__microsoft_outlook_email_draft_email(to=[{"email": "{to}"}]
+adapters/chat/outlook.md|codex-cli|draft|text_content=<plain-text body>
+adapters/chat/outlook.md|codex-cli|draft|mcp__codex_apps__microsoft_outlook_email_get_profile({})
+adapters/chat/outlook.md|codex-cli|send|mcp__codex_apps__microsoft_outlook_email_send_email(
+adapters/chat/outlook.md|codex-cli|lookup_user|mcp__codex_apps__microsoft_outlook_email_search_people(query=
+adapters/chat/outlook.md|codex-cli|lookup_channel|exact address
+adapters/chat/outlook.md|codex-cli|probe|mcp__codex_apps__microsoft_outlook_email_list_mail_folders(
+adapters/chat/outlook.md|default|draft|mcp__{mcp}__create_draft(to=[{to}]
 EOF
 s61miss=""; s61rows=0
 while IFS='|' read -r f surf what want; do
   [ -n "$f" ] || continue
   s61rows=$((s61rows + 1))
   if [ "$what" = "probe" ]; then
-    got="$(p61 --adapter "$f" --surface "$surf" --probe 2>/dev/null)"
+    got="$(p61 --adapter "$f" --surface "$surf" --probe 2>/dev/null | awk 'tolower($0) ~ /^## gotchas[[:space:]]*$/ {exit} {print}')"
   else
-    got="$(p61 --adapter "$f" --surface "$surf" --verb "$what" 2>/dev/null)"
+    got="$(p61 --adapter "$f" --surface "$surf" --verb "$what" 2>/dev/null | awk 'tolower($0) ~ /^## gotchas[[:space:]]*$/ {exit} {print}')"
   fi
   grep -qF -- "$want" <<<"$got" || s61miss="$s61miss $(basename "$f"):$surf:$what"
 done < "$TMP/s61.rows"
-{ [ -z "$s61miss" ] && [ "$s61rows" -eq 37 ]; } \
-  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, slack, notion and jira, both surfaces" \
+{ [ -z "$s61miss" ] && [ "$s61rows" -eq 45 ]; } \
+  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, outlook, slack, notion and jira, both surfaces" \
   || bad "a pinned tool name or argument shape moved in a runtime surface" "rows=$s61rows missing:$s61miss"
 s61old=""
 grep -q 'search_contacts' adapters/chat/gmail.md && s61old="$s61old gmail:search_contacts"
@@ -11767,8 +11838,8 @@ def fenced(text):
             out.append(ln)
     return out
 privacy = "Curated excerpts and action items are committed; raw full transcripts are not, by default."
-for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings/notion.md",
-          "adapters/tracker/jira.md"):
+for f in ("adapters/chat/gmail.md", "adapters/chat/outlook.md", "adapters/chat/slack.md",
+          "adapters/meetings/notion.md", "adapters/tracker/jira.md"):
     c, d = pick(f, "codex-cli"), pick(f, "default")
     if not c or not d:
         bad.append(f + ": picker refused a surface")
@@ -11791,7 +11862,7 @@ for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings
                 bad.append(f + ":" + surf + ":draft: always_include missing")
             if "ONLY on explicit" not in vb["send"]:
                 bad.append(f + ":" + surf + ":send: the explicit-send rule is missing")
-        if "gmail" in f:
+        if "gmail" in f or "outlook" in f:
             if any("bcc=" in ln for t in vb.values() for ln in fenced(t)):
                 bad.append(f + ":" + surf + ": a call passes bcc")
             for v in ("draft", "send"):
@@ -11815,6 +11886,17 @@ for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings
         for v in ("draft", "send"):
             if "never retry without it" not in " ".join(c["verbs"][v].split()):
                 bad.append(f + ": codex-cli " + v + " lost the from_address stop rule")
+    if "outlook" in f:
+        for v in ("draft", "send"):
+            text = c["verbs"][v]
+            calls = [ln for ln in fenced(text) if "mcp__" in ln]
+            first = calls[0] if calls else ""
+            flat = " ".join(text.split())
+            if ("microsoft_outlook_email_get_profile" not in first or "STOP and report" not in flat
+                    or "fails, returns no address" not in flat):
+                bad.append(f + ": codex-cli " + v + " lost the signed-in sender check (profile first, fail closed)")
+            if any("attachment_files=" in ln for ln in fenced(text)):
+                bad.append(f + ": codex-cli " + v + " attaches local files")
     if "/tracker/" in f:
         # Only the MCP path differs by agent: every acli line reads the same on both surfaces, and
         # a verb with no MCP call is the default section word for word (one source of truth).
@@ -11844,7 +11926,7 @@ PY
 s61drc=$?
 # A crash in the block above must fail too, not pass as "nothing printed" (its stderr is captured).
 { [ "$s61drc" -eq 0 ] && [ ! -s "$TMP/s61d.out" ]; } \
-  && ok "surfaces are used whole (no mixed tool names) and each subsection carries its own rules (always_include, explicit send, no bcc, verbatim privacy, read-only)" \
+  && ok "surfaces are used whole (no mixed tool names) and each subsection carries its own rules (always_include, explicit send, no bcc, the sender check, verbatim privacy, read-only)" \
   || bad "a runtime surface mixes tool names or lost a rule it must carry" "$(head -5 "$TMP/s61d.out")"
 
 # --- (E) selection: flag, env override, real env detection, aliases, unknown runtimes ------------
@@ -11922,16 +12004,18 @@ cut = re.sub(r"### verb: lookup_channel\n.*?(?=### )", "", surf, count=1, flags=
 (d / "no-server.md").write_text(src.replace("\nserver: codex_apps\n", "\n", 1))
 # consistent with itself, but not the namespace adapters/runtime/codex-cli.md declares
 (d / "foreign-server.md").write_text(head + "## Runtime surface: codex-cli" + surf.replace("codex_apps", "claude_ai_Gmail"))
+# gotchas print on every surface, so a tool name in one would reach an agent whose names differ
+(d / "gotchas-tool.md").write_text(src.replace("\n## gotchas\n", "\n## gotchas\n- Search first with `mcp__{mcp}__search_threads`.\n", 1))
 PY
 s61fx=""
-for fx in missing-verb wrong-server undeclared alias-name no-server foreign-server; do
+for fx in missing-verb wrong-server undeclared alias-name no-server foreign-server gotchas-tool; do
   s61 --adapter "$FX61/$fx.md" --runtime codex-cli --verb draft
   { [ "$S61RC" -eq 6 ] && [ -z "$S61OUT" ]; } || s61fx="$s61fx $fx(rc=$S61RC)"
 done
 s61 --adapter "$FX61/missing-verb.md" --runtime claude-code --verb draft
 { [ "$S61RC" -eq 6 ] && [ -z "$S61OUT" ] && grep -q 'lookup_channel' "$TMP/s61.err"; } || s61fx="$s61fx missing-verb-on-default(rc=$S61RC)"
 [ -z "$s61fx" ] \
-  && ok "malformed surfaces (a missing verb, a wrong server, undeclared, an alias name, no server, a server the runtime does not declare) are exit 6 with no call printed, on every runtime" \
+  && ok "malformed surfaces (a missing verb, a wrong server, undeclared, an alias name, no server, a server the runtime does not declare, a tool name in the gotchas) are exit 6 with no call printed, on every runtime" \
   || bad "a malformed runtime surface still printed a call" "$s61fx"
 
 # --- (G) the picker's messages are plain language ------------------------------------------------
@@ -11958,6 +12042,70 @@ grep -q '^connector_server: codex_apps' adapters/runtime/codex-cli.md || s61wire
 [ -z "$s61wire" ] \
   && ok "the resolution rule, the rendered AGENTS.md, and /setup send agents through the picker and forbid matching edits" \
   || bad "the picker is not wired where agents resolve a verb" "$s61wire"
+
+# --- (I) gotchas follow every action the picker prints, on every surface -------------------------
+# An agent may read nothing but what the picker prints, so a rule kept only in `## gotchas` (Jira's
+# acli lockout, Gmail's threading) would never reach it. Every tool adapter that has the section
+# carries it in --json and ends each --verb and --probe with it, on every surface it has; one that
+# has none prints none. A crash here fails too, rather than passing on empty output.
+python3 - "$AS61" <<'PY' >"$TMP/s61i.out" 2>&1
+import glob, json, os, re, subprocess, sys
+picker = sys.argv[1]
+env = {k: v for k, v in os.environ.items() if k not in ("TICKETWRIGHT_KIT", "TICKETWRIGHT_RUNTIME")}
+def run(*args):
+    r = subprocess.run([sys.executable, picker, *args], capture_output=True, text=True, env=env)
+    return r.returncode, r.stdout.rstrip()
+bad, carried = [], 0
+for f in sorted(glob.glob("adapters/*/*.md")):
+    if f.startswith("adapters/runtime/") or f.endswith("/README.md"):
+        continue
+    # the file's own gotchas, read independently: every `## gotchas` section outside a fence
+    secs, cur, fence = [], None, False
+    for ln in open(f, encoding="utf-8").read().splitlines():
+        if ln.startswith("```"):
+            fence = not fence
+        if not fence and ln.startswith("## "):
+            cur = [ln] if re.match(r"## gotchas\s*$", ln, re.I) else None
+            if cur is not None:
+                secs.append(cur)
+            continue
+        if cur is not None:
+            cur.append(ln)
+    g = "\n\n".join("\n".join(x).strip() for x in secs)
+    rc, out = run("--adapter", f, "--surface", "default", "--json")
+    if rc != 0:
+        bad.append(f + ": the picker refused it")
+        continue
+    d = json.loads(out)
+    if (d.get("gotchas") or "") != g:
+        bad.append(f + (": its gotchas are not carried whole" if g else ": gotchas appeared from nowhere"))
+        continue
+    carried += bool(g)
+    verb = sorted(d["verbs"])[0]
+    for surf in d["surfaces"]:
+        for args in (("--verb", verb), ("--probe",)):
+            rc, text = run("--adapter", f, "--surface", surf, *args)
+            if rc != 0:
+                if args[0] == "--verb" or surf != "default":
+                    bad.append(f + ":" + surf + ":" + args[0] + ": nothing printed")
+                continue   # a CLI-only adapter has no default probe
+            if g and not text.endswith(g):
+                bad.append(f + ":" + surf + ":" + args[0] + ": the gotchas do not follow it")
+            if not g and re.search(r"^## gotchas", text, re.I | re.M):
+                bad.append(f + ":" + surf + ":" + args[0] + ": a gotchas section it does not have")
+print("carried=%d" % carried)
+print("\n".join(bad))
+PY
+s61irc=$?
+s61icarried="$(sed -n 's/^carried=//p' "$TMP/s61i.out")"
+s61ibad="$(grep -v '^carried=' "$TMP/s61i.out" | grep . || true)"
+{ [ "$s61irc" -eq 0 ] && [ -z "$s61ibad" ] && [ "${s61icarried:-0}" -ge 30 ]; } \
+  && ok "every adapter's gotchas, read from the file, follow the verb and the probe the picker prints, on every surface ($s61icarried adapters carry them; none are invented)" \
+  || bad "an adapter's gotchas do not reach what the picker prints" "rc=$s61irc carried=$s61icarried $(head -5 <<<"$s61ibad")"
+s61 --adapter adapters/tracker/jira.md --runtime codex-cli --verb fetch_ticket
+{ [ "$S61RC" -eq 0 ] && grep -q '250001/370001' <<<"$S61OUT" && grep -q 'acli jira workitem view' <<<"$S61OUT"; } \
+  && ok "…so Jira's acli lockout warning reaches a Codex agent that reads only fetch_ticket" \
+  || bad "the Jira gotchas did not reach the Codex fetch_ticket output" "rc=$S61RC"
 
 hdr "63 · older-ticket search: the tracker's search_history verb (LABS-90)"
 # /ticket can look past the repo's own folders into the tracker's older tickets, so every tracker
@@ -12111,9 +12259,10 @@ s63a_rc=$?
 
 # --- (b) recall scores older tracker tickets with its own rules (recall.py --external) ------------
 # The rows come from a file in the shape (a) pins. They are scored the way recall scores the repo's
-# own tickets: a label counts as a tag, the text as keywords, SQL-looking text as objects, and a
-# ticket key the seed's README names as a link (+5, added after scoring, because recall keeps the
-# link signal out of score_candidate). A row whose key already has a ticket folder is dropped, so a
+# own tickets: a label counts as a tag, the text as keywords, a table the repo already knows as an
+# object (read by build_ticket_index.objects_in_text, as a new ticket's own text is), and a ticket key
+# the seed's README names as a link (+5, added after scoring, because recall keeps the link signal out
+# of score_candidate). A row whose key already has a ticket folder is dropped, so a
 # ticket never appears twice, and a numeric tracker's key (TEST-130) compares equal to the folder
 # while fetch_id (130) stays what fetch_ticket takes.
 X="$TMP/s63b"
@@ -12226,6 +12375,8 @@ file_c = [
     {"key": "TEST-93", "fetch_id": None, "title": "Region rate watch", "description": None, "labels": None,
      "created": None, "url": None},
     row("TEST-94", "Long text", "x" * 700 + " returns", labels=["data_quality"]),
+    row("TEST-95", "Region rate notes", "See analytics.returns for the region numbers."),
+    row("TEST-96", "Region rate staging", "Rebuild FROM staging.region_scratch nightly."),
 ]
 rc, got, err = jrows(file_c, ["--top", "20"])
 errs.append(err)
@@ -12234,6 +12385,12 @@ say(rc == 0 and "tag:data-quality" in by.get("TEST-90", {}).get("why", []),
     "a label in another style (Data Quality) matches the kit tag data-quality", (rc, by.get("TEST-90"), err))
 say(any(w.startswith("obj:analytics.returns") for w in by.get("TEST-91", {}).get("why", [])),
     "a table named in the description (FROM analytics.returns) counts as an object", by.get("TEST-91"))
+say(any(w.startswith("obj:analytics.returns") for w in by.get("TEST-95", {}).get("why", [])),
+    "a known table named outside SQL (See analytics.returns) counts too, read the way a new ticket's own text is",
+    by.get("TEST-95"))
+say("TEST-96" in by and by["TEST-96"]["objects"] == [] and not any(w.startswith("obj:") for w in by["TEST-96"]["why"]),
+    "a table no repo ticket touched (FROM staging.region_scratch) is not an object: tracker prose never widens the known set",
+    by.get("TEST-96"))
 say([r["id"] for r in got].count("TEST-92") == 1 and "test-92" not in by
     and "test-130" not in by and "TEST-130" not in by,
     "a key listed twice appears once, and a lowercase copy of a repo key is still dropped", [r["id"] for r in got])
@@ -13097,6 +13254,15 @@ say(len(cmds) >= 3 and all(c.startswith(LAUNCH) or c.startswith("#") for c in cm
     "every script call in 2b uses the standard bin/tw launcher line", cmds)
 say(re.search(r"recall\.py --for <owner>/<id> --external <rows> --json", sec) is not None and "<scored>" in sec,
     "2b scores the rows with recall.py --for <owner>/<id> --external <rows> --json into a second file")
+# The tracker rows must be scored against the query that produced the verdict, so the --external call
+# passes the ticket text exactly as section 2 does (main's LABS-57 reads objects from that text).
+s2 = "\n".join(prl[i2[0]:hi[0]]) if placed else ""
+TF = "--text-file - [--text-file <ticket-dir>/source_materials/<file> …]"
+ext_block = next((b for b in re.findall(r"```\n(.*?)```", sec, re.S) if "--external" in b), "")
+say(TF in s2 and TF in ext_block and "<<'TICKET_TEXT'" in ext_block and "TICKET_TEXT\n" in ext_block
+    and "same `--text-file` arguments" in sq,
+    "2b passes recall --external the same --text-file arguments section 2 passes (the fetched text on stdin, each attachment)",
+    ext_block[:300])
 say("summarize_hits.py <scored> --top 3" in sec and "exit 4" in sq and "cheaper model" in sq and "titles" in sq,
     "2b summarizes the top 3, and on exit 4 writes the summaries from the titles and says the cheaper model wasn't available")
 say(re.search(r"non-zero|any other exit|any exit", sq) is not None,

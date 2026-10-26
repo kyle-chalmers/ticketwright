@@ -339,12 +339,23 @@ def sha256_file(path: Path) -> str | None:
 # Qualified SQL object refs in a ticket's code. Keyword-anchored for PRECISION: it matches
 # `FROM schema.obj` / `JOIN db.schema.obj` even inside a SQL string in a .py file, but NOT
 # `os.path.join` / `df.merge` (no FROM/JOIN/… keyword precedes them).
-SQL_OBJECT = re.compile(
-    r"(?i)\b(?:from|join|into|update|table|view)\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w+){1,2})"
-)
+QUALIFIED_NAME = r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w+){1,2}"
+SQL_OBJECT = re.compile(rf"(?i)\b(?:from|join|into|update|table|view)\s+({QUALIFIED_NAME})")
 # Python `from pkg.mod import ...` / `import pkg.mod` share the SQL `from` keyword — skip those lines
 # so `from os.path import join` doesn't get logged as a data object.
 PY_IMPORT = re.compile(r"^\s*(?:from\s+\S+\s+import\b|import\s)")
+# Prose mentions, for ticket TEXT rather than code: any dotted chain, and any bare identifier.
+TEXT_DOTTED = re.compile(r"(?<![\w.])([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)(?!\w|\.\w)")
+TEXT_BARE = re.compile(r"(?<![\w.])([A-Za-z_]\w*)(?!\w|\.\w)")  # a sentence's full stop is not a qualifier
+
+
+def _scan_sql_lines(txt: str, found: dict[str, str]) -> None:
+    """Add the keyword-anchored qualified names in `txt` to `found` (lowercased key -> first form)."""
+    for line in txt.splitlines():
+        if PY_IMPORT.match(line):
+            continue  # Python import — not a data object
+        for name in SQL_OBJECT.findall(line):
+            found.setdefault(name.lower(), name)
 
 
 def extract_objects(ticket_dir: Path, cap: int = 40) -> list[str]:
@@ -356,11 +367,57 @@ def extract_objects(ticket_dir: Path, cap: int = 40) -> list[str]:
                 txt = f.read_text(errors="replace")
             except OSError:
                 continue
-            for line in txt.splitlines():
-                if PY_IMPORT.match(line):
-                    continue  # Python import — not a data object
-                for name in SQL_OBJECT.findall(line):
-                    found.setdefault(name.lower(), name)
+            _scan_sql_lines(txt, found)
+    return sorted(found.values(), key=str.lower)[:cap]
+
+
+def objects_in_text(text: str, known: list[str], cap: int = 40) -> list[str]:
+    """Objects a ticket's TEXT names (title, description, attachments), for a ticket with no SQL yet.
+
+    Only names that resolve to an object some ticket already touched are returned, because recall
+    can match nothing else. Three ways a name counts:
+      - SQL pasted into the text, read by the same keyword-anchored pattern as `extract_objects`;
+      - a dotted name anywhere, any case, read from the right: the rightmost part that is a known
+        object's last part names the table, so `db.schema.table` and `schema.table.column` both count;
+      - a bare name spelled exactly as the catalog spells a known object's last part, when that
+        spelling has an upper-case letter (`PARTSUPP`), or in any case inside a code span
+        (`partsupp`). An ordinary word such as "part" or "users" in a sentence is not a table name;
+        a catalog spelled all in lower case therefore needs backticks or a qualified name.
+    A bare name is returned as the catalog's qualified name when exactly one known object has that
+    last part, else as written (recall matches on the last part either way)."""
+    by_leaf: dict[str, list[str]] = {}
+    for o in known:
+        by_leaf.setdefault(o.rsplit(".", 1)[-1].lower(), []).append(o)
+    exact_leaves = {lf for lf in (o.rsplit(".", 1)[-1] for o in known) if lf != lf.lower()}
+    code_spans = " ".join(m.group(0) for m in _INLINE_CODE.finditer(text or ""))
+
+    found: dict[str, str] = {}
+
+    def add_bare(word: str) -> None:
+        cands = by_leaf.get(word.lower(), [])
+        if not cands or any(k.rsplit(".", 1)[-1] == word.lower() for k in found):
+            return
+        name = cands[0] if len(cands) == 1 else word
+        found.setdefault(name.lower(), name)
+
+    sql: dict[str, str] = {}
+    _scan_sql_lines(text or "", sql)
+    for chain in list(sql.values()) + TEXT_DOTTED.findall(text or ""):
+        parts = chain.split(".")
+        hit = next((i for i in range(len(parts) - 1, -1, -1) if parts[i].lower() in by_leaf), None)
+        if hit is None:
+            continue
+        name = ".".join(parts[max(0, hit - 2): hit + 1])  # at most db.schema.table
+        if "." in name:
+            found.setdefault(name.lower(), name)
+        else:
+            add_bare(name)
+
+    for word in TEXT_BARE.findall(text or ""):
+        if word in exact_leaves:
+            add_bare(word)
+    for word in TEXT_BARE.findall(code_spans):
+        add_bare(word)
     return sorted(found.values(), key=str.lower)[:cap]
 
 

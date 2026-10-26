@@ -91,12 +91,13 @@ mcp__{mcp}__slack_search_channels(query=<name>)          # → channel ID
 Existing group DMs can be reused by searching; new multi-person DMs must be created in the UI first.
 
 ## gotchas
-- The `mcp__{mcp}__*` tools take **standard Markdown** — use `[text](URL)` links, not Slack `<URL|text>` mrkdwn.
+- Slack's tools take **standard Markdown** on every agent: use `[text](URL)` links, not Slack
+  `<URL|text>` mrkdwn.
 - Exact parameter names vary by Slack MCP server; this adapter targets one exposing `channel_id` + `message`.
   Slack's own server, as Codex CLI lists it, takes `keywords` (a list of single words or quoted
   phrases) for both search tools rather than `query`; if your connector is that server, pass the
   same shape here.
-- Tool names differ by agent: Codex CLI adds a `slack_` app prefix (its section is below).
+- Tool names differ by agent: Codex CLI adds a `slack_` app prefix (in its own section of this file).
   `bin/adapter_surface.py --adapter adapters/chat/slack.md` picks the right section for the agent
   running now. A name missing from your session's tool list is a gap to report so the kit can
   record it, never a local edit here or in a skill.

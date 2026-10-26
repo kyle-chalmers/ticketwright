@@ -45,6 +45,42 @@ All notable changes to this project are documented here. Format loosely follows
   live on Claude Code 2.1.310; `--strict-mcp-config` loading no MCP server rests on the CLI's help
   text. Older builds were not checked, and one that does not know `--tools` may fail the call, so
   update Claude Code if enrich or the summaries stop working.
+
+### Fixed
+- **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
+  the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,
+  `microsoft_outlook_email_send_email`, `microsoft_outlook_email_search_people`). That app has
+  no sender field, so every draft and send first checks that the signed-in account is the
+  team's `identity` and stops if it is not (a shared mailbox, for example). It takes plain-text
+  bodies only, so links are written out in full, and it cannot send a draft by its id, so a
+  reviewed draft is sent word for word and the person is told the draft is still in Drafts.
+  Distribution lists have no lookup there, so `lookup_channel` asks for the address. The
+  default Outlook draft and send now state the no-bcc rule themselves. The Teams adapters still
+  have no Codex section: no Teams app was connected in the Codex session that was checked.
+- Recall now finds prior work for a brand-new ticket by the tables the ticket names. A new ticket has
+  no SQL yet, so recall used to match it on keywords alone and call the result weak, even when the
+  description named a table exactly one earlier ticket had used. `recall.py` now reads the seed
+  ticket's README and any `--text-file` (the fetched description on stdin, an attachment) and keeps
+  the names some prior ticket already touched: a qualified name in any case (`db.schema.table`, or
+  `schema.table.column`), or a bare name spelled the way the object index spells it when that
+  spelling has a capital letter. A name inside backticks counts in any case. It lists them as
+  "objects named in the ticket text", and `/ticket` priming passes the fetched ticket text this way.
+  The parsing reuses the SQL object pattern in `build_ticket_index.py` (`objects_in_text`).
+- The recall verdict no longer calls a match "strong" when the only shared object is one most tickets
+  use. Strong now needs an object that kept more than the minimum weight after the discount for
+  common objects (an archive where every ticket reads the same table has no such object), or a
+  cross-reference; a match only on a common table reads "moderate — top hit
+  shares only objects most tickets use (orders)". Scores and `--eval` numbers are unchanged.
+- The reuse brief and the plan's "Builds on" section name the shared object when that is why a prior
+  ticket matched.
+
+## [4.4.0] - 2026-10-26
+
+**Behavior change:** approving a plan in `/ticket` now starts the build right away. To save the
+plan without building, say "approve, don't build yet". No command, config key or file format
+changed, and existing ticket folders keep working.
+
+### Changed
 - A ticket now runs from one window. Approving the plan in `/ticket` starts the build right there
   ("Approve, don't build yet" still stops after writing the plan). `/build` remains a skill for
   resuming a build or building from someone else's approved plan.
@@ -66,6 +102,16 @@ All notable changes to this project are documented here. Format loosely follows
   REQUEST-CHANGES acts on that verdict instead of rebuilding the same plan.
 - The vcs adapters' `worktree` verb now describes what it is still for: keeping one ticket apart
   from other work in flight. The build no longer needs a separate context.
+
+### Fixed
+- **An adapter's gotchas now reach agents that read it through `bin/adapter_surface.py`.** The
+  picker printed only the chosen action's section, so a rule kept in `## gotchas` (Jira's `acli`
+  lockout warning, Gmail's threading note) never reached an agent following the documented
+  resolution step. `--verb` and `--probe` now end with the adapter's gotchas on every surface, and
+  `--json` carries them. Because they print for every agent, a gotcha may not name a tool call
+  (`mcp__…`); Slack's Markdown note was reworded to match. Selftest section 62 checks that all 30
+  adapters with gotchas carry them on every surface and that a gotcha naming a tool call is
+  refused.
 
 ## [4.3.0] - 2026-10-25
 
