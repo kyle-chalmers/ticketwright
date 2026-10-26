@@ -12064,5 +12064,66 @@ s61 --adapter adapters/tracker/jira.md --runtime codex-cli --verb fetch_ticket
   && ok "…so Jira's acli lockout warning reaches a Codex agent that reads only fetch_ticket" \
   || bad "the Jira gotchas did not reach the Codex fetch_ticket output" "rc=$S61RC"
 
+hdr "63 · team docs: standards and context, normalized by bin/team_docs.py"
+# project.team_docs holds two optional lists: standards (rules /build follows and /review checks)
+# and context (what /ticket reads while planning). bin/team_docs.py is the one reader, so every
+# runtime gets the same list. Pinned: the empty default (A), both item shapes (B), a missing local
+# path (C), the kind filter (D), and the loud refusals (E).
+TD63="$TMP/s63"; mkdir -p "$TD63/.claude/config" "$TD63/docs"
+td63() { python3 "$KIT/bin/team_docs.py" --root "$TD63" "$@"; }
+printf 'project:\n  key_prefix: TEST\n' > "$TD63/.claude/config/stack.yaml"
+td63 --json > "$TMP/s63a.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 0 ] && [ "$(tr -d ' \n' < "$TMP/s63a.out")" = "[]" ]; } \
+  && ok "no team_docs configured (every existing repo) prints [] and exits 0" \
+  || bad "an empty team_docs config did not print []" "rc=$s63rc $(head -c 300 "$TMP/s63a.out")"
+td63 > "$TMP/s63a2.out" 2>&1
+grep -qx 'none configured' "$TMP/s63a2.out" \
+  && ok "the plain listing says 'none configured' when there are no docs" \
+  || bad "the plain listing for no docs is wrong" "$(head -c 300 "$TMP/s63a2.out")"
+printf 'style\n' > "$TD63/docs/style.md"
+cat > "$TD63/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: TEST
+  team_docs:
+    standards:
+      - docs/style.md
+      - docs/missing.md
+    context:
+      - location: https://wiki.example.test/team
+        note: team wiki
+EOF
+td63 --json > "$TMP/s63b.out" 2>&1; s63rc=$?
+python3 - "$TMP/s63b.out" > "$TMP/s63b.chk" 2>&1 <<'PY63'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+by = {r["location"]: r for r in rows}
+ok = (len(rows) == 3
+      and by["docs/style.md"]["kind"] == "standards" and by["docs/style.md"]["exists"] is True
+      and by["docs/style.md"]["is_url"] is False and by["docs/style.md"]["note"] is None
+      and by["docs/missing.md"]["exists"] is False
+      and by["https://wiki.example.test/team"]["kind"] == "context"
+      and by["https://wiki.example.test/team"]["is_url"] is True
+      and by["https://wiki.example.test/team"]["exists"] is None
+      and by["https://wiki.example.test/team"]["note"] == "team wiki")
+print("OK" if ok else "BAD %r" % rows)
+PY63
+{ [ "$s63rc" -eq 0 ] && grep -qx OK "$TMP/s63b.chk"; } \
+  && ok "both item shapes normalize: a bare path and {location, note}, each with its kind and is_url" \
+  || bad "team_docs items did not normalize" "rc=$s63rc $(head -c 400 "$TMP/s63b.chk")"
+grep -qx OK "$TMP/s63b.chk" \
+  && ok "a local path that does not exist is reported exists: false, never as readable" \
+  || bad "a missing local doc was not reported exists: false"
+td63 --kind context --json > "$TMP/s63d.out" 2>&1
+{ grep -q 'wiki.example.test' "$TMP/s63d.out" && ! grep -q 'style.md' "$TMP/s63d.out"; } \
+  && ok "--kind context returns only the context docs" \
+  || bad "--kind did not filter" "$(head -c 300 "$TMP/s63d.out")"
+printf 'project:\n  team_docs:\n    standards:\n      - note: no location\n' > "$TD63/.claude/config/stack.yaml"
+td63 --json > "$TMP/s63e.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 2 ] && grep -q 'standards' "$TMP/s63e.out"; } \
+  && ok "an item with no location exits 2 and names its list, never silently dropped" \
+  || bad "a malformed team_docs item was not refused" "rc=$s63rc $(head -c 300 "$TMP/s63e.out")"
+td63 --kind wiki > "$TMP/s63f.out" 2>&1; s63rc=$?
+[ "$s63rc" -eq 2 ] && ok "an unknown --kind is refused (exit 2)" || bad "an unknown --kind was accepted" "rc=$s63rc"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
