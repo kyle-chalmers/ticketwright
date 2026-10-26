@@ -82,10 +82,10 @@ ticket("dana", "TEST-130", "Returns rate by region", "Break the returns rate out
        "SELECT * FROM ANALYTICS.RETURNS;", ["returns", "data-quality"], day="2024-05-01",
        objects=["analytics.returns"], readme="Follow-up to TEST-50: break the returns rate out by region.")
 ticket("bob", "TEST-118", "Returns baseline", "Weekly returns rate baseline.", "SELECT * FROM ANALYTICS.RETURNS r "
-       "JOIN ANALYTICS.ORDERS o ON o.id = r.order_id;", ["returns"], ["TEST-094"], "2024-03-12")
+       "JOIN ANALYTICS.ORDERS o ON o.id = r.order_id;", ["returns"], ["TEST-94"], "2024-03-12")
 ticket("alice", "TEST-127", "Region mapping", "Map each store to its sales region.", "SELECT * FROM ANALYTICS.REGIONS;",
        ["regions", "data-quality"], day="2024-04-02")
-ticket("bob", "TEST-094", "Order volume weekly", "Weekly order counts by region.", "SELECT * FROM ANALYTICS.ORDERS;",
+ticket("bob", "TEST-94", "Order volume weekly", "Weekly order counts by region.", "SELECT * FROM ANALYTICS.ORDERS;",
        ["orders"], day="2023-11-20")
 ticket("carol", "TEST-102", "Store lookup refresh", "Reload the store list.", "SELECT * FROM ANALYTICS.REGIONS;", ["stores"])
 (X / "records.json").write_text(json.dumps({"records": recs}))
@@ -105,7 +105,7 @@ python3 bin/recall.py --for dana/TEST-130 --external "$X/rows.json"  # the track
 
 TEST-118's tables are left out of its record on purpose, so the scan of its `q.sql` is what finds
 them, as the diagram's left panel says. It should print TEST-118 at 9.0 (`obj:analytics.returns~1.00
-tag:returns kw:2`), TEST-127 at 4.0 (`tag:data-quality kw:1`) and TEST-094 at 1.0 (`kw:1`) with
+tag:returns kw:2`), TEST-127 at 4.0 (`tag:data-quality kw:1`) and TEST-94 at 1.0 (`kw:1`) with
 `verdict: strong`, then the tracker's TEST-50 at 5.0 (`ref`), TEST-61 at 3.0 (`tag:returns`) and
 TEST-70 at 2.0 (`kw:2`). TEST-130 is left out of the tracker list because it already has a folder,
 and TEST-80 because it shares nothing. TEST-102 shares a table only with TEST-127; it is there so

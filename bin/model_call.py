@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """The one place a Ticketwright script runs a headless model.
 
-Every script that spawns a model (enrich_ticket.py writes the curated index summary) shares this
-module, so that WHICH command runs, how it is built, and how it is run cannot drift apart between
-them. This file lives in bin/, the layer the architecture calls harness-neutral, so nothing here is
-specific to one vendor's CLI.
+Every script that spawns a model (enrich_ticket.py writes the curated index summary,
+summarize_hits.py the one-line summaries of older tracker tickets) shares this module, so that WHICH
+command runs, how it is built, and how it is run cannot drift apart between them. This file lives in
+bin/, the layer the architecture calls harness-neutral, so nothing here is specific to one vendor's CLI.
 
+  resolve_model(override)      -> (template, runtime_frontmatter, source)
   resolve_model_cmd(override)  -> (template, runtime_frontmatter)
   build_model_argv(template, model, prompt) -> (argv, prompt_on_stdin)
   run_model(argv, prompt, prompt_on_stdin, timeout=240, no_stdin=False) -> stdout text

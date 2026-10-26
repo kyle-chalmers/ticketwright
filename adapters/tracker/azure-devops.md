@@ -70,12 +70,14 @@ description, labels, created, url, status}`, at most `<limit>` rows, `[]` when n
 ```bash
 az boards query --org "https://dev.azure.com/{org}" --project "<scope>" --output json \
   --wiql "SELECT [System.Id],[System.Title],[System.Description],[System.Tags],[System.CreatedDate],[System.State] FROM workitems \
-  WHERE [System.TeamProject]='<scope>' AND ([System.Title] CONTAINS '<text>' OR [System.Description] CONTAINS '<text>') \
+  WHERE [System.TeamProject]='<scope>' AND ([System.Title] CONTAINS '<text>' OR [System.Description] CONTAINS WORDS '<text>') \
   AND [System.CreatedDate] < '<before>' ORDER BY [System.CreatedDate] DESC"
 ```
 There is no limit flag, so the cap is applied client-side: keep the first `<limit>` rows of the result.
-Double every single quote in `<text>` (`'` becomes `''`). `CONTAINS` matches `<text>` as one phrase. An empty
-`<before>` means no date clause: drop the line `AND [System.CreatedDate] < '<before>'`.
+Double every single quote in `<text>` (`'` becomes `''`). On the title, `CONTAINS` matches `<text>` as one
+phrase. The description is a long-text field, which WIQL's reference lists with `CONTAINS WORDS` (whole
+words) rather than `CONTAINS`. An empty `<before>` means no date clause: drop the line
+`AND [System.CreatedDate] < '<before>'`.
 
 Filters: `project:<x>` replaces `<scope>` (`--project "<x>"` and `[System.TeamProject]='<x>'`); `label:<x>` adds
 `AND [System.Tags] CONTAINS '<x>'`; `parent:<x>` adds `AND [System.Parent] = <x>` (the bare number of the

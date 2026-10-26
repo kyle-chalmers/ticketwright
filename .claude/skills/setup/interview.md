@@ -157,9 +157,10 @@ check when a new one starts."
    say it will exist, with a `# TODO` and an item in the Phase-4 list.
 4a. **"Did your team track work in your tracker before this repo started?"** Asked once, here, right
    after question 4 and never in the same call as it, because the answer depends on the project
-   question 4 settled. It is asked because a missing answer fails quietly: `/ticket` would simply
-   never find the team's older work. Skip it, and write nothing, when the tracker is the `local`
-   one or there is none, since those tickets are this repo's own. One choice only; recommend
+   question 4 settled. It is asked because a missing answer falls back quietly to `ask` with no
+   cutoff: `/ticket` would offer to search question 4's project back to its very first ticket, and
+   never anywhere else. Skip it, and write nothing, when the tracker is the `local` one or there is
+   none, since those tickets are this repo's own. One choice only; recommend
    "Yes, in the same project" when question 4 picked a project from the tracker's own list.
    - **The date.** The **recommended** cutoff is the day ticket work in this repo began, never the
      answer: show it in each "Yes" option with where it came from, and write it only on the
@@ -174,13 +175,15 @@ check when a new one starts."
         this repo's first commit was made.
      3. Neither prints a date (a repo with no commit yet): leave the date out and say "all of your
         older tickets" in each "Yes" option. No `history_before` is written, which means no cutoff.
-     The person can type a different date instead.
+     The person can type a different date instead. In the question below, `<older tickets>` is
+     `tickets created before <date>, <where that date comes from>`, or `all of your older tickets`
+     when there is no date, so the option never reads "created before" with nothing after it.
 
    <!-- ticketwright:user-facing:begin -->
    Did your team track work in your tracker before this repo started? If you did, I can search those older tickets when this repo has no match yet.
-   - Yes, in the same project: when a new ticket has no good match here, I can offer to search <project> for tickets created before <date>, <where that date comes from>.
-   - Yes, somewhere else: I'll ask where. Then, when a new ticket has no good match here, I can offer to search there for tickets created before <date>, <where that date comes from>.
-   - We don't have one: I won't offer the search. You can turn it on later by setting `history_search` to `ask` in your team settings.
+   - Yes, in the same project: when a new ticket has no good match here, I can offer to search <project> for <older tickets>.
+   - Yes, somewhere else: I'll ask where. Then, when a new ticket has no good match here, I can offer to search there for <older tickets>.
+   - We don't have one: I won't offer the search, but you can still ask me for it on any ticket. You can turn the offer on later by setting `history_search` to `ask` in your team settings.
    <!-- ticketwright:user-facing:end -->
 
    What each answer writes, all of it team config in `stack.yaml` (a personal or machine file cannot

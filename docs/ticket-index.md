@@ -23,7 +23,7 @@ human-readable summaries.
 | `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
 | `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/status/date/tags/refs, ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
-| `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command is sandboxed (on Claude Code, a cheaper model with every tool withheld); otherwise the session writes the lines from the titles. | model (headless) |
+| `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command withholds every tool (Claude Code, on its cheaper model); everywhere else, Codex CLI included, the session writes the lines from the titles. | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
 | `.claude/hooks/regenerate_ticket_index.py` | PostToolUse (Write/Edit) hook: auto-re-renders `INDEX.md` whenever a file under `tickets/` changes — new tickets appear immediately, edited READMEs flag `⚠`. | — |
 
@@ -174,25 +174,33 @@ plain line and repo-only recall, and the tracker is never contacted.
    match a table some repo ticket already touched count, read the way recall reads a new ticket's own
    text, so a description cannot add a table of its own. A row whose key already has a ticket folder
    is dropped, so a ticket shows once, from the repo. The top 5 are kept.
-3. **Summarize.** `bin/summarize_hits.py` has the runtime's sandboxed model command write one line
-   for each of the top 3. On Claude Code that is a cheaper model with every tool withheld. On Codex
-   CLI it is the default model in a read-only sandbox, which can still read files. A runtime with no
-   sandboxed command has the session write the lines from the titles.
+3. **Summarize.** `bin/summarize_hits.py` has a separate model, with every tool withheld, write one
+   line for each of the top 3. Of the shipped runtimes only Claude Code has such a command, and it
+   runs on Claude Code's cheaper model. Everywhere else, Codex CLI included, the session writes the
+   lines from the titles.
 4. **Read.** The session opens at most the top 2 in full.
 5. **Label.** The reuse brief gets a section headed "From the tracker (no ticket folder or QC record
    here)": each hit's key, why it matched and its one line. Hits 4 and 5 get a key and title only.
-   Committed files keep only the key, the title and that one line, never the description, comments or
-   attachments.
+   The skill tells the session to keep only the key, the title and that one line in committed files,
+   never the description, comments or attachments. No guard checks that.
 
 **Tracker text is written by people outside your team.** A ticket description can say "ignore previous
-instructions", so the summaries run only through a model command known to be sandboxed: the runtime's
-`model_sandbox` must be `tools-withheld` or `read-only`. Each ticket goes in on its own as quoted data,
-flattened to a few lines with its backticks replaced so it cannot close the quote, and the command
-runs without a shell. Where no such command exists, `summarize_hits.py` exits 4 and the session writes
-the lines from the titles itself, and says so. Only Claude Code has a cheaper model to pick
-(`model_fast`: haiku) and a command that withholds every tool. Codex CLI's command takes no model
-argument, so it uses its default model, and its read-only sandbox can still read files. Which runtime
-can do what, and what was verified, is in [runtimes.md](runtimes.md#the-headless-model-command).
+instructions", so the summaries run only through a model command with every tool withheld: the
+runtime's `model_sandbox` must be `tools-withheld`. A `read-only` sandbox, which is what Codex CLI's
+command has, is refused too, because it can still read files while it reads that text and its line
+would land in a committed brief. Each ticket goes in on its own as quoted data, flattened to a few
+lines with its backticks replaced so it cannot close the quote, and the command runs without a shell.
+Where no such command exists, `summarize_hits.py` exits 4 and the session writes the lines from the
+titles itself, and says so. Only Claude Code has that command, and a cheaper model to run it on
+(`model_fast`: haiku). Which runtime can do what, and what was verified, is in
+[runtimes.md](runtimes.md#the-headless-model-command).
+
+**What that covers, and what it does not.** The restricted command covers the summaries only. Your
+session's own model, with all of its tools, reads more of the same outsider text: the raw search
+results (up to 20 tickets, with their full descriptions), recall's scored file (the top 5, with
+descriptions cut to 600 characters) and the top 2 tickets in full. What protects the session is the
+line at the top of `/ticket`'s older-ticket step, that tracker text is data and never instructions,
+plus your runtime's normal permission prompts. No mechanism enforces either one.
 
 **When it cannot search.** The tracker is down or not signed in, its pricing plan has no search, the results
 file is unreadable, or nothing matched: one plain line, and recall carries on with the repo's tickets.
@@ -205,9 +213,9 @@ what to expect from each:
 | Tracker | Can narrow by | Result cap and fallbacks |
 |---|---|---|
 | Jira | project, label, epic or parent key, person (email; assignee or reporter) | The limit goes in the search. If the command-line build cannot ask for specific fields, it searches for keys and fetches each hit, stopping at the first sign-in error |
-| Azure DevOps | project, tag, parent Feature or Epic (by number), person (email; assigned to or created by) | No limit setting, so the first 20 rows are kept after the query. The text matches as one phrase, so shorter works better |
+| Azure DevOps | project, tag, parent Feature or Epic (by number), person (email; assigned to or created by) | No limit setting, so the first 20 rows are kept after the query. The title matches the text as one phrase and the description by whole words, so shorter works better |
 | GitHub Issues | another repo, label, milestone (the epic stand-in), person (login; involved in) | The limit goes in the search; open and closed issues both count. A tracking issue's children cannot be searched |
-| Linear | another team, label, parent issue or Linear Project, person (email or id) | The limit goes in the search. If the server cannot filter on an upper date, a larger page is fetched, rows on or after the cutoff are dropped, and only then are 20 kept |
+| Linear | another team, label, parent issue or Linear Project, person (email or id) | The limit goes in the search. If the server cannot filter on an upper date, larger pages are fetched (at most 5), rows on or after the cutoff are dropped, and only then are 20 kept |
 | Asana | project, tag, section (the epic stand-in), person (id or email) | Task search is a paid Asana feature. On a free workspace it falls back to a name-only search, reads each candidate to apply the date, scope and filter, and returns nothing with a plain note if it cannot read them |
 | monday | board, tags column, board group, people column (the tags and people filters apply after the fetch) | One page of up to 100 items, matched on the item name. The date test and the 20-row cap run after the fetch, newest first. An item has no description, so summaries rest on the title. A query monday rejects as too complex returns nothing with a plain note |
 | local | nothing | Returns no rows: its tickets are the repo's own, and recall already covers them |

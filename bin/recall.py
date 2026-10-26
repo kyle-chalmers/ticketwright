@@ -196,6 +196,16 @@ def norm_tag(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
 
 
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def one_line(s) -> str:
+    """Tracker text as one printable line: control characters (a newline, the escape that starts a
+    terminal color code) and runs of whitespace become single spaces. Text mode prints tracker titles
+    this way, so a title cannot forge a `verdict:` line of its own or send escapes to the terminal."""
+    return " ".join(_CONTROL.sub(" ", str(s)).split())
+
+
 def known_objects(rows) -> list[str]:
     """Every object some repo ticket touched: the only names `objects_in_text` may return, for a ticket's
     own text and for a tracker description alike (outsider prose never widens the set)."""
@@ -243,6 +253,8 @@ def external_rows(path, repo_ids, known=()) -> list[dict]:
         labels = [labels] if isinstance(labels, str) else (labels if isinstance(labels, list) else [])
         tags = []
         for label in labels:
+            if not isinstance(label, str):
+                continue  # a null or structured label is not a tag (str(None) would become the tag "none")
             t = norm_tag(label)
             if t and t not in tags:
                 tags.append(t)
@@ -378,9 +390,10 @@ def run_query(args, rows, df_map, n_docs, key_re=None, *, root=None, external=No
         if not top:
             print("  (no matches)")
         for s, r, why, _ev in top:
-            print(f"  {r['id']:<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or 'undated'}  {r['title'][:60]}")
+            print(f"  {one_line(r['id']):<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or 'undated'}  "
+                  f"{one_line(r['title'])[:60]}")
             if r["url"]:
-                print(f"             {r['url']}")
+                print(f"             {one_line(r['url'])}")
         if not reverse_only:
             print(verdict_line(top))
         return 0

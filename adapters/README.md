@@ -60,8 +60,8 @@ empty `<before>` does (the same query without its date clause, meaning no cutoff
   `null`.
 - A search that cannot run (not signed in, tracker unreachable, a plan tier without search, a search the
   tracker rejects) says so in one plain sentence and returns `[]`, and the caller carries on with the
-  repo's own tickets. An adapter whose
-  tool cannot filter on something says so in its `Filters:` line or does that part client-side.
+  repo's own tickets. An adapter whose tool cannot filter on something says so in its `Filters:` line
+  or does that part client-side.
 - The `local` adapter returns `[]`: its tickets are the repo's own, and `bin/recall.py` already ranks them.
 
 `rank_projects_by_activity` is the seam's one **bootstrap** verb, and it breaks two rules the
@@ -643,8 +643,9 @@ would be an easy place to hide an arbitrary command. The evidence behind every v
 is the one used when nobody names a model. `model_fast` is a cheaper one for a one-line job, such as
 summarizing an older tracker ticket. A runtime declares `model_fast` only when its `model_cmd` has a
 `{model}` slot to fill, and today that is Claude Code alone (`haiku`): the other runtimes' commands
-take no model argument, so those jobs run on whatever model the command uses by default. Empty is a
-real answer, not a gap. A caller that wants the fast model falls back to `model_default`, then to the
+take no model argument, so a job there runs on whatever model the command uses by default. The
+older-ticket summaries never run there: `bin/summarize_hits.py` needs `model_sandbox: tools-withheld`,
+which only Claude Code declares. Empty is a real answer, not a gap. A caller that wants the fast model falls back to `model_default`, then to the
 tool's own default. `bin/model_call.py` is the one module that resolves, builds and runs these
 commands, and `bin/enrich_ticket.py` calls it instead of keeping its own copy.
 

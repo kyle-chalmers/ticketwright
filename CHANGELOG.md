@@ -13,9 +13,11 @@ All notable changes to this project are documented here. Format loosely follows
   epic or person). The search only reads, returns up to 20 tickets, and stays inside the saved
   project and cutoff date. Results are scored by the same rules as recall (a label counts as a tag,
   the text as keywords, a ticket key the README names as a link), the top 3 get a one-line summary
-  from the runtime's sandboxed model command (on Claude Code a cheaper model with every tool
-  withheld, on Codex CLI its default model in a read-only sandbox) or, on any other runtime, from
-  your session writing them from the titles, and the best one or two are read in full. The reuse
+  from a separate model with every tool withheld (Claude Code's cheaper model) or, on every other
+  runtime, from your session writing them from the titles, and the best one or two are read in full.
+  Codex CLI is one of those others: its read-only sandbox can still read files, so the summary
+  command refuses it. The tool limits cover that command only; your session reads the search
+  results and the top tickets with its usual tools and permission prompts. The reuse
   brief marks each as "From the tracker (no ticket folder or QC record here)". A person's own
   request for the search works at any time. Details: [docs/ticket-index.md](docs/ticket-index.md#older-tickets-in-your-tracker).
 - `/setup` asks once (question 4a) whether your team tracked work in your tracker before this repo

@@ -552,12 +552,13 @@ Covers: `antigravity.model_sandbox` `devin.model_sandbox` `opencode.model_sandbo
 **Claim to verify.** Three adapters declare a headless `model_cmd` whose restriction posture is
 `unverified`: `agy -p` (docs describe a commandExecutionPolicy for subagents, not a CLI flag),
 `devin -p` (docs mention a `--sandbox` mode, unverified for `-p`), `opencode run` (no restriction
-flag verified at all). The enrich step and the older-ticket summaries (`bin/summarize_hits.py`) both
-shell these commands; an unsandboxed model call there is a real difference in what the kit exposes.
-Enrich runs the command as declared, while the summaries refuse an `unverified` command (exit 4, and
-the session writes the lines from the titles), so a PASS here is also what lets the summaries run on
-that runtime. A command *completing* proves nothing: the probes below are adversarial, and the
-posture is recorded **per probe**, not as one word.
+flag verified at all). The enrich step runs these commands as declared; an unsandboxed model call
+there is a real difference in what the kit exposes. The older-ticket summaries
+(`bin/summarize_hits.py`) refuse them (exit 4, and the session writes the lines from the titles), and
+they run only on a command recorded as `tools-withheld`: a PASS that finds every tool withheld is
+what lets the summaries run on that runtime, while a `read-only` result does not. A command
+*completing* proves nothing: the probes below are adversarial, and the posture is recorded **per
+probe**, not as one word.
 
 **Preconditions.** Each runtime installed and authenticated, in a throwaway fixture directory.
 
@@ -693,9 +694,11 @@ read from a help page and never run)
 
 **Claim to verify.** (a) Claude Code's `--strict-mcp-config`, given no `--mcp-config`, loads no MCP
 server, so a model reading tracker text cannot call one. (b) Codex CLI's `--sandbox read-only`, as
-`codex exec` is run for enrich and the older-ticket summaries, stops the model writing a file,
-reaching the network or running a command. Only `--tools ""` on Claude Code has been run live
-(2.1.310). The other two rest on `--help` text, and `docs/runtimes.md` says so.
+`codex exec` is run for enrich, stops the model writing a file or reaching the network. It is not
+expected to stop reads: a read-only sandbox can still run a command that reads a file, which is why
+the older-ticket summaries refuse it and run only where every tool is withheld. Only `--tools ""` on
+Claude Code has been run live (2.1.310). The other two rest on `--help` text, and `docs/runtimes.md`
+says so.
 
 **Preconditions.** Claude Code and Codex CLI installed and authenticated, in a throwaway directory
 with a planted file holding a fixture token. For (a), one MCP server configured in the user's or
@@ -707,8 +710,9 @@ the directory, write one outside it, fetch `https://example.com`, and print the 
 each probe as blocked, allowed or prompted.
 
 **PASS looks like.** (a) No MCP tool is offered or callable. (b) Every write and network probe is
-blocked. Reading the planted file may be allowed, since a read-only sandbox can read; record it,
-because it is the known limit of that guard.
+blocked. Reading the planted file is expected to be allowed, since a read-only sandbox can read;
+record it, because it is the known limit of that guard and the reason the summaries do not run on
+Codex CLI.
 
 **Record on pass.** `docs/runtimes.md` and the `model_sandbox` comments in the two adapters drop
 "rests on help text" and gain the dated observation. If (a) finds a reachable MCP tool, or (b) finds
@@ -737,7 +741,8 @@ there before retirement:
 - **+1** (2026-10-25, after the plan's retirement): entry 13 is the codex half of entry 9 (b),
   split out under the partial-pass rule when the role file's loading was observed.
 - **+1** (2026-10-26): entry 14 tracks the two headless sandbox flags that rest on help text,
-  added with the older-ticket summaries, which run the same commands.
+  added with the older-ticket summaries, which run Claude Code's command (Codex CLI's runs for
+  enrich only).
 - **Widened, not split**: entry 4 also covers the Antigravity PostToolUse regen cell (a WIRED
   cell the promotion protocol needs an owner for) and entry 6 also covers `opencode.agents_root`
   (an `unknown` U5 landed that the spec's list predates). Entries 2/5/6/7 grew sub-items for

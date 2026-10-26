@@ -69,9 +69,9 @@ string. Keep `<text>` to plain words: remove anything shaped like `word:`, which
 search qualifier. `--state all` matters, since `gh issue list` shows open issues only by default.
 
 Filters: `project:<x>` replaces `<scope>` (`--repo <x>`, an `owner/name`); `label:<x>` adds `--label "<x>"`;
-`parent:<x>` adds `--milestone "<x>"` (the epic stand-in), and a tracking issue's children are not
-searchable, so that form is not supported; `person:<x>` adds `involves:<x>` to the search string (`<x>` is
-a GitHub login).
+`parent:<x>` adds `--milestone "<x>"`, with `<x>` a milestone title (the epic stand-in here: a tracking
+issue's sub-issues cannot be searched this way, so a parent is always a milestone); `person:<x>` adds
+`involves:<x>` to the search string (`<x>` is a GitHub login).
 
 If `gh` is not signed in, the repo cannot be reached, or the tracker rejects the search, say so in one
 plain sentence and return `[]`.

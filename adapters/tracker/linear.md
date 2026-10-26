@@ -89,9 +89,11 @@ list-issues(team=<scope>, query=<text>, filter={createdAt: {lt: <before>}}, limi
 An empty `<before>` means no date clause: drop the `createdAt` entry, leaving
 `list-issues(team=<scope>, query=<text>, limit=<limit>)`. Argument names depend on the connected server
 (see the MCP note in `adapters/README.md`); if it has no way to filter on an upper date, fetch a larger
-page first (a bigger `limit`, then further pages if the server has them), drop every row whose `created` is
-on or after `<before>`, and only then keep `<limit>` rows. Capping before the drop would discard the very
-rows that qualify and return `[]` for a search that has matches.
+page first (a bigger `limit`, then further pages if the server has them, at most 5 pages in all), drop every
+row whose `created` is on or after `<before>`, and only then keep `<limit>` rows. Capping before the drop
+would discard the very rows that qualify and return `[]` for a search that has matches. The 5-page cap
+keeps a team with years of newer tickets from paging through all of them: after 5 pages, keep what
+qualified, even when that is fewer than `<limit>` rows.
 
 Filters: `project:<x>` replaces `<scope>` (`team=<x>`, since a Linear team is this adapter's container);
 `label:<x>` adds `label=<x>`; `parent:<x>` adds `parentId=<x>` for a parent issue, or `project=<x>` for a

@@ -140,7 +140,7 @@ Both go through `bin/model_call.py`, which reads four keys from the running runt
 | Key | What it says |
 |---|---|
 | `model_cmd` | The one-shot command. A `{model}` in it is where a model name goes; `{prompt}` puts the prompt on the command line, and without it the prompt goes on stdin. Empty means the runtime has no headless command |
-| `model_sandbox` | What that command can do. `tools-withheld` and `read-only` mean the command carries a restriction (what was checked for each is listed below); `unverified` means no restriction flag has been confirmed; `n/a` means no command |
+| `model_sandbox` | What that command can do. `tools-withheld` and `read-only` mean the command carries a restriction (what was checked for each is listed below), and only `tools-withheld` runs the older-ticket summaries; `unverified` means no restriction flag has been confirmed; `n/a` means no command |
 | `model_default` | The model used when nobody names one |
 | `model_fast` | A cheaper model for a one-line job. Declared only where `model_cmd` has a `{model}` slot to fill |
 
@@ -149,7 +149,7 @@ Both go through `bin/model_call.py`, which reads four keys from the running runt
 | Runtime | `model_cmd` | `model_sandbox` | A cheaper model | Older-ticket summaries |
 |---|---|---|---|---|
 | Claude Code | `claude -p --model {model} --tools "" --strict-mcp-config` | `tools-withheld` | yes: `model_fast` is `haiku` (default `sonnet`) | the command, on Haiku |
-| Codex CLI | `codex exec --sandbox read-only --skip-git-repo-check {prompt}` | `read-only` | no: the command takes no model name | the command, on whatever model it defaults to |
+| Codex CLI | `codex exec --sandbox read-only --skip-git-repo-check {prompt}` | `read-only` | no: the command takes no model name | your session's model writes them from the titles (a read-only sandbox can still read files) |
 | Antigravity | `agy -p {prompt}` | `unverified` | no | your session's model writes them from the titles |
 | OpenCode | `opencode run {prompt}` | `unverified` | no | your session's model writes them from the titles |
 | Devin | `devin -p {prompt}` | `unverified` | no | your session's model writes them from the titles |
@@ -158,10 +158,14 @@ Both go through `bin/model_call.py`, which reads four keys from the running runt
 
 The summaries are stricter than `enrich`. A ticket from your tracker was written by people outside your
 team, and a description can tell a model to do things. So `summarize_hits.py` runs a model command only
-when `model_sandbox` is `tools-withheld` or `read-only`. For any other runtime, and for one it cannot
-identify, it exits with code 4 and runs nothing, and `/ticket` has your session's own model write the
-lines from the titles and says so. Only Claude Code can pick a cheaper model today. The other runtimes'
-commands have no slot for a model name, so they run on their default.
+when `model_sandbox` is `tools-withheld`. A `read-only` sandbox can still read files while it reads that
+text, and the summary line lands in a committed brief, so Codex CLI's command is refused as well. For
+every runtime but Claude Code, and for one it cannot identify, it exits with code 4 and runs nothing,
+and `/ticket` has your session's own model write the lines from the titles and says so. Codex CLI loses
+nothing by this: its command takes no model name, so it could never pick a cheaper model. The
+restriction covers the summary command only: your session's own model reads more of the same tracker
+text with all of its tools, as [ticket-index.md](ticket-index.md#older-tickets-in-your-tracker) sets
+out.
 
 What was verified, and what was not:
 
@@ -174,7 +178,8 @@ What was verified, and what was not:
   against a live MCP server. A live check is owed (entry 14 in [live-verification.md](live-verification.md)).
 - **Codex CLI.** `--sandbox read-only` was read from `codex exec --help`. It has not been run live
   (entry 14 in [live-verification.md](live-verification.md)), and a read-only sandbox can still read
-  files, so it is a weaker guard than Claude Code's withheld tools.
+  files, so it is a weaker guard than Claude Code's withheld tools. `enrich` runs it; the older-ticket
+  summaries do not.
 - **Antigravity, OpenCode, Devin.** No restriction flag is confirmed for these commands, so they stay
   `unverified` and are owed a live check: see [live-verification.md](live-verification.md).
 - **Cursor, Cline.** Neither has a documented headless one-shot command, so there is nothing to sandbox.
