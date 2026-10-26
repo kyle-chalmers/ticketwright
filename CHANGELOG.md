@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.4.1] - 2026-10-26
+
 ### Added
 - **Setup asks where your team already writes things down.** Two optional questions replace the
   analysis-tools question: where the team keeps its analysis standards (a style guide, a review
@@ -27,6 +29,20 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
+- **The Obsidian graph shows one node per table.** A ticket's curated index record could name a
+  table `schema.table` while its SQL named it `db.schema.table`, and the graph drew two nodes for
+  the one table, with the short one linked only to that ticket. A shorter name now folds into the
+  longer qualified name it ends with, so `INDEX.md`, `OBJECTS.md`, the graph and recall all use one
+  name. When two databases hold the same `schema.table`, the short name stays as written rather
+  than guessing which one it meant. (LABS-57)
+- **"Builds on" in the graph points from newer work to older work.** A cross-reference has no
+  direction, so a ticket that mentioned a later ticket ("TEST-12 reuses this definition") read as
+  building on it. Each ticket node now has up to three lines: **Builds on** for the earlier tickets it
+  cites, **Built on by** for later tickets that cite it, and **Related** for a later ticket it
+  mentions that does not cite it back. The earlier completion date decides which ticket came first,
+  then the lower ticket number. With neither, the link stays under Builds on as before. Only the
+  graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
+  (LABS-57)
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
