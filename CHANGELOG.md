@@ -29,6 +29,16 @@ All notable changes to this project are documented here. Format loosely follows
 - The vcs adapters' `worktree` verb now describes what it is still for: keeping one ticket apart
   from other work in flight. The build no longer needs a separate context.
 
+### Fixed
+- **An adapter's gotchas now reach agents that read it through `bin/adapter_surface.py`.** The
+  picker printed only the chosen action's section, so a rule kept in `## gotchas` (Jira's `acli`
+  lockout warning, Gmail's threading note) never reached an agent following the documented
+  resolution step. `--verb` and `--probe` now end with the adapter's gotchas on every surface, and
+  `--json` carries them. Because they print for every agent, a gotcha may not name a tool call
+  (`mcp__…`); Slack's Markdown note was reworded to match. Selftest section 62 checks that all 30
+  adapters with gotchas carry them on every surface and that a gotcha naming a tool call is
+  refused.
+
 ## [4.3.0] - 2026-10-25
 
 ### Changed

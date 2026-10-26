@@ -159,10 +159,10 @@ projects. The caller says that line, then asks as it would have anyway.
 - `acli` Duo/MFA: an instant `250001/370001` = lockout (wait 15 min, don't retry); a hang = push pending.
 - If your project requires a parent Epic, a link error means `--parent` was missing (set `default_epic`). "User not found" ⇒ use the exact email.
 - Tool names differ by agent on the MCP path: Codex CLI lists the Atlassian connector under other
-  names (its section is below). `bin/adapter_surface.py --adapter adapters/tracker/jira.md` picks
-  the right section for the agent running now. A name missing from your session's tool list is a
-  gap to report so the kit can record it, never a local edit to this file: an edited copy silently
-  drifts from the kit on the next upgrade.
+  names (in its own section of this file). `bin/adapter_surface.py --adapter
+  adapters/tracker/jira.md` picks the right section for the agent running now. A name missing from
+  your session's tool list is a gap to report so the kit can record it, never a local edit to
+  this file: an edited copy silently drifts from the kit on the next upgrade.
 
 ## Runtime surface: codex-cli
 

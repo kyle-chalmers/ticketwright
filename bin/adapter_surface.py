@@ -26,6 +26,11 @@ runtime section missing a verb is a malformed adapter (exit 6), never a quiet mi
 tool names. The runtime comes from bin/kit_paths.py, the kit's one authority on that (--runtime,
 $TICKETWRIGHT_RUNTIME, then each runtime adapter's detect_env).
 
+An adapter's `## gotchas` hold for every action on every agent, and an agent may read nothing but
+what this command prints, so --verb and --probe print them after the section they print and --json
+carries them. For the same reason a gotcha names no tool call (`mcp__…`): printed on every surface,
+it would reach an agent whose tool names differ, so one that does is a malformed adapter (exit 6).
+
 When more than one agent's signals are set and they would pick different surfaces (a Codex session
 started from inside Claude Code carries both), it refuses with exit 7 rather than guess.
 
@@ -53,6 +58,7 @@ REFERENCE_RUNTIME = "claude-code"
 SURFACE_RE = re.compile(r"^## Runtime surface: (\S+)\s*$")
 VERB_RE = re.compile(r"^## verb: (\S+)")
 SUB_VERB_RE = re.compile(r"^### verb: (\S+)")
+GOTCHAS_RE = re.compile(r"^## gotchas\s*$", re.IGNORECASE)   # a heading's case is not part of the contract
 SERVER_RE = re.compile(r"^server: ([A-Za-z0-9_-]+)\s*$")
 TOOL_CALL_RE = re.compile(r"mcp__(.+?)__")
 
@@ -116,11 +122,16 @@ def parse_adapter(path: Path, runtimes: dict) -> dict:
 
     verbs: dict[str, str] = {}
     default_probe = None
+    gotchas = None
     found: dict[str, dict] = {}
     for head, sec in _sections(body.splitlines(), "## "):
         m = VERB_RE.match(head)
         if m:
             verbs[m.group(1)] = "\n".join([head] + sec).strip()
+            continue
+        if GOTCHAS_RE.match(head):
+            text = "\n".join([head] + sec).strip()
+            gotchas = f"{gotchas}\n\n{text}" if gotchas else text   # a second section travels too
             continue
         if head == "## Permission posture (MCP)":
             default_probe = _probe(sec)
@@ -177,8 +188,14 @@ def parse_adapter(path: Path, runtimes: dict) -> dict:
                     if srv != s["server"]:
                         errors.append(f"runtime surface {name} calls mcp__{srv}__… but declares "
                                       f"server {s['server']}")
+    # Gotchas print with every action on every surface, so a tool name there would reach an agent
+    # whose names differ: the same mix a surface used whole exists to prevent.
+    if gotchas and "mcp__" in gotchas:
+        errors.append("the `## gotchas` section names an MCP tool (`mcp__…`), but gotchas print with "
+                      "every action on every agent; move the call into its verb section or a "
+                      "runtime surface's opening paragraph")
     return {"fm": fm, "verbs": verbs, "default_probe": default_probe, "surfaces": found,
-            "declared": declared, "errors": errors}
+            "declared": declared, "gotchas": gotchas, "errors": errors}
 
 
 def locate(adapter: str, kit: Path | None, project: Path) -> Path | None:
@@ -286,29 +303,32 @@ def main() -> int:
     if parsed["errors"]:
         if args.json:
             print(json.dumps({"schema": 1, "adapter": rel, "tool": tool, "surface": None,
-                              "verbs": {}, "probe": None, "errors": parsed["errors"]}, indent=2))
-        print(f"The tool-name sections of `{rel}` are broken, so no call is printed. Fix the file "
+                              "verbs": {}, "probe": None, "gotchas": None,
+                              "errors": parsed["errors"]}, indent=2))
+        print(f"The tool's setup notes in `{rel}` are broken, so no call is printed. Fix the file "
               f"in the kit. Details: " + "; ".join(parsed["errors"]), file=sys.stderr)
         return 6
 
     # A runtime section's opening paragraph says what differs and which rules still hold, so it
-    # travels with every verb or probe printed from that section.
+    # travels with every verb or probe printed from that section. The adapter's gotchas hold on
+    # every surface, so they follow every verb or probe printed from any of them.
     lead = ""
     if surface != DEFAULT:
         lead = (f"## Runtime surface: {surface} (server `{server}`)\n\n"
                 f"{parsed['surfaces'][surface]['intro']}\n\n")
+    tail = f"\n\n{parsed['gotchas']}" if parsed["gotchas"] else ""
     if args.verb:
         if args.verb not in verbs:
             print(f"`{tool}` has no action called `{args.verb}`. Pick one of: "
                   f"{', '.join(sorted(verbs))}.", file=sys.stderr)
             return 2
-        print(lead + verbs[args.verb])
+        print(lead + verbs[args.verb] + tail)
         return 0
     if args.probe:
         if not probe:
             print(f"`{rel}` carries no read-only probe for surface {surface}.", file=sys.stderr)
             return 2
-        print(lead + probe)
+        print(lead + probe + tail)
         return 0
     if args.json:
         print(json.dumps({
@@ -327,6 +347,7 @@ def main() -> int:
             "server_source": server_source,
             "verbs": verbs,
             "probe": probe,
+            "gotchas": parsed["gotchas"],
             "summary": summary,
             "errors": [],
         }, indent=2))

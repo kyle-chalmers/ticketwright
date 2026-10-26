@@ -110,10 +110,10 @@ capabilities, so the comparison outcome is `unverified` by construction.
 - Page ids are opaque and stable; page TITLES are not — always reference by id in `meeting_ref:`.
 - A page the integration wasn't granted returns not-found, not forbidden — grant the meeting-notes
   section to the MCP connection, then retry.
-- Tool names differ by agent: Codex CLI lists this connector under other names (its section is
-  below). `bin/adapter_surface.py --adapter adapters/meetings/notion.md` picks the right section
-  for the agent running now. A name missing from your session's tool list is a gap to report so
-  the kit can record it, never a local edit here or in a skill. The self-hosted Notion API server
+- Tool names differ by agent: Codex CLI lists this connector under other names (in its own
+  section of this file). `bin/adapter_surface.py --adapter adapters/meetings/notion.md` picks the
+  right section for the agent running now. A name missing from your session's tool list is a gap
+  to report so the kit can record it, never a local edit here or in a skill. The self-hosted Notion API server
   is a different tool with no meeting-notes query: give it its own adapter.
 
 ## Runtime surface: codex-cli
