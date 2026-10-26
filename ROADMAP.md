@@ -4,7 +4,7 @@
 > item: stay **lightweight** (stdlib-only Python, bash-3.2-safe, no embeddings / vector DB / servers)
 > and **tool-agnostic** (skills never name a tool; seams swap via one adapter file).
 
-## Where we are: v4.2 (October 2026)
+## Where we are: v4.3 (October 2026)
 
 The release-by-release detail lives in [CHANGELOG.md](CHANGELOG.md); this is the shape of it. Seven
 skills (`setup`, `ticket`, `build`, `review`, `ship`, `skillify`, `refresh`) run one fixed

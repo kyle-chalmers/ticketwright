@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-25
+
 ### Changed
 - `/setup` now walks a person through it instead of interviewing them. It opens with a four-step
   map (check this machine, your work, review the plan, write and check), says at every step what
