@@ -12,10 +12,15 @@ Usage:
   recall.py --query "orders feed latency" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
   recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
+  recall.py --for alice/TEST-12 --external rows.json [--top 5] [--json]
+                                                   # score older tracker tickets (a file of search_history
+                                                   # rows) with the same rules; a key that already has a
+                                                   # ticket folder is dropped so nothing appears twice
 
 Scoring (transparent): object match ×4 (IDF-discounted — a ubiquitous object counts less than a rare
 shared one), tag match ×3, cross-ref link +5, keyword overlap ×1 (capped). Recency is a tiebreak only.
-Stdlib only.
+Tracker rows are scored the same way: a label is a tag, the description is keywords (and objects), and
+a ticket key the seed's README names is the cross-ref link. Stdlib only.
 """
 from __future__ import annotations
 
@@ -25,7 +30,8 @@ import math
 import re
 import sys
 
-from build_ticket_index import repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref
+from build_ticket_index import (repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref,
+                                SQL_OBJECT, PY_IMPORT)
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "by", "with", "from", "into",
@@ -154,9 +160,93 @@ def verdict_line(top) -> str:
     return f"verdict: {v}. (You may skip reading candidates when weak/none.)"
 
 
-def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
+EXTERNAL_DESC_CAP = 600  # the most a tracker description may contribute (the search verb already cuts to this)
+
+
+class ExternalFileError(ValueError):
+    """The --external file is not a list of tickets. The message is written for a person."""
+
+
+def norm_tag(s: str) -> str:
+    """A tracker label in the kit's tag style, so `Data Quality` and `data_quality` both become
+    `data-quality`. Same rule as ingest_index_records._clean_tags (a run of anything that is not a
+    letter or digit becomes one `-`), because that is how the repo's own tags were written."""
+    return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
+
+
+def _text_objects(text: str, cap: int = 40) -> list[str]:
+    """Qualified object names in free text, found the way build_ticket_index finds them in a ticket's code."""
+    found: dict[str, str] = {}
+    for line in text.splitlines():
+        if PY_IMPORT.match(line):
+            continue
+        for name in SQL_OBJECT.findall(line):
+            found.setdefault(name.lower(), name)
+    return sorted(found.values(), key=str.lower)[:cap]
+
+
+def _external_error(path, why) -> ExternalFileError:
+    return ExternalFileError("recall: run the older-ticket search again and pass recall the file it writes, "
+                             f"because the file given could not be read as a list of tickets. Details: {path}: {why}.")
+
+
+def external_rows(path, repo_ids) -> list[dict]:
+    """Older tracker tickets from a file of `search_history` rows, shaped like the repo's own rows so
+    score_candidate can score them: key -> id (fetch_id kept for fetch_ticket), labels -> tags (via
+    norm_tag), description -> summary (at most EXTERNAL_DESC_CAP characters), objects from SQL_OBJECT over
+    the description, created -> date, url -> link, owner "tracker".
+
+    A key that already has a ticket folder (`repo_ids`, any case) is dropped, and so is a key the file
+    repeats, so a ticket appears once. A row with no key cannot be compared or fetched: it is left out
+    with a note on stderr. A blank file counts as no rows; anything that is not a JSON list of objects
+    raises ExternalFileError."""
+    try:
+        with open(path, encoding="utf-8-sig") as fh:  # -sig: a byte-order mark some tools write is not content
+            text = fh.read()
+        data = json.loads(text) if text.strip() else []
+    except (OSError, ValueError, RecursionError) as e:  # ValueError covers a bad encoding and bad JSON
+        raise _external_error(path, getattr(e, "strerror", None) or e)
+    if not isinstance(data, list):
+        raise _external_error(path, f"expected a list of tickets, found {type(data).__name__}")
+    seen = {str(i).lower() for i in repo_ids}
+    out, no_key = [], 0
+    for n, d in enumerate(data):
+        if not isinstance(d, dict):
+            raise _external_error(path, f"item {n} is not a ticket")
+        key = str(d.get("key") or "").strip()
+        if not key:
+            no_key += 1
+            continue
+        if key.lower() in seen:
+            continue
+        seen.add(key.lower())
+        labels = d.get("labels")
+        labels = [labels] if isinstance(labels, str) else (labels if isinstance(labels, list) else [])
+        tags = []
+        for label in labels:
+            t = norm_tag(label)
+            if t and t not in tags:
+                tags.append(t)
+        desc = str(d.get("description") or "")[:EXTERNAL_DESC_CAP]
+        created, url = d.get("created"), d.get("url")
+        url = url if isinstance(url, str) and url else None
+        out.append({
+            "id": key, "fetch_id": str(d.get("fetch_id") or key), "owner": "tracker", "source": "tracker",
+            "title": str(d.get("title") or key), "summary": desc, "tags": tags, "objects": _text_objects(desc),
+            "date": created[:10] if isinstance(created, str) and re.match(r"\d{4}-\d{2}-\d{2}", created) else None,
+            "link": url, "url": url,
+        })
+    if no_key:
+        print(f"recall: left out {no_key} tracker row{'s' if no_key != 1 else ''} with no ticket key.", file=sys.stderr)
+    return out
+
+
+def build_query(args, rows):
+    """The query for these arguments: (q_tokens, q_tags, q_objects, seed). `seed` is the chosen seed row, or
+    None when there is no --for. A `--for owner/id` locator is resolved into args.seed / args.owner here, and a
+    seed that is missing or ambiguous exits with a message."""
     q_tokens, q_tags, q_objects = tokenize(args.query), ci(args.tags.split(",")), ci([args.object] if args.object else [])
-    seed_id, seed_owner, seed_refs = None, None, set()
+    seed = None
     if args.seed and "/" in args.seed:  # --for owner/id, the qualified ticket locator
         so, si = split_ref(args.seed)
         if args.owner and args.owner.lower() != so.lower():
@@ -171,22 +261,35 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
             owners = ", ".join(sorted(r["owner"] for r in seed_matches))
             sys.exit(f"recall: {args.seed} exists under multiple owners ({owners}); pass --owner to pick one.")
         seed = seed_matches[0]
-        seed_id, seed_owner = seed["id"], seed["owner"]
-        seed_refs = ci(seed.get("cross_refs"))
         q_tokens |= tokenize(f"{seed['title']} {seed['summary']}")
         q_tags |= ci(seed.get("tags"))
         q_objects |= ci(seed.get("objects"))
+    return q_tokens, q_tags, q_objects, seed
+
+
+def run_query(args, rows, df_map, n_docs, key_re=None, external=None) -> int:
+    """Score the repo's own tickets, or, when `external` is a list from external_rows(), those tracker
+    tickets against the same query. The repo's rows still supply the seed and the object statistics."""
+    q_tokens, q_tags, q_objects, seed = build_query(args, rows)
+    seed_id, seed_owner = (seed["id"], seed["owner"]) if seed else (None, None)
+    seed_refs = ci(seed.get("cross_refs")) if seed else set()
+    ext = external is not None
+    # A tracker ticket has no folder, so a README link to it is just its key. score_candidate runs with
+    # allow_ref=False for these rows (it resolves refs between folders) and the +5 is added below.
+    link_keys = {split_ref(x)[1] for x in seed_refs} if ext else set()
 
     reverse_only = bool(args.object) and not (args.seed or args.query or args.tags)
     omap = owners_index(rows)
 
     scored = []
-    for r in rows:
-        if seed_id and r["id"] == seed_id and r["owner"] == seed_owner:
+    for r in (external if ext else rows):
+        if not ext and seed_id and r["id"] == seed_id and r["owner"] == seed_owner:
             continue  # exclude only the chosen seed row (same id under another owner is a real candidate)
         score, obj_hits, tag_hits, kw_hits, ref_link = score_candidate(
-            q_tokens, q_tags, q_objects, seed_id, seed_refs, r, DEFAULT_WEIGHTS, allow_ref=True,
+            q_tokens, q_tags, q_objects, seed_id, seed_refs, r, DEFAULT_WEIGHTS, allow_ref=not ext,
             df_map=df_map, n_docs=n_docs, seed_owner=seed_owner, owners_by_id=omap)
+        if ext and r["id"].lower() in link_keys:
+            ref_link, score = True, score + DEFAULT_WEIGHTS["ref"]
         if reverse_only:
             if not obj_hits:
                 continue
@@ -207,10 +310,24 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
 
     if args.json:
         print(json.dumps([
-            {"id": r["id"], "owner": r["owner"], "score": round(s, 2), "why": why, "title": r["title"],
-             "summary": r["summary"], "date": r["date"], "tags": r.get("tags"), "objects": r.get("objects"),
-             "readme": r["link"], "url": r["url"]}
+            {"id": r["id"], "owner": None if ext else r["owner"], "score": round(s, 2), "why": why,
+             "title": r["title"], "summary": r["summary"], "date": r["date"], "tags": r.get("tags"),
+             "objects": r.get("objects"), "readme": None if ext else r["link"], "url": r["url"],
+             **({"fetch_id": r["fetch_id"], "source": r["source"]} if ext else {})}
             for s, r, why in top], ensure_ascii=False, indent=2))
+        return 0
+
+    if ext:
+        who = f" for {seed_owner}/{seed_id}" if seed_id else ""
+        print(f"Older tickets from the tracker{who}: top {len(top)} of {len(scored)}")
+        if not top:
+            print("  (no matches)")
+        for s, r, why in top:
+            print(f"  {r['id']:<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or 'undated'}  {r['title'][:60]}")
+            if r["url"]:
+                print(f"             {r['url']}")
+        if not reverse_only:
+            print(verdict_line(top))
         return 0
 
     # A shared id is displayed as its owner/id locator — a bare label naming two tickets is exactly
@@ -294,10 +411,16 @@ def main() -> int:
     ap.add_argument("--min-score", dest="min_score", type=float, default=0.0,
                     help="hide candidates scoring below this (manual filter; not a default cutoff)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--external", metavar="FILE",
+                    help="score older tracker tickets from this JSON file (rows from the tracker's search_history "
+                         "action) instead of the repo's own tickets; a key that already has a folder is dropped")
     ap.add_argument("--eval", action="store_true",
                     help="diagnostic: measure recall quality against curated cross_refs (read-only, never tunes)")
     ap.add_argument("--sweep", action="store_true", help="with --eval: print MRR under several weight settings")
     args = ap.parse_args()
+    if args.eval and args.external is not None:
+        print("recall: --external cannot be combined with --eval. Run them separately.", file=sys.stderr)
+        return 2
 
     root = repo_root()
     rows = build_rows(root)
@@ -320,7 +443,14 @@ def main() -> int:
                 print(f"  ({w['obj']},{w['tag']},{w['ref']},{w['kw']}) -> MRR {m['mrr']:.3f}")
         return 0
 
-    return run_query(args, rows, df_map, n_docs, key_re)
+    external = None
+    if args.external is not None:
+        try:
+            external = external_rows(args.external, {r["id"] for r in rows})
+        except ExternalFileError as e:
+            print(e, file=sys.stderr)
+            return 2
+    return run_query(args, rows, df_map, n_docs, key_re, external)
 
 
 if __name__ == "__main__":

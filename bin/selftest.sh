@@ -12058,5 +12058,193 @@ s63a_rc=$?
   && ok "all 7 tracker adapters carry search_history: the five inputs, a Filters line for all four kinds, the empty-before form, an Output mapping naming key and fetch_id (and key when key_prefix is unset), a failure sentence that covers a rejected search, and only declared config tokens (and the README contract row)" \
   || bad "a tracker adapter's search_history section breaks the contract" "$(head -8 "$TMP/s63a.out")"
 
+# --- (b) recall scores older tracker tickets with its own rules (recall.py --external) ------------
+# The rows come from a file in the shape (a) pins. They are scored the way recall scores the repo's
+# own tickets: a label counts as a tag, the text as keywords, SQL-looking text as objects, and a
+# ticket key the seed's README names as a link (+5, added after scoring, because recall keeps the
+# link signal out of score_candidate). A row whose key already has a ticket folder is dropped, so a
+# ticket never appears twice, and a numeric tracker's key (TEST-130) compares equal to the folder
+# while fetch_id (130) stays what fetch_ticket takes.
+X="$TMP/s63b"
+mkdir -p "$X/.claude/config" "$X/tickets/dana/TEST-130"
+printf 'project:\n  key_prefix: TEST\n' > "$X/.claude/config/stack.yaml"
+printf '# TEST-130: Returns rate by region\n\nFollow-up to TEST-50: break the returns rate out by region.\n' > "$X/tickets/dana/TEST-130/README.md"
+printf 'SELECT * FROM ANALYTICS.RETURNS;\n' > "$X/tickets/dana/TEST-130/q.sql"
+printf '%s' '{"records":[{"id":"TEST-130","owner":"dana","title":"Returns rate by region","status":"Completed","date":"2024-05-01","objects":["analytics.returns"],"tags":["returns","data-quality"],"summary":"Break the returns rate out by region."}]}' \
+  | CLAUDE_PROJECT_DIR="$X" python3 bin/ingest_index_records.py --from-json - >/dev/null 2>&1
+CLAUDE_PROJECT_DIR="$X" python3 bin/build_ticket_index.py >/dev/null 2>&1
+X63B="$X" python3 - <<'PY63B' >"$TMP/s63b.out" 2>&1
+import json, os, pathlib, subprocess, sys
+
+X = os.environ["X63B"]
+ENV = dict(os.environ, CLAUDE_PROJECT_DIR=X)
+lines = []
+errs = []
+
+
+def say(ok, name, detail=""):
+    lines.append(("PASS " if ok else "FAIL ") + name + ("" if ok else " :: " + str(detail).replace("\n", " | ")))
+
+
+def row(key, title, description="", labels=(), created="2023-06-01", fetch_id=None):
+    return {"key": key, "fetch_id": fetch_id or key, "title": title, "description": description,
+            "labels": list(labels), "created": created,
+            "url": "https://tracker.example.test/browse/" + key, "status": "Done"}
+
+
+counter = [0]
+
+
+def recall(rows=None, raw=None, extra=(), path=None):
+    if path is None:
+        counter[0] += 1
+        path = pathlib.Path(X, "rows-%d.json" % counter[0])
+        path.write_text(raw if raw is not None else json.dumps(rows))
+    cmd = [sys.executable, "bin/recall.py", "--for", "dana/TEST-130", "--external", str(path)] + list(extra)
+    p = subprocess.run(cmd, env=ENV, capture_output=True, text=True)
+    return p.returncode, p.stdout, p.stderr
+
+
+def jrows(rows, extra=()):
+    rc, out, err = recall(rows, None, ["--json"] + list(extra))
+    return rc, (json.loads(out) if rc == 0 and out.strip() else []), err
+
+
+# --- the five-row file from the brief -------------------------------------------------------------
+file_a = [
+    row("TEST-50", "Carrier handoff audit", "Check the handoff times."),
+    row("TEST-61", "Dock scheduling cleanup", "Reorder the dock slots.", labels=["Returns"]),
+    row("TEST-130", "Returns rate by region", "This is the repo ticket itself."),
+    row("TEST-70", "Region rate drift", "Looking at drift."),
+    row("TEST-80", "Payroll tax export", "Quarterly filing."),
+]
+rc, got, err = jrows(file_a)
+by = {r["id"]: r for r in got}
+ids = [r["id"] for r in got]
+say(rc == 0 and ids == ["TEST-50", "TEST-61", "TEST-70"],
+    "recall --external ranks the link, then the tag, then the keyword-only row, and drops the repo ticket and the unrelated one",
+    "rc=%s ids=%s err=%s" % (rc, ids, err))
+say(bool(got) and got[0]["id"] == "TEST-50" and "ref" in got[0]["why"],
+    "a tracker ticket the seed README names (TEST-50) gets the ref signal and ranks first", got[:1])
+say("tag:returns" in by.get("TEST-61", {}).get("why", []),
+    "a tracker label 'Returns' matches the seed's tag returns", by.get("TEST-61"))
+say(any(w.startswith("kw:") for w in by.get("TEST-70", {}).get("why", []))
+    and "ref" not in by.get("TEST-70", {}).get("why", []),
+    "a row with only words in common shows kw: and no other signal", by.get("TEST-70"))
+say("TEST-130" not in by and "TEST-80" not in by,
+    "a tracker ticket that already has a folder (TEST-130) and one with nothing in common (TEST-80) are absent", ids)
+shape_ok = bool(got) and all(r.get("source") == "tracker" and r.get("owner") is None and r.get("readme") is None
+                             and all(k in r for k in ("summary", "fetch_id", "url", "date", "tags", "objects",
+                                                      "title", "score", "why")) for r in got)
+say(shape_ok and by["TEST-50"]["summary"] == "Check the handoff times." and by["TEST-50"]["date"] == "2023-06-01"
+    and by["TEST-50"]["url"] == "https://tracker.example.test/browse/TEST-50",
+    "--json rows keep recall's shape and add fetch_id and source tracker, with owner and readme null and summary the description",
+    got[:1])
+
+rc, out, err = recall(file_a)
+tl = out.splitlines()
+say(rc == 0 and tl[:1] == ["Older tickets from the tracker for dana/TEST-130: top 3 of 3"],
+    "text mode names the seed and counts the rows", tl[:2])
+say(len(tl) > 2 and tl[1].split()[:1] == ["TEST-50"] and "score" in tl[1] and "[ref]" in tl[1]
+    and "2023-06-01" in tl[1] and "Carrier handoff audit" in tl[1]
+    and tl[2].strip() == "https://tracker.example.test/browse/TEST-50",
+    "a text row carries the key, score, why, created date and title, then the url on the next line", tl[1:3])
+say(any(l.startswith("verdict: strong") for l in tl) and "Read these READMEs" not in out,
+    "text mode ends with recall's verdict line and no README advice (tracker rows have no folder)", tl[-3:])
+
+rc, out, err = recall([row("TEST-70", "Region rate drift", "Looking at drift."), row("TEST-80", "Payroll tax export")])
+say(rc == 0 and "verdict: weak" in out and "top 1 of 1" in out,
+    "a lone keyword-only tracker row gives verdict: weak", out)
+
+# --- an Azure-style file: key is the repo-comparable id, fetch_id is the bare number --------------
+rc, got, err = jrows([row("TEST-130", "Returns rate by region", fetch_id="130"),
+                      row("TEST-50", "Carrier handoff audit", "Check the handoff times.", fetch_id="50")])
+say(rc == 0 and [r["id"] for r in got] == ["TEST-50"] and got[0]["fetch_id"] == "50" and "ref" in got[0]["why"],
+    "numeric tracker rows: key TEST-130 (fetch_id 130) is suppressed as a repo ticket, key TEST-50 gets ref and keeps fetch_id 50",
+    (rc, got, err))
+
+# --- the other review cases ----------------------------------------------------------------------
+file_c = [
+    row("TEST-90", "Dock audit", labels=["Data Quality"]),
+    row("TEST-91", "Nightly rebuild", "Rebuild FROM analytics.returns nightly."),
+    row("TEST-92", "Region rate watch", "Region rate drift."),
+    row("test-92", "Region rate watch", "Region rate drift."),
+    row("test-130", "Returns rate by region", "Lowercase copy of the repo ticket."),
+    {"key": None, "title": "Region rate with no key", "description": "region rate"},
+    {"title": "Region rate with no key field at all", "description": "region rate"},
+    {"key": "TEST-93", "fetch_id": None, "title": "Region rate watch", "description": None, "labels": None,
+     "created": None, "url": None},
+    row("TEST-94", "Long text", "x" * 700 + " returns", labels=["data_quality"]),
+]
+rc, got, err = jrows(file_c, ["--top", "20"])
+errs.append(err)
+by = {r["id"]: r for r in got}
+say(rc == 0 and "tag:data-quality" in by.get("TEST-90", {}).get("why", []),
+    "a label in another style (Data Quality) matches the kit tag data-quality", (rc, by.get("TEST-90"), err))
+say(any(w.startswith("obj:analytics.returns") for w in by.get("TEST-91", {}).get("why", [])),
+    "a table named in the description (FROM analytics.returns) counts as an object", by.get("TEST-91"))
+say([r["id"] for r in got].count("TEST-92") == 1 and "test-92" not in by
+    and "test-130" not in by and "TEST-130" not in by,
+    "a key listed twice appears once, and a lowercase copy of a repo key is still dropped", [r["id"] for r in got])
+say("TEST-93" in by and by["TEST-93"]["date"] is None and by["TEST-93"]["url"] is None
+    and by["TEST-93"]["fetch_id"] == "TEST-93" and by["TEST-93"]["tags"] == [],
+    "missing labels, description, date and url are tolerated, and fetch_id falls back to the key", by.get("TEST-93"))
+say(rc == 0 and not any(r["id"] in ("", "None", None) for r in got) and "no ticket key" in err,
+    "rows with no key are left out, with a plain note on stderr, rather than crashing or being listed", (err, [r["id"] for r in got]))
+say("TEST-94" in by and len(by["TEST-94"]["summary"]) == 600 and "tag:data-quality" in by["TEST-94"]["why"],
+    "a description longer than 600 characters is cut to 600, and an underscore label (data_quality) matches too",
+    len(by.get("TEST-94", {}).get("summary", "")))
+
+# --- nothing came back, or the file cannot be used ------------------------------------------------
+for name, raw in (("an empty list", "[]"), ("a zero-byte file", ""), ("an empty list after a byte-order mark", "\ufeff[]")):
+    rc, out, err = recall(None, raw)
+    say(rc == 0 and "(no matches)" in out and "no prior art found" in out and "top 0 of 0" in out,
+        "%s prints (no matches) and the no prior art found verdict, exit 0" % name, (rc, out, err))
+rc, got, err = jrows([])
+say(rc == 0 and got == [], "--json with no rows prints an empty list", (rc, got, err))
+
+for name, raw in (("text that is not JSON", "not json at all"),
+                  ("a JSON object instead of a list", '{"a": 1}'),
+                  ("a list of non-objects", "[1, 2]")):
+    rc, out, err = recall(None, raw)
+    say(rc == 2 and out == "" and "Traceback" not in err and " Details: " in err
+        and err.startswith("recall: run the older-ticket search again"),
+        "%s exits 2 with a plain message that says what to do first" % name, (rc, out, err))
+    errs.append(err)
+rc, out, err = recall(path=os.path.join(X, "no-such-file.json"))
+say(rc == 2 and out == "" and "Traceback" not in err and err.startswith("recall: run the older-ticket search again"),
+    "a missing file exits 2 with the same plain message", (rc, out, err))
+errs.append(err)
+pathlib.Path(X, "errs.txt").write_text("".join(e.rstrip("\n") + "\n" for e in errs if e.strip()))
+
+p = subprocess.run([sys.executable, "bin/recall.py", "--eval", "--external", os.path.join(X, "rows-1.json")],
+                   env=ENV, capture_output=True, text=True)
+say(p.returncode == 2 and "Traceback" not in p.stderr and "cannot be combined" in p.stderr,
+    "--external with --eval is refused with a plain message, not ignored", (p.returncode, p.stderr))
+print("\n".join(lines))
+print("DONE %d" % len(lines))
+PY63B
+s63b_rc=$?
+if [ "$s63b_rc" -ne 0 ] || ! grep -q '^DONE ' "$TMP/s63b.out"; then
+  bad "the recall --external checks did not finish" "$(head -12 "$TMP/s63b.out")"
+fi
+while IFS= read -r s63b_line; do
+  case "$s63b_line" in
+    "PASS "*) ok "${s63b_line#PASS }" ;;
+    "FAIL "*)
+      s63b_name="${s63b_line#FAIL }"; s63b_detail=""
+      case "$s63b_name" in *" :: "*) s63b_detail="${s63b_name#* :: }"; s63b_name="${s63b_name%% :: *}" ;; esac
+      bad "$s63b_name" "$s63b_detail" ;;
+  esac
+done <"$TMP/s63b.out"
+# every message recall --external prints to a person leads in plain words (section 59's rule)
+if [ -s "$X/errs.txt" ]; then
+  python3 tests/plain_language/check.py --text "$X/errs.txt" >"$TMP/s63b-pl.out" 2>&1 \
+    && ok "recall --external's messages to a person lead in plain words (technical detail after ' Details:')" \
+    || bad "recall --external's messages use internal terms in the plain part" "$(head -5 "$TMP/s63b-pl.out")"
+else
+  bad "recall --external printed no message to lint (the checks above did not run)"
+fi
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
