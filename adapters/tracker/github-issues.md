@@ -20,10 +20,12 @@ note: |
 Maps the `tracker` verb contract to GitHub Issues via `gh`.
 
 ## verb: fetch_ticket
-**In:** issue number. **Out:** title, body (markdown), state, assignees, labels, milestone.
+**In:** issue number, or `<owner>/<name>#<number>` for an issue in another repo (the form
+`search_history` returns for one). **Out:** title, body (markdown), state, assignees, labels, milestone.
 ```bash
 gh issue view <number> --repo {repo} --json number,title,body,state,assignees,labels,milestone,url
 ```
+For `<owner>/<name>#<number>`, pass `<number>` and `--repo <owner>/<name>` in place of `{repo}`.
 
 ## verb: create_ticket
 ```bash
@@ -80,7 +82,11 @@ Output mapping: `key` is `{key_prefix}-<number>` (the branch and folder conventi
 `fetch_id` is the bare issue `number` (`130`), which is what `fetch_ticket` takes; `title` is `title`;
 `description` is `body`; `labels` is the `name` of each entry in `labels`; `created` is `createdAt` cut to
 `YYYY-MM-DD`; `url` is `url`; `status` is `state`. When `{key_prefix}` is unset, `key` is the bare number,
-the same as `fetch_id`, so duplicate suppression still compares like with like.
+the same as `fetch_id`, so duplicate suppression still compares like with like. Issue numbers repeat
+from repo to repo, so when the search ran in a repo other than `{repo}` (a `project:` filter, or a
+`<scope>` naming another repo), `key` and `fetch_id` are both `<owner>/<name>#<number>`
+(`acme/legacy#130`): no ticket folder carries that name, so an old issue is never dropped as a copy of
+this repo's `TEST-130`, and `fetch_ticket` reads it from the repo it came from.
 
 ## verb: download_attachments
 GitHub stores issue attachments as URLs embedded in the body/comments. Parse them

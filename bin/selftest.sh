@@ -12280,6 +12280,16 @@ for f in sorted(glob.glob("adapters/tracker/*.md")):
 if n_adapters != 7:
     bad.append("found %d tracker adapter files, want 7" % n_adapters)
 
+# GitHub issue numbers are per repo: a hit from another repo keeps its repo in key and fetch_id, or it
+# is dropped as a copy of this repo's TEST-130 and fetch_ticket reads the wrong issue.
+gh = open("adapters/tracker/github-issues.md", encoding="utf-8").read()
+gh_fetch = re.search(r"(?ms)^## verb: fetch_ticket\s*$(.*?)^## ", gh)
+gh_hist = re.search(r"(?ms)^## verb: search_history\s*$(.*?)^## ", gh)
+if not (gh_fetch and "<owner>/<name>#<number>" in gh_fetch.group(1) and "--repo <owner>/<name>" in gh_fetch.group(1)):
+    bad.append("github-issues.md: fetch_ticket does not read an <owner>/<name>#<number> id from that repo")
+if not (gh_hist and "`key` and `fetch_id` are both `<owner>/<name>#<number>`" in " ".join(gh_hist.group(1).split())):
+    bad.append("github-issues.md: search_history does not keep another repo's name in key and fetch_id")
+
 # the contract row in adapters/README.md names the same five inputs and the row shape
 readme = open("adapters/README.md", encoding="utf-8").read()
 row = re.search(r"(?m)^\| `search_history` \|.*$", readme)
@@ -12455,6 +12465,16 @@ say("TEST-97" in by and by["TEST-97"]["tags"] == ["returns"],
 say("TEST-94" in by and len(by["TEST-94"]["summary"]) == 600 and "tag:data-quality" in by["TEST-94"]["why"],
     "a description longer than 600 characters is cut to 600, and an underscore label (data_quality) matches too",
     len(by.get("TEST-94", {}).get("summary", "")))
+
+# --- a GitHub issue from another repo keeps its repo in the key ---------------------------------------
+# Issue numbers repeat between repos, so the old repo's issue 130 must not be dropped as this repo's
+# TEST-130, and its fetch_id must still say which repo to read it from.
+rc, got, err = jrows([row("acme/legacy#130", "Returns rate by region, old repo", "Region returns.",
+                          labels=["returns"], fetch_id="acme/legacy#130")])
+by = {r["id"]: r for r in got}
+say(rc == 0 and "acme/legacy#130" in by and by["acme/legacy#130"]["fetch_id"] == "acme/legacy#130",
+    "a GitHub issue from another repo (acme/legacy#130) is kept beside the repo's own TEST-130 with its repo in fetch_id",
+    (rc, [r["id"] for r in got], err))
 
 # --- nothing came back, or the file cannot be used ------------------------------------------------
 for name, raw in (("an empty list", "[]"), ("a zero-byte file", ""), ("an empty list after a byte-order mark", "\ufeff[]")):
