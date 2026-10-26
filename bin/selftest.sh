@@ -12186,5 +12186,77 @@ done
   && ok "a broken standard is Should-fix by default, Critical only where the doc makes it a must" \
   || bad "the standards severity rule is missing from review or qc-reviewer"
 
+hdr "65 · the graph shows one node per table, and Builds on points at older work (LABS-57)"
+# Shaped like the 2026-10-26 rehearsal: kyle/TEST-1 ships on PARTSUPP with a curated record that
+# writes short schema.table names while its SQL writes db.schema.table; leslie/TEST-12 cites it later.
+# TEST-1's prose mentions TEST-12 (a back-reference), so it must NOT read "Builds on: TEST-12".
+G65="$TMP/graph65"; mkdir -p "$G65/.claude/config" "$G65/bin" \
+  "$G65/tickets/kyle/TEST-1" "$G65/tickets/leslie/TEST-12" "$G65/tickets/carol/TEST-20"
+cp bin/build_ticket_index.py bin/recall.py bin/_yamlite.py bin/effective_config.py "$G65/bin/" 2>/dev/null
+printf 'project:\n  key_prefix: TEST\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$G65/.claude/config/stack.yaml"
+printf '# TEST-1: Inventory value by supplier region\n\nReuses the join from TEST-20. Related: TEST-12 uses the same definition.\n' \
+  > "$G65/tickets/kyle/TEST-1/README.md"
+printf 'SELECT 1 FROM WH.TPCH.PARTSUPP ps JOIN WH.TPCH.SUPPLIER s ON 1=1 JOIN WH.TPCH.PART p ON 1=1 JOIN WH2.TPCH.PART q ON 1=1;\n' \
+  > "$G65/tickets/kyle/TEST-1/q.sql"
+printf '# TEST-12: Europe inventory value by part type\n\nBuilds on TEST-1.\n' > "$G65/tickets/leslie/TEST-12/README.md"
+printf 'SELECT 1 FROM WH.TPCH.PARTSUPP ps JOIN WH.TPCH.SUPPLIER s ON 1=1;\n' > "$G65/tickets/leslie/TEST-12/q.sql"
+printf '# TEST-20: Supplier join pattern\n\nA join pattern.\n' > "$G65/tickets/carol/TEST-20/README.md"
+cat > "$G65/tickets/index_data.json" <<'JSON'
+{"schema_version": 1, "tickets": [
+ {"id": "TEST-1", "owner": "kyle", "title": "Inventory value by supplier region", "status": "Done",
+  "date": "2026-10-26", "cross_refs": [], "tags": ["inventory"],
+  "objects": ["TPCH.PARTSUPP", "tpch.supplier", "TPCH.PART"], "summary": "Five regions ranked by inventory value."},
+ {"id": "TEST-12", "owner": "leslie", "title": "Europe inventory value by part type", "status": "Done",
+  "date": "2026-10-26", "cross_refs": ["TEST-1"], "tags": ["inventory"],
+  "objects": ["WH.TPCH.PARTSUPP", "WH.TPCH.SUPPLIER"], "summary": "Top part types by Europe inventory value."},
+ {"id": "TEST-20", "owner": "carol", "title": "Supplier join pattern", "status": "Done",
+  "date": "2026-01-05", "cross_refs": [], "tags": [], "objects": [], "summary": "A join pattern."}
+]}
+JSON
+CLAUDE_PROJECT_DIR="$G65" python3 bin/build_ticket_index.py >/dev/null 2>"$TMP/s65.err"; s65rc=$?
+[ "$s65rc" -eq 0 ] && ok "the rehearsal-shaped fixture renders" || bad "the fixture failed to render" "$(head -c 400 "$TMP/s65.err")"
+
+# (a) one table, one node: the short curated name folds into the qualified name the SQL wrote.
+n65="$(ls "$G65/tickets/objects" | grep -ci 'PARTSUPP')"
+{ [ "$n65" = "1" ] && [ -f "$G65/tickets/objects/WH.TPCH.PARTSUPP.md" ] \
+  && grep -q 'kyle.TEST-1.md' "$G65/tickets/objects/WH.TPCH.PARTSUPP.md" \
+  && grep -q 'leslie.TEST-12.md' "$G65/tickets/objects/WH.TPCH.PARTSUPP.md"; } \
+  && ok "a short curated name and the SQL's qualified name make ONE object node linking both tickets" \
+  || bad "PARTSUPP still has more than one object node" "$(ls "$G65/tickets/objects")"
+{ [ "$(ls "$G65/tickets/objects" | grep -ci 'SUPPLIER')" = "1" ] \
+  && ! grep -qi '`tpch.supplier`' "$G65/tickets/graph/kyle.TEST-1.md" \
+  && ! grep -q '`TPCH.PARTSUPP`' "$G65/tickets/OBJECTS.md"; } \
+  && ok "the fold is case-insensitive and reaches the ticket node and OBJECTS.md too" \
+  || bad "a short or differently-cased name survived somewhere" "$(grep Objects "$G65/tickets/graph/kyle.TEST-1.md")"
+# Two databases hold TPCH.PART, so the short name could mean either: it stays as written, no guess.
+[ -f "$G65/tickets/objects/TPCH.PART.md" ] \
+  && ok "a short name two qualified objects could claim is left as written, never guessed" \
+  || bad "an ambiguous short name was folded into one of its candidates" "$(ls "$G65/tickets/objects")"
+
+# (b) direction: the older ticket of a cross-referenced pair is the one built on.
+N1="$G65/tickets/graph/kyle.TEST-1.md"; N12="$G65/tickets/graph/leslie.TEST-12.md"
+{ ! grep 'Builds on' "$N1" | grep -q 'TEST-12' \
+  && grep -q '^- \*\*Built on by:\*\* \[TEST-12\](leslie.TEST-12.md)' "$N1"; } \
+  && ok "the older ticket's node says 'Built on by: TEST-12', not 'Builds on: TEST-12'" \
+  || bad "the older ticket still claims to build on the newer one" "$(grep -i 'built\|builds\|related' "$N1")"
+grep -q '^- \*\*Builds on:\*\* \[TEST-1\](kyle.TEST-1.md)' "$N12" \
+  && ok "the newer ticket's node still says 'Builds on: TEST-1'" \
+  || bad "the newer ticket lost its Builds on link" "$(grep -i 'built\|builds' "$N12")"
+# Date decides before the number: TEST-20 finished in January, so TEST-1 builds on it.
+grep '^- \*\*Builds on:\*\*' "$N1" | grep -q '\[TEST-20\](carol.TEST-20.md)' \
+  && ok "an earlier-dated ticket with a higher number is still 'Builds on' (date first, number second)" \
+  || bad "the date did not decide direction" "$(grep -i 'built\|builds\|related' "$N1")"
+grep -q 'Built on by:.*TEST-1' "$G65/tickets/graph/carol.TEST-20.md" \
+  && ok "the cited ticket shows the back-link as 'Built on by'" \
+  || bad "the cited ticket has no 'Built on by' back-link" "$(cat "$G65/tickets/graph/carol.TEST-20.md")"
+
+# (c) the render is deterministic, and recall still finds TEST-1 by the table's last part.
+CLAUDE_PROJECT_DIR="$G65" python3 bin/build_ticket_index.py --check >/dev/null 2>&1 \
+  && ok "--check is clean right after the render" || bad "--check is stale right after the render"
+( cd "$G65" && CLAUDE_PROJECT_DIR="$G65" python3 "$KIT/bin/recall.py" --object PARTSUPP --json ) > "$TMP/s65r.out" 2>&1
+grep -q '"TEST-1"' "$TMP/s65r.out" && grep -q '"TEST-12"' "$TMP/s65r.out" \
+  && ok "recall by the bare table name still finds both tickets" \
+  || bad "recall by the bare table name broke" "$(head -c 400 "$TMP/s65r.out")"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
