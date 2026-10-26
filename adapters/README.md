@@ -592,7 +592,7 @@ frontmatter instead, and `bin/kit_paths.py` reads them:
 
 ```yaml
 skills_root:  session_start:  tool_gate:  subagents:  structured_questions:
-model_cmd:  model_sandbox:  detect_env:
+model_cmd:  model_sandbox:  model_default:  model_fast:  detect_env:
 gate_ask_tier:  gate_fail_mode:  subagent_isolation:  reads_foreign_skills:  global_skills_root:
 hook_wiring:  hook_protocol:  hook_wiring_caveat:  # + rules_root: on runtimes that don't read AGENTS.md
 ```
@@ -628,6 +628,15 @@ of model CLIs may appear as `model_cmd`'s first word: adapters live inside the r
 install, and a markdown file reads as inert in review, so without that allowlist a `model_cmd:` line
 would be an easy place to hide an arbitrary command. The evidence behind every value, with sources and access dates, is in
 [docs/runtimes.md](../docs/runtimes.md).
+
+`model_default` and `model_fast` name the model that fills `model_cmd`'s `{model}` slot. `model_default`
+is the one used when nobody names a model. `model_fast` is a cheaper one for a one-line job, such as
+summarizing an older tracker ticket. A runtime declares `model_fast` only when its `model_cmd` has a
+`{model}` slot to fill, and today that is Claude Code alone (`haiku`): the other runtimes' commands
+take no model argument, so those jobs run on whatever model the command uses by default. Empty is a
+real answer, not a gap. A caller that wants the fast model falls back to `model_default`, then to the
+tool's own default. `bin/model_call.py` is the one module that resolves, builds and runs these
+commands, and `bin/enrich_ticket.py` calls it instead of keeping its own copy.
 
 **So the two rules below do not apply to this directory:** there are no verb sections to implement,
 and there is no `stack.yaml` seam entry to add. Everything else — the frontmatter keys, the

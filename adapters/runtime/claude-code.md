@@ -24,6 +24,7 @@ hook_protocol: claude-json     # PreToolUse permissionDecision deny|allow|ask â€
 model_cmd: "claude -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch"
 model_sandbox: tools-withheld   # verified against `claude --help`: --disallowedTools is honored
 model_default: sonnet
+model_fast: haiku   # the cheaper model for a one-line job; only this model_cmd has a {model} slot to fill
 auth: |
   None beyond an authenticated Claude Code install.
   Verify: `command -v claude`.

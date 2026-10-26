@@ -1927,7 +1927,7 @@ PY2
 # --branch resolution. safe_enrich keeps every model CLI off PATH, so enrich_ticket stops at its own
 # guard: reaching "Enriching N ticket(s)" proves the id resolved, without spending a model call.
 BR="$TMP/brslug"; mkdir -p "$BR/.claude/config" "$BR/tickets/dana/signup-funnel-lift" "$BR/bin"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BR/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py "$BR/bin/"
 printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$BR/.claude/config/stack.yaml"
 printf '# signup-funnel-lift: Signup funnel\n\nBody.\n' > "$BR/tickets/dana/signup-funnel-lift/README.md"
 ( cd "$BR" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
@@ -1944,7 +1944,7 @@ grep -q 'No ticket ids given' <<<"$out" \
   || bad "--branch invented a ticket id from an unrelated branch name" "$out"
 # Keyed mode's --branch path is untouched.
 BK="$TMP/brkeyed"; mkdir -p "$BK/.claude/config" "$BK/tickets/dana/ENG-12 signup" "$BK/bin"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$BK/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py "$BK/bin/"
 printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$BK/.claude/config/stack.yaml"
 printf '# ENG-12: Signup\n\nBody.\n' > "$BK/tickets/dana/ENG-12 signup/README.md"
 ( cd "$BK" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
@@ -1987,7 +1987,7 @@ done
 # A ticket branch created before the first commit is an unborn branch; `rev-parse --abbrev-ref`
 # reports the literal "HEAD" there, so --branch could never resolve a fresh ticket branch.
 UB="$TMP/unborn"; mkdir -p "$UB/.claude/config" "$UB/tickets/dana/signup-funnel-lift" "$UB/bin"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$UB/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py "$UB/bin/"
 printf 'project:\n  assignee_dir: dana\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$UB/.claude/config/stack.yaml"
 printf '# signup-funnel-lift: R\n\nBody.\n' > "$UB/tickets/dana/signup-funnel-lift/README.md"
 ( cd "$UB" && git init -q . && git checkout -q -b claude/signup-funnel-lift ) 2>/dev/null
@@ -2863,7 +2863,7 @@ grep -qi 'bootstrapper' .claude/skills/setup/SKILL.md \
 
 # --- enrich_ticket: pluggable, and never a shell -------------------------------------------------
 ENR="$TMP/enrich"; mkdir -p "$ENR/.claude/config" "$ENR/tickets/dana/ENG-3" "$ENR/bin"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$ENR/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py "$ENR/bin/"
 printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$ENR/.claude/config/stack.yaml"
 # A README carrying shell-injection shapes. On most installs this text came from a tracker, i.e. it
 # was written by someone outside the repo — so it must reach the model as DATA, never as code.
@@ -2982,7 +2982,7 @@ grep -q 'kit_paths\|/tw" --kit' bin/verify_stack.sh \
 # adapters/ INTO the repo, so the project root IS a valid kit — "resolve from the kit only" does NOT
 # isolate this from repo content. The allowlist on argv[0] is what does.
 EV="$TMP/evilrt"; mkdir -p "$EV/.claude/config" "$EV/tickets/dana/ENG-4" "$EV/bin" "$EV/adapters/runtime" "$EV/templates"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/kit_paths.py "$EV/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py bin/kit_paths.py "$EV/bin/"
 printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$EV/.claude/config/stack.yaml"
 printf '# ENG-4: t\n\nBody.\n' > "$EV/tickets/dana/ENG-4/README.md"
 printf -- '---\nseam: runtime\ntool: aaa-evil\ndetect_env: PATH\nskills_root: x\nskills_format: x\nsession_start: no\ntool_gate: no\nsubagents: no\nstructured_questions: no\nmodel_cmd: "touch %s/PWNED_ADAPTER"\n---\n' "$EV" > "$EV/adapters/runtime/aaa-evil.md"
@@ -3921,7 +3921,7 @@ hdr "35 · owner is ticket identity (locator, graph separation, ambiguity hard s
 OI="$TMP/ownerid"; mkdir -p "$OI/.claude/config" "$OI/bin" \
   "$OI/tickets/alice/chargeback-lift" "$OI/tickets/bob/chargeback-lift" \
   "$OI/tickets/alice/other-work" "$OI/tickets/carol/third-thing"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$OI/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py "$OI/bin/"
 printf 'project:\n  assignee_dir: alice\n  id_mode: slug\n  ticket_path: "tickets/{assignee}/{id}"\n' > "$OI/.claude/config/stack.yaml"
 printf '# chargeback-lift: Alice chargeback lift\n\nAlice body.\n' > "$OI/tickets/alice/chargeback-lift/README.md"
 printf 'SELECT * FROM S.VW_SHARED;\n' > "$OI/tickets/alice/chargeback-lift/q.sql"
@@ -9549,7 +9549,7 @@ for m in claude codex agy devin opencode gemini; do
   chmod +x "$MTRAP/$m"
 done
 MT="$TMP/mtrap-fixture"; mkdir -p "$MT/.claude/config" "$MT/tickets/dana/ENG-9" "$MT/bin"
-cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py "$MT/bin/"
+cp bin/build_ticket_index.py bin/enrich_ticket.py bin/ingest_index_records.py bin/model_call.py "$MT/bin/"
 printf 'project:\n  key_prefix: ENG\n  assignee_dir: dana\n' > "$MT/.claude/config/stack.yaml"
 printf '# ENG-9: T\n\nBody.\n' > "$MT/tickets/dana/ENG-9/README.md"
 # TICKETWRIGHT_KIT/PYTHONPATH are unset inside the subshell, not merely left alone: an inherited one
@@ -12245,6 +12245,155 @@ if [ -s "$X/errs.txt" ]; then
 else
   bad "recall --external printed no message to lint (the checks above did not run)"
 fi
+
+# --- (c) one shared model call: bin/model_call.py, and the model_fast runtime key -----------------
+# enrich_ticket.py used to own the whole path from "which model command does this runtime run" to the
+# subprocess call. The older-ticket summaries (bin/summarize_hits.py) need the same path, so it lives
+# in one module both import: resolve_model_cmd (the --model-cmd, then the runtime adapter, then the
+# built-in default, in that order), build_model_argv (argv only, never a shell), run_model, and the
+# allowlist of model CLIs an adapter may name. Nothing about enrich's behavior changes; sections 31
+# and 53 above are the proof of that and stay as they were. `model_fast` is the one new runtime key:
+# the cheaper model a runtime can be told to use for a one-line job (Claude Code only, so far).
+s63c_bad=""
+[ -f bin/model_call.py ] || s63c_bad="$s63c_bad model_call.py:missing"
+for s63c_name in 'def resolve_model_cmd' 'def build_model_argv' 'def run_model' 'class ModelCallError' 'ALLOWED_MODEL_BINARIES ='; do
+  grep -q "$s63c_name" bin/model_call.py 2>/dev/null || s63c_bad="$s63c_bad model_call.py:no[$s63c_name]"
+done
+grep -q '^from model_call import' bin/enrich_ticket.py || s63c_bad="$s63c_bad enrich:does-not-import-it"
+grep -qE '^def (build_model_argv|_kit_runtime_model_cmd)|^ALLOWED_MODEL_BINARIES =|^SHELL_METACHARS =' bin/enrich_ticket.py \
+  && s63c_bad="$s63c_bad enrich:still-defines-its-own-copy"
+# sibling scripts resolve from the module's own directory, never the project root (section 20's rule)
+grep -q '__file__' bin/model_call.py 2>/dev/null || s63c_bad="$s63c_bad model_call.py:no-own-dir-lookup"
+grep -Eq 'root[[:space:]]*/[[:space:]]*"bin"' bin/model_call.py 2>/dev/null && s63c_bad="$s63c_bad model_call.py:resolves-off-project-root"
+# every fixture that copies enrich into a temp bin/ copies the module it imports as well
+s63c_fx="$(grep -nE '^cp .*bin/enrich_ticket\.py' bin/selftest.sh | grep -v 'bin/model_call\.py' || true)"
+[ -n "$s63c_fx" ] && s63c_bad="$s63c_bad fixtures-without-model_call.py"
+[ -z "$s63c_bad" ] \
+  && ok "model_call.py holds the shared model call, enrich imports it instead of keeping a copy, and every enrich fixture copies it" \
+  || bad "the shared model-call module is missing, unused, or not copied by a fixture" "$s63c_bad $s63c_fx"
+
+# kit_paths.py --json must keep resolving for every runtime once model_fast and model_default are keys:
+# capabilities() reads _FLOOR[key] for each key, so a key with no floor entry raises KeyError for every
+# runtime that does not declare it, and for the runtime nobody can identify.
+s63c_kp=""
+for s63c_rt in claude-code codex-cli no-such-runtime; do
+  env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$s63c_rt" python3 bin/kit_paths.py --json \
+    >"$TMP/kp63c-$s63c_rt.json" 2>"$TMP/kp63c-$s63c_rt.err" || s63c_kp="$s63c_kp $s63c_rt:exit-$?"
+done
+python3 - "$TMP/kp63c-claude-code.json" "$TMP/kp63c-codex-cli.json" "$TMP/kp63c-no-such-runtime.json" \
+  <<'PY63CK' >"$TMP/kp63c.out" 2>&1
+import json, sys
+try:
+    cc, cx, un = (json.load(open(p))["capabilities"] for p in sys.argv[1:4])
+except Exception as e:
+    print("could not read the capability JSON: %r" % (e,)); sys.exit(0)
+want = [("claude-code", cc, "haiku", "sonnet"), ("codex-cli", cx, "", ""), ("unidentified", un, "", "")]
+for name, caps, fast, default in want:
+    if caps.get("model_fast") != fast or caps.get("model_default") != default:
+        print("%s: model_fast=%r model_default=%r (want %r and %r)"
+              % (name, caps.get("model_fast"), caps.get("model_default"), fast, default))
+PY63CK
+{ [ -z "$s63c_kp" ] && [ ! -s "$TMP/kp63c.out" ]; } \
+  && ok "kit_paths --json carries model_fast and model_default: haiku and sonnet for Claude Code, empty for Codex CLI and for a runtime nobody can identify" \
+  || bad "kit_paths does not resolve model_fast/model_default for every runtime" "$s63c_kp $(head -3 "$TMP/kp63c.out") $(cat "$TMP"/kp63c-*.err 2>/dev/null | head -3 | tr '\n' ' ')"
+
+# only Claude Code's model_cmd has a {model} slot to fill, so only it declares a faster model
+s63c_mf="$(grep -l '^model_fast:' adapters/runtime/*.md | xargs -n1 basename | tr '\n' ' ')"
+[ "$s63c_mf" = "claude-code.md " ] \
+  && ok "only the Claude Code runtime adapter declares model_fast (the other model_cmd templates have no {model} slot)" \
+  || bad "model_fast belongs on the runtimes whose model_cmd has a {model} slot, and today that is Claude Code only" "$s63c_mf"
+{ grep -q 'model_fast' adapters/README.md && grep -q 'model_default' adapters/README.md; } \
+  && ok "adapters/README.md lists model_fast and model_default among the runtime keys" \
+  || bad "adapters/README.md does not document model_fast / model_default"
+
+# the module's behavior, with no model CLI anywhere: a stub override, the real adapters' frontmatter,
+# and ordinary utilities standing in for the model process
+KIT63C="$KIT" python3 - <<'PY63C' >"$TMP/s63c.out" 2>&1
+import os, sys
+
+KIT = os.environ["KIT63C"]
+os.environ["TICKETWRIGHT_KIT"] = KIT
+sys.path.insert(0, os.path.join(KIT, "bin"))
+lines = []
+
+
+def say(ok, name, detail=""):
+    lines.append(("PASS " if ok else "FAIL ") + name + ("" if ok else " :: " + str(detail).replace("\n", " | ")))
+
+
+def finish():
+    print("\n".join(lines))
+    print("DONE %d" % len(lines))
+    sys.exit(0)
+
+
+try:
+    import model_call
+    import enrich_ticket
+except Exception as e:  # the file is missing, or enrich cannot import it
+    say(False, "bin/model_call.py and bin/enrich_ticket.py import", repr(e))
+    finish()
+
+say(enrich_ticket.build_model_argv is model_call.build_model_argv
+    and enrich_ticket.ALLOWED_MODEL_BINARIES is model_call.ALLOWED_MODEL_BINARIES,
+    "enrich keeps its old names, and they are the shared module's own objects")
+
+# resolve_model_cmd: the --model-cmd wins and no adapter is consulted
+os.environ["TICKETWRIGHT_RUNTIME"] = "claude-code"
+t, fm = model_call.resolve_model_cmd("mytool -p {prompt}")
+say(t == "mytool -p {prompt}" and fm == {}, "an override is returned as given, with no runtime frontmatter", (t, fm))
+
+# then the detected runtime's adapter, frontmatter included
+t, fm = model_call.resolve_model_cmd(None)
+say(isinstance(t, str) and t.startswith("claude -p") and fm.get("model_sandbox") == "tools-withheld"
+    and fm.get("model_fast") == "haiku" and fm.get("model_default") == "sonnet",
+    "the Claude Code adapter gives its model_cmd and its frontmatter (sandbox, fast model, default model)", (t, fm))
+
+# a runtime that documents no headless command: no template, and the frontmatter still comes back
+os.environ["TICKETWRIGHT_RUNTIME"] = "cursor"
+t, fm = model_call.resolve_model_cmd(None)
+say(not t and fm.get("model_sandbox") == "n/a",
+    "a runtime with no headless command gives no template, and still gives its frontmatter", (t, fm))
+
+# then the built-in default, which is deliberately not gated on the runtime being identified
+os.environ["TICKETWRIGHT_RUNTIME"] = "no-such-runtime"
+t, fm = model_call.resolve_model_cmd(None)
+say(t == model_call.DEFAULT_MODEL_CMD and fm.get("model_default") == "sonnet" and not fm.get("model_sandbox"),
+    "a runtime nobody can identify gets the historical default command, with no sandbox claimed", (t, fm))
+
+# run_model: stdout comes back verbatim; the prompt goes on stdin only when told to
+out = model_call.run_model(["cat"], "hello prompt", True)
+say(out == "hello prompt", "run_model sends the prompt on stdin and returns stdout untouched", repr(out))
+out = model_call.run_model([sys.executable, "-c", "import sys; print(sys.argv[1])", "THE-PROMPT"], "THE-PROMPT", False)
+say(out.strip() == "THE-PROMPT", "run_model runs the argv exactly as built, with the prompt as one argument", repr(out))
+
+for name, argv, kw, want in (
+        ("a non-zero exit", [sys.executable, "-c", "import sys; sys.stderr.write('boom'); sys.exit(3)"], {}, "exited 3: boom"),
+        ("a command that is not installed", ["no-such-model-binary-xyz"], {}, "failed"),
+        ("a timeout", [sys.executable, "-c", "import time; time.sleep(5)"], {"timeout": 0.2}, "failed")):
+    try:
+        model_call.run_model(argv, "", False, **kw)
+        say(False, "run_model raises ModelCallError on %s" % name, "no error")
+    except model_call.ModelCallError as e:
+        say(str(e).startswith(argv[0] + " ") and want in str(e),
+            "run_model raises ModelCallError on %s, naming the tool" % name, str(e))
+    except Exception as e:
+        say(False, "run_model raises ModelCallError on %s" % name, repr(e))
+finish()
+PY63C
+s63c_rc=$?
+if [ "$s63c_rc" -ne 0 ] || ! grep -q '^DONE ' "$TMP/s63c.out"; then
+  bad "the shared model-call checks did not finish" "$(head -12 "$TMP/s63c.out")"
+fi
+while IFS= read -r s63c_line; do
+  case "$s63c_line" in
+    "PASS "*) ok "${s63c_line#PASS }" ;;
+    "FAIL "*)
+      s63c_name="${s63c_line#FAIL }"; s63c_detail=""
+      case "$s63c_name" in *" :: "*) s63c_detail="${s63c_name#* :: }"; s63c_name="${s63c_name%% :: *}" ;; esac
+      bad "$s63c_name" "$s63c_detail" ;;
+  esac
+done <"$TMP/s63c.out"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
