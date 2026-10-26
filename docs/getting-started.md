@@ -354,7 +354,9 @@ team's repo), not a dead end.
 
 **What it then asks, in rounds, in your words.** Four rounds always run: **who** (you, and who
 else is on the team), **how work reaches you** (a tracker, email, meeting notes, chat, or people
-just asking, and which tracker project holds the tickets, picked from the tracker's own list),
+just asking, and which tracker project holds the tickets, picked from the tracker's own list; then,
+once, whether your team tracked work there before this repo started, so `/ticket` can offer to
+search those older tickets),
 **where your data lives** (one or more warehouses, which you use most, and where test tables go,
 including "we don't have one"), and **how you share results and where files are kept** (every tool
 you share through: pick Slack and email both and both are set up, with who gets each result chosen

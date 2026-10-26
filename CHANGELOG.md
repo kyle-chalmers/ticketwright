@@ -6,7 +6,38 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- `/ticket` can search your tracker's older tickets. When the repo's own tickets give a weak match
+  (recall says `weak` or `no prior art found`), it offers to search the tickets your team tracked
+  before the repo existed: "Search them", "Skip", or "Look somewhere specific" (a project, label,
+  epic or person). The search only reads, returns up to 20 tickets, and stays inside the saved
+  project and cutoff date. Results are scored by the same rules as recall (a label counts as a tag,
+  the text as keywords, a ticket key the README names as a link), the top 3 get a one-line summary
+  from a cheaper model that cannot run tools, and the best one or two are read in full. The reuse
+  brief marks each as "From the tracker (no ticket folder or QC record here)". A person's own
+  request for the search works at any time. Details: [docs/ticket-index.md](docs/ticket-index.md#older-tickets-in-your-tracker).
+- `/setup` asks once (question 4a) whether your team tracked work in your tracker before this repo
+  started, and saves `history_search`, `history_scope` and `history_before` in `stack.yaml`. It
+  recommends the day ticket work in the repo began as the cutoff and writes it only on your yes.
+  Setting `history_search` to `never` turns off the automatic offer and nothing else.
+- Under the hood: the tracker contract gains the `search_history` verb, `recall.py` gains
+  `--external` for scoring tracker rows, `bin/summarize_hits.py` writes the summaries, and
+  `bin/model_call.py` is now the one place `enrich_ticket.py` and the summaries run a model. Runtime
+  adapters gain `model_fast` (the cheaper model, `haiku` on Claude Code only) and `model_default`.
+- The README's Data and network section and PRIVACY.md now disclose the older-ticket search and the
+  summaries it sends to the model command, and selftest section 60 fails if the README drops it.
+
 ### Changed
+- **If you wrote your own tracker adapter:** `search_history` is now a required verb, so the tracker
+  contract has 8 verbs and selftest section 2 fails an adapter without it. Copy the closest shipped
+  adapter's section; an adapter whose tracker cannot search returns no rows with one plain sentence,
+  as the `local` adapter does. The inputs and the row shape are in `adapters/README.md`.
+- On Claude Code, `ticketwright enrich` and the older-ticket summaries now run the model with no
+  tools and no MCP servers (`claude -p --model {model} --tools "" --strict-mcp-config`). The old
+  `--disallowedTools Bash,Write,Edit,WebFetch` left Read, Grep, Glob, WebSearch and MCP tools
+  reachable to a model reading text that people outside the team wrote. `--tools ""` was verified
+  live on Claude Code 2.1.310; `--strict-mcp-config` loading no MCP server rests on the CLI's help
+  text. A Claude Code build too old to know `--tools` fails the call, so update it.
 - A ticket now runs from one window. Approving the plan in `/ticket` starts the build right there
   ("Approve, don't build yet" still stops after writing the plan). `/build` remains a skill for
   resuming a build or building from someone else's approved plan.

@@ -11627,6 +11627,15 @@ for f in ("PRIVACY.md", "SECURITY.md", "SUPPORT.md", "CODE_OF_CONDUCT.md", "docs
 try_it = readme.split("## Try it", 1)[-1].split("\n## ", 1)[0]
 if len(re.findall(r"(?m)^/ticketwright:[a-z]+", try_it)) < 3:
     bad.append("## Try it shows fewer than 3 /ticketwright: prompts")
+# (g) the older-ticket search (LABS-90) is disclosed where the directory's scan looks. It reads the
+#     tracker on a yes and sends up to three one-line summaries to the model command, so the
+#     README's Data and network section and PRIVACY.md must both say so in their own words.
+net = readme.split("## Data and network", 1)[-1].split("\n## ", 1)[0].lower()
+for need in ("older tickets", "summar"):
+    if need not in net:
+        bad.append("README's Data and network section does not mention %r (the older-ticket search)" % need)
+if "older tickets" not in open("PRIVACY.md", encoding="utf-8").read().lower():
+    bad.append("PRIVACY.md does not mention the older-ticket search")
 print(" | ".join(bad))
 PY
 [ -z "$(cat "$TMP/s60.out")" ] \
