@@ -498,8 +498,11 @@ Code lists the Gmail connector's tools as `mcp__<server>__create_draft`; Codex C
 under one server, `codex_apps`, with an app prefix on every tool (`gmail_create_draft`, a different
 connector with a different argument shape), and does the same for Slack (`slack_slack_*`), Notion
 (`notion_fetch`, `notion_notion_*`) and Jira (`atlassian_addoreditjiraissuecomment`: the Atlassian
-connector's own names in lower case). Jira is dual-transport, so only its MCP calls differ; its
-`acli` commands read the same in both sections.
+connector's own names in lower case). Outlook, seen in a Codex Desktop session (the CLI listing
+is unchecked), is a different connector too (`microsoft_outlook_email_draft_email`: recipient
+objects, plain-text bodies, and no sender field, so its section checks the signed-in account
+against `identity` before any draft or send). Jira is dual-transport, so only its MCP calls differ; its `acli` commands read the same
+in both sections.
 
 That is not a new tool, so it is not a new adapter, and it is not a team choice either: which agent
 runs is per-machine (two teammates on one repo may run different ones), so it can never be selected
