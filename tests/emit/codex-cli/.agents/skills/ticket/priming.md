@@ -43,21 +43,35 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
 
 ## 2 · Recall (prior art — never rebuild what's built)
 
-- **Rank candidates** (deterministic, instant — no vector store):
+- **Rank candidates** (deterministic, instant — no vector store). A new ticket has no SQL yet, so
+  the tables it names in its **text** are its only object evidence: pass the ticket text you
+  fetched in the ticket slice (title, description, comments) on stdin with `--text-file -`, and
+  each readable attachment in `source_materials/` with its own `--text-file <path>`:
   ```
-  bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" recall.py --for <owner>/<id>
+  bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" recall.py --for <owner>/<id> \
+    --text-file - [--text-file <ticket-dir>/source_materials/<file> …] <<'TICKET_TEXT'
+  <the fetched title, description and comments, verbatim>
+  TICKET_TEXT
   #  or: --query "<topic>"   |   --tags a,b   |   --object <NAME>   (add --json for structured)
   #  pass the qualified locator you resolved in Phase 0 — a bare id works while one owner has it,
   #  but an id under two owners hard-stops (equivalently: --for <id> --owner <owner>)
   ```
-  Scoring is transparent: object match ×4, tag ×3, cross-ref link +5, keyword overlap ×1; recency
-  is a tiebreak. The seed ticket is excluded.
+  Recall reads the seed's own README too, and keeps only names some prior ticket already touched:
+  a qualified name in any case (`db.schema.table`, or `schema.table.column`), or a bare name spelled
+  the way the object index spells it when that spelling has a capital (`PARTSUPP`); in any case,
+  a name inside backticks counts. It prints them as "objects named in the ticket
+  text". Scoring is transparent: object match ×4 (discounted for objects many tickets touch),
+  tag ×3, cross-ref link +5, keyword overlap ×1; recency is a tiebreak. The seed ticket is excluded.
+  The verdict calls a match **strong** only when it rests on an object few tickets use or a
+  cross-ref; a match only on a table most tickets read says so and reads as moderate.
 - **Read the top 2–4** candidate READMEs (+ their `final_deliverables/` and `qc_queries/`
   listings). Many candidates → spawn read-only Explore agents in parallel (findings only).
 - **Write the reuse brief** (≤ ~200 words): the closest prior work, **what to copy** (which SQL/QC
   artifact + path), known **gotchas** those tickets carried, and **what's different** this time.
   **Name every prior ticket you build on by `<owner>/<id>` and say why it matched**, translating the
-  bracketed reasons recall printed beside it into plain words: `obj:` → "shares the object `X`",
+  bracketed reasons recall printed beside it into plain words: `obj:` → "shares the object `X`"
+  (an `obj:` reason names the shared object, so the brief names the shared object too, by its name:
+  "the ticket names `PARTSUPP`, which only `alice/TEST-5` used"),
   `tag:` → "shares the tag `t`", `ref` → "the two tickets cross-reference each other", `kw:` alone →
   "keyword overlap only" (the weakest signal; say so). A match with no stated reason reads as
   staged, and the reason is what lets a reader check it.

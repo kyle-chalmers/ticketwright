@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- Recall now finds prior work for a brand-new ticket by the tables the ticket names. A new ticket has
+  no SQL yet, so recall used to match it on keywords alone and call the result weak, even when the
+  description named a table exactly one earlier ticket had used. `recall.py` now reads the seed
+  ticket's README and any `--text-file` (the fetched description on stdin, an attachment) and keeps
+  the names some prior ticket already touched: a qualified name in any case (`db.schema.table`, or
+  `schema.table.column`), or a bare name spelled the way the object index spells it when that
+  spelling has a capital letter. A name inside backticks counts in any case. It lists them as
+  "objects named in the ticket text", and `/ticket` priming passes the fetched ticket text this way.
+  The parsing reuses the SQL object pattern in `build_ticket_index.py` (`objects_in_text`).
+- The recall verdict no longer calls a match "strong" when the only shared object is one most tickets
+  use. Strong now needs an object that kept more than the minimum weight after the discount for
+  common objects (an archive where every ticket reads the same table has no such object), or a
+  cross-reference; a match only on a common table reads "moderate — top hit
+  shares only objects most tickets use (orders)". Scores and `--eval` numbers are unchanged.
+- The reuse brief and the plan's "Builds on" section name the shared object when that is why a prior
+  ticket matched.
+
 ## [4.4.0] - 2026-10-26
 
 **Behavior change:** approving a plan in `/ticket` now starts the build right away. To save the

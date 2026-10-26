@@ -679,6 +679,68 @@ grep -q 'multiple owners' <<<"$amb" && ok "recall errors on ambiguous seed (no -
 # --recurring surfaces a frequently-touched object (VW_COMMON is in 7 of the IDF fixture's tickets)
 rec="$(CLAUDE_PROJECT_DIR="$I" python3 bin/build_ticket_index.py --recurring --min-tickets 3 2>/dev/null)"
 grep -q 'VW_COMMON' <<<"$rec" && ok "--recurring lists a frequently-touched object" || bad "--recurring missed it" "$rec"
+# A brand-new ticket has no SQL yet, so the only objects it can match on are the ones its TEXT names.
+# Six closed tickets all read S.ORDERS; only ENG-5 read S.PARTSUPP. A second owner's new ticket that
+# names PARTSUPP in its README must rank ENG-5 first on that object, not on keyword luck.
+X="$TMP/textobj"; mkdir -p "$X/.claude/config" "$X/tickets/bob/ENG-20" "$X/tickets/bob/ENG-21" "$X/tickets/bob/ENG-22"
+printf 'project:\n  key_prefix: ENG\n' > "$X/.claude/config/stack.yaml"
+for n in 1 2 3 4 5 6; do mkdir -p "$X/tickets/dana/ENG-$n"; printf '# ENG-%s: closed work %s\n\nAn older analysis, number %s.\n' "$n" "$n" "$n" > "$X/tickets/dana/ENG-$n/README.md"; printf 'SELECT * FROM S.ORDERS;\n' > "$X/tickets/dana/ENG-$n/q.sql"; done
+printf 'SELECT * FROM S.ORDERS JOIN S.PART;\n' > "$X/tickets/dana/ENG-4/q.sql"
+printf 'SELECT * FROM S.ORDERS JOIN S.PARTSUPP;\n' > "$X/tickets/dana/ENG-5/q.sql"
+printf '# ENG-20: Cheapest vendor per component\n\nFinance wants the lowest supply cost from PARTSUPP, as part of planning.\n' > "$X/tickets/bob/ENG-20/README.md"
+printf '# ENG-21: Monthly trend\n\nA monthly trend read from ORDERS for planning.\n' > "$X/tickets/bob/ENG-21/README.md"
+printf '# ENG-22: Vendor scorecard\n\nNew scorecard, details in the attachment.\n' > "$X/tickets/bob/ENG-22/README.md"
+CLAUDE_PROJECT_DIR="$X" python3 bin/build_ticket_index.py >/dev/null 2>&1
+tj="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-20 --json 2>/dev/null | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(d[0]['id'] + ' ' + ' '.join(d[0]['why']) if d else '')")"
+case "$tj" in "ENG-5 obj:s.partsupp"*) ok "recall reads object names from a new ticket's text and ranks the one ticket that used it first";;
+  *) bad "recall ignored the object a new ticket names in its text" "$tj";; esac
+tw_all="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-20 --json 2>/dev/null | python3 -c "import json,sys; print(' '.join(w for x in json.loads(sys.stdin.read() or '[]') for w in x['why']))")"
+grep -q 's\.part~' <<<"$tw_all" && bad "recall matched an ordinary word (part) to a table" "$tw_all" || ok "an ordinary lower-case word is not read as a table name"
+tv="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-20 2>/dev/null | grep '^verdict:')"
+grep -q 'strong' <<<"$tv" && ok "a match on an object only one prior ticket used reads as strong" || bad "rare shared object did not read as strong" "$tv"
+# Ticket text that never reached the README (a fetched description, an attachment) comes in on --text-file.
+tt="$(printf 'See the supply costs in `s.partsupp`.\n' | CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-22 --text-file - --json 2>/dev/null | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(d[0]['id'] + ' ' + ' '.join(d[0]['why']) if d else '')")"
+case "$tt" in "ENG-5 obj:s.partsupp"*) ok "recall --text-file - reads object names from fetched ticket text";;
+  *) bad "recall --text-file did not use the object the text names" "$tt";; esac
+# The verdict judges evidence AFTER the IDF discount: sharing only a table every ticket reads is not strong.
+uv="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-21 2>/dev/null)"
+grep -q 'obj:s.orders' <<<"$uv" && ok "a ubiquitous object named in the text still counts toward the score" || bad "the ubiquitous object was dropped" "$uv"
+grep '^verdict:' <<<"$uv" | grep -q 'strong' && bad "a match only on a table every ticket shares read as strong" "$(grep '^verdict:' <<<"$uv")" \
+  || ok "a match only on a table every ticket shares does not read as strong"
+cv="$(CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for dana/ENG-1 2>/dev/null | grep '^verdict:')"
+grep -q 'strong' <<<"$cv" && bad "a closed ticket sharing only the ubiquitous ORDERS read as strong" "$cv" \
+  || ok "a closed ticket sharing only the ubiquitous table does not read as strong"
+# Pasted ticket text is not always UTF-8 (a Latin-1 export); stdin must not crash on it.
+printf 'caf\xe9 `s.partsupp`\n' | CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-22 --text-file - >"$TMP/tf_latin1.out" 2>&1 \
+  && grep -q 'obj:s.partsupp' "$TMP/tf_latin1.out" && ok "recall --text-file - reads text that is not valid UTF-8" \
+  || bad "recall --text-file - failed on text that is not valid UTF-8" "$(tail -2 "$TMP/tf_latin1.out")"
+# A table named through one of its columns (schema.table.column) still names the table.
+tc="$(printf 'Check s.partsupp.ps_supplycost values.\n' | CLAUDE_PROJECT_DIR="$X" python3 bin/recall.py --for bob/ENG-22 --text-file - --json 2>/dev/null | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '[]'); print(d[0]['id'] + ' ' + ' '.join(d[0]['why']) if d else '')")"
+case "$tc" in "ENG-5 obj:s.partsupp"*) ok "a column-qualified mention (schema.table.column) names its table";;
+  *) bad "a column-qualified mention missed its table" "$tc";; esac
+# A catalog spelled in lower case (dbt/Postgres style) has leaves that are ordinary words: a bare
+# "users" or "orders" in a sentence is not a table there; backticks or qualification are.
+L="$TMP/lowercat"; mkdir -p "$L/.claude/config" "$L/tickets/dana/ENG-1" "$L/tickets/dana/ENG-2" "$L/tickets/bob/ENG-9"
+printf 'project:\n  key_prefix: ENG\n' > "$L/.claude/config/stack.yaml"
+printf '# ENG-1: closed one\n\nOlder work.\n' > "$L/tickets/dana/ENG-1/README.md"; printf 'select * from public.users;\n' > "$L/tickets/dana/ENG-1/q.sql"
+printf '# ENG-2: closed two\n\nOlder work.\n' > "$L/tickets/dana/ENG-2/README.md"; printf 'select * from public.events;\n' > "$L/tickets/dana/ENG-2/q.sql"
+printf '# ENG-9: Churn survey\n\nAsk users about churn.\n' > "$L/tickets/bob/ENG-9/README.md"
+CLAUDE_PROJECT_DIR="$L" python3 bin/build_ticket_index.py >/dev/null 2>&1
+lw="$(CLAUDE_PROJECT_DIR="$L" python3 bin/recall.py --for bob/ENG-9 2>/dev/null)"
+grep -q 'obj:' <<<"$lw" && bad "a lower-case catalog turned an ordinary word into a table match" "$lw" || ok "in a lower-case catalog, an ordinary word in a sentence stays a keyword"
+lb="$(printf 'Read `users` first.\n' | CLAUDE_PROJECT_DIR="$L" python3 bin/recall.py --for bob/ENG-9 --text-file - 2>/dev/null)"
+grep -q 'obj:public.users' <<<"$lb" && ok "in a lower-case catalog, a name in backticks is read as the table" || bad "a backticked lower-case name was not read as a table" "$lb"
+# When EVERY object is ubiquitous the IDF discount has nothing to compare against; it must still not read strong.
+U="$TMP/allcommon"; mkdir -p "$U/.claude/config" "$U/tickets/bob/ENG-9"
+printf 'project:\n  key_prefix: ENG\n' > "$U/.claude/config/stack.yaml"
+for n in 1 2 3 4 5 6; do mkdir -p "$U/tickets/dana/ENG-$n"; printf '# ENG-%s: closed work %s\n\nOlder analysis %s.\n' "$n" "$n" "$n" > "$U/tickets/dana/ENG-$n/README.md"; printf 'SELECT * FROM S.ORDERS;\n' > "$U/tickets/dana/ENG-$n/q.sql"; done
+printf '# ENG-9: Monthly trend\n\nA monthly trend read from ORDERS.\n' > "$U/tickets/bob/ENG-9/README.md"
+CLAUDE_PROJECT_DIR="$U" python3 bin/build_ticket_index.py >/dev/null 2>&1
+av="$(CLAUDE_PROJECT_DIR="$U" python3 bin/recall.py --for bob/ENG-9 2>/dev/null | grep '^verdict:')"
+grep -q 'strong' <<<"$av" && bad "an archive where every ticket reads the same table called that match strong" "$av" \
+  || ok "an archive where every ticket reads the same table does not call that match strong"
+grep -q -- '--text-file' .claude/skills/ticket/priming.md && ok "/ticket priming passes the fetched ticket text to recall" || bad "/ticket priming does not pass the ticket text to recall"
+grep -q 'names the shared object' .claude/skills/ticket/priming.md && ok "the reuse brief names the shared object when that is why a ticket matched" || bad "the reuse brief can hide which object matched"
 
 hdr "12 · ingest validators (the LLM-record trust boundary)"
 G="$TMP/ingest"; mkdir -p "$G/.claude/config" "$G/tickets/dana/ENG-1"

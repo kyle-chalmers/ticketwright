@@ -11,11 +11,15 @@ Usage:
   recall.py --for alice/TEST-12                    # owner-qualified locator == --for TEST-12 --owner alice
   recall.py --query "orders feed latency" [--tags a,b] [--object SCHEMA.VW] [--top 5] [--json]
   recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
+  recall.py --for bob/TEST-30 --text-file -        # add a fetched ticket's text (stdin) to the query
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
 
 Scoring (transparent): object match ×4 (IDF-discounted — a ubiquitous object counts less than a rare
 shared one), tag match ×3, cross-ref link +5, keyword overlap ×1 (capped). Recency is a tiebreak only.
-Stdlib only.
+
+A new ticket has no SQL yet, so its objects come from its TEXT: the seed's README and any
+`--text-file` (the fetched description, attachments) are read by `objects_in_text`, which keeps only
+names some ticket already touched. Stdlib only.
 """
 from __future__ import annotations
 
@@ -25,7 +29,11 @@ import math
 import re
 import sys
 
-from build_ticket_index import repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref
+from pathlib import Path
+from urllib.parse import unquote
+
+from build_ticket_index import (repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref,
+                                objects_in_text)
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "by", "with", "from", "into",
@@ -65,6 +73,16 @@ def object_df(rows) -> dict:
         for lf in {leaf(o) for o in ci(r.get("objects"))}:
             df[lf] = df.get(lf, 0) + 1
     return df
+
+
+def is_common(df_map: dict, n_docs: int, name: str) -> bool:
+    """True when the IDF discount bottomed out for this object: it sits at the floor, or every object
+    is so widespread that there is nothing rarer to compare it with (idf_factor then returns 1.0)."""
+    if not df_map or n_docs <= 0:
+        return False
+    if math.log(n_docs / (1 + min(df_map.values()))) <= 0:
+        return True
+    return idf_factor(df_map, n_docs, name) <= OBJ_IDF_FLOOR
 
 
 def idf_factor(df_map: dict, n_docs: int, name: str) -> float:
@@ -130,32 +148,53 @@ def sort_key(item, key_re=None):
     # self-contained total order: score, then date, ticket number, id, owner — all desc.
     # key_re makes the number strict, so slug ids don't get a phantom numeric tie-break and
     # ranking stays consistent with INDEX.md.
-    s, r, _why = item
+    s, r = item[0], item[1]
     return (s, r["date"] or "0000-00-00", ticket_number(r["id"], key_re), r["id"], r["owner"])
 
 
 def verdict_line(top) -> str:
     """Advisory one-liner so PLAN can decide whether to read candidates. Scale-free (composition + gap),
-    never an auto-skip."""
+    never an auto-skip. Judged on the evidence AFTER the IDF discount: a shared object is strong only
+    when it is not one of the archive's ubiquitous objects (its factor stayed above OBJ_IDF_FLOOR), so
+    a match only on a table every ticket reads cannot pass for prior art."""
     if not top:
         return "verdict: no prior art found — likely greenfield."
-    s0, _r0, why0 = top[0]
+    s0, _r0, why0, ev0 = top[0]
     s1 = top[1][0] if len(top) > 1 else 0.0
-    strong = any(w.startswith("obj:") or w == "ref" for w in why0)
+    strong = ev0["ref"] or bool(ev0["distinct_objs"])
     kw_only = bool(why0) and all(w.startswith("kw:") for w in why0)
     if strong:
-        v = "strong — top hit shares an object or cross-ref"
+        v = "strong — top hit shares an object few tickets use, or a cross-ref"
     elif s1 and s0 >= 2 * s1:
         v = "clear leader — top score dominates the runner-up"
     elif kw_only:
         v = "weak — top hit is keyword-only; may be greenfield"
+    elif ev0["common_objs"]:
+        v = "moderate — top hit shares only objects most tickets use (" + ", ".join(ev0["common_objs"]) + ")"
     else:
         v = "moderate"
     return f"verdict: {v}. (You may skip reading candidates when weak/none.)"
 
 
-def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
+def read_text_files(paths) -> str:
+    """The text of each `--text-file` (`-` is stdin). A file that looks binary (a NUL byte early on)
+    is skipped, since an attachment such as a PDF or a spreadsheet carries no readable names."""
+    parts = []
+    for p in paths or []:
+        try:
+            raw = sys.stdin.buffer.read() if p == "-" else Path(p).read_bytes()
+        except OSError as e:
+            sys.exit(f"recall: cannot read --text-file {p} ({e}).")
+        if b"\0" not in raw[:4096]:
+            parts.append(raw.decode("utf-8", errors="replace"))
+    return "\n".join(parts)
+
+
+def run_query(args, rows, df_map, n_docs, key_re=None, root=None) -> int:
     q_tokens, q_tags, q_objects = tokenize(args.query), ci(args.tags.split(",")), ci([args.object] if args.object else [])
+    ticket_text = read_text_files(args.text_files)
+    if ticket_text:
+        q_tokens |= tokenize(ticket_text)
     seed_id, seed_owner, seed_refs = None, None, set()
     if args.seed and "/" in args.seed:  # --for owner/id, the qualified ticket locator
         so, si = split_ref(args.seed)
@@ -176,8 +215,17 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
         q_tokens |= tokenize(f"{seed['title']} {seed['summary']}")
         q_tags |= ci(seed.get("tags"))
         q_objects |= ci(seed.get("objects"))
+        if root is not None and seed.get("has_readme"):  # the README's title + summary already joined above
+            try:
+                ticket_text += "\n" + (root / "tickets" / unquote(seed["link"])).read_text(errors="replace")
+            except OSError:
+                pass
+    # Objects the ticket's text names: the only object evidence a ticket with no SQL yet can offer.
+    known = sorted({o for r in rows for o in (r.get("objects") or [])}, key=str.lower)
+    text_objects = objects_in_text(ticket_text, known) if ticket_text else []
+    q_objects |= ci(text_objects)
 
-    reverse_only = bool(args.object) and not (args.seed or args.query or args.tags)
+    reverse_only = bool(args.object) and not (args.seed or args.query or args.tags or args.text_files)
     omap = owners_index(rows)
 
     scored = []
@@ -194,11 +242,15 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
         elif score <= 0:
             continue
         why = []
-        if obj_hits: why.append("obj:" + ",".join(f"{o}~{idf_factor(df_map, n_docs, o):.2f}" for o in obj_hits))
+        factors = {o: idf_factor(df_map, n_docs, o) for o in obj_hits}
+        common = {o for o in obj_hits if is_common(df_map, n_docs, o)}
+        ev = {"ref": ref_link, "distinct_objs": [o for o in obj_hits if o not in common],
+              "common_objs": [leaf(o) for o in obj_hits if o in common]}
+        if obj_hits: why.append("obj:" + ",".join(f"{o}~{factors[o]:.2f}" for o in obj_hits))
         if tag_hits: why.append("tag:" + ",".join(tag_hits))
         if ref_link: why.append("ref")
         if kw_hits and not reverse_only: why.append(f"kw:{min(len(kw_hits), KEYWORD_CAP)}")
-        scored.append((score, r, why))
+        scored.append((score, r, why, ev))
 
     scored.sort(key=lambda it: sort_key(it, key_re), reverse=True)
     if args.min_score:
@@ -210,7 +262,7 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
             {"id": r["id"], "owner": r["owner"], "score": round(s, 2), "why": why, "title": r["title"],
              "summary": r["summary"], "date": r["date"], "tags": r.get("tags"), "objects": r.get("objects"),
              "readme": r["link"], "url": r["url"]}
-            for s, r, why in top], ensure_ascii=False, indent=2))
+            for s, r, why, _ev in top], ensure_ascii=False, indent=2))
         return 0
 
     # A shared id is displayed as its owner/id locator — a bare label naming two tickets is exactly
@@ -224,12 +276,14 @@ def run_query(args, rows, df_map, n_docs, key_re=None) -> int:
     header = (f"Reverse lookup: tickets touching {args.object}" if reverse_only
               else "Prior art" + (f" for {label(seed_owner, seed_id)}" if seed_id else "")) + f" — top {len(top)} of {len(scored)}"
     print(header)
+    if text_objects:
+        print("  objects named in the ticket text: " + ", ".join(text_objects))
     if not top:
         print("  (no matches)")
         if not reverse_only:
             print(verdict_line(top))
         return 0
-    for s, r, why in top:
+    for s, r, why, _ev in top:
         print(f"  {label(r['owner'], r['id']):<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or '—'}  {r['title'][:60]}")
         print(f"             {r['link']}")
     if not reverse_only:
@@ -290,6 +344,9 @@ def main() -> int:
     ap.add_argument("--query", default="", help="free-text query")
     ap.add_argument("--tags", default="", help="comma-separated tags to match")
     ap.add_argument("--object", dest="object", default="", help="object name (also enables reverse lookup)")
+    ap.add_argument("--text-file", dest="text_files", action="append", default=[], metavar="PATH",
+                    help="ticket text to read for keywords and object names (repeatable; '-' is stdin): "
+                         "the fetched description, an attachment")
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--min-score", dest="min_score", type=float, default=0.0,
                     help="hide candidates scoring below this (manual filter; not a default cutoff)")
@@ -320,7 +377,7 @@ def main() -> int:
                 print(f"  ({w['obj']},{w['tag']},{w['ref']},{w['kw']}) -> MRR {m['mrr']:.3f}")
         return 0
 
-    return run_query(args, rows, df_map, n_docs, key_re)
+    return run_query(args, rows, df_map, n_docs, key_re, root)
 
 
 if __name__ == "__main__":
