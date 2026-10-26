@@ -34,16 +34,6 @@ All notable changes to this project are documented here. Format loosely follows
   folder becomes a card, plain code scores the new ticket against every card, the model reads the
   best few, and a weak match offers your tracker's older tickets. Its scores come from running
   `recall.py` on a fixture recorded in `scripts/readme_media/README.md`.
-- **Setup asks where your team already writes things down.** Two optional questions replace the
-  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
-  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
-  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
-  the standards, `/review` checks deliverables against them and reports a broken rule as a
-  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
-  one source of truth. The review record says which docs were opened and which could not be, and
-  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
-  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
-  asks for it. (LABS-103)
 
 ### Changed
 - **If you wrote your own tracker adapter:** `search_history` is now a required verb, so the tracker
@@ -57,6 +47,28 @@ All notable changes to this project are documented here. Format loosely follows
   live on Claude Code 2.1.310; `--strict-mcp-config` loading no MCP server rests on the CLI's help
   text. Older builds were not checked, and one that does not know `--tools` may fail the call, so
   update Claude Code if enrich or the summaries stop working.
+
+### Fixed
+- **A comment after a parent key in `stack.yaml` no longer breaks the config reader.** A line such
+  as `team_docs:   # both lists optional` with keys indented under it was read as a value, and
+  the keys below it were refused as bad indentation, though `yq` reads it fine. Setup's own worked
+  example writes that line. A comment there now leaves the block open, for a key and for a list item.
+
+## [4.4.1] - 2026-10-26
+
+### Added
+- **Setup asks where your team already writes things down.** Two optional questions replace the
+  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
+  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
+  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
+  the standards, `/review` checks deliverables against them and reports a broken rule as a
+  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
+  one source of truth. The review record says which docs were opened and which could not be, and
+  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
+  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
+  asks for it. (LABS-103)
+
+### Changed
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
   already run for every role. It was also a team setting asked as if it were about you. Every
@@ -65,10 +77,20 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
-- **A comment after a parent key in `stack.yaml` no longer breaks the config reader.** A line such
-  as `team_docs:   # both lists optional` with keys indented under it was read as a value, and
-  the keys below it were refused as bad indentation, though `yq` reads it fine. Setup's own worked
-  example writes that line. A comment there now leaves the block open, for a key and for a list item.
+- **The Obsidian graph shows one node per table.** A ticket's curated index record could name a
+  table `schema.table` while its SQL named it `db.schema.table`, and the graph drew two nodes for
+  the one table, with the short one linked only to that ticket. A shorter name now folds into the
+  longer qualified name it ends with, so `INDEX.md`, `OBJECTS.md`, the graph and recall all use one
+  name. When two databases hold the same `schema.table`, the short name stays as written rather
+  than guessing which one it meant. (LABS-57)
+- **"Builds on" in the graph points from newer work to older work.** A cross-reference has no
+  direction, so a ticket that mentioned a later ticket ("TEST-12 reuses this definition") read as
+  building on it. Each ticket node now has up to three lines: **Builds on** for the earlier tickets it
+  cites, **Built on by** for later tickets that cite it, and **Related** for a later ticket it
+  mentions that does not cite it back. The earlier completion date decides which ticket came first,
+  then the lower ticket number. With neither, the link stays under Builds on as before. Only the
+  graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
+  (LABS-57)
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
