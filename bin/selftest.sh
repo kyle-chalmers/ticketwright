@@ -3313,6 +3313,14 @@ yl_ours="$(python3 -c 'import json,sys; sys.path.insert(0,"bin"); import _yamlit
 yl_yq="$(yq -o=json -I=0 "$TMP/yl_url.yaml" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))' 2>&1)"
 [ "$yl_ours" = "$yl_yq" ] && ok "_yamlite reads a URL inside a flow list or map as one string, as yq does" \
   || bad "_yamlite split a URL in a flow node" "ours=$yl_ours yq=$yl_yq"
+# A comment after a parent key is still an empty value with a block under it, for a mapping and for a
+# list item. setup's worked example writes `team_docs:   # round 5, both lists optional`, and _yamlite
+# once took the comment as the value and then refused the nested keys as bad indentation.
+printf 'team_docs:   # both lists optional\n  standards:\n    - location: docs/x.md\nitems:\n  - # one\n    k: v\nplain: x # tail\n' > "$TMP/yl_cmt.yaml"
+yl_ours="$(python3 -c 'import json,sys; sys.path.insert(0,"bin"); import _yamlite as y; print(json.dumps(y.parse_file(sys.argv[1]), sort_keys=True))' "$TMP/yl_cmt.yaml" 2>&1)"
+yl_yq="$(yq -o=json -I=0 "$TMP/yl_cmt.yaml" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))' 2>&1)"
+[ "$yl_ours" = "$yl_yq" ] && ok "_yamlite reads a parent key or list item followed by a comment as an open block, as yq does" \
+  || bad "_yamlite took a trailing comment as a parent key's value" "ours=$yl_ours yq=$yl_yq"
 python3 - <<'PY2' >"$TMP/hd2736.out"
 import glob, sys
 sys.path.insert(0, "bin")

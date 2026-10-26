@@ -65,6 +65,10 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
+- **A comment after a parent key in `stack.yaml` no longer breaks the config reader.** A line such
+  as `team_docs:   # both lists optional` with keys indented under it was read as a value, and
+  the keys below it were refused as bad indentation, though `yq` reads it fine. Setup's own worked
+  example writes that line. A comment there now leaves the block open, for a key and for a list item.
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
