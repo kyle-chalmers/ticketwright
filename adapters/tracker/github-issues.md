@@ -73,12 +73,14 @@ Filters: `project:<x>` replaces `<scope>` (`--repo <x>`, an `owner/name`); `labe
 searchable, so that form is not supported; `person:<x>` adds `involves:<x>` to the search string (`<x>` is
 a GitHub login).
 
-If `gh` is not signed in or the repo cannot be reached, say so in one plain sentence and return `[]`.
+If `gh` is not signed in, the repo cannot be reached, or the tracker rejects the search, say so in one
+plain sentence and return `[]`.
 
 Output mapping: `key` is `{key_prefix}-<number>` (the branch and folder convention in the note above, `TEST-130`) and
 `fetch_id` is the bare issue `number` (`130`), which is what `fetch_ticket` takes; `title` is `title`;
 `description` is `body`; `labels` is the `name` of each entry in `labels`; `created` is `createdAt` cut to
-`YYYY-MM-DD`; `url` is `url`; `status` is `state`.
+`YYYY-MM-DD`; `url` is `url`; `status` is `state`. When `{key_prefix}` is unset, `key` is the bare number,
+the same as `fetch_id`, so duplicate suppression still compares like with like.
 
 ## verb: download_attachments
 GitHub stores issue attachments as URLs embedded in the body/comments. Parse them

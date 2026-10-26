@@ -140,7 +140,8 @@ The MCP alternative needs the `cloudId` of `{site}`: take the one whose URL's ho
 `search`; if none matches, STOP and report rather than search another site. Ask for the same five fields
 when the tool takes a `fields` argument.
 
-If `acli` is not signed in or the site cannot be reached, say so in one plain sentence and return `[]`.
+If `acli` is not signed in, the site cannot be reached, or the tracker rejects the search, say so in one
+plain sentence and return `[]`.
 
 Output mapping: `key` and `fetch_id` are both the issue key (`TEST-130`); `title` is `fields.summary`;
 `description` is `fields.description` as plain text (flattened if it arrives as a document tree); `labels`
@@ -298,7 +299,8 @@ The MCP alternative needs the `cloudId` of `{site}`: list the sites once per ses
 `{site}`. If none matches, STOP and report rather than search another site. Ask for the same five fields
 when the tool takes a `fields` argument.
 
-If `acli` is not signed in or the site cannot be reached, say so in one plain sentence and return `[]`.
+If `acli` is not signed in, the site cannot be reached, or the tracker rejects the search, say so in one
+plain sentence and return `[]`.
 
 Output mapping: `key` and `fetch_id` are both the issue key (`TEST-130`); `title` is `fields.summary`;
 `description` is `fields.description` as plain text (flattened if it arrives as a document tree); `labels`

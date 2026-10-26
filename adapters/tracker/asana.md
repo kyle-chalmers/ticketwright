@@ -105,13 +105,15 @@ which ranks by name only. Then run `fetch_ticket` on each candidate, up to `<lim
 `created_at` and project memberships (and its tags and assignee when a filter needs them), and drop any task
 outside `<scope>`, created on or after `<before>`, or failing the filter. If those fields cannot be read,
 return `[]` with the plain note "Older-ticket search needs Asana's paid search here." If the server is not
-connected, say so in one plain sentence and return `[]`.
+connected, or rejects the search for any reason other than that paid-tier refusal, say so in one plain
+sentence and return `[]`.
 
 Output mapping: `key` is `{key_prefix}-<gid>` (the tag-plus-number convention in the note above) and
 `fetch_id` is the bare task `gid`, which is what `fetch_ticket` takes; `title` is `name`; `description` is
 `notes`; `labels` is the names in `tags`; `created` is `created_at` cut to `YYYY-MM-DD`; `url` is
 `permalink_url`; `status` is the name of the task's section in `<scope>` (`memberships[].section.name`), or
-`completed` or `open` when it has none.
+`completed` or `open` when it has none. When `{key_prefix}` is unset, `key` is the bare `gid`, the same as
+`fetch_id`, so duplicate suppression still compares like with like.
 
 ## verb: download_attachments
 ```

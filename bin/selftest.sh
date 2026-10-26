@@ -12016,6 +12016,19 @@ for f in sorted(glob.glob("adapters/tracker/*.md")):
             for fld in need:
                 if "`%s`" % fld not in om:
                     bad.append("%s: Output mapping does not name `%s`" % (tag, fld))
+            # key_prefix may be unset (the schema allows it): a numeric tracker's key must then be
+            # the bare number, or duplicate suppression compares `-130` against `TEST-130`.
+            if "{key_prefix}" in om and "unset" not in om:
+                bad.append("%s: key is built from {key_prefix} but the mapping never says what it is when unset" % tag)
+        flat = " ".join(body.split())
+        # a search the tracker rejects (bad query, unsupported field) gets the same plain-message path
+        # as an unreachable tracker: [] and one sentence, never an error that stops the caller
+        if fm.get("tool") != "local" and not re.search(r"reject[^.]*say so in one plain sentence and return `\[\]`", flat):
+            bad.append("%s: no failure sentence covering a search the tracker rejects (say so, return [])" % tag)
+        # Linear's fallback when the server cannot filter on an upper date: fetch more, drop, THEN cap.
+        # Capping first keeps only the newest rows, drops them all, and reads as 'nothing matches'.
+        if fm.get("tool") == "linear" and not re.search(r"fetch a larger page first.*only then keep `<limit>`", flat):
+            bad.append("%s: the no-upper-date fallback must over-fetch before the date drop and cap after it" % tag)
         # The server-name placeholder inside an MCP call (mcp__{mcp}__tool) is the one token allowed
         # without a requires: entry: Jira reaches its tracker by CLI first and leaves {mcp} optional,
         # so listing it would warn every CLI-only install. Every other token must be declared.
@@ -12042,7 +12055,7 @@ if bad:
 PY63A
 s63a_rc=$?
 { [ "$s63a_rc" -eq 0 ] && [ ! -s "$TMP/s63a.out" ]; } \
-  && ok "all 7 tracker adapters carry search_history: the five inputs, a Filters line for all four kinds, the empty-before form, an Output mapping naming key and fetch_id, and only declared config tokens (and the README contract row)" \
+  && ok "all 7 tracker adapters carry search_history: the five inputs, a Filters line for all four kinds, the empty-before form, an Output mapping naming key and fetch_id (and key when key_prefix is unset), a failure sentence that covers a rejected search, and only declared config tokens (and the README contract row)" \
   || bad "a tracker adapter's search_history section breaks the contract" "$(head -8 "$TMP/s63a.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"

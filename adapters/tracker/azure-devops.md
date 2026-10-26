@@ -82,14 +82,16 @@ Filters: `project:<x>` replaces `<scope>` (`--project "<x>"` and `[System.TeamPr
 parent Feature or Epic); `person:<x>` adds `AND ([System.AssignedTo] = '<x>' OR [System.CreatedBy] = '<x>')`
 (`<x>` is the person's email).
 
-If `az` is not signed in or the organization cannot be reached, say so in one plain sentence and return `[]`.
+If `az` is not signed in, the organization cannot be reached, or the tracker rejects the search, say so in
+one plain sentence and return `[]`.
 
 Output mapping: `key` is `{key_prefix}-<id>` (the folder convention in the note above, `TEST-130`) and
 `fetch_id` is the bare work-item `id` (`130`), which is what `fetch_ticket` takes; `title` is
 `fields."System.Title"`; `description` is `fields."System.Description"` with its HTML tags stripped;
 `labels` is `fields."System.Tags"` split on `;` and trimmed; `created` is `fields."System.CreatedDate"` cut
 to `YYYY-MM-DD`; `url` is `https://dev.azure.com/{org}/<scope>/_workitems/edit/<id>`; `status` is
-`fields."System.State"`.
+`fields."System.State"`. When `{key_prefix}` is unset, `key` is the bare id, the same as `fetch_id`, so
+duplicate suppression still compares like with like.
 
 ## verb: download_attachments
 `az boards work-item show --id <id>` → `relations[?rel=='AttachedFile']`. Each has a `url`;

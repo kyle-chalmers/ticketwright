@@ -88,14 +88,17 @@ list-issues(team=<scope>, query=<text>, filter={createdAt: {lt: <before>}}, limi
 ```
 An empty `<before>` means no date clause: drop the `createdAt` entry, leaving
 `list-issues(team=<scope>, query=<text>, limit=<limit>)`. Argument names depend on the connected server
-(see the MCP note in `adapters/README.md`); if it has no way to filter on an upper date, drop every row
-whose `created` is on or after `<before>` yourself.
+(see the MCP note in `adapters/README.md`); if it has no way to filter on an upper date, fetch a larger
+page first (a bigger `limit`, then further pages if the server has them), drop every row whose `created` is
+on or after `<before>`, and only then keep `<limit>` rows. Capping before the drop would discard the very
+rows that qualify and return `[]` for a search that has matches.
 
 Filters: `project:<x>` replaces `<scope>` (`team=<x>`, since a Linear team is this adapter's container);
 `label:<x>` adds `label=<x>`; `parent:<x>` adds `parentId=<x>` for a parent issue, or `project=<x>` for a
 Linear Project (the epic stand-in); `person:<x>` adds `assignee=<x>` (an email or user id).
 
-If the server is not connected or the token cannot read issues, say so in one plain sentence and return `[]`.
+If the server is not connected, the token cannot read issues, or the server rejects the search, say so in
+one plain sentence and return `[]`.
 
 Output mapping: `key` and `fetch_id` are both the issue `identifier` (`TEST-130`); `title` is `title`;
 `description` is `description` (markdown); `labels` is the names in `labels`; `created` is `createdAt` cut

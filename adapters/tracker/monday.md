@@ -105,14 +105,15 @@ text contains `<x>` (client-side); `parent:<x>` adds the rule
 subitem's parent is not supported; `person:<x>` keeps items whose `people` column text contains `<x>`
 (client-side).
 
-If the server is not connected or the token cannot read the board, say so in one plain sentence and return
-`[]`.
+If the server is not connected, the token cannot read the board, or the server rejects the query (for
+example for complexity), say so in one plain sentence and return `[]`.
 
 Output mapping: `key` is `{key_prefix}-<item id>` (the `OPS-<itemId>` convention in the note above) and
 `fetch_id` is the bare item `id`, which is what `fetch_ticket` takes; `title` is `name`; `description` is an
 empty string, since a monday item has no description field; `labels` is the `text` of the `tags` column split
 on commas, or `[]`; `created` is `created_at` cut to `YYYY-MM-DD`; `url` is `url`; `status` is the `text` of
-the board's `status` column, or `null`.
+the board's `status` column, or `null`. When `{key_prefix}` is unset, `key` is the bare item `id`, the same
+as `fetch_id`, so duplicate suppression still compares like with like.
 
 ## verb: download_attachments
 Read the item's **file column** `assets{ url }`, then `curl -L <asset url> -o <dest>` per file.

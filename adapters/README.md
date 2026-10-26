@@ -53,12 +53,14 @@ empty `<before>` does (the same query without its date clause, meaning no cutoff
 - `key` is the ticket's id in the form repo ticket folders use (`TEST-130`), so a tracker row and a repo
   ticket with the same key are the same ticket. A tracker with its own keys uses them. A tracker with
   plain numbers (Azure Boards, GitHub Issues, Asana, monday) uses `{key_prefix}-<number>`, the folder
-  convention in that adapter's note.
+  convention in that adapter's note, or the bare number (the same as `fetch_id`) when `key_prefix` is
+  unset, so duplicate suppression still compares like with like.
 - `fetch_id` is exactly what that adapter's `fetch_ticket` takes: `TEST-130` on Jira, `130` on Azure Boards.
 - `description` is cut to 600 characters, `labels` is a list of strings, and `created` is an ISO date or
   `null`.
-- A search that cannot run (not signed in, tracker unreachable, a plan tier without search) says so in one
-  plain sentence and returns `[]`, and the caller carries on with the repo's own tickets. An adapter whose
+- A search that cannot run (not signed in, tracker unreachable, a plan tier without search, a search the
+  tracker rejects) says so in one plain sentence and returns `[]`, and the caller carries on with the
+  repo's own tickets. An adapter whose
   tool cannot filter on something says so in its `Filters:` line or does that part client-side.
 - The `local` adapter returns `[]`: its tickets are the repo's own, and `bin/recall.py` already ranks them.
 
