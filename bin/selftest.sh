@@ -12258,5 +12258,63 @@ grep -q '"TEST-1"' "$TMP/s65r.out" && grep -q '"TEST-12"' "$TMP/s65r.out" \
   && ok "recall by the bare table name still finds both tickets" \
   || bad "recall by the bare table name broke" "$(head -c 400 "$TMP/s65r.out")"
 
+hdr "67 · a tool chosen before it was connected is finished later, not forgotten"
+# A real first run chose Slack before it was connected: setup wrote `mcp: TODO`, and nothing ever
+# said so again, so the person hand-edited stack.yaml. `TODO` now marks a pending slot that the
+# resolver reports, verify_stack names with the finishing command, and the banner repeats.
+P67="$TMP/pending67"; mkdir -p "$P67/.claude/config"
+cat > "$P67/.claude/config/stack.yaml" <<'YAML'
+schema_version: 1
+project:
+  key_prefix: TEST
+seams:
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: TODO   # connect Slack, reload, then /setup tool chat
+YAML
+python3 bin/effective_config.py --root "$P67" --verify-plan --quiet > "$TMP/s67plan.out" 2>&1
+python3 - "$TMP/s67plan.out" <<'PY' >"$TMP/s67p.out"
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip().startswith("{")]
+chat = [r for r in rows if r.get("seam") == "chat" or r.get("label") == "chat"]
+r = chat[0] if chat else {}
+print("pending=" + ",".join(r.get("pending") or []))
+print("missing=" + ",".join(r.get("missing_required") or []))
+PY
+{ grep -q '^pending=mcp$' "$TMP/s67p.out" && grep -q '^missing=$' "$TMP/s67p.out"; } \
+  && ok "the resolver reports \`mcp: TODO\` as pending, apart from keys never written" \
+  || bad "the resolver treats \`mcp: TODO\` as a set value" "$(cat "$TMP/s67p.out")"
+o67="$(safe_verify_stack "$P67/.claude/config/stack.yaml" --dry-run 2>&1)"; rc67=$?
+{ [ "$rc67" -eq 0 ] && grep -q 'chosen but not connected yet (mcp still TODO)' <<<"$o67" \
+  && grep -q '/reload-plugins' <<<"$o67" && grep -q '`/setup tool chat`' <<<"$o67" \
+  && grep -q '1 unverified (chat)' <<<"$o67"; } \
+  && ok "verify_stack warns (never fails) on a pending slot and names reload, then /setup tool chat" \
+  || bad "verify_stack does not name a pending slot and how to finish it" "rc=$rc67 $(tail -4 <<<"$o67")"
+grep -q 'Permission posture' <<<"$o67" \
+  && bad "verify_stack asks for a permission check on a connector that is not connected yet" \
+  || ok "…and asks for no permission check on a connector that is not there yet"
+b67="$(echo '{}' | CLAUDE_PROJECT_DIR="$P67" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'Not connected yet: chat (slack).*`/setup tool chat`' <<<"$b67" \
+  && ok "the session banner names the pending slot and the command that finishes it" \
+  || bad "the session banner says nothing about a pending slot" "$b67"
+sed -i.bak 's/mcp: TODO.*/mcp: slack/' "$P67/.claude/config/stack.yaml"
+b67b="$(echo '{}' | CLAUDE_PROJECT_DIR="$P67" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'Not connected yet' <<<"$b67b" \
+  && bad "the banner still says not connected after the slot was finished" \
+  || ok "…and drops the line once \`mcp:\` holds a real prefix"
+{ grep -q 'reaches this session only after `/reload-plugins` or a new session' .claude/skills/setup/interview.md \
+  && grep -q 'only after `/reload-plugins` or a new session' .claude/skills/setup/SKILL.md \
+  && grep -q 'Finishing a slot chosen before it was connected' .claude/skills/setup/SKILL.md \
+  && grep -q 'adapter_surface.py --adapter <path> --probe' .claude/skills/setup/SKILL.md \
+  && grep -q 'posture.local.yaml' <<<"$(sed -n '/Finishing a slot chosen before it was connected/,/^## /p' .claude/skills/setup/SKILL.md)"; } \
+  && ok "setup says a new connector needs a reload, and /setup tool finishes a pending slot: prefix, probe, posture, skipped questions" \
+  || bad "setup's reload hint or finish-a-pending-slot steps are missing"
+{ grep -q 'One person per answer, never one free-text list' .claude/skills/setup/interview.md \
+  && grep -q "That's everyone" .claude/skills/setup/interview.md; } \
+  && ok "the roster question takes one person per answer, with a That's everyone choice" \
+  || bad "the roster question still takes a free-text list"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

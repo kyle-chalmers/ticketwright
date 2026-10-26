@@ -277,6 +277,14 @@ def _as_key_list(raw: object) -> list[str]:
     return []
 
 
+# The placeholder setup writes for a value it cannot fill yet (`mcp: TODO`, "connect it first").
+PENDING_VALUES = frozenset({"TODO"})
+
+
+def is_pending_value(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().upper() in PENDING_VALUES
+
+
 def adapter_requires(adapter_rel: str | None, root: Path) -> list[str]:
     """The config keys an adapter declares it cannot work without."""
     fm = _adapter_frontmatter(adapter_rel, root)
@@ -622,6 +630,21 @@ class Resolution:
                 rows.append({"seam": name, "target": None, "is_default": True,
                              "label": name, "values": dict(seam)})
         return rows
+
+    def pending(self) -> list[dict]:
+        """Every unit someone chose before its tool was connected: a value still written `TODO`.
+
+        Setup writes `mcp: TODO` when a person picks a tool that is not connected in this session
+        yet. That is a slot waiting to be finished, not a configured one, and both the session
+        banner and verify_stack name it with the command that finishes it (`/setup tool <seam>`).
+        """
+        out = []
+        for unit in self.units():
+            keys = sorted(k for k, v in unit["values"].items() if is_pending_value(v))
+            if keys:
+                out.append({"seam": unit["seam"], "label": unit["label"],
+                            "tool": str(unit["values"].get("tool") or "?"), "keys": keys})
+        return out
 
     def get(self, dotted: str, default: Any = None) -> Any:
         node: Any = self.as_dict()
@@ -1014,10 +1037,13 @@ def _unit_row(res: Resolution, unit: dict) -> dict:
     # key can never stand in for a missing seam key of the same name.
     missing = [k for k in adapter_requires(vals.get("adapter"), res.root)
                if vals.get(k) in (None, "")]
+    # A value still written `TODO` is a slot chosen before its tool was connected. Reported apart
+    # from `missing`, because the fix is different: connect the tool, then `/setup tool <seam>`.
+    pending = sorted(k for k, v in vals.items() if is_pending_value(v))
     row = {"kind": "unit", "label": unit["label"], "seam": unit["seam"], "target": unit["target"],
            "is_default": unit["is_default"], "tool": vals.get("tool") or "?",
            "adapter": vals.get("adapter") or "", "verify": None, "unresolved": [], "unsafe": [],
-           "missing_required": missing,
+           "missing_required": missing, "pending": pending,
            # The CONFIGURED transport, as resolved for this unit (a target inherits the seam-level
            # value; a target's own wins). Consumed by verify_stack.sh's permission-posture
            # advisory, which falls back to the adapter's frontmatter only when this is empty —
@@ -1157,6 +1183,7 @@ def main(argv: list[str] | None = None) -> int:
                    "values": unit["values"], "verify": row["verify"],
                    "unresolved": row["unresolved"], "unsafe": row["unsafe"],
                    "missing_required": row["missing_required"],
+                   "pending": row["pending"],
                    "errors": [e.as_dict() for e in res.errors], "warnings": res.warnings}
             if out["unresolved"] or out["unsafe"]:
                 # A command string is runnable or it is null — never a half-interpolated template,

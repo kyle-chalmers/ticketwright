@@ -100,12 +100,13 @@ def s(k):
     return "" if v is None else str(v)
 print("\u001f".join([s("kind"), s("label"), s("tool"), s("adapter"), s("verify"), s("message"),
                       ",".join(d.get("unresolved") or []), ",".join(d.get("unsafe") or []),
-                      ",".join(d.get("missing_required") or []), s("transport")]))'
+                      ",".join(d.get("missing_required") or []), s("transport"),
+                      ",".join(d.get("pending") or []), s("seam")]))'
 }
 
 while IFS= read -r line; do
   [ -n "$line" ] || continue
-  IFS="$SEP" read -r kind label tool adapter verify message unresolved unsafe missing transport_cfg <<<"$(fields "$line")"
+  IFS="$SEP" read -r kind label tool adapter verify message unresolved unsafe missing transport_cfg pending seam <<<"$(fields "$line")"
   posture_line=""
   case "$kind" in
     seam_error) echo "  ✗ $message"; count_fail "${label:-config}"; continue ;;
@@ -145,6 +146,14 @@ while IFS= read -r line; do
     echo "  ⚠ required key(s) not set: ${missing//,/ } → see $adapter"
     printf "▸ %-10s tool=%-10s" "$label" "${tool:-?}"
     seam_warned=1
+  fi
+
+  # 2b) chosen before its tool was connected? Setup writes `TODO` for a value it cannot fill yet
+  #     (most often `mcp:` for a connector added later). Nothing here can be checked until the
+  #     tool is connected, so say how to finish the slot and move on: a warning, never a failure.
+  if [[ -n "$pending" ]]; then
+    echo "  ⚠ chosen but not connected yet (${pending//,/ } still TODO): connect ${tool:-the tool} in your agent, reload it (\`/reload-plugins\` or a new session), then run \`/setup tool ${seam}\` to finish it"
+    count_warn "$label"; continue
   fi
 
   # 3) verify reachable?
