@@ -87,9 +87,11 @@ All notable changes to this project are documented here. Format loosely follows
 - Selftest section 59 checks the plain part of the messages a person reads against a term list
   (`tests/plain_language/terms.txt`) and pins the caveats of specific messages. The writing rule is
   stated in `AGENTS.md`.
-- Selftest section 62 pins the runtime-surface mapping name by name for gmail, slack and notion,
-  checks that a surface is used whole and carries its own safety rules (always_include, explicit
-  send, no bcc, the verbatim transcript-privacy rule), and exercises selection and refusal.
+- Selftest section 62 pins the runtime-surface mapping name by name for gmail, slack, notion and
+  jira, checks that a surface is used whole and carries its own safety rules (always_include,
+  explicit send, no bcc, the verbatim transcript-privacy rule, Jira's review-before-post and
+  same-site rules), holds Jira's `acli` lines equal across surfaces, and exercises selection and
+  refusal.
   Section 3 now fails a skill that names a runtime's connector namespace, and section 20's
   literal-server check allows a server name only on a runtime surface's declared `server:` line.
 
@@ -109,6 +111,14 @@ All notable changes to this project are documented here. Format loosely follows
   session started from inside Claude Code carries both), the picker prints no call (exit 7) and
   asks for `--runtime`. A runtime section may name a server only when its runtime adapter declares
   it (`connector_server: codex_apps` on `adapters/runtime/codex-cli.md`).
+- **The Jira adapter's comment and search calls work on Codex CLI.** Its new
+  `## Runtime surface: codex-cli` section names the Atlassian app's tools as Codex lists them
+  (`atlassian_getaccessibleatlassianresources`, `atlassian_addoreditjiraissuecomment`,
+  `atlassian_searchjiraissuesusingjql`); the `acli` commands are unchanged and read the same in both
+  sections. The default comment call is corrected too: the Atlassian connector's tool is
+  `addOrEditJiraIssueComment`, which takes a Markdown body and a `cloudId` (the
+  `addCommentToJiraIssue` call with an ADF body is no longer listed), and a comment stops when no
+  site the account reaches matches `site`, rather than posting to another one.
 - The default sections now match the connectors as Claude lists them. Notion's tools are
   `notion-fetch` and `notion-query-meeting-notes` (with a structured `filter`), and
   `fetch_transcript` passes `include_transcript=true`: without it the connector returns a link

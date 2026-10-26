@@ -179,7 +179,7 @@ meetleaks="$(grep -REn -i '\bzoom\b|\bfireflies\b|\bgranola\b|\bnotion\b' \
 # A runtime's connector namespace is the same leak again: Codex CLI lists every ChatGPT app under
 # one server with app-prefixed tool names, and those names live in the adapters' runtime surfaces
 # (section 62). A skill naming one would work on one agent and break on every other.
-rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_' \
+rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_|atlassian_[a-z]*jiraissue|atlassian_getaccessible' \
             .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
 [ -z "$rtleaks" ] && ok "no runtime connector namespace or app-prefixed tool name appears in a skill/command/agent" \
   || bad "a skill names one runtime's connector tool names (they belong in an adapter's runtime surface)" "$rtleaks"
@@ -11577,17 +11577,20 @@ done
 [ -z "$s61bad" ] && ok "every adapter's runtime surfaces are well formed (the picker accepts all of them)" \
   || bad "an adapter's runtime surfaces are malformed" "$s61bad"
 
-# --- (B) the census: the three connectors Codex lists under other names, and only those ----------
+# --- (B) the census: the four connectors Codex lists under other names, and only those -----------
 s61census="$(grep -l '^surfaces: \[codex-cli\]' adapters/*/*.md | tr '\n' ' ')"
-[ "$s61census" = "adapters/chat/gmail.md adapters/chat/slack.md adapters/meetings/notion.md " ] \
-  && ok "gmail, slack and notion (and only those) declare a codex-cli runtime surface" \
+[ "$s61census" = "adapters/chat/gmail.md adapters/chat/slack.md adapters/meetings/notion.md adapters/tracker/jira.md " ] \
+  && ok "gmail, slack, notion and jira (and only those) declare a codex-cli runtime surface" \
   || bad "the codex-cli surface census moved (extend this section with it)" "$s61census"
 
 # --- (C) the mapping itself, pinned name by name, read back THROUGH the picker -------------------
 # Codex names were read from the connectors' own tool declarations in a Codex CLI session
 # (2026-10-24); the default names from the Claude connectors' schemas (2026-10-25). Two default
 # fixes ride along: the hosted Gmail connector has no contacts tool, and Notion's fetch returns a
-# placeholder instead of the transcript unless include_transcript=true.
+# placeholder instead of the transcript unless include_transcript=true. Jira is the same Atlassian
+# server on both agents (Codex lower-cases the names behind an `atlassian_` prefix), and its default
+# comment tool is addOrEditJiraIssueComment with a Markdown body and a cloudId (the
+# addCommentToJiraIssue/ADF call it replaces is no longer listed by the connector).
 cat > "$TMP/s61.rows" <<'EOF'
 adapters/chat/gmail.md|codex-cli|draft|mcp__codex_apps__gmail_create_draft(
 adapters/chat/gmail.md|codex-cli|draft|from_address="{identity}"
@@ -11615,6 +11618,17 @@ adapters/meetings/notion.md|codex-cli|probe|mcp__codex_apps__notion_notion_list_
 adapters/meetings/notion.md|default|fetch_transcript|mcp__{mcp}__notion-fetch(id={id}, include_transcript=true)
 adapters/meetings/notion.md|default|search_meetings|mcp__{mcp}__notion-query-meeting-notes(filter=
 adapters/meetings/notion.md|default|probe|mcp__{mcp}__notion-list-recent-pages(
+adapters/tracker/jira.md|codex-cli|comment|mcp__codex_apps__atlassian_getaccessibleatlassianresources({})
+adapters/tracker/jira.md|codex-cli|comment|mcp__codex_apps__atlassian_addoreditjiraissuecomment(cloudId=<that cloudId>, issueIdOrKey=<id>
+adapters/tracker/jira.md|codex-cli|comment|contentFormat="markdown"
+adapters/tracker/jira.md|codex-cli|search|mcp__codex_apps__atlassian_searchjiraissuesusingjql(cloudId=
+adapters/tracker/jira.md|codex-cli|fetch_ticket|acli jira workitem view <id>
+adapters/tracker/jira.md|codex-cli|probe|mcp__codex_apps__atlassian_getaccessibleatlassianresources({})
+adapters/tracker/jira.md|codex-cli|probe|acli jira workitem search --jql "project = {key_prefix}" --limit 1
+adapters/tracker/jira.md|default|comment|mcp__{mcp}__getAccessibleAtlassianResources()
+adapters/tracker/jira.md|default|comment|mcp__{mcp}__addOrEditJiraIssueComment(cloudId=<that cloudId>, issueIdOrKey=<id>
+adapters/tracker/jira.md|default|search|mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=
+adapters/tracker/jira.md|default|probe|mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=
 EOF
 s61miss=""; s61rows=0
 while IFS='|' read -r f surf what want; do
@@ -11627,13 +11641,14 @@ while IFS='|' read -r f surf what want; do
   fi
   grep -qF -- "$want" <<<"$got" || s61miss="$s61miss $(basename "$f"):$surf:$what"
 done < "$TMP/s61.rows"
-{ [ -z "$s61miss" ] && [ "$s61rows" -eq 26 ]; } \
-  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, slack and notion, both surfaces" \
+{ [ -z "$s61miss" ] && [ "$s61rows" -eq 37 ]; } \
+  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, slack, notion and jira, both surfaces" \
   || bad "a pinned tool name or argument shape moved in a runtime surface" "rows=$s61rows missing:$s61miss"
 s61old=""
 grep -q 'search_contacts' adapters/chat/gmail.md && s61old="$s61old gmail:search_contacts"
 grep -Eq 'mcp__\{mcp\}__(fetch|query-meeting-notes|list-recent-pages)\(' adapters/meetings/notion.md \
   && s61old="$s61old notion:unprefixed-names"
+grep -Eq 'addCommentToJiraIssue|commentBody=<ADF>' adapters/tracker/jira.md && s61old="$s61old jira:addCommentToJiraIssue"
 [ -z "$s61old" ] && ok "the default surface no longer names tools its connectors do not have" \
   || bad "a default surface names a tool its connector lacks" "$s61old"
 
@@ -11641,7 +11656,7 @@ grep -Eq 'mcp__\{mcp\}__(fetch|query-meeting-notes|list-recent-pages)\(' adapter
 # An agent may read only the section the picker prints, so draft-first, always_include, the no-bcc
 # rule and the transcript-privacy rule must travel with each subsection, and no printed section may
 # mix two agents' tool names.
-python3 - "$AS61" <<'PY' >"$TMP/s61d.out"
+python3 - "$AS61" <<'PY' >"$TMP/s61d.out" 2>&1
 import json, os, re, subprocess, sys
 picker = sys.argv[1]
 bad = []
@@ -11660,7 +11675,8 @@ def fenced(text):
             out.append(ln)
     return out
 privacy = "Curated excerpts and action items are committed; raw full transcripts are not, by default."
-for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings/notion.md"):
+for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings/notion.md",
+          "adapters/tracker/jira.md"):
     c, d = pick(f, "codex-cli"), pick(f, "default")
     if not c or not d:
         bad.append(f + ": picker refused a surface")
@@ -11707,10 +11723,35 @@ for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings
         for v in ("draft", "send"):
             if "never retry without it" not in " ".join(c["verbs"][v].split()):
                 bad.append(f + ": codex-cli " + v + " lost the from_address stop rule")
+    if "/tracker/" in f:
+        # Only the MCP path differs by agent: every acli line reads the same on both surfaces, and
+        # a verb with no MCP call is the default section word for word (one source of truth).
+        for v, text in d["verbs"].items():
+            dbody = text.split("\n", 1)[1] if "\n" in text else ""
+            cbody = c["verbs"][v].split("\n", 1)[1] if "\n" in c["verbs"][v] else ""
+            if [ln for ln in fenced(text) if "mcp__" not in ln] != [ln for ln in fenced(c["verbs"][v]) if "mcp__" not in ln]:
+                bad.append(f + ":" + v + ": the acli lines differ between surfaces")
+            if "mcp__" not in text and dbody.strip() != cbody.strip():
+                bad.append(f + ":" + v + ": a CLI-only verb is not the default section word for word")
+        if [ln for ln in fenced(d["probe"] or "") if "mcp__" not in ln] != [ln for ln in fenced(c["probe"] or "") if "mcp__" not in ln]:
+            bad.append(f + ": the probe's acli line differs between surfaces")
+        for surf, data in (("codex-cli", c), ("default", d)):
+            flat = " ".join(data["verbs"]["comment"].split())
+            for rule in ("Never post until the human has reviewed", "hard_halt_before_external_posts",
+                         "STOP and report: never post to another site", "Never pass `commentId`",
+                         'contentFormat="markdown"'):
+                if rule not in flat:
+                    bad.append(f + ":" + surf + ":comment: missing " + rule)
+            if "STOP and report rather than search another site" not in " ".join(data["verbs"]["search"].split()):
+                bad.append(f + ":" + surf + ":search: the same-site rule is missing")
+            if any("rovo__legacy" in ln for t in data["verbs"].values() for ln in fenced(t)):
+                bad.append(f + ":" + surf + ": a call uses the legacy Atlassian tool family")
 if bad:
     print("\n".join(bad))
 PY
-[ ! -s "$TMP/s61d.out" ] \
+s61drc=$?
+# A crash in the block above must fail too, not pass as "nothing printed" (its stderr is captured).
+{ [ "$s61drc" -eq 0 ] && [ ! -s "$TMP/s61d.out" ]; } \
   && ok "surfaces are used whole (no mixed tool names) and each subsection carries its own rules (always_include, explicit send, no bcc, verbatim privacy, read-only)" \
   || bad "a runtime surface mixes tool names or lost a rule it must carry" "$(head -5 "$TMP/s61d.out")"
 
@@ -11734,6 +11775,12 @@ S61OUT="$(env -i PATH="$PATH" HOME="$HOME" CODEX_HOME="$TMP/s61codexhome" python
 { [ "$(s61j "d['surface']")" = "codex-cli" ] && [ "$(s61j "d['runtime_source']")" = "\$CODEX_HOME" ]; } \
   && ok "a real Codex environment (CODEX_HOME, nothing else) is detected and picks the codex-cli surface" \
   || bad "Codex detection from the environment did not pick the codex-cli surface" "$(head -c 300 <<<"$S61OUT")"
+s61 --adapter adapters/tracker/jira.md --runtime codex-cli --json
+S61CC="$(p61 --adapter adapters/tracker/jira.md --runtime claude-code --json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['surface'], d['server_source'])" 2>/dev/null)"
+{ [ "$S61RC" -eq 0 ] && [ "$(s61j "d['surface']")" = "codex-cli" ] && [ "$(s61j "d['server']")" = "codex_apps" ] \
+  && [ "$S61CC" = "default slot" ]; } \
+  && ok "jira (transport both) picks codex_apps on codex-cli and keeps the slot's mcp: on claude-code" \
+  || bad "the dual-transport jira adapter did not select by runtime" "rc=$S61RC cc=$S61CC"
 s61 --adapter adapters/chat/gmail.md --runtime codex-cli --surface default --json
 { [ "$(s61j "d['surface']")" = "default" ] && [ "$(s61j "d['selected_by']")" = "explicit" ]; } \
   && ok "--surface default overrides the runtime (a server connected directly keeps its own names)" \
