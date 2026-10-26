@@ -8,7 +8,7 @@ specific to one vendor's CLI.
 
   resolve_model_cmd(override)  -> (template, runtime_frontmatter)
   build_model_argv(template, model, prompt) -> (argv, prompt_on_stdin)
-  run_model(argv, prompt, prompt_on_stdin, timeout=240) -> stdout text
+  run_model(argv, prompt, prompt_on_stdin, timeout=240, no_stdin=False) -> stdout text
 
 Which model command runs is resolved in this order:
 
@@ -107,11 +107,14 @@ def _runtime_model_cmd(caller: str) -> tuple[str | None, dict, str] | None:
         except (ValueError, IndexError):
             argv0 = ""
         if Path(argv0).name not in ALLOWED_MODEL_BINARIES:
-            print(f"{caller}: refusing model_cmd from adapters/runtime/{runtime}.md: "
-                  f"'{argv0}' is not a known model CLI. Adapters ship inside the repo on a "
-                  f"vendored install, so this allowlist is what stops a markdown file from "
-                  f"running an arbitrary command. Use --model-cmd if you meant to run it.",
-                  file=sys.stderr)
+            # Plain first, technical detail after ' Details:' (the plain-language rule, selftest section 59).
+            # The phrase 'not a known model CLI' is pinned by an enrich test.
+            msg = (f"{caller}: the model command from your AI tool's setup notes was not run, because "
+                   f"'{argv0}' is not a known model CLI. Pass your own command with `--model-cmd` "
+                   f"if you meant to run it. Details: refused model_cmd in adapters/runtime/{runtime}.md; "
+                   f"those files ship inside the repo on a vendored install, so the allowlist is what "
+                   f"stops a markdown file from running an arbitrary command.")
+            print(msg, file=sys.stderr)
             return None, fm, f"{source} (refused)"
         return cmd, fm, source
     except Exception:
@@ -191,11 +194,15 @@ def build_model_argv(template: str, model: str | None, prompt: str) -> tuple[lis
     return out, "{prompt}" not in template
 
 
-def run_model(argv: list[str], prompt: str, prompt_on_stdin: bool, timeout: float = 240) -> str:
+def run_model(argv: list[str], prompt: str, prompt_on_stdin: bool, timeout: float = 240,
+              no_stdin: bool = False) -> str:
     """Run the model command and return its stdout, untouched. Never through a shell.
 
     `prompt` is written to the process's stdin only when `prompt_on_stdin` is true (the template had
-    no `{prompt}` token); otherwise it is already inside `argv` and stdin is left as the caller's.
+    no `{prompt}` token); otherwise it is already inside `argv` and stdin is left as the caller's,
+    which is what enrich_ticket.py has always done. A caller that must not let anything it was piped
+    reach the model passes `no_stdin=True`: a model whose prompt is in `argv` then gets an empty stdin
+    (/dev/null). It changes nothing when the prompt goes on stdin.
     Raises ModelCallError when the process cannot be started, runs past `timeout`, or exits non-zero.
     """
     tool = argv[0] if argv else "?"
@@ -203,6 +210,7 @@ def run_model(argv: list[str], prompt: str, prompt_on_stdin: bool, timeout: floa
         out = subprocess.run(
             argv,
             input=prompt if prompt_on_stdin else None,
+            stdin=subprocess.DEVNULL if (no_stdin and not prompt_on_stdin) else None,
             capture_output=True, text=True, timeout=timeout,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:

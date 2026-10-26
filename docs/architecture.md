@@ -277,7 +277,8 @@ before it is paid.
   surface picker (`adapter_surface.py`: which tool names an MCP adapter's verbs use on the agent
   running now, see [adapters/README.md](../adapters/README.md) § Runtime surfaces), and the
   index/recall engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`,
-  `recall.py`) with the shared headless model call they use (`model_call.py`). All of it is stdlib-only.
+  `recall.py`, `summarize_hits.py`) with the shared headless model call they use (`model_call.py`).
+  All of it is stdlib-only.
 - **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via
   `pyproject.toml` force-includes, so the repo layout is the single source.
 - **`tests/`**: golden fixture trees for the installer (`tests/emit/<runtime>/`), pinned
