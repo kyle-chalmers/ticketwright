@@ -104,6 +104,13 @@ The index is only valuable if it's *mined*. Two capabilities turn the passive ca
   *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `build`
   so prior art surfaces automatically in PLAN. Lexical + stdlib (no embeddings); the rank → read-top-K
   shape is the retrieval path that scales past the point where the whole `INDEX.md` fits in context.
+  A brand-new ticket has no SQL yet, so recall also reads its **text** (the seed's README, plus any
+  `--text-file`: the fetched description on stdin, an attachment) and keeps the object names some
+  prior ticket already touched: a qualified name in any case (`db.schema.table`, `schema.table.column`),
+  or a bare name spelled the way `OBJECTS.md` spells it when that spelling has a capital letter; a
+  name in backticks counts in any case. An ordinary word such as "orders" in a sentence stays a
+  keyword, so a catalog spelled all in lower case needs backticks or a qualified name. The verdict line says **strong** only when the top hit shares an object few
+  tickets use (its weight stayed above the floor for common objects) or a cross-ref.
 - **`tickets/OBJECTS.md`** — reverse map: each data object → tickets that touched it
   (`/ticket --recall --object VW_X` queries it live). A ticket's `objects` = **enrichment** (the model names them)
   **∪** a **deterministic grep** of its `*.sql`/`*.py`, keyword-anchored (`FROM`/`JOIN`/… `schema.object`,
