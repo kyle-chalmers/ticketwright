@@ -1,6 +1,6 @@
 ---
 name: build
-description: Execute the plan or spec on file in fresh context, in small build-and-check loops, then run the independent review before handing off to ship. The IMPLEMENT + CHECK phase — every build ends with a /review verdict.
+description: Execute the plan or spec on file in small build-and-check loops (subagents that see only the record build the spec-sized tickets), then run the independent review and ask before shipping. The IMPLEMENT + CHECK phase — /ticket starts it on approval, and every build ends with a /review verdict.
 ---
 
 <!-- emitted by ticketwright install v4.3.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
@@ -8,11 +8,16 @@ description: Execute the plan or spec on file in fresh context, in small build-a
 # /build
 
 The **build + check** step of the lifecycle. `/ticket` already did every read-only planning step — the
-plan, and the spec when the plan called for one — and the human approved that package. This skill
-executes it in fresh context (context-reset discipline: planning and execution never share a
-window), validating each step independently, and **ends by running `/review` on the ticket**. The
-only exit toward `/ship` is an APPROVE verdict; quality is ensured by the system, not by remembering
-to invoke a step.
+plan, and the spec when the plan called for one — and the human approved that package. `/ticket`
+starts this skill in the same window on that approval; run it directly to resume a build, or to
+build from a plan someone else approved. It executes the package, validating each step
+independently, and **ends by running `/review` on the ticket**. The only exit toward `/ship` is an
+APPROVE verdict; quality is ensured by the system, not by remembering to invoke a step.
+
+The work runs in one window, but the execution should not lean on the planning conversation: the
+plan and spec are the handoff, and a build that needs the chat to make sense of them has found a gap
+in the record. When the runtime allows it, a spec-sized ticket is built by subagents that are given
+only the record (step 2b), which tests that handoff without opening a second window.
 
 Reads the merged config (`bin/effective_config.py`, never raw `stack.yaml`). Warehouse-agnostic via
 `seams.warehouse`, and works the same when that seam holds several targets — or none.
@@ -41,10 +46,11 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    - **`spec: after-root-cause`** → run only the plan's investigation steps (read-only against the
      warehouse, plus QC queries that reproduce the problem). When the root cause is known, apply the
      one condition this skill owns: **if the fix creates or alters a persisted object others depend on
-     (a warehouse object, a model, a published report), stop and route back to `/ticket <owner>/<id>`**
-     — scoping resumes, the spec is written from the real cause, approved, and `/build` runs again
-     from Phase 2. If the fix touches nothing persisted (a corrected export, a documented answer),
-     record the cause in the README and continue.
+     (a warehouse object, a model, a published report), route back to `/ticket <owner>/<id>` Phase 4
+     in replan mode** — follow its instructions in full, in this window: the spec is written from
+     the real cause and approved, and replan mode returns control here without starting another
+     build. Continue from step 2b with the new spec. If the fix touches nothing persisted (a
+     corrected export, a documented answer), record the cause in the README and continue.
    - **Anything else on that line** (blank, a `{{token}}`, a value not listed) → stop and name it; a
      plan the build cannot read is not an approved plan.
    Treat the blueprint as the source of truth, but **validate each step independently** — don't
@@ -53,6 +59,28 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
 2. **Preflight** each warehouse **target** the blueprint names (resolve per `adapters/README.md`
    § Multi-target seams; verify each; halt with that target's auth notes). No warehouse configured ⇒
    the build is code/analysis/document work — skip the warehouse steps below cleanly.
+2b. **Choose who does the work** — probe the runtime the same way `/review` does:
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json`, then
+   read `capabilities.subagents` and `capabilities.subagent_isolation` and branch on the **values
+   only**, never on the runtime's name:
+   - **Subagent-led** — the plan's `spec:` line names a spec, `subagents: yes`, and
+     `subagent_isolation` is `documented` or `unestablished`. This session orchestrates. For each
+     spec step or object, dispatch one subagent briefed with **only `plan.md`, that step's spec
+     section, and the files it touches** — never the planning conversation, which is the point:
+     if the subagent cannot do the step from the record, the record has a gap, so fix the plan or
+     spec rather than filling it in from memory. When `subagent_isolation` is `unestablished`, say
+     so once, verbatim: "a subagent did this work; its independence is not established."
+   - **Inline** — `spec: not required` (the plan judged the ticket small), or any other probe
+     result (`subagents` not `yes`, isolation `none` or `unknown`, a failed probe). This session
+     does the work. When the plan *did* call for a spec, say plainly that the build ran in the
+     planning conversation and the plan was not tested as a standalone handoff.
+   **A subagent never holds a gate**, because it cannot reliably reach the person: it may run reads
+   and the additive dev-target SQL that step 5's policy allows without asking, and it returns
+   everything else to this session — any SQL `db_write_requires_approval` gates, and both
+   `human_review_handoff` handoffs. This session also re-runs each step's gate itself (step 4)
+   rather than taking a subagent's word that it passed. Record the choice in the ticket README as
+   two lines, `build_mode: subagent-led | inline` and `subagent_isolation: <as probed>`, so the
+   reviewer and the next person can see which build the ticket got.
 
 ## Phase 2 — Implement in small build-and-check loops
 
@@ -96,16 +124,31 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
 8. **Branch on the verdict `/review` wrote** — read it with
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
    (the highest-numbered `qc_queries/<n>_review_verdict.md`, its `verdict:` line), never by eye:
-   - **APPROVE** → stop and recommend `/ship <owner>/<id>`. Do not ship from here.
-   - **REQUEST-CHANGES** → apply the remediation list, re-run the affected gates from Phase 2, and run
-     `/review <owner>/<id>` again — from this step, never by re-entering `/build` from the top (a
-     build inside a build re-resolves everything and never returns here). **Two REQUEST-CHANGES rounds
-     is the cap:** after the second, stop and hand the findings to the human rather than looping — a
-     defect the build cannot clear is a scoping problem or a data problem, not a retry problem. When
-     the human says stop, say plainly that the ticket carries a REQUEST-CHANGES verdict and `/ship`
-     will refuse it. **There is no path from REQUEST-CHANGES to `/ship`.**
+   - **APPROVE** → ask, in one line: "Review approved. Ship now?" On yes, **follow
+     `/ship <owner>/<id>`'s instructions in full**, in this window. `/ship` still shows every
+     tracker comment, chat post and PR and waits for approval before anything leaves the repo, and
+     the `review_verdict_guard` hook still asks at push time, so this question only saves you
+     typing the command. On no, stop and name `/ship <owner>/<id>` for later.
+   - **REQUEST-CHANGES** → read each finding's `kind:`.
+     - **Only `defect` findings** → apply the remediation list, re-run the affected gates from
+       Phase 2, and run `/review <owner>/<id>` again — from this step, never by re-entering `/build`
+       from the top (a build inside a build re-resolves everything and never returns here). **Two
+       REQUEST-CHANGES rounds is the cap:** after the second, stop and hand the findings to the
+       human rather than looping — a defect the build cannot clear is a scoping problem or a data
+       problem, not a retry problem — and offer the replan below as one way forward.
+     - **Any `scope` finding** → the plan is wrong, so rebuilding will not fix it. Run
+       `/ticket <owner>/<id>` Phase 4 **in replan mode**: follow its instructions in full, in this
+       window. It updates `plan.md` and the spec in place, gets a fresh approval, names the build
+       steps the change affects, and returns control here without starting another build. Redo only
+       those steps from step 2b, then run `/review <owner>/<id>` again from step 7. This build still
+       owns the review rounds and the ship question. The person's approval on a replan is its own
+       guard, so a replan does not count against the two-round cap. A finding with no `kind:` (an
+       older reviewer) counts as `defect`.
+     When the human says stop, say plainly that the ticket carries a REQUEST-CHANGES verdict and
+     `/ship` will refuse it. **There is no path from REQUEST-CHANGES to `/ship`.**
 
 ## Pattern
-Plan and spec are authored in `/ticket` (read-only, approved once); this skill executes them in fresh
-context and closes with the independent check. The PRP spec/execute split, with the check made part
-of the build rather than a separate thing to remember.
+Plan and spec are authored in `/ticket` (read-only, approved once); this skill executes them, with
+subagents that see only the record when the ticket is spec-sized, and closes with the independent
+check. The PRP spec/execute split, kept in one window, with the check made part of the build and a
+route back to planning when the check finds the plan was wrong.

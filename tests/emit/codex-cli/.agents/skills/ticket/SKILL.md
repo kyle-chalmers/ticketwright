@@ -8,10 +8,10 @@ description: The front door — open or resume a ticket, auto-load its context a
 # /ticket
 
 One command owns the ticket lifecycle: it opens (or creates) the ticket, sets up the workspace,
-loads exactly the context this ticket needs, surfaces the closest prior work, and then tells you the
-right next step — **plan → build → check → ship**. Every read-only planning step happens HERE, in
-Phase 4: the plan, and the spec when the plan calls for one, behind a single approval — so `/build`
-never starts on a ticket nobody scoped. Reads the merged config; everything tool-specific resolves
+loads exactly the context this ticket needs, surfaces the closest prior work, and then carries the
+work forward in the same window — **plan → build → check → ship**. Every read-only planning step
+happens HERE, in Phase 4: the plan, and the spec when the plan calls for one, behind a single
+approval — so `/build` never starts on a ticket nobody scoped, and on that approval it starts here. Reads the merged config; everything tool-specific resolves
 through the adapters, so it works with any configured tracker/warehouse/vcs.
 
 ## Mode: `--recall` (standalone prior-art lookup, no workspace setup)
@@ -161,13 +161,26 @@ context brief (including the reuse brief) first, then:
     <thing>` — when `commit_plan_before_implement` is on; leave them uncommitted when it is off.
     Either way they are now **on file**, which is what `/build` requires. A rejected package writes
     nothing: revise and present again.
-13. **Route, always forward, with the qualified `<owner>/<id>` locator** (so the next step can never
-    re-resolve a bare id to a different owner's ticket): `/build <owner>/<id>` — it executes the spec
-    when one exists, else the plan, and ends by running `/review` itself. Then `/ship <owner>/<id>`
-    on APPROVE.
+13. **Continue, always with the qualified `<owner>/<id>` locator** (so the next step can never
+    re-resolve a bare id to a different owner's ticket). What happens next depends on what was
+    approved:
+    - **Approve and build** (the default; a plain "go" means this) → say "Plan approved. Starting
+      the build." and **follow `/build <owner>/<id>`'s instructions in full**, in this same window.
+      "Follow" means what it means when `/build` runs `/review`: there is no mechanical
+      skill-invocation tool, and the emitted runtimes carry this body verbatim. `/build` decides on
+      its own probe whether the work is done by subagents that see only the plan and spec, or here;
+      it ends by running `/review`, and asks before `/ship <owner>/<id>` on APPROVE.
+    - **Approve, don't build yet** → write the artifacts and stop, naming `/build <owner>/<id>` as
+      the command to run later.
+    - **Replan mode** (a build called this phase because `/review` found a scope problem, or an
+      `after-root-cause` investigation found the cause) → update `plan.md` and the spec in place,
+      get the approval, name the build steps the change affects, and **return control to the build
+      that called it**. In replan mode, never enter `/build`: the build that called you is still
+      running, and a second one would re-resolve everything and never return there.
 
 ## Stops here
 No SQL beyond the describe/sample reads priming and spec research already make, no analysis, no
-deliverables, no external posts. In Phase 4 the plan and the spec are the only files written, and
-only after approval. If the request is ambiguous, state your interpretation and ask before
-scaffolding heavy structure (`reduce_assumptions`).
+deliverables, no external posts — while scoping. In Phase 4 the plan and the spec are the only files
+written, and only after approval. The build that follows an approval is governed by `/build`, not by
+this rule. If the request is ambiguous, state your interpretation and ask before scaffolding heavy
+structure (`reduce_assumptions`).

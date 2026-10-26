@@ -10681,6 +10681,34 @@ bare56="$(grep -n '`specs/<id>-<slug>.md`' .claude/skills/ticket/SKILL.md .claud
 { [ -z "$bare56" ] && grep -q 'older plan resolves inside `<ticket-dir>`' .claude/skills/build/SKILL.md; } \
   && ok "a bare specs/ path survives only as /build's resolve-inside-the-ticket fallback for older plans" \
   || bad "a bare specs/<id>-<slug>.md path is back outside /build's legacy fallback" "$bare56"
+# (j) one-window lifecycle (LABS-87): approval flows into the build, a spec ticket is built by
+# subagents that see only the record, APPROVE asks before shipping, and a scope finding replans in
+# place. Each handoff is pinned by the token that carries its behavior, not by prose.
+{ grep -q 'Approve and build' "$TMP/tk56.flat" && grep -q "follow \`/build <owner>/<id>\`'s instructions in full" "$TMP/tk56.flat" \
+  && grep -q "Approve, don't build yet" "$TMP/tk56.flat" && grep -q 'write the artifacts and stop' "$TMP/tk56.flat"; } \
+  && ok "/ticket's approval starts the build in the same window, and a deferred approval stops without building" \
+  || bad "/ticket's step 13 lost the approve-and-build handoff or the defer branch"
+{ grep -q 'replan mode' "$TMP/tk56.flat" && grep -q 'never enter `/build`' "$TMP/tk56.flat" \
+  && grep -q 'return control to the build that called it' "$TMP/tk56.flat"; } \
+  && ok "/ticket's replan mode returns to the calling build and never starts a second one" \
+  || bad "/ticket's replan path could nest a build inside a build"
+{ grep -q 'capabilities.subagents' "$TMP/bd56.flat" && grep -q 'subagent_isolation' "$TMP/bd56.flat" \
+  && grep -q 'unestablished' "$TMP/bd56.flat" && grep -q 'its independence is not established' "$TMP/bd56.flat" \
+  && grep -q 'build_mode: subagent-led | inline' "$TMP/bd56.flat"; } \
+  && ok "/build probes subagents + isolation like /review, says when isolation is unestablished, and records build_mode" \
+  || bad "/build's execution-mode probe lost a branch, the unestablished caveat, or the build_mode record"
+{ grep -q 'only `plan.md`, that step' "$TMP/bd56.flat" && grep -q 'never the planning conversation' "$TMP/bd56.flat" \
+  && grep -q 'never holds a gate' "$TMP/bd56.flat" && grep -q 'not tested as a standalone handoff' "$TMP/bd56.flat"; } \
+  && ok "/build's subagents see only the record, never hold an approval gate, and an inline spec build says so" \
+  || bad "/build lets a subagent hold a gate, briefs it with the conversation, or hides an inline spec build"
+{ grep -q 'Review approved. Ship now?' "$TMP/bd56.flat" && grep -q "follow \`/ship <owner>/<id>\`'s instructions in full" "$TMP/bd56.flat"; } \
+  && ok "/build asks before following /ship on APPROVE (ship's own external-post halt still applies)" \
+  || bad "/build's APPROVE exit no longer asks before shipping"
+{ grep -q 'kind: defect | scope' "$rv56" && grep -q 'kind: defect | scope' .claude/agents/qc-reviewer.md \
+  && grep -q 'Any `scope` finding' "$TMP/bd56.flat" && grep -q 'in replan mode' "$TMP/bd56.flat" \
+  && grep -q 'does not count against the two-round cap' "$TMP/bd56.flat"; } \
+  && ok "review findings carry kind: defect | scope, and /build routes a scope finding to an in-place replan" \
+  || bad "a scope finding has no route back to planning, or the finding kind is untagged"
 
 hdr "57 · the review-before-ship gate is a mechanism: bin/review_verdict.py + review_verdict_guard (the raw-git bypass closed)"
 # Two real tickets shipped unreviewed through `git push` + `gh pr create`, never entering /ship —
