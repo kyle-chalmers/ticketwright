@@ -179,7 +179,7 @@ meetleaks="$(grep -REn -i '\bzoom\b|\bfireflies\b|\bgranola\b|\bnotion\b' \
 # A runtime's connector namespace is the same leak again: Codex CLI lists every ChatGPT app under
 # one server with app-prefixed tool names, and those names live in the adapters' runtime surfaces
 # (section 62). A skill naming one would work on one agent and break on every other.
-rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_|atlassian_[a-z]*jiraissue|atlassian_getaccessible' \
+rtleaks="$(grep -REn 'codex_apps|slack_slack_|gmail_create_draft|gmail_send_email|notion_fetch|notion_notion_|atlassian_[a-z]*jiraissue|atlassian_getaccessible|microsoft_outlook_email_' \
             .claude/skills .claude/commands .claude/agents 2>/dev/null || true)"
 [ -z "$rtleaks" ] && ok "no runtime connector namespace or app-prefixed tool name appears in a skill/command/agent" \
   || bad "a skill names one runtime's connector tool names (they belong in an adapter's runtime surface)" "$rtleaks"
@@ -11683,8 +11683,8 @@ done
 
 # --- (B) the census: the four connectors Codex lists under other names, and only those -----------
 s61census="$(grep -l '^surfaces: \[codex-cli\]' adapters/*/*.md | tr '\n' ' ')"
-[ "$s61census" = "adapters/chat/gmail.md adapters/chat/slack.md adapters/meetings/notion.md adapters/tracker/jira.md " ] \
-  && ok "gmail, slack, notion and jira (and only those) declare a codex-cli runtime surface" \
+[ "$s61census" = "adapters/chat/gmail.md adapters/chat/outlook.md adapters/chat/slack.md adapters/meetings/notion.md adapters/tracker/jira.md " ] \
+  && ok "gmail, outlook, slack, notion and jira (and only those) declare a codex-cli runtime surface" \
   || bad "the codex-cli surface census moved (extend this section with it)" "$s61census"
 
 # --- (C) the mapping itself, pinned name by name, read back THROUGH the picker -------------------
@@ -11733,6 +11733,14 @@ adapters/tracker/jira.md|default|comment|mcp__{mcp}__getAccessibleAtlassianResou
 adapters/tracker/jira.md|default|comment|mcp__{mcp}__addOrEditJiraIssueComment(cloudId=<that cloudId>, issueIdOrKey=<id>
 adapters/tracker/jira.md|default|search|mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=
 adapters/tracker/jira.md|default|probe|mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=
+adapters/chat/outlook.md|codex-cli|draft|mcp__codex_apps__microsoft_outlook_email_draft_email(to=[{"email": "{to}"}]
+adapters/chat/outlook.md|codex-cli|draft|text_content=<plain-text body>
+adapters/chat/outlook.md|codex-cli|draft|mcp__codex_apps__microsoft_outlook_email_get_profile({})
+adapters/chat/outlook.md|codex-cli|send|mcp__codex_apps__microsoft_outlook_email_send_email(
+adapters/chat/outlook.md|codex-cli|lookup_user|mcp__codex_apps__microsoft_outlook_email_search_people(query=
+adapters/chat/outlook.md|codex-cli|lookup_channel|exact address
+adapters/chat/outlook.md|codex-cli|probe|mcp__codex_apps__microsoft_outlook_email_list_mail_folders(
+adapters/chat/outlook.md|default|draft|mcp__{mcp}__create_draft(to=[{to}]
 EOF
 s61miss=""; s61rows=0
 while IFS='|' read -r f surf what want; do
@@ -11745,8 +11753,8 @@ while IFS='|' read -r f surf what want; do
   fi
   grep -qF -- "$want" <<<"$got" || s61miss="$s61miss $(basename "$f"):$surf:$what"
 done < "$TMP/s61.rows"
-{ [ -z "$s61miss" ] && [ "$s61rows" -eq 37 ]; } \
-  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, slack, notion and jira, both surfaces" \
+{ [ -z "$s61miss" ] && [ "$s61rows" -eq 45 ]; } \
+  && ok "the mapping holds name by name: $s61rows pinned calls across gmail, outlook, slack, notion and jira, both surfaces" \
   || bad "a pinned tool name or argument shape moved in a runtime surface" "rows=$s61rows missing:$s61miss"
 s61old=""
 grep -q 'search_contacts' adapters/chat/gmail.md && s61old="$s61old gmail:search_contacts"
@@ -11779,8 +11787,8 @@ def fenced(text):
             out.append(ln)
     return out
 privacy = "Curated excerpts and action items are committed; raw full transcripts are not, by default."
-for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings/notion.md",
-          "adapters/tracker/jira.md"):
+for f in ("adapters/chat/gmail.md", "adapters/chat/outlook.md", "adapters/chat/slack.md",
+          "adapters/meetings/notion.md", "adapters/tracker/jira.md"):
     c, d = pick(f, "codex-cli"), pick(f, "default")
     if not c or not d:
         bad.append(f + ": picker refused a surface")
@@ -11803,7 +11811,7 @@ for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings
                 bad.append(f + ":" + surf + ":draft: always_include missing")
             if "ONLY on explicit" not in vb["send"]:
                 bad.append(f + ":" + surf + ":send: the explicit-send rule is missing")
-        if "gmail" in f:
+        if "gmail" in f or "outlook" in f:
             if any("bcc=" in ln for t in vb.values() for ln in fenced(t)):
                 bad.append(f + ":" + surf + ": a call passes bcc")
             for v in ("draft", "send"):
@@ -11827,6 +11835,17 @@ for f in ("adapters/chat/gmail.md", "adapters/chat/slack.md", "adapters/meetings
         for v in ("draft", "send"):
             if "never retry without it" not in " ".join(c["verbs"][v].split()):
                 bad.append(f + ": codex-cli " + v + " lost the from_address stop rule")
+    if "outlook" in f:
+        for v in ("draft", "send"):
+            text = c["verbs"][v]
+            calls = [ln for ln in fenced(text) if "mcp__" in ln]
+            first = calls[0] if calls else ""
+            flat = " ".join(text.split())
+            if ("microsoft_outlook_email_get_profile" not in first or "STOP and report" not in flat
+                    or "fails, returns no address" not in flat):
+                bad.append(f + ": codex-cli " + v + " lost the signed-in sender check (profile first, fail closed)")
+            if any("attachment_files=" in ln for ln in fenced(text)):
+                bad.append(f + ": codex-cli " + v + " attaches local files")
     if "/tracker/" in f:
         # Only the MCP path differs by agent: every acli line reads the same on both surfaces, and
         # a verb with no MCP call is the default section word for word (one source of truth).
@@ -11856,7 +11875,7 @@ PY
 s61drc=$?
 # A crash in the block above must fail too, not pass as "nothing printed" (its stderr is captured).
 { [ "$s61drc" -eq 0 ] && [ ! -s "$TMP/s61d.out" ]; } \
-  && ok "surfaces are used whole (no mixed tool names) and each subsection carries its own rules (always_include, explicit send, no bcc, verbatim privacy, read-only)" \
+  && ok "surfaces are used whole (no mixed tool names) and each subsection carries its own rules (always_include, explicit send, no bcc, the sender check, verbatim privacy, read-only)" \
   || bad "a runtime surface mixes tool names or lost a rule it must carry" "$(head -5 "$TMP/s61d.out")"
 
 # --- (E) selection: flag, env override, real env detection, aliases, unknown runtimes ------------

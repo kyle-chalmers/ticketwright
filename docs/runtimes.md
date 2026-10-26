@@ -190,8 +190,12 @@ Sources (accessed 2026-08-18): [skills](https://code.claude.com/docs/en/skills) 
   app prefix (`slack_slack_search_channels`, `notion_notion_query_meeting_notes`), and Atlassian is
   the same server with its tool names lower-cased behind an `atlassian_` prefix
   (`atlassian_addoreditjiraissuecomment`). *Observed*, not documented: read from the connectors'
-  own tool declarations in a Codex CLI session on 2026-10-24.
-  The gmail, slack, notion and jira adapters carry these names as their `codex-cli` runtime surface
+  own tool declarations in a Codex CLI session on 2026-10-24. Outlook is a different connector
+  again (`microsoft_outlook_email_draft_email`: recipient objects, plain-text bodies, no sender
+  field), read the same way in a Codex Desktop session on 2026-10-26. No Teams app was connected
+  there, so the Teams adapters have no Codex names yet.
+  The gmail, outlook, slack, notion and jira adapters carry these names as their `codex-cli`
+  runtime surface
   ([adapters/README.md](../adapters/README.md) § Runtime surfaces).
 
 Sources (accessed 2026-08-18; subagents re-verified 2026-10-25): [hooks](https://learn.chatgpt.com/docs/hooks) ·

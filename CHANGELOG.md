@@ -7,6 +7,16 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Fixed
+- **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
+  the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,
+  `microsoft_outlook_email_send_email`, `microsoft_outlook_email_search_people`). That app has
+  no sender field, so every draft and send first checks that the signed-in account is the
+  team's `identity` and stops if it is not (a shared mailbox, for example). It takes plain-text
+  bodies only, so links are written out in full, and it cannot send a draft by its id, so a
+  reviewed draft is sent word for word and the person is told the draft is still in Drafts.
+  Distribution lists have no lookup there, so `lookup_channel` asks for the address. The
+  default Outlook draft and send now state the no-bcc rule themselves. The Teams adapters still
+  have no Codex section: no Teams app was connected in the Codex session that was checked.
 - Recall now finds prior work for a brand-new ticket by the tables the ticket names. A new ticket has
   no SQL yet, so recall used to match it on keywords alone and call the result weak, even when the
   description named a table exactly one earlier ticket had used. `recall.py` now reads the seed
