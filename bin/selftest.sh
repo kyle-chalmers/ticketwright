@@ -219,6 +219,7 @@ chat_always_include=Alice
 default_branch=main
 role_focus=**You are a senior engineer** doing ticket-driven work (filled from templates/roles/<role>.md).
 analysis_tools=notebooks, spreadsheets
+team_docs=standards: docs/style.md; context: https://wiki.example.test/team
 EOF
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
@@ -3284,6 +3285,13 @@ PY2
 oracle_bad="$(cat "$TMP/hd2716.out")"
 [ -z "$oracle_bad" ] && ok "_yamlite matches yq on every shipped config + people file" \
   || bad "the stdlib parser and yq disagree on real config" "$oracle_bad"
+# A URL inside a flow list stays one string (a colon is a key indicator only before a space, a
+# separator or the end). team_docs lists links on one line, and _yamlite once split them in two.
+printf 'a: [https://wiki.example.test/team, docs/x.md]\nb: {u: https://h.example.test/x}\n' > "$TMP/yl_url.yaml"
+yl_ours="$(python3 -c 'import json,sys; sys.path.insert(0,"bin"); import _yamlite as y; print(json.dumps(y.parse_file(sys.argv[1]), sort_keys=True))' "$TMP/yl_url.yaml" 2>&1)"
+yl_yq="$(yq -o=json -I=0 "$TMP/yl_url.yaml" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))' 2>&1)"
+[ "$yl_ours" = "$yl_yq" ] && ok "_yamlite reads a URL inside a flow list or map as one string, as yq does" \
+  || bad "_yamlite split a URL in a flow node" "ours=$yl_ours yq=$yl_yq"
 python3 - <<'PY2' >"$TMP/hd2736.out"
 import glob, sys
 sys.path.insert(0, "bin")
@@ -4262,6 +4270,7 @@ chat_always_include=Alice
 default_branch=main
 role_focus=x
 analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run /setup role)
+team_docs=none yet (add project.team_docs in stack.yaml, or run /setup role)
 EOF
 absout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent.env" 2>"$S36/abs.err")"
 { grep -qF '/setup tool chat' <<<"$absout" && grep -qF '/setup tool warehouse' <<<"$absout" \
@@ -4535,7 +4544,9 @@ project:
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]
   domain: data analysis
-  analysis_tools: [notebooks, spreadsheets]
+  team_docs:
+    standards: [docs/style.md]
+    context: [https://wiki.example.test/team]
 seams:
   tracker:
     tool: jira
@@ -4609,8 +4620,8 @@ grep -q 'mount_root' "$IVY" \
 # config still verifies. The TODO forms are the exact ones interview.md specifies, so the fixture
 # and the instructions cannot drift apart without one of these assertions going red.
 IVS="$TMP/s38-skip"; mkdir -p "$IVS/.claude/config"
-sed -e 's|^  domain: data analysis$|  # TODO(setup): round 5 skipped — domain/analysis_tools at defaults; finish with /setup role|' \
-    -e '/^  analysis_tools:/d' \
+sed -e 's|^  domain: data analysis$|  # TODO(setup): round 5 skipped — domain/team_docs at defaults; finish with /setup role|' \
+    -e '/^  team_docs:$/d' -e '/^    standards: /d' -e '/^    context: /d' \
     -e 's|^  db_write_requires_approval: high_risk$|  # TODO(setup): round 6 skipped — policies at defaults; finish with /setup policies|' \
     -e '/^  human_review_handoff: review$/d' \
     "$IVY" > "$IVS/.claude/config/stack.yaml"
@@ -4632,7 +4643,7 @@ grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ u
 { grep -qi 'punch list' <<<"$iflat" && grep -qi 'punch list' <<<"$skflat38"; } \
   && ok "the punch list is specified in interview.md AND in the Phase-4 report step" \
   || bad "the punch-list requirement is missing from interview.md or SKILL.md's report step"
-# (C2) role is opt-in: round 5 asks domain + tools only, and the role question (13a) is gated to
+# (C2) role is opt-in: round 5 asks domain + team docs only, and the role question (13a) is gated to
 # /setup role. A default interview that asks for a role again is the regression this pins.
 r5_38="$(sed -n '/^## Round 5/,/^## Round 6/p' "$IV")"
 { grep -q 'never asks for a role' <<<"$r5_38" \
@@ -4700,9 +4711,19 @@ auq38="$(grep -rn 'AskUserQuestion' .claude/skills/ 2>/dev/null || true)"
   && grep -qi 'Not a tool slot' .claude/config/stack.schema.md; } \
   && ok "analysis_tools: schema row (not-a-slot stated), template token, scaffold guidance" \
   || bad "analysis_tools is not wired through schema + template + scaffold"
-grep -i 'permissions.allow' "$IV" | grep -qi 'not' \
-  && ok "interview.md forbids auto-appending analysis tooling to permissions.allow" \
-  || bad "the permissions.allow prohibition is missing from round 5"
+{ grep -q '14\. \*\*Standards\*\* (optional)' <<<"$r5_38" \
+  && grep -q '15\. \*\*Team context\*\* (optional)' <<<"$r5_38" \
+  && [ "$(grep -c 'None yet' <<<"$r5_38")" -ge 2 ] \
+  && ! grep -q 'Which tools does the team do the actual analysis in' <<<"$r5_38" \
+  && grep -q 'never as checked' <<<"$r5_38"; } \
+  && ok "round 5 asks for standards and team context, both optional with None yet; the tools question is gone" \
+  || bad "round 5's team-docs questions are missing, not optional, or the tools question is back"
+{ grep -q '{{team_docs}}' templates/AGENTS.md.tmpl \
+  && grep -q 'team_docs' .claude/skills/setup/scaffold.md \
+  && grep -q '| `team_docs` |' .claude/config/stack.schema.md \
+  && [ "$(python3 "$KIT/bin/team_docs.py" --root "$IVR" --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')" = 2 ]; } \
+  && ok "team_docs: schema row, template token, scaffold guidance, and the interview fixture reads back through team_docs.py" \
+  || bad "team_docs is not wired through schema + template + scaffold + fixture"
 { grep -q 'intake' .claude/config/stack.schema.md \
   && grep -q 'intake' .claude/skills/ticket/priming.md \
   && grep -q 'source_materials' .claude/skills/ticket/priming.md; } \

@@ -218,7 +218,7 @@ The re-entry commands for what the repo interview covers outside the tool slots 
 exactly one round of [interview.md](interview.md) against the existing config, edit-never-overwrite:
 - **`/setup role`** sets `project.role`, the one thing the default interview never asks
   (question 13a in [interview.md](interview.md)), then re-runs round 5 (`project.domain` and
-  `project.analysis_tools`) and re-renders `AGENTS.md`. Role is opt-in: a repo that never runs
+  `project.team_docs`) and re-renders `AGENTS.md`. Role is opt-in: a repo that never runs
   this keeps `generalist`.
 - **`/setup team`** re-runs round 1's roster question: who else is on the team, writing one
   identity-free `people/<id>.yaml` placeholder per new person named (files, never folders), under

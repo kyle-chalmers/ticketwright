@@ -17,7 +17,7 @@ kit's config is this file's job, never the person's:
 | How does work reach you? (round 2) | the tracker, `project.intake` |
 | Where does your data live? (round 3) | the warehouse, its default, the dev target |
 | How do you share results, and where are finished files kept? (round 4) | chat, docstore, VCS |
-| What do you work on, and what do you analyze with? (round 5) | `domain`, `analysis_tools` |
+| What do you work on, and what has the team written down about it? (round 5) | `domain`, `team_docs` |
 | When should I ask before acting? (round 6) | the two policies |
 
 When an answer needs something the kit configures in a particular way (one meeting provider that
@@ -269,7 +269,7 @@ sender key).
 ## Round 5 — How you work (skippable)
 
 **Offer the skip at this header, labeled with its cost:** "Skip this and `AGENTS.md` ships the
-generic domain (`data analysis`) and lists no analysis tools."
+generic domain (`data analysis`) and lists no team standards or context docs."
 
 **The default interview never asks for a role.** `project.role` stays `generalist`. The role
 picks only the persona paragraph in `AGENTS.md` (the `{{role_focus}}` token, from a
@@ -288,20 +288,27 @@ which asks question 13a and then re-runs this round.
     data infrastructure), **Scientist** (experiments, statistics, modeling). Ask about the
     repo's work, not the person: the answer is committed team config that every teammate
     gets. Write it to `project.role`.
-14. **Analysis tools**: "Which tools does the team do the actual analysis in?" (transformation
-    frameworks, notebooks, spreadsheets, BI apps — whatever applies). **Seed this from Phase 1
-    detection, but only with tools that are NOT already filling a tool slot** — a detected CLI that
-    became the warehouse belongs there, not duplicated here. What this catches is the tool the team
-    works *in* on data that lives somewhere else, which no slot claims and which is otherwise easy
-    to forget. Confirm each one is **team-standard** before writing it: detection sees this machine
-    and this session, and `project.analysis_tools` is committed team config.
-    For a tool whose role isn't obvious from its name, add a **short** parenthetical saying what it
-    is used for. Keep it to a few words — the list renders as one comma-joined sentence.
-    Write the answer to `project.analysis_tools`, a tier-1 list rendered into `AGENTS.md` as
-    descriptive context. It is **not a tool slot**: nothing verifies it and nothing executes from
-    it. Do **not** add anything from this answer to `permissions.allow` — that file is
-    runtime-specific, invisible to `verify_stack.sh`, and does not travel to a teammate's
-    environment.
+14. **Standards** (optional): "Does your team have written rules for how analysis is done here,
+    such as a style guide, a review checklist or metric conventions? Paste links or paths." Offer
+    **None yet** first, as an ordinary answer. Detection may suggest files it found in the repo
+    (under `docs/` or `documentation/`, a contributing guide); confirm each one rather than
+    assuming it is a standard. Say what the answer does: `/build` follows these docs, and
+    `/review` checks deliverables against them, reporting a broken rule as a finding.
+15. **Team context** (optional): "Is there anything else written down that the agent should know
+    about the team or its data, such as a team wiki, onboarding notes, a data dictionary or
+    metric definitions?" Offer **None yet** first. Say what the answer does: `/ticket` reads
+    these while planning, and nothing is graded against them.
+
+    For both: a link is read live each time it is needed, so there is one source of truth and
+    nothing is copied into the repo. Say plainly that each teammate needs access to a linked doc,
+    and that a doc the agent cannot open is reported as unreadable, never as checked. Write the
+    answers to `project.team_docs.standards` and `project.team_docs.context`, each item a path or
+    URL, or `{location: …, note: <a few words>}` when the link does not say what it is.
+    `bin/team_docs.py` is the one reader of this key.
+
+    The old analysis-tools question is gone: a tool name told the agent little, and "we build
+    metrics in dbt" belongs in the standards doc, with its reason. `project.analysis_tools` still
+    renders for repos that have it; setup no longer writes it.
 
 ## Round 6 — House rules (skippable)
 
@@ -309,7 +316,7 @@ which asks question 13a and then re-runs this round.
 shipped defaults — destructive warehouse SQL prompts only for high-risk statements, and
 deliverables open for human sign-off at `/review` only."
 
-15. **`db_write_requires_approval`** (`off` | `high_risk` | `all`) and
+16. **`db_write_requires_approval`** (`off` | `high_risk` | `all`) and
     **`human_review_handoff`** (`off` | `review` | `all`) — the two policies whose default is
     plausibly wrong for a given team. The other eight policies stay commented defaults with their
     "when to change this" notes; asking all ten is the wall the old question cap existed to
@@ -338,7 +345,7 @@ deliverables open for human sign-off at `/review` only."
   defaults" silently becomes indistinguishable from "chose".
 - **A skip is written down twice**, so deferring is trackable:
   1. an explicit TODO line in `stack.yaml`, e.g.
-     `# TODO(setup): round 5 skipped — domain/analysis_tools at defaults; finish with /setup role`
+     `# TODO(setup): round 5 skipped — domain/team_docs at defaults; finish with /setup role`
      (round 6: `# TODO(setup): round 6 skipped — policies at defaults; finish with /setup policies`);
   2. a **punch list** section in the Phase-4 report, one entry per skipped round, each naming its
      re-entry command.
@@ -358,7 +365,11 @@ project:
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]  # round 2: email + meeting notes also carry work in
   domain: data analysis               # round 5 (role is not asked; generalist unless /setup role)
-  analysis_tools: [notebooks, spreadsheets]
+  team_docs:                          # round 5, both lists optional
+    standards:
+      - location: https://wiki.acme.example/analytics/sql-style
+        note: SQL style guide
+    context: [docs/metric-definitions.md]
 seams:
   tracker:
     tool: jira

@@ -15,6 +15,10 @@ ticket under `{{ticket_path}}`.
 Analysis tooling in use: {{analysis_tools}} — descriptive context only; tool commands still come
 from the adapters, never from this line.
 
+Team docs: {{team_docs}}. List them with `bin/tw team_docs.py`: `/build` follows the standards,
+`/ticket` reads the context while planning, and `/review` checks work against the standards. A
+linked doc is read live; one that cannot be opened is reported as unreadable, never as checked.
+
 ## How work flows (plan → build → check → ship)
 `/ticket <id>` (opens the ticket, auto-loads its context and prior art, **writes the plan — and the
 spec when the plan calls for one — and waits for your approval before anything is built**) →

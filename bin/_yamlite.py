@@ -374,7 +374,11 @@ def _read_flow_scalar(s: str, i: int, no: int, filename: str) -> tuple[Any, int]
             if depth == 0:
                 break
             depth -= 1
-        elif depth == 0 and c in ",:":
+        elif depth == 0 and c == ",":
+            break
+        elif depth == 0 and c == ":" and (i + 1 >= len(s) or s[i + 1] in " \t,]}"):
+            # A colon is a key indicator only when a space, a separator or the end follows it,
+            # so `[https://host/x]` stays one string, as it does under `yq`.
             break
         i += 1
     raw = s[start:i].strip()
