@@ -191,7 +191,7 @@ No telemetry, and no service of its own: Ticketwright's own code makes no networ
 Installing fetches it from GitHub or PyPI; everything else goes through tools you configured,
 under your own sign-in.
 
-- **Your coding agent.** What the skills read (ticket text, query results, notes) goes to your
+- **Your coding agent.** What the skills read (ticket text, query results, notes, team docs you link) goes to your
   agent's model provider under your account's terms, as does the ticket text
   `ticketwright enrich` sends to the model command you configure.
 - **Your tools, named in `stack.yaml`.** `/ticket` reads the ticket, `/build` and `/review` query

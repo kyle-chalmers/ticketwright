@@ -14,8 +14,8 @@ WHAT IT REPORTS (all of it local, names and paths only):
                path of each mount root. Never the contents: listing what is inside someone's drive
                is a question for the person, not something a probe does
   obsidian     installed or not
-  analysis     analysis apps and CLIs found on this machine, as candidates for "what do you
-               analyze with?" (this machine is not the team, so setup still asks)
+  analysis     analysis apps and CLIs found on this machine. Context for the setup report only:
+               setup no longer asks which tools the team analyzes with (team docs replaced it)
 
 WHAT IT NEVER DOES: no network call, no credential read, no tool login, no file contents. MCP
 connectors are invisible to a shell; the agent reports those itself.

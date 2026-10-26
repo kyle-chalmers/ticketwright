@@ -33,6 +33,18 @@ pass gets its own context, and the verdict records which review the ticket actua
 2. Read the ticket README, the plan (`<ticket-dir>/plan.md` — its Validation strategy and
    Deliverables are part of what this review checks against), the spec (if any), and list
    `final_deliverables/` + `qc_queries/`.
+3. **Load the team's docs:** `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" team_docs.py --json`. Read every `standards` doc and any
+   `context` doc that defines a metric or table this ticket reports (a path directly, a link live
+   with whatever reader this runtime has). Mark each one `opened` or `unreadable`; a row with
+   `exists: false` is `unreadable`. **An unreadable standards doc is never reported as checked:**
+   the verdict says it could not be opened. Check the deliverables against what was opened: a broken
+   rule is a finding, `Should-fix` by default, `Critical` only where the doc itself makes the rule a
+   must (must, required, never, always). A reported metric that contradicts its written definition
+   is a finding too. If the command exits 3, the team config could not be read: record
+   `team_docs: unknown (team config unreadable)`, never `none configured`.
+   When you spawn `qc-reviewer`, pass the rows and, for each doc you opened, the rules that apply
+   to this ticket, in the prompt: the reviewer may have no way to open a link itself, and a link it
+   cannot open is a standard it cannot check.
 
 ## The validation pyramid (bottom = cheap/automated, top = human)
 
@@ -184,7 +196,8 @@ An inline-degraded APPROVE must never read identically to an independent-subagen
 **Save the report as `qc_queries/<n>_review_verdict.md`** (`<n>` = the next number in that folder)
 with the lowercase `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first line after the
 title, then `review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship`
-reads. **The current verdict is the file with the highest `<n>`, compared numerically** — `10_` is
+reads. Add a `team_docs:` line after them: `team_docs: <location> opened; <location> unreadable`
+for each doc from Phase 0 step 3, or `team_docs: none configured`. **The current verdict is the file with the highest `<n>`, compared numerically** — `10_` is
 newer than `9_`; a lexical sort or a file mtime is not the rule — so a later review supersedes an
 earlier one, including a `SKIPPED` record `/ship` wrote for an unreviewed ship. **Confirm the record
 parses before routing:**
