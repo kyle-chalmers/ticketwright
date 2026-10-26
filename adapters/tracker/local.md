@@ -42,6 +42,7 @@ Read the fields out of the rendered template rather than guessing:
 
 A missing folder means the ticket does not exist yet — that is the signal to `create_ticket`, not
 an error to report. A folder with no `README.md` is a scaffolded-but-unbriefed ticket.
+**People, for `/ship`'s audience suggestions:** `reporter` and `watchers`: not available. The local README records the assignee only.
 
 ## verb: create_ticket
 There is no remote to create, so this establishes *intent* locally — which is the one thing a

@@ -49,6 +49,7 @@ attachments, parent/project.
 ```
 mcp__{mcp}__get-issue(id=<id>)
 ```
+**People, for `/ship`'s audience suggestions:** `reporter` is the issue's `creator` and `watchers` its `subscribers`, when the MCP response carries them; otherwise say "not available" rather than guessing.
 
 ## verb: create_ticket
 ```

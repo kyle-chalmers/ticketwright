@@ -12258,5 +12258,70 @@ grep -q '"TEST-1"' "$TMP/s65r.out" && grep -q '"TEST-12"' "$TMP/s65r.out" \
   && ok "recall by the bare table name still finds both tickets" \
   || bad "recall by the bare table name broke" "$(head -c 400 "$TMP/s65r.out")"
 
+hdr "68 · each ticket picks its audience: a channel needs no named person, suggestions never send"
+# A real first run could not set up "post results to our channel": every route needed a named
+# person. Recipients vary per ticket (a channel, a DM, a group DM), so the plan now says WHAT the
+# destination is (`chat.kind:`), a channel post routes with no named person, a DM still needs one,
+# and the channels a team posts to often come back as suggestions that never route on their own.
+DP68="bin/delivery_plan.py"; A68="$TMP/aud68"; mkdir -p "$A68/.claude/config"
+printf 'project:\n  key_prefix: TEST\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    transport: mcp\n    mcp: slack\n    default_mode: draft\n    suggested_channels: ["#analytics", "#data-requests"]\n    verify: null\n' > "$A68/.claude/config/stack.yaml"
+r68() {  # r68 <plan body>; sets R68 (json) and R68RC
+  printf '%b' "$1" > "$A68/dp.yaml"
+  R68="$(python3 "$DP68" --root "$A68" --plan "$A68/dp.yaml" --seam chat --quiet 2>/dev/null)"; R68RC=$?
+}
+g68() { printf '%s' "$R68" | python3 -c "import json,sys;d=json.load(sys.stdin);print($1)" 2>/dev/null; }
+r68 'schema_version: 1\nchat:\n  channel: "#analytics"\n  kind: channel\n  chosen_from: suggested_channels\n'
+{ [ "$R68RC" -eq 0 ] && [ "$(g68 "d['destination']")" = "#analytics" ] && [ "$(g68 "d['recipients']")" = "[]" ] \
+  && [ "$(g68 "d['kind']")" = "channel" ]; } \
+  && ok "a per-ticket post to a channel routes with no named person (kind: channel)" \
+  || bad "a channel post still demands a named recipient" "rc=$R68RC $R68"
+FP68a="$(g68 "d['resolution_fingerprint']")"
+r68 'schema_version: 1\nchat:\n  channel: "U0PERSON"\n  kind: dm\n'
+{ [ "$R68RC" -eq 9 ] && [ "$(g68 "d['destination']")" = "None" ] && grep -q 'never sent without a named recipient' <<<"$R68"; } \
+  && ok "a direct message with nobody named halts (exit 9) and says how to fix it" \
+  || bad "a DM routed with no named recipient" "rc=$R68RC $R68"
+r68 'schema_version: 1\nchat:\n  channel: "#analytics"\n  recipients: [Sam]\n'
+[ "$R68RC" -eq 0 ] && [ "$(g68 "d['recipients']")" = "['Sam']" ] \
+  && ok "…a plan with no kind and a named person routes exactly as before" \
+  || bad "an existing per-ticket plan stopped routing" "rc=$R68RC $R68"
+r68 'schema_version: 1\nchat:\n  channel: "#analytics"\n  kind: everyone\n'
+[ "$R68RC" -eq 4 ] \
+  && ok "an unknown chat.kind is refused, never read as a channel" \
+  || bad "an unknown chat.kind was accepted" "rc=$R68RC"
+r68 'schema_version: 1\nchat:\n  channel: "#analytics"\n  kind: dm\n  recipients: [Sam]\n'
+[ "$(g68 "d['resolution_fingerprint']")" != "$FP68a" ] \
+  && ok "the kind is part of the approval fingerprint (a channel post approved is not a DM sent)" \
+  || bad "changing channel to DM kept the same fingerprint"
+r68 'schema_version: 1\n'
+{ [ "$R68RC" -eq 9 ] && [ "$(g68 "d['destination']")" = "None" ] \
+  && [ "$(g68 "d['suggested_channels']")" = "['#analytics', '#data-requests']" ]; } \
+  && ok "with nothing declared, routing halts and hands back the suggested channels, routing to none" \
+  || bad "suggested_channels routed on their own or were not returned" "rc=$R68RC $R68"
+s68="$(sed -n '/Audience suggestions/,/a suggestion they did not pick is dropped/p' .claude/skills/ship/SKILL.md)"
+{ grep -q 'nothing is preselected' <<<"$s68" && grep -q 'reporter' <<<"$s68" && grep -q 'watchers' <<<"$s68" \
+  && grep -q 'chosen_from' <<<"$s68" && grep -q '\*\*Never infer\*\* the' .claude/skills/ship/SKILL.md; } \
+  && ok "/ship offers suggestions only from config and the tracker's own people fields, never preselected, and keeps Never infer" \
+  || bad "/ship's audience suggestion rules are missing or weaker"
+grep -q 'Are there channels you post results to' .claude/skills/setup/interview.md \
+  && grep -q 'suggested_channels' .claude/skills/setup/interview.md \
+  && ok "setup asks for channels posted to often and stores them as suggestions, never a standing channel" \
+  || bad "setup does not ask for suggested channels"
+python3 - <<'PY' >"$TMP/s68t.out"
+import glob, re
+for f in sorted(glob.glob("adapters/tracker/*.md")):
+    t = open(f, encoding="utf-8").read()
+    body = re.split(r"^## ", t.split("## verb: fetch_ticket", 1)[1], flags=re.M)[0]
+    if "`reporter`" not in body or "`watchers`" not in body:
+        print(f)
+PY
+! grep -q . "$TMP/s68t.out" \
+  && ok "every tracker adapter's fetch_ticket says where reporter and watchers come from, or that they are not available" \
+  || bad "tracker adapter(s) do not name reporter and watchers" "$(cat "$TMP/s68t.out")"
+sl68="$(sed -n '/^## verb: lookup_user/,/^## gotchas/p;/^### Read-only probe/,/^```$/p' adapters/chat/slack.md | sed -n '1,/^## Runtime surface/p')"
+{ ! grep -q 'search_[a-z]*(query=' adapters/chat/slack.md && grep -q 'slack_search_users(keywords=' <<<"$sl68" \
+  && grep -q 'attached_draft_exists' adapters/chat/slack.md; } \
+  && ok "the Slack adapter's default lookups and probe take keywords + natural_language_query, as the hosted connector declares" \
+  || bad "the Slack adapter still calls its search tools with query="
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

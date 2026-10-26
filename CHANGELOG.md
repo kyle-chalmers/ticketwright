@@ -29,6 +29,21 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
+- **Each ticket picks its own audience, and a post to a channel no longer needs a named person.**
+  A first run could not set up "post results to our channel", because every route required a
+  named person. Recipients change per ticket, so the delivery plan now records what the
+  destination is (`chat.kind: channel | dm | group`). A channel post routes with nobody named; a
+  direct or group message still names who it is for, and the kind is part of the approval
+  fingerprint. Setup asks which channels the team posts to often and saves them as
+  `suggested_channels`, which routing hands back when `/ship` asks but never sends to on its own.
+  `/ship` also offers the ticket's own people (reporter, assignee and watchers from the tracker's
+  structured fields, now listed in every tracker adapter's `fetch_ticket`) as labeled choices,
+  never preselected, and records `chosen_from:` in the plan.
+- **The Slack adapter's searches match Slack's hosted connector.** Checked against the connector's
+  own tool declarations: draft and send already matched, but user and channel search take
+  `keywords` plus `natural_language_query`, not `query`, so every lookup would have failed on
+  first use. The adapter also says how to DM someone (their user id as `channel_id`), that only
+  one draft per channel is allowed, and that the connector cannot post to Slack Connect channels.
 - **The Obsidian graph shows one node per table.** A ticket's curated index record could name a
   table `schema.table` while its SQL named it `db.schema.table`, and the graph drew two nodes for
   the one table, with the short one linked only to that ticket. A shorter name now folds into the

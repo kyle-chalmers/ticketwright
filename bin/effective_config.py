@@ -118,6 +118,7 @@ RESERVED_SEAM_KEYS = {
     "conn", "host", "server", "site", "workgroup_name", "cluster_identifier",
     "dev_target", "dev_db", "dev_catalog", "dev_schema", "dev_dataset",
     "default_branch", "default_channel", "default_mode", "always_include", "include_self",
+    "suggested_channels",
     "repo", "org", "team_id", "board_id", "workspace_gid",
     # Delivery routing. `audience` and `classification` SELECT a target, `channel`/`drive_folder`
     # ARE the destination, and `sharing_scope` is what the human authorizes at the /ship gate. A
