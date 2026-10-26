@@ -87,7 +87,7 @@ prefix, an `sh` prefix, and the executable in bare command position — `verify_
 that last one needs no interpreter), but it matches TEXT, so indirection through a variable or `eval`
 slips past it; 53 also pins that the allowlist grows no tracker/warehouse
 CLI (`git` is listed deliberately — `kit_paths` shells out to `rev-parse`).
-`selftest.sh` needs `yq` and `python3` only. It is organized into 63 numbered sections, plus lettered sub-sections such as 21b (config resolution, adapter
+`selftest.sh` needs `yq` and `python3` only. It is organized into 64 numbered sections, plus lettered sub-sections such as 21b (config resolution, adapter
 verb coverage, tool-name isolation, every hook, the index/recall engines, the render gate, the Obsidian
 graph layer, version sync, …). **When you change behavior, add or update the matching numbered section** —
 a green selftest is the contract this kit ships on. It must print `0 failed`.

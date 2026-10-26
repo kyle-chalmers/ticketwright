@@ -161,8 +161,9 @@ team, and a description can tell a model to do things. So `summarize_hits.py` ru
 when `model_sandbox` is `tools-withheld`. A `read-only` sandbox can still read files while it reads that
 text, and the summary line lands in a committed brief, so Codex CLI's command is refused as well. For
 every runtime but Claude Code, and for one it cannot identify, it exits with code 4 and runs nothing,
-and `/ticket` has your session's own model write the lines from the titles and says so. Codex CLI loses
-nothing by this: its command takes no model name, so it could never pick a cheaper model. The
+and `/ticket` has your session's own model write the lines from the titles and says so. On Codex CLI
+that costs the summaries what a description adds over its title; it never saved money there, since
+its command takes no model name and could not pick a cheaper model. The
 restriction covers the summary command only: your session's own model reads more of the same tracker
 text with all of its tools, as [ticket-index.md](ticket-index.md#older-tickets-in-your-tracker) sets
 out.

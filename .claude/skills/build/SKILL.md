@@ -57,6 +57,10 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    Treat the blueprint as the source of truth, but **validate each step independently** — don't
    blindly follow; a plan or spec can be wrong, and finding that out here is what the small loops
    below are for.
+   **Then load the team's standards:** run `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" team_docs.py --kind standards` and
+   read each doc (a path directly, a link live with whatever reader this runtime has). Build to
+   them. A doc you cannot open goes in the README's Assumptions as unreadable, so `/review` knows
+   it was not followed knowingly. `none configured` needs no note.
 2. **Preflight** each warehouse **target** the blueprint names (resolve per `adapters/README.md`
    § Multi-target seams; verify each; halt with that target's auth notes). No warehouse configured ⇒
    the build is code/analysis/document work — skip the warehouse steps below cleanly.

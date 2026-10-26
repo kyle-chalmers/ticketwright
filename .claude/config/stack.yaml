@@ -27,7 +27,10 @@ project:
   # history_before: "2024-03-01"        # only tickets created before this date; unset = no cutoff (setup recommends the day ticket work in this repo began)
   # role: generalist                    # persona for the rendered AGENTS.md (generalist | analyst | engineer | scientist)
   # domain: data analysis               # short phrase for the {{domain}} token in AGENTS.md — any kind of analysis work
-  # analysis_tools: []                  # what the team analyzes WITH (e.g. [notebooks, spreadsheets]) — descriptive context rendered into AGENTS.md; not a tool slot, nothing verifies or executes it
+  # analysis_tools: []                  # LEGACY, no longer asked by setup: what the team analyzes WITH, rendered into AGENTS.md when present
+  # team_docs:                          # optional docs the team already keeps; links are read live, never copied
+  #   standards: [https://wiki.acme.example/analytics/sql-style]   # rules /build follows and /review checks
+  #   context: [docs/metric-definitions.md]                        # what /ticket reads while planning
   word_limits: {tracker_comment: 100, chat: 100, pr: 200, ticket: 200}
   graph_notes: true                     # Obsidian graph layer (tickets/graph + tickets/objects); false to disable
   graph_config: true                    # also write .obsidian/graph.json (tickets↔objects filter + colors); create/merge-only, never clobbers manual tweaks

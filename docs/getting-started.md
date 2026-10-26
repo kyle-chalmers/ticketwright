@@ -361,8 +361,10 @@ search those older tickets),
 including "we don't have one"), and **how you share results and where files are kept** (every tool
 you share through: pick Slack and email both and both are set up, with who gets each result chosen
 when you ship it; the drive folder; the code host, confirmed from `origin`). Two more are
-individually skippable, each skip labeled with its cost: **how you work** (role, domain, analysis
-tools) and **house rules** (the two policies whose defaults most often differ by team, with each
+individually skippable, each skip labeled with its cost: **how you work** (your domain, plus two optional questions: where the team's
+written analysis standards live, which `/build` follows and `/review` checks, and any other docs about
+the team or its data, which `/ticket` reads while planning; links are read live, never copied. It
+never asks for a role, which stays `generalist` unless you run `/setup role`) and **house rules** (the two policies whose defaults most often differ by team, with each
 option explained). A skipped round becomes a `# TODO` in the config plus a punch-list entry naming
 the command that finishes it later (`/setup role`, `/setup policies`). The other eight policies
 ship as commented defaults you can edit any time. Setup can rank options by what you've used
@@ -382,7 +384,7 @@ the files are written.
   is how the catalog refresh gets turned on at all (it refreshes the catalog only; upgrading the
   plugin is still uninstall, install, relaunch, as in Track 1 step 4). It *merges*: an existing entry keeps the `source` you have
   (forks edit that URL), and a deliberate `false` is left alone.
-- **`AGENTS.md`** (rules, tuned to your role) and a one-line **`CLAUDE.md`** that imports it.
+- **`AGENTS.md`** (rules for the agent) and a one-line **`CLAUDE.md`** that imports it.
 - **`.claude/settings.json`** — read-only CLI allows, plus the hooks on a vendored install (omitted on a
   plugin install, where `plugin.json` already wires them).
 - **Folders + `.gitignore`** — `tickets/<you>/`, `documentation/`, `resources/`; deliverable

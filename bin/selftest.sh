@@ -225,6 +225,7 @@ chat_always_include=Alice
 default_branch=main
 role_focus=**You are a senior engineer** doing ticket-driven work (filled from templates/roles/<role>.md).
 analysis_tools=notebooks, spreadsheets
+team_docs=standards: docs/style.md; context: https://wiki.example.test/team
 EOF
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
@@ -3305,6 +3306,13 @@ PY2
 oracle_bad="$(cat "$TMP/hd2716.out")"
 [ -z "$oracle_bad" ] && ok "_yamlite matches yq on every shipped config + people file" \
   || bad "the stdlib parser and yq disagree on real config" "$oracle_bad"
+# A URL inside a flow list stays one string (a colon is a key indicator only before a space, a
+# separator or the end). team_docs lists links on one line, and _yamlite once split them in two.
+printf 'a: [https://wiki.example.test/team, docs/x.md]\nb: {u: https://h.example.test/x}\n' > "$TMP/yl_url.yaml"
+yl_ours="$(python3 -c 'import json,sys; sys.path.insert(0,"bin"); import _yamlite as y; print(json.dumps(y.parse_file(sys.argv[1]), sort_keys=True))' "$TMP/yl_url.yaml" 2>&1)"
+yl_yq="$(yq -o=json -I=0 "$TMP/yl_url.yaml" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))' 2>&1)"
+[ "$yl_ours" = "$yl_yq" ] && ok "_yamlite reads a URL inside a flow list or map as one string, as yq does" \
+  || bad "_yamlite split a URL in a flow node" "ours=$yl_ours yq=$yl_yq"
 python3 - <<'PY2' >"$TMP/hd2736.out"
 import glob, sys
 sys.path.insert(0, "bin")
@@ -4282,7 +4290,8 @@ wl_ticket=200
 chat_always_include=Alice
 default_branch=main
 role_focus=x
-analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run /setup role)
+analysis_tools=none listed (setup no longer asks; team_docs carries this now)
+team_docs=none yet (add project.team_docs in stack.yaml, or run /setup role)
 EOF
 absout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent.env" 2>"$S36/abs.err")"
 { grep -qF '/setup tool chat' <<<"$absout" && grep -qF '/setup tool warehouse' <<<"$absout" \
@@ -4557,9 +4566,10 @@ project:
   intake: [tracker, email, meetings]
   history_search: ask
   history_before: "2024-03-01"
-  role: analyst
   domain: data analysis
-  analysis_tools: [notebooks, spreadsheets]
+  team_docs:
+    standards: [docs/style.md]
+    context: [https://wiki.example.test/team]
 seams:
   tracker:
     tool: jira
@@ -4633,8 +4643,8 @@ grep -q 'mount_root' "$IVY" \
 # config still verifies. The TODO forms are the exact ones interview.md specifies, so the fixture
 # and the instructions cannot drift apart without one of these assertions going red.
 IVS="$TMP/s38-skip"; mkdir -p "$IVS/.claude/config"
-sed -e 's|^  role: analyst$|  # TODO(setup): round 5 skipped — role/domain/analysis_tools at defaults; finish with /setup role|' \
-    -e '/^  domain: data analysis$/d' -e '/^  analysis_tools:/d' \
+sed -e 's|^  domain: data analysis$|  # TODO(setup): round 5 skipped — domain/team_docs at defaults; finish with /setup role|' \
+    -e '/^  team_docs:$/d' -e '/^    standards: /d' -e '/^    context: /d' \
     -e 's|^  db_write_requires_approval: high_risk$|  # TODO(setup): round 6 skipped — policies at defaults; finish with /setup policies|' \
     -e '/^  human_review_handoff: review$/d' \
     "$IVY" > "$IVS/.claude/config/stack.yaml"
@@ -4656,6 +4666,15 @@ grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ u
 { grep -qi 'punch list' <<<"$iflat" && grep -qi 'punch list' <<<"$skflat38"; } \
   && ok "the punch list is specified in interview.md AND in the Phase-4 report step" \
   || bad "the punch-list requirement is missing from interview.md or SKILL.md's report step"
+# (C2) role is opt-in: round 5 asks domain + team docs only, and the role question (13a) is gated to
+# /setup role. A default interview that asks for a role again is the regression this pins.
+r5_38="$(sed -n '/^## Round 5/,/^## Round 6/p' "$IV")"
+{ grep -q 'never asks for a role' <<<"$r5_38" \
+  && grep -q '13a\. \*\*Role (only under `/setup role`)' <<<"$r5_38" \
+  && ! grep -q 'Role + domain, as one question' <<<"$r5_38" \
+  && grep -q 'sets `project.role`, the one thing the default interview never asks' "$SK38"; } \
+  && ok "role is opt-in: the default interview never asks it; /setup role does (question 13a)" \
+  || bad "the role question is back in the default interview, or /setup role no longer asks it"
 # (D) every advertised re-entry verb resolves to a defined mode — a promise with no mechanism is
 # worse than no promise.
 rv38=""
@@ -4715,9 +4734,19 @@ auq38="$(grep -rn 'AskUserQuestion' .claude/skills/ 2>/dev/null || true)"
   && grep -qi 'Not a tool slot' .claude/config/stack.schema.md; } \
   && ok "analysis_tools: schema row (not-a-slot stated), template token, scaffold guidance" \
   || bad "analysis_tools is not wired through schema + template + scaffold"
-grep -i 'permissions.allow' "$IV" | grep -qi 'not' \
-  && ok "interview.md forbids auto-appending analysis tooling to permissions.allow" \
-  || bad "the permissions.allow prohibition is missing from round 5"
+{ grep -q '14\. \*\*Standards\*\* (optional)' <<<"$r5_38" \
+  && grep -q '15\. \*\*Team context\*\* (optional)' <<<"$r5_38" \
+  && [ "$(grep -c 'None yet' <<<"$r5_38")" -ge 2 ] \
+  && ! grep -q 'Which tools does the team do the actual analysis in' <<<"$r5_38" \
+  && grep -q 'never as checked' <<<"$r5_38"; } \
+  && ok "round 5 asks for standards and team context, both optional with None yet; the tools question is gone" \
+  || bad "round 5's team-docs questions are missing, not optional, or the tools question is back"
+{ grep -q '{{team_docs}}' templates/AGENTS.md.tmpl \
+  && grep -q 'team_docs' .claude/skills/setup/scaffold.md \
+  && grep -q '| `team_docs` |' .claude/config/stack.schema.md \
+  && [ "$(python3 "$KIT/bin/team_docs.py" --root "$IVR" --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')" = 2 ]; } \
+  && ok "team_docs: schema row, template token, scaffold guidance, and the interview fixture reads back through team_docs.py" \
+  || bad "team_docs is not wired through schema + template + scaffold + fixture"
 { grep -q 'intake' .claude/config/stack.schema.md \
   && grep -q 'intake' .claude/skills/ticket/priming.md \
   && grep -q 'source_materials' .claude/skills/ticket/priming.md; } \
@@ -13373,6 +13402,107 @@ while IFS= read -r s63f_line; do
       bad "$s63f_name" "$s63f_detail" ;;
   esac
 done <"$TMP/s63f.out"
+
+hdr "64 · team docs: standards and context, normalized by bin/team_docs.py"
+# project.team_docs holds two optional lists: standards (rules /build follows and /review checks)
+# and context (what /ticket reads while planning). bin/team_docs.py is the one reader, so every
+# runtime gets the same list. Pinned: the empty default (A), both item shapes (B), a missing local
+# path (C), the kind filter (D), and the loud refusals (E).
+TD63="$TMP/s63"; mkdir -p "$TD63/.claude/config" "$TD63/docs"
+td63() { python3 "$KIT/bin/team_docs.py" --root "$TD63" "$@"; }
+printf 'project:\n  key_prefix: TEST\n' > "$TD63/.claude/config/stack.yaml"
+td63 --json > "$TMP/s63a.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 0 ] && [ "$(tr -d ' \n' < "$TMP/s63a.out")" = "[]" ]; } \
+  && ok "no team_docs configured (every existing repo) prints [] and exits 0" \
+  || bad "an empty team_docs config did not print []" "rc=$s63rc $(head -c 300 "$TMP/s63a.out")"
+td63 > "$TMP/s63a2.out" 2>&1
+grep -qx 'none configured' "$TMP/s63a2.out" \
+  && ok "the plain listing says 'none configured' when there are no docs" \
+  || bad "the plain listing for no docs is wrong" "$(head -c 300 "$TMP/s63a2.out")"
+printf 'style\n' > "$TD63/docs/style.md"
+cat > "$TD63/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: TEST
+  team_docs:
+    standards:
+      - docs/style.md
+      - docs/missing.md
+    context:
+      - location: https://wiki.example.test/team
+        note: team wiki
+EOF
+td63 --json > "$TMP/s63b.out" 2>&1; s63rc=$?
+python3 - "$TMP/s63b.out" > "$TMP/s63b.chk" 2>&1 <<'PY63'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+by = {r["location"]: r for r in rows}
+ok = (len(rows) == 3
+      and by["docs/style.md"]["kind"] == "standards" and by["docs/style.md"]["exists"] is True
+      and by["docs/style.md"]["is_url"] is False and by["docs/style.md"]["note"] is None
+      and by["docs/missing.md"]["exists"] is False
+      and by["https://wiki.example.test/team"]["kind"] == "context"
+      and by["https://wiki.example.test/team"]["is_url"] is True
+      and by["https://wiki.example.test/team"]["exists"] is None
+      and by["https://wiki.example.test/team"]["note"] == "team wiki")
+print("OK" if ok else "BAD %r" % rows)
+PY63
+{ [ "$s63rc" -eq 0 ] && grep -qx OK "$TMP/s63b.chk"; } \
+  && ok "both item shapes normalize: a bare path and {location, note}, each with its kind and is_url" \
+  || bad "team_docs items did not normalize" "rc=$s63rc $(head -c 400 "$TMP/s63b.chk")"
+grep -qx OK "$TMP/s63b.chk" \
+  && ok "a local path that does not exist is reported exists: false, never as readable" \
+  || bad "a missing local doc was not reported exists: false"
+td63 --kind context --json > "$TMP/s63d.out" 2>&1
+{ grep -q 'wiki.example.test' "$TMP/s63d.out" && ! grep -q 'style.md' "$TMP/s63d.out"; } \
+  && ok "--kind context returns only the context docs" \
+  || bad "--kind did not filter" "$(head -c 300 "$TMP/s63d.out")"
+printf 'project:\n  team_docs:\n    standards:\n      - note: no location\n' > "$TD63/.claude/config/stack.yaml"
+td63 --json > "$TMP/s63e.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 2 ] && grep -q 'standards' "$TMP/s63e.out"; } \
+  && ok "an item with no location exits 2 and names its list, never silently dropped" \
+  || bad "a malformed team_docs item was not refused" "rc=$s63rc $(head -c 300 "$TMP/s63e.out")"
+td63 --kind wiki > "$TMP/s63f.out" 2>&1; s63rc=$?
+[ "$s63rc" -eq 2 ] && ok "an unknown --kind is refused (exit 2)" || bad "an unknown --kind was accepted" "rc=$s63rc"
+# (G) never "none configured" when the config could not be read: a review would skip the standards.
+rm -f "$TD63/.claude/config/stack.yaml"
+td63 > "$TMP/s63g.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 3 ] && ! grep -q 'none configured' "$TMP/s63g.out"; } \
+  && ok "a missing stack.yaml exits 3, never 'none configured'" \
+  || bad "a missing stack.yaml read as no team docs" "rc=$s63rc $(head -c 300 "$TMP/s63g.out")"
+printf 'project: [unclosed\n' > "$TD63/.claude/config/stack.yaml"
+td63 > "$TMP/s63g2.out" 2>&1; s63rc=$?
+[ "$s63rc" -eq 3 ] && ok "an unparsable stack.yaml exits 3" || bad "an unparsable stack.yaml was not refused" "rc=$s63rc"
+# (H) the one-line {location, note} item under a dash parses, and the CLI finds the repo root from
+# a subfolder (no --root, no CLAUDE_PROJECT_DIR), as every other kit command does.
+mkdir -p "$TD63/tickets/x"
+printf 'project:\n  team_docs:\n    standards:\n      - {location: https://wiki.example.test/sql, note: SQL style}\n' > "$TD63/.claude/config/stack.yaml"
+( cd "$TD63/tickets/x" && env -u CLAUDE_PROJECT_DIR python3 "$KIT/bin/team_docs.py" ) > "$TMP/s63h.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 0 ] && grep -q '^standards	https://wiki.example.test/sql	SQL style$' "$TMP/s63h.out"; } \
+  && ok "a one-line {location, note} item parses, and the CLI finds the repo root from a subfolder" \
+  || bad "the one-line item or the root walk-up failed" "rc=$s63rc $(head -c 300 "$TMP/s63h.out")"
+
+# (F) the consumers: /ticket reads context, /build follows standards, /review and qc-reviewer check
+# standards and record each doc opened or unreadable. A key nothing reads is configuration theater.
+w63=""
+for f in .claude/skills/ticket/priming.md .claude/skills/build/SKILL.md .claude/skills/review/SKILL.md .claude/agents/qc-reviewer.md; do
+  grep -q 'bin/tw" team_docs.py' "$f" || w63="$w63 $f"
+done
+[ -z "$w63" ] && ok "ticket, build, review and qc-reviewer all call team_docs.py through bin/tw" \
+  || bad "a team-docs consumer does not call team_docs.py through bin/tw" "$w63"
+{ grep -q 'team_docs.py" team_docs.py --kind context\|team_docs.py --kind context' .claude/skills/ticket/priming.md \
+  && grep -q 'team_docs.py --kind standards' .claude/skills/build/SKILL.md; } \
+  && ok "/ticket reads the context list and /build reads the standards list" \
+  || bad "/ticket or /build reads the wrong team-docs list"
+{ grep -q 'team_docs: <location> opened' .claude/skills/review/SKILL.md \
+  && grep -q '^team_docs: <location> opened' .claude/agents/qc-reviewer.md \
+  && grep -q 'unreadable standards doc is never reported as checked' .claude/skills/review/SKILL.md \
+  && grep -qi 'never report an unreadable standards' .claude/agents/qc-reviewer.md; } \
+  && ok "the verdict records each team doc opened or unreadable, and an unreadable one is never 'checked'" \
+  || bad "the review record does not say which team docs were opened"
+{ grep -q 'only where the doc itself makes the rule a' .claude/skills/review/SKILL.md \
+  && grep -q 'only where the doc makes the rule a must' .claude/agents/qc-reviewer.md; } \
+  && ok "a broken standard is Should-fix by default, Critical only where the doc makes it a must" \
+  || bad "the standards severity rule is missing from review or qc-reviewer"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

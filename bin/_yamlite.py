@@ -374,7 +374,11 @@ def _read_flow_scalar(s: str, i: int, no: int, filename: str) -> tuple[Any, int]
             if depth == 0:
                 break
             depth -= 1
-        elif depth == 0 and c in ",:":
+        elif depth == 0 and c == ",":
+            break
+        elif depth == 0 and c == ":" and (i + 1 >= len(s) or s[i + 1] in " \t,]}"):
+            # A colon is a key indicator only when a space, a separator or the end follows it,
+            # so `[https://host/x]` stays one string, as it does under `yq`.
             break
         i += 1
     raw = s[start:i].strip()
@@ -487,6 +491,11 @@ class _Parser:
             if rest == "":
                 nxt = self.peek()
                 out.append(self.parse_block(nxt.indent) if (nxt and nxt.indent > indent) else None)
+                continue
+            # `- {key: value}` / `- [a, b]` — a flow node as the item, never a block key whose
+            # name happens to start with `{`.
+            if rest[0] in "{[":
+                out.append(_parse_value(rest, line.no, self.filename))
                 continue
             # `- key: value` — a mapping whose first entry shares the dash's line. Splice a
             # synthetic line at the content column so following siblings join the same mapping;
