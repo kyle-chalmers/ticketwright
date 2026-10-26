@@ -161,16 +161,25 @@ check when a new one starts."
    never find the team's older work. Skip it, and write nothing, when the tracker is the `local`
    one or there is none, since those tickets are this repo's own. One choice only; recommend
    "Yes, in the same project" when question 4 picked a project from the tracker's own list.
-   - **The date.** Run `git log --reverse --format=%as | head -1` for the date of this repo's first
-     commit. It is the **recommended** cutoff, never the answer: show it in the option with where
-     it came from, and write it only on the person's yes. A repo with no commit yet prints nothing:
-     leave the date out and say "all of your older tickets" in the option (no `history_before` is
-     written, which means no cutoff). The person can type a different date instead.
+   - **The date.** The **recommended** cutoff is the day ticket work in this repo began, never the
+     answer: show it in each "Yes" option with where it came from, and write it only on the
+     person's yes. Take the first of these that prints a date written `YYYY-MM-DD` (an old git
+     prints a literal `%as` instead of a date, and that does not count):
+     1. `git log --reverse --format=%as -- tickets | head -1`, the first commit that touched the
+        ticket folders (use the folder `project.ticket_path` starts with if it is not `tickets`).
+        Say it is the day ticket work in this repo began. An existing repo (see `adopt.md`) can have
+        a first commit years before its first ticket folder, and that date would silently drop
+        everything the tracker holds from the years between.
+     2. Otherwise `git log --reverse --format=%as | head -1`, the first commit. Say it is the day
+        this repo's first commit was made.
+     3. Neither prints a date (a repo with no commit yet): leave the date out and say "all of your
+        older tickets" in each "Yes" option. No `history_before` is written, which means no cutoff.
+     The person can type a different date instead.
 
    <!-- ticketwright:user-facing:begin -->
    Did your team track work in your tracker before this repo started? If you did, I can search those older tickets when this repo has no match yet.
-   - Yes, in the same project: when a new ticket has no good match here, I can offer to search <project> for tickets created before <date>, the day this repo's first commit was made.
-   - Yes, somewhere else: I'll ask where, then search there instead.
+   - Yes, in the same project: when a new ticket has no good match here, I can offer to search <project> for tickets created before <date>, <where that date comes from>.
+   - Yes, somewhere else: I'll ask where. Then, when a new ticket has no good match here, I can offer to search there for tickets created before <date>, <where that date comes from>.
    - We don't have one: I won't offer the search. You can turn it on later by setting `history_search` to `ask` in your team settings.
    <!-- ticketwright:user-facing:end -->
 
@@ -393,7 +402,7 @@ project:
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]  # round 2: email + meeting notes also carry work in
   history_search: ask                 # round 2, question 4a: /ticket may offer to search older tracker tickets
-  history_before: "2024-03-01"        # question 4a: the repo's first commit date, written only on a yes
+  history_before: "2024-03-01"        # question 4a: the day ticket work began, written only on a yes
   # history_scope: OPS                # question 4a, "somewhere else" only; unset = the project above
   role: analyst                       # round 5
   domain: data analysis

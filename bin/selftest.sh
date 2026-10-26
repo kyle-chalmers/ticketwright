@@ -12745,7 +12745,8 @@ fi
 # question 4 so nothing renumbers. Its answer is three keys under project: in stack.yaml, shared by the
 # team: history_search (ask | never), history_scope (which project, team, repo or board; unset means the
 # one the tracker is already set up with) and history_before (an ISO date; unset means no cutoff). The
-# recommended date is the repo's first commit date, offered and never written silently. The /ticket
+# recommended date is when ticket work in this repo began (the first commit that touched the ticket
+# folders, else the repo's first commit), shown in each "Yes" option and never written silently. The /ticket
 # step that reads the keys is checked with that step, in a later section, not here.
 X="$TMP/s63e"
 mkdir -p "$X/team/.claude/config"
@@ -12803,6 +12804,8 @@ if set(rows) == set(KEYS):
         "the history_scope row says it defaults to the tracker's own project, team, repo or board", sc)
     say(iso(b[2].strip("`").strip('"')) and "first commit" in b[3] and "no cutoff" in b[3],
         "the history_before row has an ISO date example, names the first commit date, and says unset means no cutoff", b)
+    say("ticket work in this repo began" in b[3] and "touched the ticket folders" in b[3] and "already in the repo's ticket folders" not in b[3],
+        "the history_before row gives when ticket work began as the default and no longer claims later tickets are always in the repo", b)
     say(all(r[3].strip() and "ticket/priming.md" in r[3] for r in rows.values()),
         "each history row names its consumer (ticket/priming.md) the way the intake row does", [r[0] for r in rows.values()])
 
@@ -12832,8 +12835,57 @@ say(bool(block) and not re.search(r"\b(tool slots?|targets?|tiers?|seams?|adapte
 say(bool(sec) and not re.search(r"\b(jira|asana|linear|github|azure|monday|notion|jql|wiql|haiku|AskUserQuestion|ask_user_question)\b", sec, re.I),
     "question 4a names no vendor, query language, model or question tool")
 sq = squash(sec)
-say("git log --reverse --format=%as" in sq and "recommended" in sq,
-    "4a gets the repo's first commit date with git log and offers it as the recommended answer")
+c_tix = "git log --reverse --format=%as -- tickets | head -1"
+c_all = "git log --reverse --format=%as | head -1"
+say(c_tix in sq and c_all in sq and sq.index(c_tix) < sq.index(c_all) and "recommended" in sq,
+    "4a offers as its recommended date the first commit that touched the ticket folders, else the first commit, in that order")
+say("YYYY-MM-DD" in sq and "literal `%as`" in sq and "all of your older tickets" in sq and "no cutoff" in sq,
+    "4a only offers a date that reads as YYYY-MM-DD (old git prints a literal %as), else all of your older tickets with no cutoff")
+opts = {l.strip()[2:].split(":")[0]: l for l in (blocks[0].split("\n") if blocks else []) if l.strip().startswith("- ")}
+say("created before <date>" in opts.get("Yes, in the same project", "") and "created before <date>" in opts.get("Yes, somewhere else", ""),
+    "both Yes options show the date they would search before, not only the plan line", opts)
+
+# The two commands do what the text says, run for real in throwaway repos: an old first commit with the
+# ticket folders added later gives the later date from the first command and the old one from the
+# second; a repo with no ticket folders falls through (first command prints nothing); a repo with no
+# commit prints nothing from either, so the option says "all of your older tickets".
+genv = dict(os.environ, GIT_CONFIG_NOSYSTEM="1")
+
+
+def git(repo, *args, when=None):
+    e = dict(genv)
+    if when:
+        e["GIT_AUTHOR_DATE"] = e["GIT_COMMITTER_DATE"] = when
+    return subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.test"] + list(args),
+                          cwd=repo, env=e, capture_output=True, text=True)
+
+
+def first_dates(repo):
+    out = []
+    for c in (c_tix, c_all):
+        p = subprocess.run(c, shell=True, cwd=repo, env=genv, capture_output=True, text=True)
+        out.append(p.stdout.strip())
+    return out
+
+
+gd = {n: os.path.join(X, "git-" + n) for n in ("later", "plain", "empty")}
+for n, d in gd.items():
+    os.makedirs(d)
+    git(d, "init", "-q")
+git(gd["later"], "commit", "-q", "--allow-empty", "-m", "start", when="2020-01-05T12:00:00")
+os.makedirs(os.path.join(gd["later"], "tickets", "dana", "TEST-1"))
+open(os.path.join(gd["later"], "tickets", "dana", "TEST-1", "README.md"), "w").write("# TEST-1\n")
+git(gd["later"], "add", "-A")
+git(gd["later"], "commit", "-q", "-m", "first ticket", when="2024-03-01T12:00:00")
+git(gd["plain"], "commit", "-q", "--allow-empty", "-m", "start", when="2022-07-09T12:00:00")
+say(first_dates(gd["later"]) == ["2024-03-01", "2020-01-05"],
+    "in a repo whose ticket folders came years after its first commit, the first command gives the later date and the second the old one",
+    first_dates(gd["later"]))
+say(first_dates(gd["plain"]) == ["", "2022-07-09"],
+    "in a repo with no ticket folders the first command prints nothing and the second gives the first commit date",
+    first_dates(gd["plain"]))
+say(first_dates(gd["empty"]) == ["", ""],
+    "in a repo with no commit yet neither command prints a date, so no cutoff is offered", first_dates(gd["empty"]))
 say("rank_projects_by_activity" in sq and "history_search: never" in sq and "history_search: ask" in sq
     and "history_before" in sq and "history_scope" in sq,
     "4a ties each answer to the keys it writes and draws its project list from rank_projects_by_activity")
