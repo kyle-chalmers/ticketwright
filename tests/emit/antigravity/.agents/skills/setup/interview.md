@@ -17,7 +17,7 @@ kit's config is this file's job, never the person's:
 | How does work reach you? (round 2) | the tracker, `project.intake` |
 | Where does your data live? (round 3) | the warehouse, its default, the dev target |
 | How do you share results, and where are finished files kept? (round 4) | chat, docstore, VCS |
-| What kind of work, and what do you analyze with? (round 5) | `role`, `domain`, `analysis_tools` |
+| What do you work on, and what do you analyze with? (round 5) | `domain`, `analysis_tools` |
 | When should I ask before acting? (round 6) | the two policies |
 
 When an answer needs something the kit configures in a particular way (one meeting provider that
@@ -269,14 +269,25 @@ sender key).
 ## Round 5 — How you work (skippable)
 
 **Offer the skip at this header, labeled with its cost:** "Skip this and `AGENTS.md` ships the
-generic persona (`generalist`, `data analysis`) and lists no analysis tools."
+generic domain (`data analysis`) and lists no analysis tools."
 
-13. **Role + domain, as one question**, with the roles as options: **Analyst** (questions
-    answered with queries, metrics and reports), **Engineer** (pipelines, models, data
-    infrastructure), **Scientist** (experiments, statistics, modeling), **Generalist**, and
-    "Skip this round", plus free text for the domain phrase. Be honest about the blast radius: `role` fills
-    exactly one token, `{{role_focus}}`, from a three-to-six-line `templates/roles/<role>.md`
-    snippet; `domain` fills one word in one sentence. Nothing else reads either.
+**The default interview never asks for a role.** `project.role` stays `generalist`. The role
+picks only the persona paragraph in `AGENTS.md` (the `{{role_focus}}` token, from a
+three-to-six-line `templates/roles/<role>.md` snippet), and the review checks those paragraphs
+mention already run for every role, so the question costs more than it changes. It is a team
+setting, not a personal one. A team that wants a sharper persona sets it with `/setup role`,
+which asks question 13a and then re-runs this round.
+
+13. **Domain**: "In a few words, what does the team analyze?" (free text, `data analysis` when
+    left blank). Be honest about the blast radius: `domain` fills one word in one sentence of
+    `AGENTS.md`. Nothing else reads it.
+
+    13a. **Role (only under `/setup role`)**: "What kind of work does this repo mostly do?",
+    with the roles as options: **Generalist** (recommended, the default), **Analyst**
+    (questions answered with queries, metrics and reports), **Engineer** (pipelines, models,
+    data infrastructure), **Scientist** (experiments, statistics, modeling). Ask about the
+    repo's work, not the person: the answer is committed team config that every teammate
+    gets. Write it to `project.role`.
 14. **Analysis tools**: "Which tools does the team do the actual analysis in?" (transformation
     frameworks, notebooks, spreadsheets, BI apps — whatever applies). **Seed this from Phase 1
     detection, but only with tools that are NOT already filling a tool slot** — a detected CLI that
@@ -327,12 +338,12 @@ deliverables open for human sign-off at `/review` only."
   defaults" silently becomes indistinguishable from "chose".
 - **A skip is written down twice**, so deferring is trackable:
   1. an explicit TODO line in `stack.yaml`, e.g.
-     `# TODO(setup): round 5 skipped — role/domain/analysis_tools at defaults; finish with /setup role`
+     `# TODO(setup): round 5 skipped — domain/analysis_tools at defaults; finish with /setup role`
      (round 6: `# TODO(setup): round 6 skipped — policies at defaults; finish with /setup policies`);
   2. a **punch list** section in the Phase-4 report, one entry per skipped round, each naming its
      re-entry command.
 - **Re-entry commands exist** — a promise with no mechanism is worse than no promise:
-  `/setup role` re-runs round 5, `/setup policies` re-runs round 6, `/setup team` re-runs
+  `/setup role` asks the role and re-runs round 5, `/setup policies` re-runs round 6, `/setup team` re-runs
   round 1's roster question (new teammates later), and `/setup tool <tracker|warehouse|chat|docstore|meetings|vcs>`
   adds a tool slot that was declined in rounds 3–4.
 
@@ -346,8 +357,7 @@ project:
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]  # round 2: email + meeting notes also carry work in
-  role: analyst                       # round 5
-  domain: data analysis
+  domain: data analysis               # round 5 (role is not asked; generalist unless /setup role)
   analysis_tools: [notebooks, spreadsheets]
 seams:
   tracker:

@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
+  answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
+  already run for every role. It was also a team setting asked as if it were about you. Every
+  repo now starts as `generalist`. To pick a sharper persona, run `/setup role`, which asks what
+  kind of work the repo mostly does and re-renders `AGENTS.md`. Existing repos keep the role they
+  have. (LABS-102)
+
 ### Fixed
 - **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
   the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,

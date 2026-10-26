@@ -4534,7 +4534,6 @@ project:
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]
-  role: analyst
   domain: data analysis
   analysis_tools: [notebooks, spreadsheets]
 seams:
@@ -4610,8 +4609,8 @@ grep -q 'mount_root' "$IVY" \
 # config still verifies. The TODO forms are the exact ones interview.md specifies, so the fixture
 # and the instructions cannot drift apart without one of these assertions going red.
 IVS="$TMP/s38-skip"; mkdir -p "$IVS/.claude/config"
-sed -e 's|^  role: analyst$|  # TODO(setup): round 5 skipped — role/domain/analysis_tools at defaults; finish with /setup role|' \
-    -e '/^  domain: data analysis$/d' -e '/^  analysis_tools:/d' \
+sed -e 's|^  domain: data analysis$|  # TODO(setup): round 5 skipped — domain/analysis_tools at defaults; finish with /setup role|' \
+    -e '/^  analysis_tools:/d' \
     -e 's|^  db_write_requires_approval: high_risk$|  # TODO(setup): round 6 skipped — policies at defaults; finish with /setup policies|' \
     -e '/^  human_review_handoff: review$/d' \
     "$IVY" > "$IVS/.claude/config/stack.yaml"
@@ -4633,6 +4632,15 @@ grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ u
 { grep -qi 'punch list' <<<"$iflat" && grep -qi 'punch list' <<<"$skflat38"; } \
   && ok "the punch list is specified in interview.md AND in the Phase-4 report step" \
   || bad "the punch-list requirement is missing from interview.md or SKILL.md's report step"
+# (C2) role is opt-in: round 5 asks domain + tools only, and the role question (13a) is gated to
+# /setup role. A default interview that asks for a role again is the regression this pins.
+r5_38="$(sed -n '/^## Round 5/,/^## Round 6/p' "$IV")"
+{ grep -q 'never asks for a role' <<<"$r5_38" \
+  && grep -q '13a\. \*\*Role (only under `/setup role`)' <<<"$r5_38" \
+  && ! grep -q 'Role + domain, as one question' <<<"$r5_38" \
+  && grep -q 'sets `project.role`, the one thing the default interview never asks' "$SK38"; } \
+  && ok "role is opt-in: the default interview never asks it; /setup role does (question 13a)" \
+  || bad "the role question is back in the default interview, or /setup role no longer asks it"
 # (D) every advertised re-entry verb resolves to a defined mode — a promise with no mechanism is
 # worse than no promise.
 rv38=""
