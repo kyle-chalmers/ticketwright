@@ -114,7 +114,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
+    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 4;;
     viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -7454,7 +7454,7 @@ rc_fm="$(cat "$TMP/hd6327.out")"
 # --- (B) both docstore verbs BY NAME, across every docstore adapter ------------------------------
 # Section 2 proves each adapter has the right NUMBER of verb headings, not the right ONES — two
 # typo'd verbs count two and pass. (the chat-seam precedent, section 46A)
-for v in backup link_for; do
+for v in backup link_for list_folders; do
   dvmiss=""
   for f in adapters/docstore/*.md; do
     grep -qE "^## verb: $v( |$)" "$f" || dvmiss="$dvmiss $(basename "$f")"
@@ -12257,6 +12257,56 @@ CLAUDE_PROJECT_DIR="$G65" python3 bin/build_ticket_index.py --check >/dev/null 2
 grep -q '"TEST-1"' "$TMP/s65r.out" && grep -q '"TEST-12"' "$TMP/s65r.out" \
   && ok "recall by the bare table name still finds both tickets" \
   || bad "recall by the bare table name broke" "$(head -c 400 "$TMP/s65r.out")"
+
+hdr "65 · picking a drive folder shows folders only (docstore list_folders)"
+# Setup promises "folder names only" when it looks inside someone's drive. A plain `ls` broke that
+# promise in a real first run, so the verb is RUN here on a tree holding files, folders and a dot
+# folder, and the output is compared with the folders alone. Prose saying "names only" proves nothing.
+L65="$TMP/list65"; mkdir -p "$L65/My Drive/Sales Tickets" "$L65/My Drive/Ops" "$L65/My Drive/.hidden"
+printf x > "$L65/My Drive/salary-review.xlsx"; printf x > "$L65/My Drive/Sales Tickets/inner.csv"
+python3 - "$L65" <<'PY' >"$TMP/s65a.out"
+import re, subprocess, sys
+root = sys.argv[1]
+for f in ("gdrive", "sharepoint"):
+    t = open(f"adapters/docstore/{f}.md", encoding="utf-8").read()
+    body = re.split(r"^## ", t.split("## verb: list_folders", 1)[1], flags=re.M)[0]
+    fence = body.split("```", 2)[1].split("\n", 1)[1]
+    lines = [l for l in fence.splitlines() if l.strip() and not l.lstrip().startswith("#")][:2]
+    script = "\n".join(lines).replace("{mount_root}", root)
+    script = re.sub(r"<[^>]*>", "My Drive", script)
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True).stdout
+    print(f"{f}={out.strip().replace(chr(10), '|')}")
+PY
+for f in gdrive sharepoint; do
+  got="$(sed -n "s/^$f=//p" "$TMP/s65a.out")"
+  [ "$got" = "Ops|Sales Tickets" ] \
+    && ok "$f list_folders prints the folders and nothing else (no file name, no dot folder, no nested file)" \
+    || bad "$f list_folders printed something besides the top-level folders" "got: $got"
+done
+python3 - <<'PY' >"$TMP/s65b.out"
+import re, shlex
+t = open("adapters/docstore/rclone.md", encoding="utf-8").read()
+body = re.split(r"^## ", t.split("## verb: list_folders", 1)[1], flags=re.M)[0]
+cmds = [l.strip() for l in body.split("```", 2)[1].split("\n", 1)[1].splitlines() if l.strip()]
+bad = []
+for c in cmds:
+    toks = shlex.split(c)
+    rest = [x for x in toks[1:] if not x.startswith("-")]
+    if toks[0] != "rclone" or not rest or rest[0] != "lsf": bad.append("not lsf: " + c)
+    if "--dirs-only" not in toks: bad.append("no --dirs-only: " + c)
+    if "{base_path}" in c: bad.append("reads {base_path} before one exists: " + c)
+print("\n".join(bad))
+PY
+! grep -q . "$TMP/s65b.out" \
+  && ok "rclone list_folders runs only \`rclone lsf --dirs-only\` on the person's own remote" \
+  || bad "rclone list_folders can print files or reads a destination that is not chosen yet" "$(cat "$TMP/s65b.out")"
+iv65="$(sed -n '/Where should finished files be kept/,/If Phase 1 found a mount root/p' .claude/skills/setup/interview.md)"
+{ grep -q 'list_folders' <<<"$iv65" && grep -q 'Never list a drive' <<<"$iv65"; } \
+  && ok "setup's folder question lists through list_folders and rules out a plain ls" \
+  || bad "setup's folder question does not name the folders-only verb"
+grep -q '^| `list_folders` |' adapters/README.md \
+  && ok "the docstore contract table names list_folders" \
+  || bad "adapters/README.md docstore table is missing list_folders"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
