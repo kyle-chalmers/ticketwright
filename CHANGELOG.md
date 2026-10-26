@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-10-26
+
+**Behavior change:** approving a plan in `/ticket` now starts the build right away. To save the
+plan without building, say "approve, don't build yet". No command, config key or file format
+changed, and existing ticket folders keep working.
+
 ### Changed
 - A ticket now runs from one window. Approving the plan in `/ticket` starts the build right there
   ("Approve, don't build yet" still stops after writing the plan). `/build` remains a skill for
