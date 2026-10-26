@@ -8,6 +8,8 @@ rediscovering it each time. The agent is shown a slice of it at the start of eve
 
 ## How it works (two layers)
 
+![How /ticket finds prior work. Each past ticket folder becomes a card: the model writes the summary, tags and links, and a scan finds the tables in the SQL. Plain code scores the new ticket, TEST-130, against every card: a shared table scores 4 (rarer tables count more), a shared tag 3, a link between the two tickets 5, and each shared word 1, up to 6. Recency only breaks ties. Here bob's TEST-118 ranks first at 9.0, so the verdict is strong. The model reads the top 2 to 4 and writes the reuse brief, and you approve the plan. When the match is weak or missing, you choose whether to search older tickets in your tracker; they are scored the same way and labeled as having no folder or QC record here. Once shipped, TEST-130 becomes a card too.](images/recall.png)
+
 The system deliberately separates a **deterministic renderer** from an **LLM-authored enrichment
 store**, so the catalog is reproducible and CI/pre-commit-safe while still carrying good,
 human-readable summaries.

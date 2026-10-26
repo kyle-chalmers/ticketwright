@@ -28,6 +28,10 @@ All notable changes to this project are documented here. Format loosely follows
   adapters gain `model_fast` (the cheaper model, `haiku` on Claude Code only) and `model_default`.
 - The README's Data and network section and PRIVACY.md now disclose the older-ticket search and the
   summaries it sends to the model command, and selftest section 60 fails if the README drops it.
+- A diagram of how recall finds prior work, in the README and docs/ticket-index.md: each ticket
+  folder becomes a card, plain code scores the new ticket against every card, the model reads the
+  best few, and a weak match offers your tracker's older tickets. Its scores come from running
+  `recall.py` on a fixture recorded in `scripts/readme_media/README.md`.
 
 ### Changed
 - **If you wrote your own tracker adapter:** `search_history` is now a required verb, so the tracker

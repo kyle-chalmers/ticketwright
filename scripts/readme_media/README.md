@@ -10,7 +10,7 @@ stays stdlib-only.
 | `docs/images/logo-light.svg`, `logo-dark.svg` | `brand.py` | the mark geometry in `brand.py`, plus Space Grotesk SemiBold outlined to paths |
 | `scripts/readme_media/icon.svg` | `brand.py` | the same mark on a full-bleed black square |
 | `.claude-plugin/icon.png` (1024x1024) | `rsvg-convert` | `icon.svg`. The Claude plugin directory takes it as the listing icon once, at the first save in the developer portal. Rendering it again later changes only the repo copy |
-| `docs/images/lifecycle.png`, `tool-slots.png` | `render_diagrams.py` | each `<svg class="diagram">` in `diagrams.html` |
+| `docs/images/banner.png`, `lifecycle.png`, `tool-slots.png`, `recall.png` | `render_diagrams.py` | each `<svg class="diagram">` in `diagrams.html`. The scores in `recall.png` come from the fixture below |
 | `docs/images/demo.gif` | `render_gif.py` | the scenes in `claude_flow.py` |
 | `docs/images/social-preview.png` (1280x640) | `render_social.py` | `social_preview.html`; upload it by hand under Settings, General, Social preview |
 
@@ -50,6 +50,66 @@ uv run --with playwright python scripts/readme_media/render_gif.py
 # Social preview.
 uv run --with playwright python scripts/readme_media/render_social.py
 ```
+
+`render_diagrams.py` rewrites every diagram, and one whose source did not change can still come out
+with different bytes. Commit only the PNGs you meant to change and restore the rest with
+`git checkout -- docs/images/<name>.png`. If `uv run` leaves a `uv.lock` at the repo root, delete
+it: it is not part of the kit.
+
+## The recall diagram's numbers
+
+Every score, reason and verdict in `recall.png` is what `bin/recall.py` prints for this fixture. The
+seed (dana's TEST-130) and the five tracker rows are the ones selftest section 63(b) uses; the four
+prior tickets are added here. Run it from the repo root, and redraw the diagram from its output
+whenever recall's scoring changes.
+
+```bash
+X="$(mktemp -d)"
+python3 - "$X" <<'PY'
+import json, pathlib, sys
+X = pathlib.Path(sys.argv[1])
+(X / ".claude/config").mkdir(parents=True)
+(X / ".claude/config/stack.yaml").write_text("project:\n  key_prefix: TEST\n")
+recs = []
+def ticket(owner, key, title, summary, sql, tags, refs=(), day="2024-01-15", objects=(), readme=None):
+    d = X / "tickets" / owner / key
+    d.mkdir(parents=True)
+    (d / "README.md").write_text(f"# {key}: {title}\n\n{readme or summary}\n")
+    (d / "q.sql").write_text(sql + "\n")
+    recs.append(dict(id=key, owner=owner, title=title, summary=summary, tags=list(tags), cross_refs=list(refs),
+                     objects=list(objects), status="Completed", date=day))
+ticket("dana", "TEST-130", "Returns rate by region", "Break the returns rate out by region.",  # selftest 63(b)'s seed
+       "SELECT * FROM ANALYTICS.RETURNS;", ["returns", "data-quality"], day="2024-05-01",
+       objects=["analytics.returns"], readme="Follow-up to TEST-50: break the returns rate out by region.")
+ticket("bob", "TEST-118", "Returns baseline", "Weekly returns rate baseline.", "SELECT * FROM ANALYTICS.RETURNS r "
+       "JOIN ANALYTICS.ORDERS o ON o.id = r.order_id;", ["returns"], ["TEST-094"], "2024-03-12")
+ticket("alice", "TEST-127", "Region mapping", "Map each store to its sales region.", "SELECT * FROM ANALYTICS.REGIONS;",
+       ["regions", "data-quality"], day="2024-04-02")
+ticket("bob", "TEST-094", "Order volume weekly", "Weekly order counts by region.", "SELECT * FROM ANALYTICS.ORDERS;",
+       ["orders"], day="2023-11-20")
+ticket("carol", "TEST-102", "Store lookup refresh", "Reload the store list.", "SELECT * FROM ANALYTICS.REGIONS;", ["stores"])
+(X / "records.json").write_text(json.dumps({"records": recs}))
+row = lambda key, title, text, labels=(): dict(key=key, title=title, description=text, labels=list(labels), created="2023-06-01")
+(X / "rows.json").write_text(json.dumps([  # selftest 63(b)'s file_a
+    row("TEST-50", "Carrier handoff audit", "Check the handoff times."),
+    row("TEST-61", "Dock scheduling cleanup", "Reorder the dock slots.", ["Returns"]),
+    row("TEST-130", "Returns rate by region", "This is the repo ticket itself."),
+    row("TEST-70", "Region rate drift", "Looking at drift."),
+    row("TEST-80", "Payroll tax export", "Quarterly filing.")]))
+PY
+export CLAUDE_PROJECT_DIR="$X"
+python3 bin/ingest_index_records.py --from-json "$X/records.json" && python3 bin/build_ticket_index.py
+python3 bin/recall.py --for dana/TEST-130                            # the ranked list and its verdict
+python3 bin/recall.py --for dana/TEST-130 --external "$X/rows.json"  # the tracker branch
+```
+
+TEST-118's tables are left out of its record on purpose, so the scan of its `q.sql` is what finds
+them, as the diagram's left panel says. It should print TEST-118 at 9.0 (`obj:analytics.returns~1.00
+tag:returns kw:2`), TEST-127 at 4.0 (`tag:data-quality kw:1`) and TEST-094 at 1.0 (`kw:1`) with
+`verdict: strong`, then the tracker's TEST-50 at 5.0 (`ref`), TEST-61 at 3.0 (`tag:returns`) and
+TEST-70 at 2.0 (`kw:2`). TEST-130 is left out of the tracker list because it already has a folder,
+and TEST-80 because it shares nothing. TEST-102 shares a table only with TEST-127; it is there so
+every table appears in at least two tickets, which keeps `analytics.returns` at full weight.
 
 ## What each script does
 
