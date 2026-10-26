@@ -10692,23 +10692,36 @@ bare56="$(grep -n '`specs/<id>-<slug>.md`' .claude/skills/ticket/SKILL.md .claud
   && grep -q 'return control to the build that called it' "$TMP/tk56.flat"; } \
   && ok "/ticket's replan mode returns to the calling build and never starts a second one" \
   || bad "/ticket's replan path could nest a build inside a build"
-{ grep -q 'capabilities.subagents' "$TMP/bd56.flat" && grep -q 'subagent_isolation' "$TMP/bd56.flat" \
-  && grep -q 'unestablished' "$TMP/bd56.flat" && grep -q 'its independence is not established' "$TMP/bd56.flat" \
-  && grep -q 'build_mode: subagent-led | inline' "$TMP/bd56.flat"; } \
+rp56="$(grep -n 'Replan mode\*\* (a build called this phase' "$tk56" | head -1 | cut -d: -f1)"
+ab56="$(grep -n 'Approve and build\*\* (outside replan mode' "$tk56" | head -1 | cut -d: -f1)"
+{ [ -n "$rp56" ] && [ -n "$ab56" ] && [ "$rp56" -lt "$ab56" ] && grep -q 'approve, don.t build yet' "$TMP/tk56.flat"; } \
+  && ok "/ticket checks replan mode BEFORE the approve-and-build default, and offers the defer choice at approval" \
+  || bad "/ticket would read a replan's plain 'go' as approve-and-build (nested build), or hides the defer choice" "replan=$rp56 build=$ab56"
+{ grep -q 'capabilities.subagents' "$TMP/bd56.flat" && grep -q '`subagent_isolation` is `documented` or `unestablished`' "$TMP/bd56.flat" \
+  && grep -q 'isolation `none` or `unknown`, a failed probe' "$TMP/bd56.flat" \
+  && grep -q 'cannot confirm they work without seeing our conversation' "$TMP/bd56.flat" \
+  && grep -q 'build_mode: subagent-led | inline` and `subagent_isolation: <as probed>`' "$TMP/bd56.flat"; } \
   && ok "/build probes subagents + isolation like /review, says when isolation is unestablished, and records build_mode" \
   || bad "/build's execution-mode probe lost a branch, the unestablished caveat, or the build_mode record"
 { grep -q 'only `plan.md`, that step' "$TMP/bd56.flat" && grep -q 'never the planning conversation' "$TMP/bd56.flat" \
-  && grep -q 'never holds a gate' "$TMP/bd56.flat" && grep -q 'not tested as a standalone handoff' "$TMP/bd56.flat"; } \
+  && grep -q 'never holds a gate' "$TMP/bd56.flat" && grep -q 'not tested as a standalone handoff' "$TMP/bd56.flat" \
+  && grep -q 'before running any of it, reads included' "$TMP/bd56.flat"; } \
   && ok "/build's subagents see only the record, never hold an approval gate, and an inline spec build says so" \
   || bad "/build lets a subagent hold a gate, briefs it with the conversation, or hides an inline spec build"
-{ grep -q 'Review approved. Ship now?' "$TMP/bd56.flat" && grep -q "follow \`/ship <owner>/<id>\`'s instructions in full" "$TMP/bd56.flat"; } \
+{ grep -q 'Review approved. Ship now?' "$TMP/bd56.flat" && grep -q "follow \`/ship <owner>/<id>\`'s instructions in full" "$TMP/bd56.flat" \
+  && grep -q 'On no, stop and name `/ship <owner>/<id>` for later' "$TMP/bd56.flat"; } \
   && ok "/build asks before following /ship on APPROVE (ship's own external-post halt still applies)" \
   || bad "/build's APPROVE exit no longer asks before shipping"
 { grep -q 'kind: defect | scope' "$rv56" && grep -q 'kind: defect | scope' .claude/agents/qc-reviewer.md \
-  && grep -q 'Any `scope` finding' "$TMP/bd56.flat" && grep -q 'in replan mode' "$TMP/bd56.flat" \
-  && grep -q 'does not count against the two-round cap' "$TMP/bd56.flat"; } \
-  && ok "review findings carry kind: defect | scope, and /build routes a scope finding to an in-place replan" \
-  || bad "a scope finding has no route back to planning, or the finding kind is untagged"
+  && grep -q 'Any hard-halt `scope` finding' "$TMP/bd56.flat" && grep -q 'in replan mode' "$TMP/bd56.flat" \
+  && grep -q 'without starting another build' "$TMP/bd56.flat" \
+  && grep -q 'the remediation of every `defect` finding in the same verdict' "$TMP/bd56.flat" \
+  && grep -q 'A replan restarts the two-round count' "$TMP/bd56.flat"; } \
+  && ok "review findings carry kind: defect | scope; a hard-halt scope finding replans in place, keeps the defect fixes, and never nests a build" \
+  || bad "a scope finding has no route back to planning, drops the defect fixes, or the finding kind is untagged"
+{ grep -q 'Pick up an open review before rebuilding' "$TMP/bd56.flat" && grep -q 'go straight to step 8' "$TMP/bd56.flat"; } \
+  && ok "/build started after a standalone REQUEST-CHANGES acts on that verdict instead of rebuilding the same plan" \
+  || bad "/build ignores an open REQUEST-CHANGES verdict and rebuilds from the top"
 
 hdr "57 · the review-before-ship gate is a mechanism: bin/review_verdict.py + review_verdict_guard (the raw-git bypass closed)"
 # Two real tickets shipped unreviewed through `git push` + `gh pr create`, never entering /ship —

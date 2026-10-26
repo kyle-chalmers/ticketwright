@@ -23,6 +23,11 @@ All notable changes to this project are documented here. Format loosely follows
   itself was wrong) sends the build back to `/ticket` Phase 4 in a new replan mode, which updates
   the plan in place, gets your approval and returns to the same build without starting another
   one. Defects keep the fix-and-re-review loop, which still stops after two rounds.
+  Only a hard-halt scope finding replans, the defects in the same verdict are fixed alongside the
+  replan, and a replan restarts the two-round count. A `/build` started after a standalone
+  REQUEST-CHANGES acts on that verdict instead of rebuilding the same plan.
+- The vcs adapters' `worktree` verb now describes what it is still for: keeping one ticket apart
+  from other work in flight. The build no longer needs a separate context.
 
 ## [4.3.0] - 2026-10-25
 

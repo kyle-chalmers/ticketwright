@@ -19,11 +19,11 @@ git checkout {default_branch} && git pull origin {default_branch}
 git checkout -b <TICKET-ID>                 # branch name IS the ticket id
 ```
 
-## verb: worktree   (the Plan→Implement context reset)
+## verb: worktree   (isolates one ticket from other work in flight)
 ```bash
 git worktree add "{worktree_root}/<name>" -b <TICKET-ID>
 ```
-A fresh worktree gives implementation its own clean context, separate from planning. (This repo's
+A fresh worktree keeps this ticket's files apart from other tickets in flight. (This repo's
 worktree-manager scripts under `~/.claude/skills/worktree-manager/` can also be used.)
 
 ## verb: commit

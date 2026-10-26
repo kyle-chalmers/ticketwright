@@ -49,7 +49,8 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
      (a warehouse object, a model, a published report), route back to `/ticket <owner>/<id>` Phase 4
      in replan mode** — follow its instructions in full, in this window: the spec is written from
      the real cause and approved, and replan mode returns control here without starting another
-     build. Continue from step 2b with the new spec. If the fix touches nothing persisted (a
+     build. Continue from step 2 with the new spec (its targets need the preflight too). If the
+     fix touches nothing persisted (a
      corrected export, a documented answer), record the cause in the README and continue.
    - **Anything else on that line** (blank, a `{{token}}`, a value not listed) → stop and name it; a
      plan the build cannot read is not an approved plan.
@@ -69,18 +70,31 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
      section, and the files it touches** — never the planning conversation, which is the point:
      if the subagent cannot do the step from the record, the record has a gap, so fix the plan or
      spec rather than filling it in from memory. When `subagent_isolation` is `unestablished`, say
-     so once, verbatim: "a subagent did this work; its independence is not established."
-   - **Inline** — `spec: not required` (the plan judged the ticket small), or any other probe
-     result (`subagents` not `yes`, isolation `none` or `unknown`, a failed probe). This session
-     does the work. When the plan *did* call for a spec, say plainly that the build ran in the
-     planning conversation and the plan was not tested as a standalone handoff.
+     so once, verbatim:
+     <!-- ticketwright:user-facing:begin -->
+     > Helper agents are building this ticket, but this tool cannot confirm they work without seeing our conversation.
+     <!-- ticketwright:user-facing:end -->
+   - **Inline** — `spec: not required` (the plan judged the ticket small), `spec: after-root-cause`
+     while the investigation runs (it is read-only), or any other probe result (`subagents` not
+     `yes`, isolation `none` or `unknown`, a failed probe). This session does the work. When the
+     plan names a spec, say plainly that the build ran in the planning conversation and the plan
+     was not tested as a standalone handoff.
    **A subagent never holds a gate**, because it cannot reliably reach the person: it may run reads
    and the additive dev-target SQL that step 5's policy allows without asking, and it returns
    everything else to this session — any SQL `db_write_requires_approval` gates, and both
-   `human_review_handoff` handoffs. This session also re-runs each step's gate itself (step 4)
+   `human_review_handoff` handoffs. Under `human_review_handoff: all`, that means a subagent returns
+   the SQL it wrote **before running any of it, reads included**, because step 4 hands generated
+   SQL to the person before its first warehouse run. This session also re-runs each step's gate itself (step 4)
    rather than taking a subagent's word that it passed. Record the choice in the ticket README as
    two lines, `build_mode: subagent-led | inline` and `subagent_isolation: <as probed>`, so the
    reviewer and the next person can see which build the ticket got.
+2c. **Pick up an open review before rebuilding.** Read the current verdict with
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`.
+   When its `status` is `request-changes` (a `/review` run on its own, or a build that stopped at the
+   cap), do not redo Phase 2 from the start: go straight to step 8's REQUEST-CHANGES branch with
+   that verdict. If `plan.md` changed after that verdict was written (its git history shows a later
+   commit), the replan its scope findings asked for already happened, so treat those findings as
+   handled and carry only the defects forward. Any other `status` → continue to Phase 2.
 
 ## Phase 2 — Implement in small build-and-check loops
 
@@ -124,26 +138,33 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
 8. **Branch on the verdict `/review` wrote** — read it with
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
    (the highest-numbered `qc_queries/<n>_review_verdict.md`, its `verdict:` line), never by eye:
-   - **APPROVE** → ask, in one line: "Review approved. Ship now?" On yes, **follow
+   - **APPROVE** → ask, in one line:
+     <!-- ticketwright:user-facing:begin -->
+     > Review approved. Ship now?
+     <!-- ticketwright:user-facing:end -->
+     On yes, **follow
      `/ship <owner>/<id>`'s instructions in full**, in this window. `/ship` still shows every
      tracker comment, chat post and PR and waits for approval before anything leaves the repo, and
      the `review_verdict_guard` hook still asks at push time, so this question only saves you
      typing the command. On no, stop and name `/ship <owner>/<id>` for later.
-   - **REQUEST-CHANGES** → read each finding's `kind:`.
-     - **Only `defect` findings** → apply the remediation list, re-run the affected gates from
+   - **REQUEST-CHANGES** → read each finding's `kind:` and tier. A finding with no `kind:` (an older
+     reviewer) counts as `defect`.
+     - **No hard-halt `scope` finding** → apply the remediation list, re-run the affected gates from
        Phase 2, and run `/review <owner>/<id>` again — from this step, never by re-entering `/build`
-       from the top (a build inside a build re-resolves everything and never returns here). **Two
-       REQUEST-CHANGES rounds is the cap:** after the second, stop and hand the findings to the
-       human rather than looping — a defect the build cannot clear is a scoping problem or a data
-       problem, not a retry problem — and offer the replan below as one way forward.
-     - **Any `scope` finding** → the plan is wrong, so rebuilding will not fix it. Run
-       `/ticket <owner>/<id>` Phase 4 **in replan mode**: follow its instructions in full, in this
-       window. It updates `plan.md` and the spec in place, gets a fresh approval, names the build
-       steps the change affects, and returns control here without starting another build. Redo only
-       those steps from step 2b, then run `/review <owner>/<id>` again from step 7. This build still
-       owns the review rounds and the ship question. The person's approval on a replan is its own
-       guard, so a replan does not count against the two-round cap. A finding with no `kind:` (an
-       older reviewer) counts as `defect`.
+       from the top (a build inside a build re-resolves everything and never returns here). A
+       Warn-tier `scope` finding is listed for the person, not acted on. **Two REQUEST-CHANGES
+       rounds is the cap:** after the second, stop and hand the findings to the human rather than
+       looping — a defect the build cannot clear is a scoping problem or a data problem, not a retry
+       problem — and offer the replan below as one way forward.
+     - **Any hard-halt `scope` finding** (or the person chose a replan at the cap) → the plan is
+       wrong, so rebuilding will not fix it. Run `/ticket <owner>/<id>` Phase 4 **in replan mode**:
+       follow its instructions in full, in this window. It updates `plan.md` and the spec in place,
+       gets a fresh approval, names the build steps the change affects, and returns control here
+       without starting another build. Then redo, from step 2 (a new spec can name a new target),
+       those steps **and** the remediation of every `defect` finding in the same verdict, and run
+       `/review <owner>/<id>` again from step 7. This build still owns the review rounds and the ship
+       question. A replan restarts the two-round count, because the rounds measured a plan that no
+       longer exists; what bounds repeated replans is that each one needs the person's approval.
      When the human says stop, say plainly that the ticket carries a REQUEST-CHANGES verdict and
      `/ship` will refuse it. **There is no path from REQUEST-CHANGES to `/ship`.**
 

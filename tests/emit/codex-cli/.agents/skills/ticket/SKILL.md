@@ -150,7 +150,12 @@ context brief (including the reuse brief) first, then:
 11. **Reduce assumptions** (policy `reduce_assumptions`): gather the open questions from the plan and
     the spec and **ask them now**, in one round — scoping is where an answer is cheapest.
 12. **Present the scoping package and WAIT for one explicit approval** — by leaving planning mode on
-    a `native` runtime, by a reply everywhere else. **Only after the human says go** do the artifacts
+    a `native` runtime, by a reply everywhere else. End the package by saying what approval does,
+    since on a `native` runtime leaving the mode is the whole answer:
+    <!-- ticketwright:user-facing:begin -->
+    > Approving starts the build right away. To save the plan without building yet, say "approve, don't build yet".
+    <!-- ticketwright:user-facing:end -->
+    **Only after the human says go** do the artifacts
     touch the ticket: render the plan with
     `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$kit_root/templates/plan.md.tmpl" ticket_id=… title=… confidence=… goal=… spec_required=… owner=… --strict`
     (all six tokens; `--strict` so a missing one is an error, not a `{{token}}` committed into the
@@ -163,20 +168,25 @@ context brief (including the reuse brief) first, then:
     nothing: revise and present again.
 13. **Continue, always with the qualified `<owner>/<id>` locator** (so the next step can never
     re-resolve a bare id to a different owner's ticket). What happens next depends on what was
-    approved:
-    - **Approve and build** (the default; a plain "go" means this) → say "Plan approved. Starting
-      the build." and **follow `/build <owner>/<id>`'s instructions in full**, in this same window.
+    approved. **Check for replan mode first**, because a replan's approval is usually a plain "go"
+    too:
+    - **Replan mode** (a build called this phase: `/review` found a scope problem, the person chose a
+      replan at the review cap, or an `after-root-cause` investigation found the cause) → update
+      `plan.md` and the spec in place, get the approval, name the build steps the change affects,
+      and **return control to the build that called it**. In replan mode, never enter `/build`: the
+      build that called you is still running, and a second one would re-resolve everything and never
+      return there.
+    - **Approve and build** (outside replan mode, the default; a plain "go" means this) → say
+      <!-- ticketwright:user-facing:begin -->
+      > Plan approved. Starting the build.
+      <!-- ticketwright:user-facing:end -->
+      and **follow `/build <owner>/<id>`'s instructions in full**, in this same window.
       "Follow" means what it means when `/build` runs `/review`: there is no mechanical
       skill-invocation tool, and the emitted runtimes carry this body verbatim. `/build` decides on
       its own probe whether the work is done by subagents that see only the plan and spec, or here;
       it ends by running `/review`, and asks before `/ship <owner>/<id>` on APPROVE.
     - **Approve, don't build yet** → write the artifacts and stop, naming `/build <owner>/<id>` as
       the command to run later.
-    - **Replan mode** (a build called this phase because `/review` found a scope problem, or an
-      `after-root-cause` investigation found the cause) → update `plan.md` and the spec in place,
-      get the approval, name the build steps the change affects, and **return control to the build
-      that called it**. In replan mode, never enter `/build`: the build that called you is still
-      running, and a second one would re-resolve everything and never return there.
 
 ## Stops here
 No SQL beyond the describe/sample reads priming and spec research already make, no analysis, no

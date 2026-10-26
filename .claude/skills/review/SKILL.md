@@ -112,7 +112,9 @@ doing what the approved plan says: a wrong join, a count that does not reconcile
 is wrong for the question, or a deliverable or validation the work needs was never in the plan.
 Fixing a defect is the build's job; a scope finding sends the ticket back to planning, because no
 amount of rebuilding fixes a plan that asks for the wrong thing. When unsure, say `defect`: a
-scope tag costs the person an approval, and the build can still escalate after two rounds.
+scope tag costs the person an approval, and the build can still escalate after two rounds. Only a
+hard-halt finding tagged `scope` sends the ticket back to planning; a Warn-tier one is listed for the
+person.
 
 ## The second pass — capability probe
 
