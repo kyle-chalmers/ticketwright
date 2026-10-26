@@ -124,8 +124,9 @@ email it always does — confirm the list's membership with its owner once, outs
 
 ## gotchas
 - Exact tool names and parameters vary by Graph MCP server (some expose `sendMail`, some split
-  create-draft/update-draft). Confirm once against your connected server and adjust **here**, never
-  in a skill.
+  create-draft/update-draft). Check them once against your connected server; if yours names them
+  differently, report it so the kit can record it, or give that server its own adapter. Never
+  edit this file or a skill to match.
 - A shared mailbox needs `Mail.Send.Shared` (delegated) or application send-as rights configured in
   Exchange; this adapter cannot grant them, only use them.
 - External recipients may be rewritten by the org's mail hygiene (banner injection, link

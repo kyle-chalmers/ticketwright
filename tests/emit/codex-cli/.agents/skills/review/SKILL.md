@@ -3,7 +3,7 @@ name: review
 description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
 ---
 
-<!-- emitted by ticketwright install v4.3.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.4.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /review
 
@@ -106,6 +106,16 @@ canonical order resolves next — the ticket's declared target before the seam d
 - **Warn** findings (perf, style) → list but don't block.
 - **Info** (distributions) → record.
 
+Tag every finding **`kind: defect | scope`**, alongside its severity. A *defect* is the build not
+doing what the approved plan says: a wrong join, a count that does not reconcile, a missing
+`ORDER BY`. A *scope* finding means the plan itself is wrong: the requirement was misread, the grain
+is wrong for the question, or a deliverable or validation the work needs was never in the plan.
+Fixing a defect is the build's job; a scope finding sends the ticket back to planning, because no
+amount of rebuilding fixes a plan that asks for the wrong thing. When unsure, say `defect`: a
+scope tag costs the person an approval, and the build can still escalate after two rounds. Only a
+hard-halt finding tagged `scope` sends the ticket back to planning; a Warn-tier one is listed for the
+person.
+
 ## The second pass — capability probe
 
 The pyramid's independence claim is only true when the runtime can actually give the reviewer a
@@ -192,8 +202,9 @@ what was checked: it is the same-conversation honesty sentence from the probe se
 ran in the same conversation that did the work, so it is not the independent second check the review
 process expects."), so an inline result never reads like an independent one.
 Then route:
+**If this review was run from inside `/build` (its Phase 3), return to that build's step 8 for
+either verdict** — it asks before shipping on APPROVE, and on REQUEST-CHANGES it fixes defects or
+replans scope; starting a new `/build` instead would nest a build inside a build. Otherwise:
 APPROVE ⇒ recommend `/ship <owner>/<id>` (the qualified locator, so `/ship` cannot re-resolve a bare
-id to a different owner's ticket). REQUEST-CHANGES ⇒ **if this review was run from inside `/build`
-(its Phase 3), return to that build's step 8 rather than starting a new `/build`** — re-entering the
-skill from the top would nest a build inside a build; otherwise recommend `/build <owner>/<id>`,
-which applies the remediation and runs this review again.
+id to a different owner's ticket). REQUEST-CHANGES ⇒ recommend `/build <owner>/<id>`, which applies
+the remediation (or replans, when a finding is `kind: scope`) and runs this review again.

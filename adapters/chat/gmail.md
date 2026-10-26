@@ -127,10 +127,10 @@ membership with its owner once, outside this kit.
 
 ## gotchas
 - Tool names and argument shapes differ by agent: Codex CLI lists Gmail as a different connector
-  under other names (its section is below). `bin/adapter_surface.py --adapter adapters/chat/gmail.md`
-  picks the right section for the agent running now. A name missing from your session's tool list
-  is a gap to report so the kit can record it, never a local edit to this file: an edited copy
-  silently drifts from the kit on the next upgrade.
+  under other names (in its own section of this file). `bin/adapter_surface.py --adapter
+  adapters/chat/gmail.md` picks the right section for the agent running now. A name missing from
+  your session's tool list is a gap to report so the kit can record it, never a local edit to this
+  file: an edited copy silently drifts from the kit on the next upgrade.
 - Threading: replies need the prior message's thread id — a fresh draft starts a fresh thread,
   which is usually right for a per-ticket update.
 - A Gmail alias or delegated mailbox must be configured server-side; this adapter cannot grant

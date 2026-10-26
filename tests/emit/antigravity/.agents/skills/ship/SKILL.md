@@ -3,7 +3,7 @@ name: ship
 description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
 ---
 
-<!-- emitted by ticketwright install v4.3.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v4.4.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /ship
 
@@ -43,7 +43,8 @@ works regardless of the underlying tools.
    - **APPROVE** → proceed.
    - **REQUEST-CHANGES** → **hard stop.** The review ran and found a defect (count mismatch, duplicate
      gap, reconciliation break, a Critical anti-pattern). Send the user back to `/build <owner>/<id>`,
-     which applies the remediation and re-reviews. Not overridable here.
+     which applies the remediation (or replans, when a finding is `kind: scope`) and re-reviews.
+     Not overridable here.
    - **No verdict file at all, or the newest one says `SKIPPED`** → **WARN, then stop and wait.** A
      SKIPPED record never counts as approval; this gate re-fires on every ship until a real review
      supersedes it. Print, verbatim in shape:

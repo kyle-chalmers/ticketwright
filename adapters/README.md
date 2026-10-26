@@ -94,7 +94,7 @@ always produces a *default the human confirms*, never an automatic selection.
 | Verb | Inputs | Returns |
 |---|---|---|
 | `branch` | name (the ticket id — `{key_prefix}-NNNN`, or the folder slug under `id_mode: slug`) | branch created/checked out |
-| `worktree` | branch | isolated worktree path (the Plan→Implement context reset) |
+| `worktree` | branch | isolated worktree path (keeps one ticket apart from other work in flight) |
 | `commit` | paths, message (semantic) | commit sha |
 | `open_pr` | title (semantic), body | PR URL |
 
@@ -528,7 +528,8 @@ fallback), else the detected runtime's own section (`bin/kit_paths.py`, the one 
 agent is running, aliases included), else the default. `--verb <verb>` prints that verb's section,
 `--probe` the read-only probe, `--json` everything. A verb or probe printed from a runtime section
 carries that section's opening paragraph with it, since that is where it says which rules still
-hold. On a runtime that is neither the default's
+hold, and every verb or probe, from any surface, is followed by the adapter's `## gotchas`. On a
+runtime that is neither the default's
 `default_surface` nor a listed surface, it says the default's names are unchecked there and asks for
 a report, never an edit.
 
@@ -540,6 +541,12 @@ Rules, each checked by selftest section 62:
 - **Each subsection stands alone.** An agent may read only the section the command prints, so the
   rules that bind a verb travel with it: draft-first, `{always_include}`, the no-bcc rule for email,
   and the transcript-privacy rule, verbatim, in every `fetch_transcript`.
+- **Gotchas travel with every action.** The same reader never sees a section the command does not
+  print, so the picker prints the adapter's `## gotchas` after each verb and probe, on every
+  surface (Jira's `acli` lockout warning lives there). That makes a gotcha shared by every agent,
+  so it names no tool call (`mcp__…`): one that does is a malformed adapter (exit 6). Something
+  true of one agent's tool names belongs in that verb's section, or in the runtime surface's
+  opening paragraph.
 - **The server is declared, then checked.** A surface names one `server:`, it must equal the
   `connector_server:` its runtime adapter declares (`adapters/runtime/codex-cli.md`), and every
   `mcp__<server>__` call in it must use that server. This is the one place an adapter may name a

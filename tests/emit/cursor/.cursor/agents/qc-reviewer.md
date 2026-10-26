@@ -4,7 +4,7 @@ description: Independent, read-only quality reviewer for a ticket's deliverables
 tools: Read, Bash, Glob, Grep
 ---
 
-<!-- emitted by ticketwright install v4.3.0 — do not hand-edit; re-run `ticketwright install --runtime cursor` to update. -->
+<!-- emitted by ticketwright install v4.4.0 — do not hand-edit; re-run `ticketwright install --runtime cursor` to update. -->
 
 # QC Reviewer (sub-agent)
 
@@ -55,6 +55,9 @@ This review ran in the same conversation that did the work, so it is not the ind
 ## Tiers
 Hard-halt: Critical findings, count mismatch, duplicate-gap, reconciliation break → **REQUEST-CHANGES**.
 Warn: performance/style → list, don't block. Info: distributions → record.
+Tag each finding `kind: defect | scope`: `defect` when the work misses what the approved plan asks
+for; `scope` when the plan itself is wrong (a misread requirement, the wrong grain, a deliverable or
+validation the plan never had). When unsure, `defect`.
 
 ## Output (return this; it is the tool result, not a chat message)
 ```
@@ -64,7 +67,7 @@ review_mode: independent-subagent | inline-same-context
 subagent_isolation: <the runtime adapter's declared posture, verbatim — from the spawning prompt or the probe>
 Pyramid: lint <ok/n> · counts&dedup <ok/n> · reconcile <ok/n> · re-run-diff <ok/n> · output&docs <ok/n>
 Findings:
-  - [Critical|Should-fix|Review] <file:line> — <what> — <remediation>
+  - [Critical|Should-fix|Review] kind: defect | scope — <file:line> — <what> — <remediation>
 Verification queries run:
   - <each query you executed independently>
 ```

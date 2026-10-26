@@ -10743,6 +10743,47 @@ bare56="$(grep -n '`specs/<id>-<slug>.md`' .claude/skills/ticket/SKILL.md .claud
 { [ -z "$bare56" ] && grep -q 'older plan resolves inside `<ticket-dir>`' .claude/skills/build/SKILL.md; } \
   && ok "a bare specs/ path survives only as /build's resolve-inside-the-ticket fallback for older plans" \
   || bad "a bare specs/<id>-<slug>.md path is back outside /build's legacy fallback" "$bare56"
+# (j) one-window lifecycle (LABS-87): approval flows into the build, a spec ticket is built by
+# subagents that see only the record, APPROVE asks before shipping, and a scope finding replans in
+# place. Each handoff is pinned by the token that carries its behavior, not by prose.
+{ grep -q 'Approve and build' "$TMP/tk56.flat" && grep -q "follow \`/build <owner>/<id>\`'s instructions in full" "$TMP/tk56.flat" \
+  && grep -q "Approve, don't build yet" "$TMP/tk56.flat" && grep -q 'write the artifacts and stop' "$TMP/tk56.flat"; } \
+  && ok "/ticket's approval starts the build in the same window, and a deferred approval stops without building" \
+  || bad "/ticket's step 13 lost the approve-and-build handoff or the defer branch"
+{ grep -q 'replan mode' "$TMP/tk56.flat" && grep -q 'never enter `/build`' "$TMP/tk56.flat" \
+  && grep -q 'return control to the build that called it' "$TMP/tk56.flat"; } \
+  && ok "/ticket's replan mode returns to the calling build and never starts a second one" \
+  || bad "/ticket's replan path could nest a build inside a build"
+rp56="$(grep -n 'Replan mode\*\* (a build called this phase' "$tk56" | head -1 | cut -d: -f1)"
+ab56="$(grep -n 'Approve and build\*\* (outside replan mode' "$tk56" | head -1 | cut -d: -f1)"
+{ [ -n "$rp56" ] && [ -n "$ab56" ] && [ "$rp56" -lt "$ab56" ] && grep -q 'approve, don.t build yet' "$TMP/tk56.flat"; } \
+  && ok "/ticket checks replan mode BEFORE the approve-and-build default, and offers the defer choice at approval" \
+  || bad "/ticket would read a replan's plain 'go' as approve-and-build (nested build), or hides the defer choice" "replan=$rp56 build=$ab56"
+{ grep -q 'capabilities.subagents' "$TMP/bd56.flat" && grep -q '`subagent_isolation` is `documented` or `unestablished`' "$TMP/bd56.flat" \
+  && grep -q 'isolation `none` or `unknown`, a failed probe' "$TMP/bd56.flat" \
+  && grep -q 'cannot confirm they work without seeing our conversation' "$TMP/bd56.flat" \
+  && grep -q 'build_mode: subagent-led | inline` and `subagent_isolation: <as probed>`' "$TMP/bd56.flat"; } \
+  && ok "/build probes subagents + isolation like /review, says when isolation is unestablished, and records build_mode" \
+  || bad "/build's execution-mode probe lost a branch, the unestablished caveat, or the build_mode record"
+{ grep -q 'only `plan.md`, that step' "$TMP/bd56.flat" && grep -q 'never the planning conversation' "$TMP/bd56.flat" \
+  && grep -q 'never holds a gate' "$TMP/bd56.flat" && grep -q 'not tested as a standalone handoff' "$TMP/bd56.flat" \
+  && grep -q 'before running any of it, reads included' "$TMP/bd56.flat"; } \
+  && ok "/build's subagents see only the record, never hold an approval gate, and an inline spec build says so" \
+  || bad "/build lets a subagent hold a gate, briefs it with the conversation, or hides an inline spec build"
+{ grep -q 'Review approved. Ship now?' "$TMP/bd56.flat" && grep -q "follow \`/ship <owner>/<id>\`'s instructions in full" "$TMP/bd56.flat" \
+  && grep -q 'On no, stop and name `/ship <owner>/<id>` for later' "$TMP/bd56.flat"; } \
+  && ok "/build asks before following /ship on APPROVE (ship's own external-post halt still applies)" \
+  || bad "/build's APPROVE exit no longer asks before shipping"
+{ grep -q 'kind: defect | scope' "$rv56" && grep -q 'kind: defect | scope' .claude/agents/qc-reviewer.md \
+  && grep -q 'Any hard-halt `scope` finding' "$TMP/bd56.flat" && grep -q 'in replan mode' "$TMP/bd56.flat" \
+  && grep -q 'without starting another build' "$TMP/bd56.flat" \
+  && grep -q 'the remediation of every `defect` finding in the same verdict' "$TMP/bd56.flat" \
+  && grep -q 'A replan restarts the two-round count' "$TMP/bd56.flat"; } \
+  && ok "review findings carry kind: defect | scope; a hard-halt scope finding replans in place, keeps the defect fixes, and never nests a build" \
+  || bad "a scope finding has no route back to planning, drops the defect fixes, or the finding kind is untagged"
+{ grep -q 'Pick up an open review before rebuilding' "$TMP/bd56.flat" && grep -q 'go straight to step 8' "$TMP/bd56.flat"; } \
+  && ok "/build started after a standalone REQUEST-CHANGES acts on that verdict instead of rebuilding the same plan" \
+  || bad "/build ignores an open REQUEST-CHANGES verdict and rebuilds from the top"
 
 hdr "57 · the review-before-ship gate is a mechanism: bin/review_verdict.py + review_verdict_guard (the raw-git bypass closed)"
 # Two real tickets shipped unreviewed through `git push` + `gh pr create`, never entering /ship —
@@ -11620,7 +11661,8 @@ hdr "62 · runtime surfaces: one connector, the tool names each agent lists (bin
 # bin/adapter_surface.py is the one place that picks a surface. Pinned here: every adapter's
 # surfaces parse (A), which adapters carry one (B), the mapping name by name (C), that a surface is
 # used whole and carries its own safety rules (D), the selection rules (E), the refusals (F), the
-# plain wording (G), and the wiring that sends agents through the picker (H).
+# plain wording (G), the wiring that sends agents through the picker (H), and that an adapter's
+# gotchas follow every action the picker prints, on every surface (I).
 # Every call runs with the kit and runtime overrides cleared: a stray TICKETWRIGHT_KIT would make
 # the picker read another kit's adapters, and TICKETWRIGHT_RUNTIME would pick for it.
 AS61="$KIT/bin/adapter_surface.py"
@@ -11697,9 +11739,9 @@ while IFS='|' read -r f surf what want; do
   [ -n "$f" ] || continue
   s61rows=$((s61rows + 1))
   if [ "$what" = "probe" ]; then
-    got="$(p61 --adapter "$f" --surface "$surf" --probe 2>/dev/null)"
+    got="$(p61 --adapter "$f" --surface "$surf" --probe 2>/dev/null | awk 'tolower($0) ~ /^## gotchas[[:space:]]*$/ {exit} {print}')"
   else
-    got="$(p61 --adapter "$f" --surface "$surf" --verb "$what" 2>/dev/null)"
+    got="$(p61 --adapter "$f" --surface "$surf" --verb "$what" 2>/dev/null | awk 'tolower($0) ~ /^## gotchas[[:space:]]*$/ {exit} {print}')"
   fi
   grep -qF -- "$want" <<<"$got" || s61miss="$s61miss $(basename "$f"):$surf:$what"
 done < "$TMP/s61.rows"
@@ -11892,16 +11934,18 @@ cut = re.sub(r"### verb: lookup_channel\n.*?(?=### )", "", surf, count=1, flags=
 (d / "no-server.md").write_text(src.replace("\nserver: codex_apps\n", "\n", 1))
 # consistent with itself, but not the namespace adapters/runtime/codex-cli.md declares
 (d / "foreign-server.md").write_text(head + "## Runtime surface: codex-cli" + surf.replace("codex_apps", "claude_ai_Gmail"))
+# gotchas print on every surface, so a tool name in one would reach an agent whose names differ
+(d / "gotchas-tool.md").write_text(src.replace("\n## gotchas\n", "\n## gotchas\n- Search first with `mcp__{mcp}__search_threads`.\n", 1))
 PY
 s61fx=""
-for fx in missing-verb wrong-server undeclared alias-name no-server foreign-server; do
+for fx in missing-verb wrong-server undeclared alias-name no-server foreign-server gotchas-tool; do
   s61 --adapter "$FX61/$fx.md" --runtime codex-cli --verb draft
   { [ "$S61RC" -eq 6 ] && [ -z "$S61OUT" ]; } || s61fx="$s61fx $fx(rc=$S61RC)"
 done
 s61 --adapter "$FX61/missing-verb.md" --runtime claude-code --verb draft
 { [ "$S61RC" -eq 6 ] && [ -z "$S61OUT" ] && grep -q 'lookup_channel' "$TMP/s61.err"; } || s61fx="$s61fx missing-verb-on-default(rc=$S61RC)"
 [ -z "$s61fx" ] \
-  && ok "malformed surfaces (a missing verb, a wrong server, undeclared, an alias name, no server, a server the runtime does not declare) are exit 6 with no call printed, on every runtime" \
+  && ok "malformed surfaces (a missing verb, a wrong server, undeclared, an alias name, no server, a server the runtime does not declare, a tool name in the gotchas) are exit 6 with no call printed, on every runtime" \
   || bad "a malformed runtime surface still printed a call" "$s61fx"
 
 # --- (G) the picker's messages are plain language ------------------------------------------------
@@ -11928,6 +11972,70 @@ grep -q '^connector_server: codex_apps' adapters/runtime/codex-cli.md || s61wire
 [ -z "$s61wire" ] \
   && ok "the resolution rule, the rendered AGENTS.md, and /setup send agents through the picker and forbid matching edits" \
   || bad "the picker is not wired where agents resolve a verb" "$s61wire"
+
+# --- (I) gotchas follow every action the picker prints, on every surface -------------------------
+# An agent may read nothing but what the picker prints, so a rule kept only in `## gotchas` (Jira's
+# acli lockout, Gmail's threading) would never reach it. Every tool adapter that has the section
+# carries it in --json and ends each --verb and --probe with it, on every surface it has; one that
+# has none prints none. A crash here fails too, rather than passing on empty output.
+python3 - "$AS61" <<'PY' >"$TMP/s61i.out" 2>&1
+import glob, json, os, re, subprocess, sys
+picker = sys.argv[1]
+env = {k: v for k, v in os.environ.items() if k not in ("TICKETWRIGHT_KIT", "TICKETWRIGHT_RUNTIME")}
+def run(*args):
+    r = subprocess.run([sys.executable, picker, *args], capture_output=True, text=True, env=env)
+    return r.returncode, r.stdout.rstrip()
+bad, carried = [], 0
+for f in sorted(glob.glob("adapters/*/*.md")):
+    if f.startswith("adapters/runtime/") or f.endswith("/README.md"):
+        continue
+    # the file's own gotchas, read independently: every `## gotchas` section outside a fence
+    secs, cur, fence = [], None, False
+    for ln in open(f, encoding="utf-8").read().splitlines():
+        if ln.startswith("```"):
+            fence = not fence
+        if not fence and ln.startswith("## "):
+            cur = [ln] if re.match(r"## gotchas\s*$", ln, re.I) else None
+            if cur is not None:
+                secs.append(cur)
+            continue
+        if cur is not None:
+            cur.append(ln)
+    g = "\n\n".join("\n".join(x).strip() for x in secs)
+    rc, out = run("--adapter", f, "--surface", "default", "--json")
+    if rc != 0:
+        bad.append(f + ": the picker refused it")
+        continue
+    d = json.loads(out)
+    if (d.get("gotchas") or "") != g:
+        bad.append(f + (": its gotchas are not carried whole" if g else ": gotchas appeared from nowhere"))
+        continue
+    carried += bool(g)
+    verb = sorted(d["verbs"])[0]
+    for surf in d["surfaces"]:
+        for args in (("--verb", verb), ("--probe",)):
+            rc, text = run("--adapter", f, "--surface", surf, *args)
+            if rc != 0:
+                if args[0] == "--verb" or surf != "default":
+                    bad.append(f + ":" + surf + ":" + args[0] + ": nothing printed")
+                continue   # a CLI-only adapter has no default probe
+            if g and not text.endswith(g):
+                bad.append(f + ":" + surf + ":" + args[0] + ": the gotchas do not follow it")
+            if not g and re.search(r"^## gotchas", text, re.I | re.M):
+                bad.append(f + ":" + surf + ":" + args[0] + ": a gotchas section it does not have")
+print("carried=%d" % carried)
+print("\n".join(bad))
+PY
+s61irc=$?
+s61icarried="$(sed -n 's/^carried=//p' "$TMP/s61i.out")"
+s61ibad="$(grep -v '^carried=' "$TMP/s61i.out" | grep . || true)"
+{ [ "$s61irc" -eq 0 ] && [ -z "$s61ibad" ] && [ "${s61icarried:-0}" -ge 30 ]; } \
+  && ok "every adapter's gotchas, read from the file, follow the verb and the probe the picker prints, on every surface ($s61icarried adapters carry them; none are invented)" \
+  || bad "an adapter's gotchas do not reach what the picker prints" "rc=$s61irc carried=$s61icarried $(head -5 <<<"$s61ibad")"
+s61 --adapter adapters/tracker/jira.md --runtime codex-cli --verb fetch_ticket
+{ [ "$S61RC" -eq 0 ] && grep -q '250001/370001' <<<"$S61OUT" && grep -q 'acli jira workitem view' <<<"$S61OUT"; } \
+  && ok "…so Jira's acli lockout warning reaches a Codex agent that reads only fetch_ticket" \
+  || bad "the Jira gotchas did not reach the Codex fetch_ticket output" "rc=$S61RC"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
