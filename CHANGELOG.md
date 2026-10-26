@@ -6,6 +6,29 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- A ticket now runs from one window. Approving the plan in `/ticket` starts the build right there
+  ("Approve, don't build yet" still stops after writing the plan). `/build` remains a skill for
+  resuming a build or building from someone else's approved plan.
+- When the plan calls for a spec and the runtime has subagents, `/build` hands each step to a
+  subagent that sees only `plan.md`, that step's part of the spec and the files it touches. That
+  keeps the fresh context the build used to get from a separate session. Approvals for risky SQL
+  and the review handoffs stay in the main session, because a subagent cannot reliably reach you.
+  Smaller tickets (`spec: not required`) are built in the main session. The ticket README records
+  `build_mode:` and `subagent_isolation:`, and a runtime whose subagent isolation is unestablished
+  says so.
+- An APPROVE verdict now asks "Review approved. Ship now?" and runs `/ship` if you say yes. `/ship`
+  still stops for your approval before anything leaves the repo.
+- `/review` and `qc-reviewer` tag each finding `kind: defect | scope`. A scope finding (the plan
+  itself was wrong) sends the build back to `/ticket` Phase 4 in a new replan mode, which updates
+  the plan in place, gets your approval and returns to the same build without starting another
+  one. Defects keep the fix-and-re-review loop, which still stops after two rounds.
+  Only a hard-halt scope finding replans, the defects in the same verdict are fixed alongside the
+  replan, and a replan restarts the two-round count. A `/build` started after a standalone
+  REQUEST-CHANGES acts on that verdict instead of rebuilding the same plan.
+- The vcs adapters' `worktree` verb now describes what it is still for: keeping one ticket apart
+  from other work in flight. The build no longer needs a separate context.
+
 ### Fixed
 - **An adapter's gotchas now reach agents that read it through `bin/adapter_surface.py`.** The
   picker printed only the chosen action's section, so a rule kept in `## gotchas` (Jira's `acli`

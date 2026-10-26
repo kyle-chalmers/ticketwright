@@ -20,7 +20,7 @@ git checkout {default_branch} && git pull origin {default_branch}
 git checkout -b <TICKET-ID>
 ```
 
-## verb: worktree   (the Plan→Implement context reset)
+## verb: worktree   (isolates one ticket from other work in flight)
 ```bash
 git worktree add "{worktree_root}/<name>" -b <TICKET-ID>
 ```

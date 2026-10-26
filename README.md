@@ -91,7 +91,8 @@ What did we learn last time someone measured late orders by region?
 /ticket <id>        opens or resumes the ticket, auto-loads its context + closest prior work,
                     writes the plan (and the spec when the plan calls for one), and waits for
                     your approval before anything is built ↓
-/build              executes the approved plan or spec in fresh context, then runs /review itself
+/build              starts on your approval (subagents build the bigger tickets), runs /review,
+                    asks before /ship, and replans with you when the review finds the plan was wrong
 /review [--deep]    the independent QC pass /build runs for you: re-runs queries, walks the validation
                     pyramid → APPROVE / REQUEST-CHANGES; run it directly to re-check or go --deep
                     …and at the top of that pyramid, opens the deliverables in YOUR apps and waits

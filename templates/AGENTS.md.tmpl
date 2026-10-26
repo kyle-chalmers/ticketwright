@@ -18,7 +18,9 @@ from the adapters, never from this line.
 ## How work flows (plan → build → check → ship)
 `/ticket <id>` (opens the ticket, auto-loads its context and prior art, **writes the plan — and the
 spec when the plan calls for one — and waits for your approval before anything is built**) →
-`/build` (executes the approved plan/spec in fresh context, then runs `/review` itself) → `/review`
+`/build` (starts in the same window on your approval, has subagents build the bigger tickets from the
+plan alone, runs `/review` itself, asks before shipping, and replans with you when the review finds
+the plan was wrong) → `/review`
 (the independent check; run it directly to re-check or go `--deep`) → `/ship` (gated delivery; warns
 and waits when no review verdict is on file). Recurring work → `/skillify`. Knowledge maintenance →
 `/refresh` (ticket catalog + domain pack).
