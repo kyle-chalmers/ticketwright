@@ -16,7 +16,7 @@ body:
     attributes:
       label: Ticketwright version
       description: "`ticketwright --version`, or the `version` in the installed plugin's `.claude-plugin/plugin.json`."
-      placeholder: "4.2.0"
+      placeholder: "4.3.0"
     validations:
       required: true
   - type: dropdown
