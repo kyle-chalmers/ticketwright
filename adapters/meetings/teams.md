@@ -110,5 +110,6 @@ the comparison outcome is `unverified` by construction.
   the fetched onlineMeeting object first.
 - Transcription must have been ON for the meeting; a meeting with no transcript returns an empty
   transcripts list, which is "nothing recorded", not an auth failure.
-- MCP op names vary by Graph server — confirm them once against your connected server and adjust
-  here (never the skills).
+- MCP op names vary by Graph server. Check them once against your connected server; if yours
+  names them differently, report it so the kit can record it, or give that server its own
+  adapter. Never edit this file or a skill to match.
