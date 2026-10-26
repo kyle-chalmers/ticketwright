@@ -32,6 +32,13 @@ This review ran in the same conversation that did the work, so it is not the ind
    warehouse seam, review is code/output/doc only.
 2. Read the ticket README, the plan (`plan.md` — its Validation strategy is part of the checklist),
    the spec (if any), and list `final_deliverables/` + `qc_queries/`.
+3. Load the team's docs: use the rows the spawning prompt passed, or run
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" team_docs.py --json`. Read every `standards` doc and any `context` doc that defines
+   a metric or table in play (a path directly, a link with whatever reader you have). Mark each
+   `opened` or `unreadable` (`exists: false` is `unreadable`). Never report an unreadable standards
+   doc as checked. A broken rule from an opened doc is a finding, `Should-fix` by default,
+   `Critical` only where the doc makes the rule a must; a metric that contradicts its written
+   definition is a finding too.
 
 ## Walk the validation pyramid (cheap→expensive, automated→human)
 1. **Dialect lint** (per `dialect_notes`): `=NULL` vs `IS NULL`; unguarded division; `SELECT *` in
@@ -63,6 +70,7 @@ validation the plan never had). When unsure, `defect`.
 verdict: APPROVE | REQUEST-CHANGES
 review_mode: independent-subagent | inline-same-context
 subagent_isolation: <the runtime adapter's declared posture, verbatim — from the spawning prompt or the probe>
+team_docs: <location> opened; <location> unreadable … | none configured
 Pyramid: lint <ok/n> · counts&dedup <ok/n> · reconcile <ok/n> · re-run-diff <ok/n> · output&docs <ok/n>
 Findings:
   - [Critical|Should-fix|Review] kind: defect | scope — <file:line> — <what> — <remediation>

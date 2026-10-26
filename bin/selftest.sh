@@ -12146,5 +12146,28 @@ td63 --json > "$TMP/s63e.out" 2>&1; s63rc=$?
 td63 --kind wiki > "$TMP/s63f.out" 2>&1; s63rc=$?
 [ "$s63rc" -eq 2 ] && ok "an unknown --kind is refused (exit 2)" || bad "an unknown --kind was accepted" "rc=$s63rc"
 
+# (F) the consumers: /ticket reads context, /build follows standards, /review and qc-reviewer check
+# standards and record each doc opened or unreadable. A key nothing reads is configuration theater.
+w63=""
+for f in .claude/skills/ticket/priming.md .claude/skills/build/SKILL.md .claude/skills/review/SKILL.md .claude/agents/qc-reviewer.md; do
+  grep -q 'bin/tw" team_docs.py' "$f" || w63="$w63 $f"
+done
+[ -z "$w63" ] && ok "ticket, build, review and qc-reviewer all call team_docs.py through bin/tw" \
+  || bad "a team-docs consumer does not call team_docs.py through bin/tw" "$w63"
+{ grep -q 'team_docs.py" team_docs.py --kind context\|team_docs.py --kind context' .claude/skills/ticket/priming.md \
+  && grep -q 'team_docs.py --kind standards' .claude/skills/build/SKILL.md; } \
+  && ok "/ticket reads the context list and /build reads the standards list" \
+  || bad "/ticket or /build reads the wrong team-docs list"
+{ grep -q 'team_docs: <location> opened' .claude/skills/review/SKILL.md \
+  && grep -q '^team_docs: <location> opened' .claude/agents/qc-reviewer.md \
+  && grep -q 'unreadable standards doc is never reported as checked' .claude/skills/review/SKILL.md \
+  && grep -qi 'never report an unreadable standards' .claude/agents/qc-reviewer.md; } \
+  && ok "the verdict records each team doc opened or unreadable, and an unreadable one is never 'checked'" \
+  || bad "the review record does not say which team docs were opened"
+{ grep -q 'only where the doc itself makes the rule a' .claude/skills/review/SKILL.md \
+  && grep -q 'only where the doc makes the rule a must' .claude/agents/qc-reviewer.md; } \
+  && ok "a broken standard is Should-fix by default, Critical only where the doc makes it a must" \
+  || bad "the standards severity rule is missing from review or qc-reviewer"
+
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
