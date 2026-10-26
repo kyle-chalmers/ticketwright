@@ -114,6 +114,39 @@ The MCP alternative needs the `cloudId` of `{site}`: list the sites once per ses
 none matches, STOP and report rather than search another site.
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
 
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes raw JQL: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Jira
+project, default `{key_prefix}`), `<limit>` (default 20), `<filter>` (optional, exactly one of
+`project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title,
+description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```bash
+# <JQL> = project = <scope> AND text ~ "<text>" AND created < "<before>" ORDER BY created DESC
+acli jira workitem search --jql "<JQL>" --limit <limit> --json --fields summary,description,labels,created,status
+# MCP alt: mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=<the {site} cloudId>, jql="<JQL>", maxResults=<limit>)
+```
+Escape `"` and `\` in `<text>` with a backslash. An empty `<before>` means no date clause: the JQL is
+`project = <scope> AND text ~ "<text>" ORDER BY created DESC`.
+
+Filters: `project:<x>` replaces `<scope>` (`project = <x>`); `label:<x>` adds `AND labels = "<x>"`;
+`parent:<x>` adds `AND parent = <x>` (an epic or parent key); `person:<x>` adds
+`AND (assignee = "<x>" OR reporter = "<x>")` (`<x>` is the person's email).
+
+If the build rejects `--fields`, drop it, search for the keys alone, then run `fetch_ticket` once per hit, in
+order, stopping at the first auth error (an instant `250001/370001` is the MFA lockout: do not retry).
+The MCP alternative needs the `cloudId` of `{site}`: take the one whose URL's host is `{site}`, as in
+`search`; if none matches, STOP and report rather than search another site. Ask for the same five fields
+when the tool takes a `fields` argument.
+
+If `acli` is not signed in or the site cannot be reached, say so in one plain sentence and return `[]`.
+
+Output mapping: `key` and `fetch_id` are both the issue key (`TEST-130`); `title` is `fields.summary`;
+`description` is `fields.description` as plain text (flattened if it arrives as a document tree); `labels`
+is `fields.labels`; `created` is `fields.created` cut to `YYYY-MM-DD`; `url` is
+`https://{site}/browse/<key>`; `status` is `fields.status.name`.
+
 ## verb: download_attachments
 Pull a ticket's attachments into its `source_materials/` (skip silently when there are none).
 `acli jira workitem attachment list <id>` only LISTS attachments. To DOWNLOAD, use a small `curl`
@@ -237,6 +270,40 @@ The MCP alternative needs the `cloudId` of `{site}`: list the sites once per ses
 (`mcp__codex_apps__atlassian_getaccessibleatlassianresources({})`) and take the one whose URL's host
 is `{site}`. If none matches, STOP and report rather than search another site.
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
+
+### verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes raw JQL: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Jira
+project, default `{key_prefix}`), `<limit>` (default 20), `<filter>` (optional, exactly one of
+`project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title,
+description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```bash
+# <JQL> = project = <scope> AND text ~ "<text>" AND created < "<before>" ORDER BY created DESC
+acli jira workitem search --jql "<JQL>" --limit <limit> --json --fields summary,description,labels,created,status
+# MCP alt: mcp__codex_apps__atlassian_searchjiraissuesusingjql(cloudId=<the {site} cloudId>, jql="<JQL>", maxResults=<limit>)
+```
+Escape `"` and `\` in `<text>` with a backslash. An empty `<before>` means no date clause: the JQL is
+`project = <scope> AND text ~ "<text>" ORDER BY created DESC`.
+
+Filters: `project:<x>` replaces `<scope>` (`project = <x>`); `label:<x>` adds `AND labels = "<x>"`;
+`parent:<x>` adds `AND parent = <x>` (an epic or parent key); `person:<x>` adds
+`AND (assignee = "<x>" OR reporter = "<x>")` (`<x>` is the person's email).
+
+If the build rejects `--fields`, drop it, search for the keys alone, then run `fetch_ticket` once per hit, in
+order, stopping at the first auth error (an instant `250001/370001` is the MFA lockout: do not retry).
+The MCP alternative needs the `cloudId` of `{site}`: list the sites once per session
+(`mcp__codex_apps__atlassian_getaccessibleatlassianresources({})`) and take the one whose URL's host is
+`{site}`. If none matches, STOP and report rather than search another site. Ask for the same five fields
+when the tool takes a `fields` argument.
+
+If `acli` is not signed in or the site cannot be reached, say so in one plain sentence and return `[]`.
+
+Output mapping: `key` and `fetch_id` are both the issue key (`TEST-130`); `title` is `fields.summary`;
+`description` is `fields.description` as plain text (flattened if it arrives as a document tree); `labels`
+is `fields.labels`; `created` is `fields.created` cut to `YYYY-MM-DD`; `url` is
+`https://{site}/browse/<key>`; `status` is `fields.status.name`.
 
 ### verb: download_attachments
 Pull a ticket's attachments into its `source_materials/` (skip silently when there are none).

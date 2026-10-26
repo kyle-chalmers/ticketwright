@@ -38,8 +38,29 @@ verb in that seam's contract. A verb section gives the command(s), inputs, the e
 | `transition` | `id`, `status` | ok/fail |
 | `comment` | `id`, body, optional smart-link cards | ok/fail (rendered, not plain text) |
 | `search` | query (JQL/equivalent), limit | list of `{id, summary, status}` |
+| `search_history` | `<text>`, `<before>` (ISO date, or empty for no cutoff), `<scope>` (the configured project / team / repo / board by default), `<limit>` (default 20), `<filter>` (optional, exactly one of `project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`) | a JSON list of `{key, fetch_id, title, description, labels, created, url, status}` |
 | `download_attachments` | `id`, dest dir | files written (silent if none) |
 | `rank_projects_by_activity` | `scope`, `window_days`, `limit` | ranked tracker **containers** (Jira project / Azure Boards project / GitHub repo / Linear team / Asana project / monday board) as `{id, name, activity, last_activity, signal}` — or `unsupported` / `unavailable` + reason |
+
+`search_history` is `search` with a fixed contract. `search` takes the tool's own query syntax and
+returns `{id, summary, status}`, so a caller would have to know JQL, WIQL or GraphQL. `search_history`
+takes plain inputs and returns one row shape, so the caller never writes a query and any tracker's rows
+can be scored the same way. Each adapter's section gives its query, a `Filters:` line (each of the four
+filter kinds gets its query fragment or says `not supported`; `project:<x>` replaces `<scope>`), what an
+empty `<before>` does (the same query without its date clause, meaning no cutoff), and an
+`Output mapping:` line naming the vendor field behind every row field. It is read-only.
+
+- `key` is the ticket's id in the form repo ticket folders use (`TEST-130`), so a tracker row and a repo
+  ticket with the same key are the same ticket. A tracker with its own keys uses them. A tracker with
+  plain numbers (Azure Boards, GitHub Issues, Asana, monday) uses `{key_prefix}-<number>`, the folder
+  convention in that adapter's note.
+- `fetch_id` is exactly what that adapter's `fetch_ticket` takes: `TEST-130` on Jira, `130` on Azure Boards.
+- `description` is cut to 600 characters, `labels` is a list of strings, and `created` is an ISO date or
+  `null`.
+- A search that cannot run (not signed in, tracker unreachable, a plan tier without search) says so in one
+  plain sentence and returns `[]`, and the caller carries on with the repo's own tickets. An adapter whose
+  tool cannot filter on something says so in its `Filters:` line or does that part client-side.
+- The `local` adapter returns `[]`: its tickets are the repo's own, and `bin/recall.py` already ranks them.
 
 `rank_projects_by_activity` is the seam's one **bootstrap** verb, and it breaks two rules the
 others follow — deliberately, because it runs *before* the seam is configured. Its job is to stop

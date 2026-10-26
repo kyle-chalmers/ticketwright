@@ -75,6 +75,32 @@ Linear comments support full markdown links — `[TEST-123](url)`, file links, P
 list-issues(team={team_id}, query=<text>, filter={state, label, ...})
 ```
 
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes the server's own filter object: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Linear
+team, default `{team_id}`), `<limit>` (default 20), `<filter>` (optional, exactly one of `project:<x>`,
+`label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title, description,
+labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches. `description` is cut to
+600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```
+list-issues(team=<scope>, query=<text>, filter={createdAt: {lt: <before>}}, limit=<limit>)
+```
+An empty `<before>` means no date clause: drop the `createdAt` entry, leaving
+`list-issues(team=<scope>, query=<text>, limit=<limit>)`. Argument names depend on the connected server
+(see the MCP note in `adapters/README.md`); if it has no way to filter on an upper date, drop every row
+whose `created` is on or after `<before>` yourself.
+
+Filters: `project:<x>` replaces `<scope>` (`team=<x>`, since a Linear team is this adapter's container);
+`label:<x>` adds `label=<x>`; `parent:<x>` adds `parentId=<x>` for a parent issue, or `project=<x>` for a
+Linear Project (the epic stand-in); `person:<x>` adds `assignee=<x>` (an email or user id).
+
+If the server is not connected or the token cannot read issues, say so in one plain sentence and return `[]`.
+
+Output mapping: `key` and `fetch_id` are both the issue `identifier` (`TEST-130`); `title` is `title`;
+`description` is `description` (markdown); `labels` is the names in `labels`; `created` is `createdAt` cut
+to `YYYY-MM-DD`; `url` is `url`; `status` is `state.name`.
+
 ## verb: download_attachments
 Read the issue's `attachments{ url }`, `curl -L` each to the dest dir. (Linear attachments are URLs.)
 

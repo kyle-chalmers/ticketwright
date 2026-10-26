@@ -114,7 +114,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
+    tracker) echo 8;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
     viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -2014,12 +2014,12 @@ grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/de
   || ok "ingest does not invent a tracker number for a key-shaped slug id"
 
 hdr "27 · local tracker adapter (the filesystem IS the tracker)"
-# The whole point is zero skill edits: the adapter must satisfy the same 7-verb contract, so /ticket
+# The whole point is zero skill edits: the adapter must satisfy the same 8-verb contract, so /ticket
 # and /ship keep calling tracker verbs without knowing there's no API.
 lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
-[ "$lv" -eq 7 ] && ok "local adapter implements all 7 tracker verbs" || bad "local adapter has $lv verbs, expected 7"
+[ "$lv" -eq 8 ] && ok "local adapter implements all 8 tracker verbs" || bad "local adapter has $lv verbs, expected 8"
 lvmiss=""
-for v in fetch_ticket create_ticket transition comment search download_attachments \
+for v in fetch_ticket create_ticket transition comment search search_history download_attachments \
          rank_projects_by_activity; do
   grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
 done
@@ -11907,6 +11907,143 @@ grep -q '^connector_server: codex_apps' adapters/runtime/codex-cli.md || s61wire
 [ -z "$s61wire" ] \
   && ok "the resolution rule, the rendered AGENTS.md, and /setup send agents through the picker and forbid matching edits" \
   || bad "the picker is not wired where agents resolve a verb" "$s61wire"
+
+hdr "63 · older-ticket search: the tracker's search_history verb (LABS-90)"
+# /ticket can look past the repo's own folders into the tracker's older tickets, so every tracker
+# adapter has to answer one tool-neutral question the same way: "what older tickets look like this
+# text?". `search` stays raw vendor syntax returning {id, summary, status}; search_history is the
+# fixed contract the recall step scores: a JSON list of
+# {key, fetch_id, title, description, labels, created, url, status}. `key` is the comparable id in the
+# form repo ticket folders use (TEST-130); `fetch_id` is exactly what that adapter's fetch_ticket
+# takes (130 on a numeric tracker). All vendor query syntax lives in the adapter sections; the skill
+# only ever says "the tracker adapter's search_history verb".
+
+# --- (a) every tracker adapter carries the verb, with the contract's inputs, filters and mapping ----
+python3 - <<'PY63A' >"$TMP/s63a.out" 2>&1
+import glob, os, re, sys
+sys.path.insert(0, "bin")
+import _yamlite
+
+bad = []
+KINDS = ("project:<x>", "label:<x>", "parent:<x>", "person:<x>")
+INPUTS = ("<text>", "<before>", "<scope>", "<limit>", "<filter>")
+FIELDS = ("key", "fetch_id", "title", "description", "labels", "created", "url", "status")
+
+# {tokens} are config keys: the adapter's own requires: list, or a project.* key from the schema.
+schema = open(".claude/config/stack.schema.md", encoding="utf-8").read()
+m = re.search(r"(?ms)^## `project`\s*$(.*?)^## `", schema)
+project_keys = set(re.findall(r"(?m)^\| `([a-z_]+)` \|", m.group(1))) if m else set()
+if not project_keys:
+    bad.append("could not read the project.* keys from stack.schema.md")
+
+def split_sections(text):
+    """(heading, body) for every `## verb: search_history` and `### verb: search_history` section.
+    A section runs to the next level-2 or level-3 heading; fenced lines never count as headings."""
+    lines, out, fenced, cur = text.splitlines(), [], False, None
+    for ln in lines:
+        if ln.startswith("`" * 3):
+            fenced = not fenced
+        head = (not fenced) and re.match(r"^#{2,3} ", ln)
+        if head:
+            if cur:
+                out.append(cur)
+            cur = [ln, []] if re.match(r"^#{2,3} verb: search_history\s*$", ln) else None
+        if cur:
+            cur[1].append(ln)
+    if cur:
+        out.append(cur)
+    return [(h, "\n".join(b)) for h, b in out]
+
+def paragraph(body, start_re):
+    """The paragraph (to the next blank line) that begins at the first line matching start_re."""
+    lines = body.splitlines()
+    for i, ln in enumerate(lines):
+        if re.match(start_re, ln):
+            j = i
+            while j < len(lines) and lines[j].strip():
+                j += 1
+            return " ".join(x.strip() for x in lines[i:j])
+    return None
+
+for f in sorted(glob.glob("adapters/tracker/*.md")):
+    name = os.path.basename(f)
+    if name == "README.md":
+        continue
+    text = open(f, encoding="utf-8").read()
+    fm, _ = _yamlite.parse_frontmatter(text, f)
+    requires = set(fm.get("requires") or [])
+    allowed = requires | project_keys
+    lines = text.splitlines()
+    defaults = [i for i, ln in enumerate(lines) if re.match(r"^## verb: search_history\s*$", ln)]
+    surf_heads = [ln for ln in lines if re.match(r"^### verb: search_history\s*$", ln)]
+    n_surfaces = len([ln for ln in lines if ln.startswith("## Runtime surface:")])
+    if len(defaults) != 1:
+        bad.append("%s: %d sections named '## verb: search_history', want exactly 1" % (name, len(defaults)))
+    if len(surf_heads) != n_surfaces:
+        bad.append("%s: %d runtime surface section(s) but %d '### verb: search_history'" % (name, n_surfaces, len(surf_heads)))
+    sr = [i for i, ln in enumerate(lines) if re.match(r"^## verb: search\s*$", ln)]
+    if defaults and sr and defaults[0] < sr[0]:
+        bad.append("%s: search_history must come after '## verb: search'" % name)
+    for head, body in split_sections(text):
+        tag = "%s [%s]" % (name, head.split(" verb:")[0].strip())
+        for tok in INPUTS:
+            if tok not in body:
+                bad.append("%s: never mentions %s" % (tag, tok))
+        fl = paragraph(body, r"^Filters:")
+        if fl is None:
+            bad.append("%s: no 'Filters:' line" % tag)
+        else:
+            # each kind is written as a code span; what follows it up to the next kind is its verdict:
+            # 'not supported', or a code span holding the query fragment (not just the <scope> token)
+            marks = sorted((fl.find("`%s`" % k), k) for k in KINDS)
+            for k in KINDS:
+                if fl.find("`%s`" % k) < 0:
+                    bad.append("%s: Filters line does not name `%s`" % (tag, k))
+            found = [(at, k) for at, k in marks if at >= 0]
+            for n, (at, k) in enumerate(found):
+                end = found[n + 1][0] if n + 1 < len(found) else len(fl)
+                seg = fl[at + len(k) + 2:end]
+                frags = [c for c in re.findall(r"`([^`]+)`", seg) if c != "<scope>"]
+                if "not supported" not in seg and not frags:
+                    bad.append("%s: %s is neither a query fragment nor 'not supported'" % (tag, k))
+        if not re.search(r"(?i)empty\s+`<before>`|`<before>`\s+(is|are)\s+empty", body) or "date" not in body.lower():
+            bad.append("%s: no sentence on the empty <before> form (the query without its date clause)" % tag)
+        om = paragraph(body, r"^Output mapping:")
+        if om is None:
+            bad.append("%s: no line starting 'Output mapping:'" % tag)
+        else:
+            need = ("key", "fetch_id") if fm.get("tool") == "local" else FIELDS
+            for fld in need:
+                if "`%s`" % fld not in om:
+                    bad.append("%s: Output mapping does not name `%s`" % (tag, fld))
+        # The server-name placeholder inside an MCP call (mcp__{mcp}__tool) is the one token allowed
+        # without a requires: entry: Jira reaches its tracker by CLI first and leaves {mcp} optional,
+        # so listing it would warn every CLI-only install. Every other token must be declared.
+        for t in sorted(set(re.findall(r"\{([a-z][a-z_0-9]*)\}", body.replace("mcp__{mcp}__", "mcp__")))):
+            if t not in allowed:
+                bad.append("%s: {%s} is neither in requires: nor a project.* key" % (tag, t))
+        if chr(0x2014) in body or chr(0x2013) in body:
+            bad.append("%s: carries an em or en dash" % tag)
+
+# the contract row in adapters/README.md names the same five inputs and the row shape
+readme = open("adapters/README.md", encoding="utf-8").read()
+row = re.search(r"(?m)^\| `search_history` \|.*$", readme)
+if not row:
+    bad.append("adapters/README.md: no tracker contract row for search_history")
+else:
+    for tok in INPUTS:
+        if tok not in row.group(0):
+            bad.append("adapters/README.md: the search_history row does not name %s" % tok)
+    for fld in FIELDS:
+        if fld not in row.group(0):
+            bad.append("adapters/README.md: the search_history row does not name %s" % fld)
+if bad:
+    print("\n".join(bad))
+PY63A
+s63a_rc=$?
+{ [ "$s63a_rc" -eq 0 ] && [ ! -s "$TMP/s63a.out" ]; } \
+  && ok "all 7 tracker adapters carry search_history: the five inputs, a Filters line for all four kinds, the empty-before form, an Output mapping naming key and fetch_id, and only declared config tokens (and the README contract row)" \
+  || bad "a tracker adapter's search_history section breaks the contract" "$(head -8 "$TMP/s63a.out")"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
