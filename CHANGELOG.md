@@ -13,7 +13,9 @@ All notable changes to this project are documented here. Format loosely follows
   epic or person). The search only reads, returns up to 20 tickets, and stays inside the saved
   project and cutoff date. Results are scored by the same rules as recall (a label counts as a tag,
   the text as keywords, a ticket key the README names as a link), the top 3 get a one-line summary
-  from a cheaper model that cannot run tools, and the best one or two are read in full. The reuse
+  from the runtime's sandboxed model command (on Claude Code a cheaper model with every tool
+  withheld, on Codex CLI its default model in a read-only sandbox) or, on any other runtime, from
+  your session writing them from the titles, and the best one or two are read in full. The reuse
   brief marks each as "From the tracker (no ticket folder or QC record here)". A person's own
   request for the search works at any time. Details: [docs/ticket-index.md](docs/ticket-index.md#older-tickets-in-your-tracker).
 - `/setup` asks once (question 4a) whether your team tracked work in your tracker before this repo
@@ -37,7 +39,8 @@ All notable changes to this project are documented here. Format loosely follows
   `--disallowedTools Bash,Write,Edit,WebFetch` left Read, Grep, Glob, WebSearch and MCP tools
   reachable to a model reading text that people outside the team wrote. `--tools ""` was verified
   live on Claude Code 2.1.310; `--strict-mcp-config` loading no MCP server rests on the CLI's help
-  text. A Claude Code build too old to know `--tools` fails the call, so update it.
+  text. Older builds were not checked, and one that does not know `--tools` may fail the call, so
+  update Claude Code if enrich or the summaries stop working.
 - A ticket now runs from one window. Approving the plan in `/ticket` starts the build right there
   ("Approve, don't build yet" still stops after writing the plan). `/build` remains a skill for
   resuming a build or building from someone else's approved plan.

@@ -171,8 +171,10 @@ What was verified, and what was not:
   deny list left Read, Grep, Glob, WebSearch and every MCP tool reachable, which is why `enrich` and the
   summaries now both run with no tools. That `--strict-mcp-config` loads no MCP server rests on the
   CLI's help text, which says it uses only the servers named by `--mcp-config`; it has not been run
-  against a live MCP server.
-- **Codex CLI.** `--sandbox read-only` was read from `codex exec --help`. It has not been run live.
+  against a live MCP server. A live check is owed (entry 14 in [live-verification.md](live-verification.md)).
+- **Codex CLI.** `--sandbox read-only` was read from `codex exec --help`. It has not been run live
+  (entry 14 in [live-verification.md](live-verification.md)), and a read-only sandbox can still read
+  files, so it is a weaker guard than Claude Code's withheld tools.
 - **Antigravity, OpenCode, Devin.** No restriction flag is confirmed for these commands, so they stay
   `unverified` and are owed a live check: see [live-verification.md](live-verification.md).
 - **Cursor, Cline.** Neither has a documented headless one-shot command, so there is nothing to sandbox.

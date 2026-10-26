@@ -21,7 +21,7 @@ human-readable summaries.
 | `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
 | `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/status/date/tags/refs, ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
-| `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets, written by a cheaper model that runs with no tools. Runs only where the runtime's model command is sandboxed; otherwise the session writes the lines. | model (headless) |
+| `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command is sandboxed (on Claude Code, a cheaper model with every tool withheld); otherwise the session writes the lines from the titles. | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
 | `.claude/hooks/regenerate_ticket_index.py` | PostToolUse (Write/Edit) hook: auto-re-renders `INDEX.md` whenever a file under `tickets/` changes — new tickets appear immediately, edited READMEs flag `⚠`. | — |
 
@@ -124,7 +124,7 @@ of the repo's own tickets is unchanged.
 
 **When it is offered.** Each of these must hold:
 
-- recall's last line (`verdict:`) says `weak` (the top hit shares keywords only) or `no prior art found`.
+- recall's `verdict:` line says `weak` (the top hit shares keywords only) or `no prior art found`.
   A `moderate`, `clear leader` or `strong` verdict never starts it.
 - `project.history_search` is `ask`.
 - the tracker is not `local`.
@@ -160,9 +160,14 @@ plain line and repo-only recall, and the tracker is never contacted.
    `fetch_id` (`130`), which is what `fetch_ticket` takes.
 2. **Score.** `recall.py --external` ranks the rows with the repo's own rules: a label counts as a tag
    (`Data Quality` matches the tag `data-quality`), the description counts as keywords, and a ticket
-   key the seed's README names counts as a cross-reference. A row whose key already has a ticket folder
-   is dropped, so a ticket shows once, from the repo. The top 5 are kept.
-3. **Summarize.** `bin/summarize_hits.py` has a cheaper model write one line for each of the top 3.
+   key the seed's README names counts as a cross-reference. A qualified SQL object name
+   (`schema.table`) found in a description also scores, at ×4 like a repo ticket's tables, when the
+   seed names the same object. A row whose key already has a ticket folder is dropped, so a ticket
+   shows once, from the repo. The top 5 are kept.
+3. **Summarize.** `bin/summarize_hits.py` has the runtime's sandboxed model command write one line
+   for each of the top 3. On Claude Code that is a cheaper model with every tool withheld. On Codex
+   CLI it is the default model in a read-only sandbox, which can still read files. A runtime with no
+   sandboxed command has the session write the lines from the titles.
 4. **Read.** The session opens at most the top 2 in full.
 5. **Label.** The reuse brief gets a section headed "From the tracker (no ticket folder or QC record
    here)": each hit's key, why it matched and its one line. Hits 4 and 5 get a key and title only.
@@ -174,10 +179,10 @@ instructions", so the summaries run only through a model command known to be san
 `model_sandbox` must be `tools-withheld` or `read-only`. Each ticket goes in on its own as quoted data,
 flattened to a few lines with its backticks replaced so it cannot close the quote, and the command
 runs without a shell. Where no such command exists, `summarize_hits.py` exits 4 and the session writes
-the lines from the titles itself, and says so. On Claude Code the summaries run on a cheaper model
-(`model_fast`: haiku). The other runtimes' commands take no model argument, so they use whatever model
-the command defaults to. Which runtime can do what, and what was verified, is in
-[runtimes.md](runtimes.md#the-headless-model-command).
+the lines from the titles itself, and says so. Only Claude Code has a cheaper model to pick
+(`model_fast`: haiku) and a command that withholds every tool. Codex CLI's command takes no model
+argument, so it uses its default model, and its read-only sandbox can still read files. Which runtime
+can do what, and what was verified, is in [runtimes.md](runtimes.md#the-headless-model-command).
 
 **When it cannot search.** The tracker is down or not signed in, its pricing plan has no search, the results
 file is unreadable, or nothing matched: one plain line, and recall carries on with the repo's tickets.

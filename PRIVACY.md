@@ -32,11 +32,14 @@ search the tickets your team tracked before this repo existed. Nothing is search
 `never` in `stack.yaml` turns off the offer, not your own request. The search only reads. The
 session opens the best one or two matches in full, and the model command writes a one-line summary
 of the top three, with each ticket's text handed over as quoted data. On Claude Code that command
-runs with no tools and no MCP servers. Where a runtime has no model command we could confirm is
-sandboxed the same way, your session's own model writes the summaries from the titles instead.
-Either way the text goes to your agent's model provider, as in the first row. What reaches a
-committed file is the ticket key, title and one-line summary, never the description, comments or
-attachments. Details: [docs/ticket-index.md](docs/ticket-index.md#older-tickets-in-your-tracker).
+is started with every tool withheld and no MCP servers loaded, on a cheaper model.
+[docs/runtimes.md](docs/runtimes.md#the-headless-model-command) says which of those two was checked
+live and which rests on the CLI's help text. Codex CLI runs its command in a read-only sandbox,
+which can still read files. Where a runtime has no model command we
+could confirm is sandboxed, your session's own model writes the summaries from the titles instead.
+Either way the text goes to your agent's model provider, as in the first row. The skill is told to
+keep only the ticket key, title and one-line summary in a committed file, never the description,
+comments or attachments; no guard checks that. Details: [docs/ticket-index.md](docs/ticket-index.md#older-tickets-in-your-tracker).
 
 **Local reads.** The hooks read files in the repo, any `-f` SQL file a command names, your viewer
 and people config under `~/.config/ticketwright/`, and Claude Code's own
@@ -55,7 +58,7 @@ Ticketwright writes into your repository, and what it writes stays until you del
 - the catalog (`tickets/index_data.json`, `tickets/INDEX.md`, `tickets/OBJECTS.md`) and the graph
   notes, committed and regenerated from those folders;
 - the key, title and one-line summary of an older tracker ticket, if the ticket's plan or notes cite
-  one (never its description, comments or attachments), and your older-ticket settings
+  one (the skill is told to keep nothing else of it; no guard checks that), and your older-ticket settings
   (`history_search`, `history_scope`, `history_before`) in `stack.yaml`, which the whole team shares;
 - `people/<id>.yaml` and voice profiles, committed by default. A voice profile is personal data, a
   writing fingerprint: to keep yours private, point your `voice.path` outside the repo, or

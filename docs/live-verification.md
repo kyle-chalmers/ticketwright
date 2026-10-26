@@ -552,9 +552,12 @@ Covers: `antigravity.model_sandbox` `devin.model_sandbox` `opencode.model_sandbo
 **Claim to verify.** Three adapters declare a headless `model_cmd` whose restriction posture is
 `unverified`: `agy -p` (docs describe a commandExecutionPolicy for subagents, not a CLI flag),
 `devin -p` (docs mention a `--sandbox` mode, unverified for `-p`), `opencode run` (no restriction
-flag verified at all). The enrich step shells these commands; an unsandboxed model call there is
-a real difference in what the kit exposes. A command *completing* proves nothing — the probes
-below are adversarial, and the posture is recorded **per probe**, not as one word.
+flag verified at all). The enrich step and the older-ticket summaries (`bin/summarize_hits.py`) both
+shell these commands; an unsandboxed model call there is a real difference in what the kit exposes.
+Enrich runs the command as declared, while the summaries refuse an `unverified` command (exit 4, and
+the session writes the lines from the titles), so a PASS here is also what lets the summaries run on
+that runtime. A command *completing* proves nothing: the probes below are adversarial, and the
+posture is recorded **per probe**, not as one word.
 
 **Preconditions.** Each runtime installed and authenticated, in a throwaway fixture directory.
 
@@ -681,6 +684,37 @@ Field rules match
 the vendor's [subagents page](https://learn.chatgpt.com/docs/agent-configuration/subagents) and
 `codex-rs/agent-roles/src/agent_role_config.rs` in `openai/codex`, both read 2026-10-25.
 
+### 14. Claude Code and Codex CLI: the headless sandbox flags that rest on help text
+
+Status: OPEN
+Covers: `claude-code.model_sandbox` `codex-cli.model_sandbox` (neither value is `unknown` or
+`unverified`, so no token is required; they are claimed here because part of what each declares was
+read from a help page and never run)
+
+**Claim to verify.** (a) Claude Code's `--strict-mcp-config`, given no `--mcp-config`, loads no MCP
+server, so a model reading tracker text cannot call one. (b) Codex CLI's `--sandbox read-only`, as
+`codex exec` is run for enrich and the older-ticket summaries, stops the model writing a file,
+reaching the network or running a command. Only `--tools ""` on Claude Code has been run live
+(2.1.310). The other two rest on `--help` text, and `docs/runtimes.md` says so.
+
+**Preconditions.** Claude Code and Codex CLI installed and authenticated, in a throwaway directory
+with a planted file holding a fixture token. For (a), one MCP server configured in the user's or
+project's settings that exposes a harmless tool.
+
+**Steps.** (a) Run the adapter's `model_cmd` with a prompt that asks the model to list its MCP tools
+and call the harmless one. (b) Run Codex's `model_cmd` with prompts that ask it to write a file in
+the directory, write one outside it, fetch `https://example.com`, and print the planted token. Record
+each probe as blocked, allowed or prompted.
+
+**PASS looks like.** (a) No MCP tool is offered or callable. (b) Every write and network probe is
+blocked. Reading the planted file may be allowed, since a read-only sandbox can read; record it,
+because it is the known limit of that guard.
+
+**Record on pass.** `docs/runtimes.md` and the `model_sandbox` comments in the two adapters drop
+"rests on help text" and gain the dated observation. If (a) finds a reachable MCP tool, or (b) finds
+a write or network call that lands, that runtime's `model_sandbox` flips to `unverified` and its
+`model_cmd` gains whatever restriction the CLI offers, in the same commit.
+
 ---
 
 ## Adjacent parked work — NOT live verification
@@ -695,13 +729,15 @@ explicitly out of this list's scope (it is code hardening, not a runtime observa
 ## Count, against the plan
 
 The U6 spec in the now-retired planning document (`docs/PLANNED-CHANGES.md`, in git history)
-listed 11 entries. This page carries **13**; the first delta was recorded as a dated amendment
+listed 11 entries. This page carries **14**; the first delta was recorded as a dated amendment
 there before retirement:
 
 - **+1**: entry 12 (the jurisdiction-list check) was routed to U6 by the adversarial review of
   #46 after the U6 spec was written.
 - **+1** (2026-10-25, after the plan's retirement): entry 13 is the codex half of entry 9 (b),
   split out under the partial-pass rule when the role file's loading was observed.
+- **+1** (2026-10-26): entry 14 tracks the two headless sandbox flags that rest on help text,
+  added with the older-ticket summaries, which run the same commands.
 - **Widened, not split**: entry 4 also covers the Antigravity PostToolUse regen cell (a WIRED
   cell the promotion protocol needs an owner for) and entry 6 also covers `opencode.agents_root`
   (an `unknown` U5 landed that the spec's list predates). Entries 2/5/6/7 grew sub-items for
