@@ -203,7 +203,8 @@ def run_model(argv: list[str], prompt: str, prompt_on_stdin: bool, timeout: floa
     which is what enrich_ticket.py has always done. A caller that must not let anything it was piped
     reach the model passes `no_stdin=True`: a model whose prompt is in `argv` then gets an empty stdin
     (/dev/null). It changes nothing when the prompt goes on stdin.
-    Raises ModelCallError when the process cannot be started, runs past `timeout`, or exits non-zero.
+    Raises ModelCallError when the process cannot be started, runs past `timeout`, exits non-zero, or
+    prints output that is not valid text (the reply is decoded, and a model can print any bytes).
     """
     tool = argv[0] if argv else "?"
     try:
@@ -213,7 +214,7 @@ def run_model(argv: list[str], prompt: str, prompt_on_stdin: bool, timeout: floa
             stdin=subprocess.DEVNULL if (no_stdin and not prompt_on_stdin) else None,
             capture_output=True, text=True, timeout=timeout,
         )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired, UnicodeDecodeError) as e:
         raise ModelCallError(f"{tool} failed ({e}).") from e
     if out.returncode != 0:
         raise ModelCallError(f"{tool} exited {out.returncode}: {out.stderr.strip()[:200]}")

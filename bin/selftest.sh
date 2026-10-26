@@ -2963,7 +2963,13 @@ for f in adapters/runtime/*.md; do
 done
 [ -z "$sb_bad" ] && ok "every runtime adapter declares its model_sandbox posture"   || bad "a runtime adapter ships a model command with no declared sandbox posture" "$sb_bad"
 grep -q 'model_cmd:.*--sandbox read-only' adapters/runtime/codex-cli.md   && ok "codex enrichment runs sandboxed read-only (tracker text reaches a tool-capable agent)"   || bad "codex model_cmd dropped --sandbox read-only"
-grep -q 'model_cmd:.*disallowedTools' adapters/runtime/claude-code.md   && ok "claude enrichment withholds the mutating/network tools"   || bad "claude model_cmd no longer withholds tools"
+# The reference runtime reads outsider-written text, so its command runs with NO tools and NO MCP server:
+# `--tools ""` disables every built-in tool and `--strict-mcp-config` (with no --mcp-config) loads no MCP
+# server. A deny list (--disallowedTools Bash,Write,Edit,WebFetch) left Read, Grep, Glob and WebSearch open.
+cc_mc="$(sed -n 's/^model_cmd:[[:space:]]*//p' adapters/runtime/claude-code.md | head -1)"
+{ grep -qF -- '--tools ""' <<<"$cc_mc" && grep -qF -- '--strict-mcp-config' <<<"$cc_mc" && ! grep -q 'disallowedTools' <<<"$cc_mc"; } \
+  && ok "claude's model command runs with every tool and MCP server withheld (--tools \"\" --strict-mcp-config), not a partial deny list" \
+  || bad "claude model_cmd no longer withholds every tool and MCP server" "$cc_mc"
 # /ship must not put a fresh headless agent in front of tracker text before its own approval gate.
 # Match the INVOCATION form (a tw call naming the script), not the bare word — /ship deliberately
 # explains in prose why enrichment is excluded, and that explanation must not trip its own guard.
@@ -2997,9 +3003,10 @@ eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" safe_enrich ENG-4 2>&1)"
   && ok "a repo-supplied adapter cannot run an arbitrary command (model binary allowlist)" \
   || bad "a project-vendored adapters/runtime/*.md executed its model_cmd" "$eo"
 
-# The reference runtime's command must actually WORK. --disallowedTools is variadic, so a trailing
-# {prompt} is swallowed as more deny-rule values and the call fails outright — a presence-only grep
-# for the flag passed on exactly that broken command.
+# The reference runtime's command must actually WORK. --tools is variadic, so a trailing {prompt}
+# could be swallowed as more tool names and the call fails outright; a presence-only grep for the flag
+# passes on exactly that broken command. And the empty `""` after --tools must reach argv as ONE empty
+# element (a tokenizer that dropped it would make --tools swallow --strict-mcp-config instead).
 python3 - <<'PYCHK'
 import sys
 sys.path.insert(0, "bin")
@@ -3008,10 +3015,18 @@ from kit_paths import read_frontmatter
 from pathlib import Path
 mc = read_frontmatter(Path("adapters/runtime/claude-code.md"))["model_cmd"]
 argv, on_stdin = build_model_argv(mc, "sonnet", "THEPROMPT")
-sys.exit(0 if on_stdin and "THEPROMPT" not in argv else 1)
+if not on_stdin or "THEPROMPT" in argv:
+    sys.exit(1)
+if argv != ["claude", "-p", "--model", "sonnet", "--tools", "", "--strict-mcp-config"]:
+    print(argv)
+    sys.exit(2)
+sys.exit(0)
 PYCHK
-[ $? -eq 0 ] && ok "claude's model_cmd sends the prompt on stdin (a variadic flag would eat an argv prompt)" \
-  || bad "claude's model_cmd would pass the prompt as an argv value to --disallowedTools"
+rc_cc=$?
+[ "$rc_cc" -ne 1 ] && ok "claude's model_cmd sends the prompt on stdin (a variadic flag would eat an argv prompt)" \
+  || bad "claude's model_cmd would pass the prompt as an argv value to --tools"
+[ "$rc_cc" -eq 0 ] && ok "claude's --tools \"\" reaches argv as one empty element, followed by --strict-mcp-config" \
+  || bad "claude's model_cmd does not tokenize to the expected argv (the empty --tools value was lost or moved)"
 
 # A template that reduces to nothing must not raise an uncaught IndexError.
 eo="$(cd "$EV" && TICKETWRIGHT_PROJECT="$EV" safe_enrich ENG-4 --model-cmd '  ' 2>&1)"
@@ -12333,7 +12348,7 @@ s63c_mf="$(grep -l '^model_fast:' adapters/runtime/*.md | xargs -n1 basename | t
 
 # the module's behavior, with no model CLI anywhere: a stub override, the real adapters' frontmatter,
 # and ordinary utilities standing in for the model process
-KIT63C="$KIT" python3 - <<'PY63C' >"$TMP/s63c.out" 2>&1
+KIT63C="$KIT" PYTHONUTF8=1 python3 - <<'PY63C' >"$TMP/s63c.out" 2>&1
 import os, sys
 
 KIT = os.environ["KIT63C"]
@@ -12395,7 +12410,8 @@ say(out.strip() == "THE-PROMPT", "run_model runs the argv exactly as built, with
 for name, argv, kw, want in (
         ("a non-zero exit", [sys.executable, "-c", "import sys; sys.stderr.write('boom'); sys.exit(3)"], {}, "exited 3: boom"),
         ("a command that is not installed", ["no-such-model-binary-xyz"], {}, "failed"),
-        ("a timeout", [sys.executable, "-c", "import time; time.sleep(5)"], {"timeout": 0.2}, "failed")):
+        ("a timeout", [sys.executable, "-c", "import time; time.sleep(5)"], {"timeout": 0.2}, "failed"),
+        ("a reply that is not valid UTF-8", [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe')"], {}, "codec")):
     try:
         model_call.run_model(argv, "", False, **kw)
         say(False, "run_model raises ModelCallError on %s" % name, "no error")
@@ -12441,6 +12457,17 @@ if os.environ.get("STUB_FAIL"):
     sys.stderr.write("stub model failure\n")
     sys.exit(3)
 if os.environ.get("STUB_EMPTY"):
+    sys.exit(0)
+with open(os.environ["STUB_LOG"]) as fh:
+    call_no = sum(1 for _ in fh)
+if os.environ.get("STUB_BAD_ON") == str(call_no):
+    sys.stdout.buffer.write(b"\xff\xfe not utf-8 \xc3\n")
+    sys.exit(0)
+if os.environ.get("STUB_GIANT"):
+    print("G" * 200000)
+    sys.exit(0)
+if os.environ.get("STUB_MULTI"):
+    sys.stdout.write("Here is the summary:\n\n\tFirst finding.\x07 Second\r\nfinding.\x1b[0m\n")
     sys.exit(0)
 m = re.search(r"^id: (\S+)", data + "\n" + "\n".join(sys.argv[1:]), re.M)
 rid = m.group(1) if m else "unknown"
@@ -12490,7 +12517,7 @@ def run(rows, *args, env=None, path=SAFEBIN, stdin="SENTINEL-FROM-THE-CALLER\n")
     """summarize_hits.py under a hermetic PATH. Returns (exit code, stdout, stderr, the stub's call log)."""
     LOG.write_text("")
     e = dict(os.environ, PATH=path, STUB_LOG=str(LOG))
-    for k in ("TICKETWRIGHT_RUNTIME", "STUB_FAIL", "STUB_EMPTY", "STUB_WORDS"):
+    for k in ("TICKETWRIGHT_RUNTIME", "STUB_FAIL", "STUB_EMPTY", "STUB_WORDS", "STUB_BAD_ON", "STUB_GIANT", "STUB_MULTI"):
         e.pop(k, None)
     e.update(env or {})
     p = subprocess.run([sys.executable, "bin/summarize_hits.py", rows_file(rows), *args],
@@ -12514,13 +12541,13 @@ FIVE = [
     row("TEST-80", "Payroll tax export", "Quarterly filing."),
     row("TEST-90", "Returns rate by region", "Break returns out by region."),
 ]
-CLAUDE_T = STUB + " -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch"
+CLAUDE_T = STUB + ' -p --model {model} --tools "" --strict-mcp-config'
 CODEX_T = STUB + " exec --sandbox read-only {prompt}"
 
 # --- the transport follows the template, and nothing goes through a shell --------------------------
 rc, out, err, calls = run(FIVE, "--top", "3", "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", "--model", "haiku")
 say(rc == 0 and len(calls) == 3, "--top 3 makes exactly 3 model calls (5 rows in, 3 summarized)", "rc=%s calls=%s err=%s" % (rc, len(calls), err))
-say(bool(calls) and all(c["argv"] == ["-p", "--model", "haiku", "--disallowedTools", "Bash,Write,Edit,WebFetch"] for c in calls)
+say(bool(calls) and all(c["argv"] == ["-p", "--model", "haiku", "--tools", "", "--strict-mcp-config"] for c in calls)
     and all(HEADER in c["stdin"] for c in calls) and not any("Untrusted" in " ".join(c["argv"]) for c in calls),
     "a template with no {prompt} sends the prompt on stdin and keeps it out of argv (the model name fills {model})",
     [c["argv"] for c in calls[:1]])
@@ -12576,6 +12603,16 @@ say(rc == 0 and len(calls) == 1 and "\x00" not in calls[0]["stdin"] and "\x1b" n
 rc, out, err, calls = run(FIVE[:2], "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", env={"STUB_WORDS": "40"})
 body = [l.split(": ", 1)[1] for l in out.splitlines()]
 say(rc == 0 and len(body) == 2 and all(len(b.split()) <= 25 for b in body), "a summary longer than 25 words is cut to 25", [len(b.split()) for b in body])
+# a reply is data too: one giant word, or several lines with control characters, still ends up as one short line
+rc, out, err, calls = run(FIVE[:2], "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", env={"STUB_GIANT": "1"})
+body = [l.split(": ", 1)[1] for l in out.splitlines() if ": " in l]
+say(rc == 0 and len(body) == 2 and all(0 < len(b) <= 300 and b.endswith("...") for b in body),
+    "a 200,000-character reply that is one 'word' is cut to 300 characters or fewer", [len(b) for b in body])
+rc, out, err, calls = run(FIVE[:2], "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", env={"STUB_MULTI": "1"})
+rows_out = out.splitlines()
+say(rc == 0 and len(rows_out) == 2 and not any(re.search(r"[\x00-\x1f\x7f]", l) for l in rows_out)
+    and all(l.split(": ", 1)[1] == "Here is the summary: First finding. Second finding. [0m" for l in rows_out),
+    "a multi-line reply with control characters is flattened to one line of spaces", rows_out)
 rc, out, err, calls = run(FIVE[:2], "--json", "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld")
 try:
     parsed = json.loads(out)
@@ -12608,7 +12645,7 @@ say(rc == 2 and not calls and " Details: " in err, "--sandbox without --model-cm
 PATHBIN = str(X / "pathbin") + os.pathsep + SAFEBIN
 rc, out, err, calls = run(FIVE, env={"TICKETWRIGHT_RUNTIME": "claude-code"}, path=PATHBIN)
 a = calls[0]["argv"] if calls else []
-say(rc == 0 and len(calls) == 3 and a[:2] == ["-p", "--model"] and a[2:3] == ["haiku"] and "--disallowedTools" in a
+say(rc == 0 and len(calls) == 3 and a == ["-p", "--model", "haiku", "--tools", "", "--strict-mcp-config"]
     and all(HEADER in c["stdin"] for c in calls) and not any("Untrusted" in " ".join(c["argv"]) for c in calls),
     "Claude Code's own model_cmd runs the cheap model (model_fast = haiku) with the prompt on stdin", a)
 rc, out, err, calls = run(FIVE, "--model", "sonnet", env={"TICKETWRIGHT_RUNTIME": "claude-code"}, path=PATHBIN)
@@ -12629,8 +12666,22 @@ try:
         "the model is --model, then the runtime's model_fast, then its model_default, then the command's own default")
 except Exception as e:
     say(False, "bin/summarize_hits.py imports and offers choose_model", repr(e))
+# Claude Code's headless command reads outsider-written text, so it runs with no tool and no MCP server
+import kit_paths
+cc = kit_paths.read_frontmatter(pathlib.Path("adapters/runtime/claude-code.md"))
+mc = cc.get("model_cmd", "")
+say('--tools ""' in mc and "--strict-mcp-config" in mc and "{prompt}" not in mc and cc.get("model_sandbox") == "tools-withheld",
+    "the claude-code model_cmd withholds every tool (--tools \"\") and every MCP server (--strict-mcp-config), with the prompt still on stdin", mc)
 
 # --- failures: a plain note per row, and a command that is plainly broken is not hammered ----------
+# a reply that is not valid UTF-8 is a failed call (a plain note), never a traceback that loses the other summaries
+rc, out, err, calls = run(FIVE, "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", env={"STUB_BAD_ON": "2", "PYTHONUTF8": "1"})
+say(rc == 0 and len(calls) == 3 and [l.split(":")[0] for l in out.splitlines()] == ["TEST-50", "TEST-70"]
+    and "Traceback" not in err and "No summary for TEST-61, so write it yourself from the title. Details: " in err,
+    "a reply with invalid UTF-8 on the second row leaves that row out with a plain note and keeps the other summaries", (rc, out, err))
+rc, out, err, calls = run(FIVE, "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", env={"STUB_BAD_ON": "1", "PYTHONUTF8": "1"})
+say(rc == 1 and out == "" and len(calls) == 1 and "Traceback" not in err and "No summary for TEST-50" in err,
+    "a reply with invalid UTF-8 on the first row exits 1 after one call, with a plain note and no traceback", (rc, len(calls), err))
 rc, out, err, calls = run(FIVE, "--model-cmd", CLAUDE_T, "--sandbox", "tools-withheld", env={"STUB_FAIL": "1"})
 say(rc == 1 and out == "" and len(calls) == 1 and err.strip(),
     "a model command that fails on the first row exits 1 after one call, with a plain note", (rc, len(calls), err))
