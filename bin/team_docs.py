@@ -15,8 +15,12 @@ doc tool, so the agent opens it with whatever reader its runtime has, and record
 opened or unreadable. A local path is checked for existence here so a missing file is never
 reported as read.
 
+It never says "none configured" when it could not read the config: a missing or unparsable
+stack.yaml exits 3, because a review that took that for "no standards" would skip them silently.
+
 Usage: team_docs.py [--root DIR] [--kind standards|context] [--json]
-Exit codes: 0 ok, 2 a malformed item (stderr names its list and position).
+Exit codes: 0 ok, 2 a malformed item (stderr names its list and position), 3 stack.yaml could
+not be read.
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from effective_config import resolve  # noqa: E402
+from whoami import project_root  # noqa: E402
 
 KINDS = ("standards", "context")
 
@@ -75,15 +80,21 @@ def normalize(raw: object, root: Path) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="List the team's standards and context docs.")
-    ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR") or ".",
-                    help="repo root (default: $CLAUDE_PROJECT_DIR, else cwd)")
+    ap.add_argument("--root", help="repo root (default: $CLAUDE_PROJECT_DIR, else the nearest "
+                                   "folder above the current one with .claude/config/stack.yaml)")
     ap.add_argument("--kind", choices=KINDS, help="only this list")
     ap.add_argument("--json", action="store_true", help="emit JSON rows")
     args = ap.parse_args(argv)
 
-    root = Path(args.root).resolve()
+    root = Path(args.root).resolve() if args.root else project_root().resolve()
+    res = resolve(root)
+    unread = [e for e in res.errors if e.path == "stack.yaml"]
+    if unread:
+        print(f"team_docs.py: could not read the team config, so the team's docs are unknown "
+              f"(not 'none'). Details: {unread[0].code}: {unread[0].message}", file=sys.stderr)
+        return 3
     try:
-        rows = normalize(resolve(root).get("project.team_docs"), root)
+        rows = normalize(res.get("project.team_docs"), root)
     except BadItem as exc:
         print(f"team_docs.py: {exc}", file=sys.stderr)
         return 2

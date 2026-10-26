@@ -359,8 +359,10 @@ just asking, and which tracker project holds the tickets, picked from the tracke
 including "we don't have one"), and **how you share results and where files are kept** (every tool
 you share through: pick Slack and email both and both are set up, with who gets each result chosen
 when you ship it; the drive folder; the code host, confirmed from `origin`). Two more are
-individually skippable, each skip labeled with its cost: **how you work** (domain and analysis
-tools; it never asks for a role, which stays `generalist` unless you run `/setup role`) and **house rules** (the two policies whose defaults most often differ by team, with each
+individually skippable, each skip labeled with its cost: **how you work** (your domain, plus two optional questions: where the team's
+written analysis standards live, which `/build` follows and `/review` checks, and any other docs about
+the team or its data, which `/ticket` reads while planning; links are read live, never copied. It
+never asks for a role, which stays `generalist` unless you run `/setup role`) and **house rules** (the two policies whose defaults most often differ by team, with each
 option explained). A skipped round becomes a `# TODO` in the config plus a punch-list entry naming
 the command that finishes it later (`/setup role`, `/setup policies`). The other eight policies
 ship as commented defaults you can edit any time. Setup can rank options by what you've used

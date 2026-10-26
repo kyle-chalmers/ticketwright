@@ -41,11 +41,13 @@ This review ran in the same conversation that did the work, so it is not the ind
    warehouse seam, review is code/output/doc only.
 2. Read the ticket README, the plan (`plan.md` — its Validation strategy is part of the checklist),
    the spec (if any), and list `final_deliverables/` + `qc_queries/`.
-3. Load the team's docs: use the rows the spawning prompt passed, or run
+3. Load the team's docs: use the rows and doc rules the spawning prompt passed, or run
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" team_docs.py --json`. Read every `standards` doc and any `context` doc that defines
    a metric or table in play (a path directly, a link with whatever reader you have). Mark each
    `opened` or `unreadable` (`exists: false` is `unreadable`). Never report an unreadable standards
-   doc as checked. A broken rule from an opened doc is a finding, `Should-fix` by default,
+   doc as checked; if you were given no text for a linked doc and cannot open the link, it is
+   `unreadable`. If the command exits 3, record `team_docs: unknown (team config unreadable)`.
+   A broken rule from an opened doc is a finding, `Should-fix` by default,
    `Critical` only where the doc makes the rule a must; a metric that contradicts its written
    definition is a finding too.
 

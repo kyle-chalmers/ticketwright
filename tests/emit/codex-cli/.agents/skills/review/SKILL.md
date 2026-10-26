@@ -40,7 +40,11 @@ pass gets its own context, and the verdict records which review the ticket actua
    the verdict says it could not be opened. Check the deliverables against what was opened: a broken
    rule is a finding, `Should-fix` by default, `Critical` only where the doc itself makes the rule a
    must (must, required, never, always). A reported metric that contradicts its written definition
-   is a finding too. Pass the same rows to `qc-reviewer` when you spawn it.
+   is a finding too. If the command exits 3, the team config could not be read: record
+   `team_docs: unknown (team config unreadable)`, never `none configured`.
+   When you spawn `qc-reviewer`, pass the rows and, for each doc you opened, the rules that apply
+   to this ticket, in the prompt: the reviewer may have no way to open a link itself, and a link it
+   cannot open is a standard it cannot check.
 
 ## The validation pyramid (bottom = cheap/automated, top = human)
 

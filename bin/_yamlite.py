@@ -492,6 +492,11 @@ class _Parser:
                 nxt = self.peek()
                 out.append(self.parse_block(nxt.indent) if (nxt and nxt.indent > indent) else None)
                 continue
+            # `- {key: value}` / `- [a, b]` — a flow node as the item, never a block key whose
+            # name happens to start with `{`.
+            if rest[0] in "{[":
+                out.append(_parse_value(rest, line.no, self.filename))
+                continue
             # `- key: value` — a mapping whose first entry shares the dash's line. Splice a
             # synthetic line at the content column so following siblings join the same mapping;
             # this is the shape viewer routes use (`- glob: "*.sql"` / `  app: DataGrip`).

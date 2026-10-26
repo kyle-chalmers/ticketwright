@@ -4269,7 +4269,7 @@ wl_ticket=200
 chat_always_include=Alice
 default_branch=main
 role_focus=x
-analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run /setup role)
+analysis_tools=none listed (setup no longer asks; team_docs carries this now)
 team_docs=none yet (add project.team_docs in stack.yaml, or run /setup role)
 EOF
 absout="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$S36/absent.env" 2>"$S36/abs.err")"
@@ -12085,7 +12085,7 @@ s61 --adapter adapters/tracker/jira.md --runtime codex-cli --verb fetch_ticket
   && ok "…so Jira's acli lockout warning reaches a Codex agent that reads only fetch_ticket" \
   || bad "the Jira gotchas did not reach the Codex fetch_ticket output" "rc=$S61RC"
 
-hdr "63 · team docs: standards and context, normalized by bin/team_docs.py"
+hdr "64 · team docs: standards and context, normalized by bin/team_docs.py"
 # project.team_docs holds two optional lists: standards (rules /build follows and /review checks)
 # and context (what /ticket reads while planning). bin/team_docs.py is the one reader, so every
 # runtime gets the same list. Pinned: the empty default (A), both item shapes (B), a missing local
@@ -12145,6 +12145,23 @@ td63 --json > "$TMP/s63e.out" 2>&1; s63rc=$?
   || bad "a malformed team_docs item was not refused" "rc=$s63rc $(head -c 300 "$TMP/s63e.out")"
 td63 --kind wiki > "$TMP/s63f.out" 2>&1; s63rc=$?
 [ "$s63rc" -eq 2 ] && ok "an unknown --kind is refused (exit 2)" || bad "an unknown --kind was accepted" "rc=$s63rc"
+# (G) never "none configured" when the config could not be read: a review would skip the standards.
+rm -f "$TD63/.claude/config/stack.yaml"
+td63 > "$TMP/s63g.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 3 ] && ! grep -q 'none configured' "$TMP/s63g.out"; } \
+  && ok "a missing stack.yaml exits 3, never 'none configured'" \
+  || bad "a missing stack.yaml read as no team docs" "rc=$s63rc $(head -c 300 "$TMP/s63g.out")"
+printf 'project: [unclosed\n' > "$TD63/.claude/config/stack.yaml"
+td63 > "$TMP/s63g2.out" 2>&1; s63rc=$?
+[ "$s63rc" -eq 3 ] && ok "an unparsable stack.yaml exits 3" || bad "an unparsable stack.yaml was not refused" "rc=$s63rc"
+# (H) the one-line {location, note} item under a dash parses, and the CLI finds the repo root from
+# a subfolder (no --root, no CLAUDE_PROJECT_DIR), as every other kit command does.
+mkdir -p "$TD63/tickets/x"
+printf 'project:\n  team_docs:\n    standards:\n      - {location: https://wiki.example.test/sql, note: SQL style}\n' > "$TD63/.claude/config/stack.yaml"
+( cd "$TD63/tickets/x" && env -u CLAUDE_PROJECT_DIR python3 "$KIT/bin/team_docs.py" ) > "$TMP/s63h.out" 2>&1; s63rc=$?
+{ [ "$s63rc" -eq 0 ] && grep -q '^standards	https://wiki.example.test/sql	SQL style$' "$TMP/s63h.out"; } \
+  && ok "a one-line {location, note} item parses, and the CLI finds the repo root from a subfolder" \
+  || bad "the one-line item or the root walk-up failed" "rc=$s63rc $(head -c 300 "$TMP/s63h.out")"
 
 # (F) the consumers: /ticket reads context, /build follows standards, /review and qc-reviewer check
 # standards and record each doc opened or unreadable. A key nothing reads is configuration theater.

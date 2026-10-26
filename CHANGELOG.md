@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Setup asks where your team already writes things down.** Two optional questions replace the
+  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
+  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
+  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
+  the standards, `/review` checks deliverables against them and reports a broken rule as a
+  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
+  one source of truth. The review record says which docs were opened and which could not be, and
+  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
+  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
+  asks for it. (LABS-103)
+
 ### Changed
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
@@ -15,6 +27,12 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
+- **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
+  split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
+  starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
+  item (`- {location: …, note: …}`) also parses now; it used to be read as a key named
+  `{location`. One side effect: a flow mapping with no space after its colons (`{a:b}`) now fails
+  with a clear error instead of being read as `{a: b}`. No shipped file uses that form.
 - **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
   the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,
   `microsoft_outlook_email_send_email`, `microsoft_outlook_email_search_people`). That app has

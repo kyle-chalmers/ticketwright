@@ -53,8 +53,7 @@ block) per `stack.schema.md`.
 **`{{analysis_tools}}` follows the same always-pass rule** (flat substitution, no conditionals):
 pass the `project.analysis_tools` list as a comma-separated phrase, e.g.
 `analysis_tools=notebooks, spreadsheets`. When the list is empty or the round was skipped, pass a
-display value — `analysis_tools=none declared (add project.analysis_tools in stack.yaml, or run
-/setup role)` — never an empty string and never a leftover token.
+display value — `analysis_tools=none listed (setup no longer asks; team_docs carries this now)` — never an empty string and never a leftover token.
 
 **`{{team_docs}}` follows the same rule.** Pass the locations from
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" team_docs.py`, joined as
