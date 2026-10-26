@@ -175,6 +175,6 @@ Point them at, in order: `AGENTS.md` (the rules — read end to end),
 
 ## 7 · Guided first-ticket dry run
 Pick a real, small ticket (or have them name one) and run `/ticket <id>` in **dry-run spirit** —
-set up the workspace and prime context, but stop before any external action so they see the flow
-end to end safely. Explain the hard-halt gates and the DB-write approval protocol as you go.
+set up the workspace and prime context, and at the plan approval answer "approve, don't build
+yet" (a plain approval now starts the build), so they see the flow end to end safely. Explain the hard-halt gates and the DB-write approval protocol as you go.
 Finish with a checklist of done vs outstanding, and hand them their first real ticket.

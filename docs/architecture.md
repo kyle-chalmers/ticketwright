@@ -19,7 +19,9 @@ The lifecycle the skills implement — plan → build → check → ship — des
 supplied the AI-layer model and the context-engineering stance (AI fails from missing context, not
 weak models). The kit makes the quality path the default path: `/ticket` does every read-only
 planning step (the plan, and the spec when the plan calls for one) behind one approval, `/build`
-executes and then runs `/review` itself, and `/ship` warns, waits and records rather than silently
+starts on that approval in the same window, executes (through subagents briefed with only the plan
+and spec when the ticket is spec-sized and the runtime has them) and then runs `/review` itself,
+asking before it follows `/ship` and routing a `kind: scope` finding back to an in-place replan, and `/ship` warns, waits and records rather than silently
 letting unreviewed work leave — a `REQUEST-CHANGES` verdict it refuses outright.
 
 ## What the record is for

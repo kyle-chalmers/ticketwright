@@ -94,7 +94,7 @@ always produces a *default the human confirms*, never an automatic selection.
 | Verb | Inputs | Returns |
 |---|---|---|
 | `branch` | name (the ticket id — `{key_prefix}-NNNN`, or the folder slug under `id_mode: slug`) | branch created/checked out |
-| `worktree` | branch | isolated worktree path (the Plan→Implement context reset) |
+| `worktree` | branch | isolated worktree path (keeps one ticket apart from other work in flight) |
 | `commit` | paths, message (semantic) | commit sha |
 | `open_pr` | title (semantic), body | PR URL |
 
