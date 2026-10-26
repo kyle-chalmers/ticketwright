@@ -4493,6 +4493,8 @@ project:
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]
+  history_search: ask
+  history_before: "2024-03-01"
   role: analyst
   domain: data analysis
   analysis_tools: [notebooks, spreadsheets]
@@ -12737,6 +12739,171 @@ if [ -s "$X/errs.txt" ]; then
 else
   bad "summarize_hits printed no message to lint (the checks above did not run)"
 fi
+
+# --- (e) setup asks once where a team's older tickets live, and saves three team-only keys ----------
+# Question 4a ("Did your team track work in your tracker before this repo started?") sits under
+# question 4 so nothing renumbers. Its answer is three keys under project: in stack.yaml, shared by the
+# team: history_search (ask | never), history_scope (which project, team, repo or board; unset means the
+# one the tracker is already set up with) and history_before (an ISO date; unset means no cutoff). The
+# recommended date is the repo's first commit date, offered and never written silently. The /ticket
+# step that reads the keys is checked with that step, in a later section, not here.
+X="$TMP/s63e"
+mkdir -p "$X/team/.claude/config"
+X63E="$X" FX63E="$TMP/s38-full/.claude/config/stack.yaml" python3 - <<'PY63E' >"$TMP/s63e.out" 2>&1
+import datetime, os, re, subprocess, sys
+
+sys.path.insert(0, "bin")
+import _yamlite
+
+X = os.environ["X63E"]
+SCHEMA = ".claude/config/stack.schema.md"
+IV = ".claude/skills/setup/interview.md"
+SK = ".claude/skills/setup/SKILL.md"
+FIXTURE = os.environ["FX63E"]
+BEGIN = "<!-- ticketwright:user-facing:begin -->"
+END = "<!-- ticketwright:user-facing:end -->"
+KEYS = ("history_search", "history_scope", "history_before")
+lines = []
+
+
+def say(ok, name, detail=""):
+    lines.append(("PASS " if ok else "FAIL ") + name + ("" if ok else " :: " + str(detail).replace("\n", " | ")))
+
+
+def squash(text):
+    return re.sub(r"\s+", " ", text)
+
+
+def iso(value):
+    try:
+        datetime.datetime.strptime(str(value), "%Y-%m-%d")
+        return bool(re.fullmatch(r"\d{4}-\d\d-\d\d", str(value)))
+    except ValueError:
+        return False
+
+
+# (1) the schema documents all three keys in the project: table, four cells each, with their default.
+schema = open(SCHEMA, encoding="utf-8").read()
+m = re.search(r"^## `project`\n(.*?)(?=^### |^## |^---$)", schema, re.S | re.M)
+table = m.group(1) if m else ""
+rows = {}
+for ln in table.split("\n"):
+    cells = re.split(r"(?<!\\)\|", ln)[1:-1]
+    if len(cells) == 4:
+        key = cells[0].strip().strip("`")
+        if key in KEYS:
+            rows[key] = [c.strip() for c in cells]
+say(set(rows) == set(KEYS), "stack.schema.md has a project: row for each of history_search, history_scope, history_before",
+    "found %s" % sorted(rows))
+if set(rows) == set(KEYS):
+    s, sc, b = rows["history_search"], rows["history_scope"], rows["history_before"]
+    say("enum" in s[1] and s[2].strip("`") == "ask" and "`ask`" in s[3] and "`never`" in s[3],
+        "the history_search row is an enum of ask | never, with ask as its example", s)
+    say("default" in sc[3].lower() and sc[2] != "" and "project" in sc[3] and "board" in sc[3],
+        "the history_scope row says it defaults to the tracker's own project, team, repo or board", sc)
+    say(iso(b[2].strip("`").strip('"')) and "first commit" in b[3] and "no cutoff" in b[3],
+        "the history_before row has an ISO date example, names the first commit date, and says unset means no cutoff", b)
+    say(all(r[3].strip() and "ticket/priming.md" in r[3] for r in rows.values()),
+        "each history row names its consumer (ticket/priming.md) the way the intake row does", [r[0] for r in rows.values()])
+
+# (2) interview.md: the key map, question 4a under question 4, and its say-this block.
+iv = open(IV, encoding="utf-8").read()
+ivl = iv.split("\n")
+mapped = [l for l in ivl if l.startswith("|") and all(k in l for k in KEYS)]
+say(len(mapped) == 1, "the key map in interview.md has one row naming all three history keys", len(mapped))
+say(all(k in iv for k in KEYS), "interview.md mentions history_search, history_scope and history_before")
+idx4 = [i for i, l in enumerate(ivl) if re.match(r"^4\. \*\*Which project holds the tickets\?\*\*", l)]
+idx4a = [i for i, l in enumerate(ivl)
+         if re.match(r'^4a\. \*\*"Did your team track work in your tracker before this repo started\?"\*\*', l)]
+idx5 = [i for i, l in enumerate(ivl) if re.match(r"^5\. \*\*`ticket_url_template`\*\*", l)]
+say(len(idx4) == 1 and len(idx4a) == 1 and len(idx5) == 1 and idx4[0] < idx4a[0] < idx5[0],
+    "question 4a is in the interview exactly once, between question 4 and question 5", (idx4, idx4a, idx5))
+sec = "\n".join(ivl[idx4a[0]:idx5[0]]) if len(idx4a) == 1 and len(idx5) == 1 else ""
+blocks = re.findall(re.escape(BEGIN) + r"(.*?)" + re.escape(END), sec, re.S)
+say(len(blocks) == 2, "question 4a has two marked say-this blocks: the question and the 'somewhere else' follow-up", len(blocks))
+block = squash(" ".join(blocks))
+for needle in ("Did your team track work in your tracker before this repo started?",
+               "If you did, I can search those older tickets when this repo has no match yet.",
+               "Yes, in the same project", "Yes, somewhere else", "We don't have one",
+               "Where did those older tickets live?"):
+    say(needle in block, "the 4a say-this blocks carry: %s" % needle)
+say(bool(block) and not re.search(r"\b(tool slots?|targets?|tiers?|seams?|adapters?)\b", re.sub(r"`[^`]*`", " ", block), re.I),
+    "the 4a questions use none of: tool slot, target, tier, seam, adapter", block)
+say(bool(sec) and not re.search(r"\b(jira|asana|linear|github|azure|monday|notion|jql|wiql|haiku|AskUserQuestion|ask_user_question)\b", sec, re.I),
+    "question 4a names no vendor, query language, model or question tool")
+sq = squash(sec)
+say("git log --reverse --format=%as" in sq and "recommended" in sq,
+    "4a gets the repo's first commit date with git log and offers it as the recommended answer")
+say("rank_projects_by_activity" in sq and "history_search: never" in sq and "history_search: ask" in sq
+    and "history_before" in sq and "history_scope" in sq,
+    "4a ties each answer to the keys it writes and draws its project list from rank_projects_by_activity")
+r = subprocess.run([sys.executable, "tests/plain_language/check.py", "--marked", IV, "--marked", SK],
+                   capture_output=True, text=True)
+say(r.returncode == 0 and len(blocks) == 2, "setup's say-this blocks, 4a included, pass the plain-language check", (r.stdout + r.stderr)[:300])
+
+# (3) the pins that were already there still hold.
+say(len(re.findall(r'^3\. \*\*"How does work reach you', iv, re.M)) == 1,
+    "question 3 is still numbered 3 and appears exactly once")
+say("even when no activity is found" in iv and "We don't have one" in iv and "CLAUDE_PLUGIN_ROOT" not in iv,
+    "the work-first phrases are still in interview.md and CLAUDE_PLUGIN_ROOT is still absent")
+
+# (4) the worked block and the section 38 fixture carry the same history keys, and they resolve.
+wb = re.search(r"## What a completed interview writes.*?```yaml\n(.*?)```", iv, re.S)
+worked = None
+try:
+    worked = _yamlite.parse(wb.group(1)) if wb else None
+except Exception as e:
+    say(False, "the worked block in interview.md parses", e)
+wp = (worked or {}).get("project", {}) if isinstance(worked, dict) else {}
+say(wp.get("history_search") == "ask" and iso(wp.get("history_before")) and "history_scope" in (wb.group(1) if wb else ""),
+    "the worked block shows history_search: ask, an ISO history_before, and where history_scope goes", wp)
+fx = None
+try:
+    fx = _yamlite.parse(open(FIXTURE, encoding="utf-8").read())
+except Exception as e:
+    say(False, "the section 38 fixture parses", e)
+fp = (fx or {}).get("project", {}) if isinstance(fx, dict) else {}
+say(wp.get("history_search") is not None and wp.get("history_before") is not None and all(fp.get(k) == wp.get(k) for k in KEYS),
+    "the section 38 fixture mirrors the worked block's history keys", (fp, wp))
+
+env = dict(os.environ, XDG_CONFIG_HOME=os.path.join(X, "noxdg"))
+team = os.path.join(X, "team")
+if fx is not None:
+    open(os.path.join(team, ".claude", "config", "stack.yaml"), "w", encoding="utf-8").write(open(FIXTURE, encoding="utf-8").read())
+    got = {}
+    for k in KEYS:
+        p = subprocess.run([sys.executable, "bin/effective_config.py", "--root", team, "--key", "project." + k],
+                           capture_output=True, text=True, env=env)
+        got[k] = (p.returncode, p.stdout.strip())
+    say(got["history_search"] == (0, "ask") and got["history_before"][0] == 0 and iso(got["history_before"][1]),
+        "the resolver reads history_search and history_before from the team file", got)
+    local = os.path.join(team, ".claude", "config", "connections.local.yaml")
+    refused = []
+    for k, v in (("history_search", "never"), ("history_scope", "OTHER"), ("history_before", '"2020-01-01"')):
+        open(local, "w", encoding="utf-8").write("project:\n  %s: %s\n" % (k, v))
+        p = subprocess.run([sys.executable, "bin/effective_config.py", "--root", team, "--key", "project." + k],
+                           capture_output=True, text=True, env=env)
+        if p.returncode != 6:
+            refused.append((k, p.returncode))
+    os.remove(local)
+    say(not refused, "a personal or machine file cannot set any history key (the resolver refuses with exit 6)", refused)
+
+print("\n".join(lines))
+print("DONE %d" % len(lines))
+PY63E
+s63e_rc=$?
+if [ "$s63e_rc" -ne 0 ] || ! grep -q '^DONE ' "$TMP/s63e.out"; then
+  bad "the question-4a checks did not finish" "$(head -12 "$TMP/s63e.out")"
+fi
+while IFS= read -r s63e_line; do
+  case "$s63e_line" in
+    "PASS "*) ok "${s63e_line#PASS }" ;;
+    "FAIL "*)
+      s63e_name="${s63e_line#FAIL }"; s63e_detail=""
+      case "$s63e_name" in *" :: "*) s63e_detail="${s63e_name#* :: }"; s63e_name="${s63e_name%% :: *}" ;; esac
+      bad "$s63e_name" "$s63e_detail" ;;
+  esac
+done <"$TMP/s63e.out"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

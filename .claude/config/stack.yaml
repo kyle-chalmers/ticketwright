@@ -22,6 +22,9 @@ project:
   terminal_status: Done                 # the workflow's "done" state (not always "Done")
   ticket_url_template: "https://acme.atlassian.net/browse/{id}"  # how INDEX.md links a ticket ({id} token); omit/null = no link
   # intake: [tracker]                   # where work arrives (tracker | email | chat); email/chat intake = forwarded threads in source_materials/
+  # history_search: ask                 # may /ticket offer to search the tracker's older tickets when this repo has no match? ask | never (/setup asks this once)
+  # history_scope: OPS                  # which project/team/repo/board held them; unset = the tracker project above
+  # history_before: "2024-03-01"        # only tickets created before this date; unset = no cutoff (setup recommends the repo's first commit date)
   # role: generalist                    # persona for the rendered AGENTS.md (generalist | analyst | engineer | scientist)
   # domain: data analysis               # short phrase for the {{domain}} token in AGENTS.md — any kind of analysis work
   # analysis_tools: []                  # what the team analyzes WITH (e.g. [notebooks, spreadsheets]) — descriptive context rendered into AGENTS.md; not a tool slot, nothing verifies or executes it

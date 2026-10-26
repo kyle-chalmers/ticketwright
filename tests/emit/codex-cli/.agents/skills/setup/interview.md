@@ -15,6 +15,7 @@ kit's config is this file's job, never the person's:
 |---|---|
 | Who are you, and who else is on the team? (round 1) | `people/<id>.yaml`, the machine pin |
 | How does work reach you? (round 2) | the tracker, `project.intake` |
+| Did your team track work in your tracker before this repo started? (round 2) | whether older tickets can be searched: `project.history_search`, `project.history_scope`, `project.history_before` |
 | Where does your data live? (round 3) | the warehouse, its default, the dev target |
 | How do you share results, and where are finished files kept? (round 4) | chat, docstore, VCS |
 | What kind of work, and what do you analyze with? (round 5) | `role`, `domain`, `analysis_tools` |
@@ -154,6 +155,51 @@ check when a new one starts."
    can list** before writing it. A key that is not in the tracker yet gets: "I don't see <KEY> on
    <site>. Create it first and I'll check again, or pick one that exists?" Write it only if they
    say it will exist, with a `# TODO` and an item in the Phase-4 list.
+4a. **"Did your team track work in your tracker before this repo started?"** Asked once, here, right
+   after question 4 and never in the same call as it, because the answer depends on the project
+   question 4 settled. It is asked because a missing answer fails quietly: `/ticket` would simply
+   never find the team's older work. Skip it, and write nothing, when the tracker is the `local`
+   one or there is none, since those tickets are this repo's own. One choice only; recommend
+   "Yes, in the same project" when question 4 picked a project from the tracker's own list.
+   - **The date.** Run `git log --reverse --format=%as | head -1` for the date of this repo's first
+     commit. It is the **recommended** cutoff, never the answer: show it in the option with where
+     it came from, and write it only on the person's yes. A repo with no commit yet prints nothing:
+     leave the date out and say "all of your older tickets" in the option (no `history_before` is
+     written, which means no cutoff). The person can type a different date instead.
+
+   <!-- ticketwright:user-facing:begin -->
+   Did your team track work in your tracker before this repo started? If you did, I can search those older tickets when this repo has no match yet.
+   - Yes, in the same project: when a new ticket has no good match here, I can offer to search <project> for tickets created before <date>, the day this repo's first commit was made.
+   - Yes, somewhere else: I'll ask where, then search there instead.
+   - We don't have one: I won't offer the search. You can turn it on later by setting `history_search` to `ask` in your team settings.
+   <!-- ticketwright:user-facing:end -->
+
+   What each answer writes, all of it team config in `stack.yaml` (a personal or machine file cannot
+   hold these keys, so never route them there):
+   - **Yes, in the same project** → `history_search: ask` and `history_before: "<date>"`.
+     `history_scope` stays unset, because its default is the project question 4 chose.
+   - **Yes, somewhere else** → ask the follow-up below, then `history_search: ask`,
+     `history_scope: <the chosen id>` (the same shape the adapter's `container_key:` takes in
+     question 4) and the same `history_before`.
+   - **We don't have one** → `history_search: never`, and nothing else.
+
+   The follow-up for "somewhere else":
+
+   <!-- ticketwright:user-facing:begin -->
+   Where did those older tickets live? I'll search only there, so the results stay on topic.
+   <!-- ticketwright:user-facing:end -->
+
+   List the tracker's own projects, teams, repos or boards the way question 4 did: reuse the list
+   question 4 already fetched through the tracker adapter's `rank_projects_by_activity` verb (with
+   the person's yes from § Suggestions from past usage, otherwise its listing step alone) without
+   calling it again, leave out the one question 4 picked, and put "Show more" past the limit. Free
+   text is allowed, and a typed value is checked against what the tracker can list before it is
+   written. Never invent one. Where the verb reports `unsupported` or `unavailable`, ask plainly
+   the way question 4 does.
+   - **A typed date is checked before it is written.** It must be a real date written
+     `YYYY-MM-DD`; otherwise ask again. Never write a value that does not read as one.
+   - Say what was set in one line of the plan, in the person's words: "Older tickets: searched in
+     <where>, created before <date>" (or "with no date limit"), or "Older tickets: not searched".
 5. **`ticket_url_template`** — how every `tickets/INDEX.md` row links back to the tracker. A dead
    index link is the textbook silent-wrong failure: the catalog renders confidently either way.
    Derive it where the adapter's shape allows (an issues-style tracker needs the repo and the
@@ -346,6 +392,9 @@ project:
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]  # round 2: email + meeting notes also carry work in
+  history_search: ask                 # round 2, question 4a: /ticket may offer to search older tracker tickets
+  history_before: "2024-03-01"        # question 4a: the repo's first commit date, written only on a yes
+  # history_scope: OPS                # question 4a, "somewhere else" only; unset = the project above
   role: analyst                       # round 5
   domain: data analysis
   analysis_tools: [notebooks, spreadsheets]
