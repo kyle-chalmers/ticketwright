@@ -286,10 +286,36 @@ def is_pending_value(value: Any) -> bool:
     return isinstance(value, str) and value.strip().upper() in PENDING_VALUES
 
 
-def adapter_requires(adapter_rel: str | None, root: Path) -> list[str]:
-    """The config keys an adapter declares it cannot work without."""
+def adapter_requires(adapter_rel: str | None, root: Path, transport: str | None = None) -> list[str]:
+    """The config keys an adapter declares it cannot work without, on the transport in use.
+
+    `requires:` holds on every transport. `requires_by_transport:` adds keys that only one way of
+    connecting needs (Jira's `cli` only when acli is the route, its `mcp` only when the connector
+    is), so a connector-only install is never told to set a CLI it does not have. With no
+    configured transport, the adapter's own `transport:` frontmatter decides.
+    """
     fm = _adapter_frontmatter(adapter_rel, root)
-    return _as_key_list(fm.get("requires")) if fm else []
+    if not fm:
+        return []
+    keys = _as_key_list(fm.get("requires"))
+    by = fm.get("requires_by_transport")
+    if isinstance(by, dict):
+        t = (transport or str(fm.get("transport") or "").split(" ")[0]).strip()
+        keys += [k for k in _as_key_list(by.get(t)) if k not in keys]
+    return keys
+
+
+def adapter_cli_optional(adapter_rel: str | None, root: Path) -> bool:
+    """True when the adapter declares its CLI optional on `transport: both`.
+
+    That is a `requires_by_transport:` map whose `both` entry does not list `cli`: the adapter
+    works through its MCP connector alone, and uses the CLI only where it is installed.
+    """
+    fm = _adapter_frontmatter(adapter_rel, root)
+    by = (fm or {}).get("requires_by_transport")
+    # The `both` entry must be written out: an adapter that omits it has not said its CLI is
+    # optional, and treating silence as optional would quiet a real "unreachable".
+    return isinstance(by, dict) and "both" in by and "cli" not in _as_key_list(by.get("both"))
 
 
 def adapter_key(adapter_rel: str | None, root: Path, key: str) -> str | None:
@@ -1036,7 +1062,7 @@ def _unit_row(res: Resolution, unit: dict) -> dict:
     # configs written before the check existed. `null` and `""` count as unset — a required key
     # blanked out is the same failure as one never written. Seam-scoped on purpose, so a `project.*`
     # key can never stand in for a missing seam key of the same name.
-    missing = [k for k in adapter_requires(vals.get("adapter"), res.root)
+    missing = [k for k in adapter_requires(vals.get("adapter"), res.root, vals.get("transport"))
                if vals.get(k) in (None, "")]
     # A value still written `TODO` is a slot chosen before its tool was connected. Reported apart
     # from `missing`, because the fix is different: connect the tool, then `/setup tool <seam>`.
@@ -1049,7 +1075,13 @@ def _unit_row(res: Resolution, unit: dict) -> dict:
            # value; a target's own wins). Consumed by verify_stack.sh's permission-posture
            # advisory, which falls back to the adapter's frontmatter only when this is empty —
            # the configured unit is the authority on how the team actually connects.
-           "transport": vals.get("transport") or ""}
+           "transport": vals.get("transport") or "",
+           # The CLI this unit names, ONLY when its adapter declares that CLI optional on `both`
+           # (a `requires_by_transport:` whose `both` list omits `cli`, as Jira's does).
+           # verify_stack.sh checks it is installed before running the verify: without it the
+           # connector is the route, checked in-session, so a missing CLI is not an unreachable
+           # tool. An adapter whose CLI is the real route (Snowflake's `snow`) keeps failing loudly.
+           "optional_cli": (vals.get("cli") or "") if adapter_cli_optional(vals.get("adapter"), res.root) else ""}
     if isinstance(verify, str) and verify.strip():
         tokens = unit_tokens(res, unit)
         cmd, unresolved = interpolate(verify, tokens)

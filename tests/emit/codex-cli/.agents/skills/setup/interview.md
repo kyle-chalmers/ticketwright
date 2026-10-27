@@ -33,7 +33,8 @@ A dead catalog link, a generic persona, a message with no stakeholders attached 
 so nobody notices for weeks. Those get questions. A key whose absence makes a verb visibly fail
 the first time someone uses it can stay a commented default.
 
-Corollary: **ask for every key the chosen adapter's `requires:` frontmatter lists** (only those —
+Corollary: **ask for every key the chosen adapter's `requires:` frontmatter lists**, plus the keys
+its `requires_by_transport:` lists for the transport this slot gets (only those —
 the extra keys an adapter's frontmatter *comments* mention are optional, not required). "I'll fill
 it in later" is always a valid answer: write the key as a `# TODO` and keep going.
 `verify_stack.sh` names every unset required key as a warning on every run, so a deferred key is a
@@ -150,6 +151,17 @@ check when a new one starts."
      adapter is offered as "export by hand" only, never as if it fetched. The slot stays OPTIONAL
      and read-only; curated excerpts are committed, raw transcripts are not; `/setup tool meetings`
      adds or changes it later.
+   - **Which transport, from detection, never a question.** For an adapter with
+     `requires_by_transport:` (Jira: its CLI is optional, the connector covers every verb), pick the
+     slot's `transport` from what step 1 and step 2 found on this machine: the CLI and the connector
+     both → `both`, with `cli`, `mcp` and the CLI's read-only `verify:`; the connector only → `mcp`,
+     with `mcp`, no `cli` key and `verify: null`; the CLI only → `cli`, with `cli` and its
+     `verify:`, plus a Phase-4 item that comments to the tracker need the connector.
+     **Never ask about a CLI that was not detected**, and never tell a connector-only person to
+     install one. Say the pick in one plain line of the plan ("Jira through the Atlassian
+     connector; its command-line tool isn't needed"). A teammate who later has the CLI is covered
+     without a config change: on `both` each machine takes the CLI when it works there and the
+     connector otherwise.
    - **MCP transport? surface the posture.** When the tracker's transport includes MCP, show the
      chosen adapter's "Permission posture (MCP)" section (the native control + the recommended
      setting) and carry its read-only probe's outcome into the Phase-4 report next to that slot's
@@ -403,7 +415,7 @@ seams:
     adapter: adapters/tracker/jira.md
     transport: cli
     site: tracker.acme.example        # asked because the adapter's requires: lists it
-    cli: "<your tracker's CLI>"       # ditto — a deferred answer would be a `# TODO` here
+    cli: "<your tracker's CLI>"       # asked because transport: cli needs it (requires_by_transport); a deferred answer would be a `# TODO` here
     verify: null
   warehouse:
     tool: postgres

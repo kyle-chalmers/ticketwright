@@ -55,14 +55,14 @@ config line and one adapter file:
 
 | Tool slot | Works with |
 |---|---|
-| Tracker | Jira, Azure DevOps, Linear, Asana, Monday, GitHub Issues, or none (`id_mode: slug`) |
+| Tracker | Jira (connector or `acli`), Azure DevOps, Linear, Asana, Monday, GitHub Issues, or none (`id_mode: slug`) |
 | Warehouse | Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse, or none |
 | Chat | Slack, Teams, Gmail, Outlook |
 | Docs | Google Drive, SharePoint, or Dropbox/S3/Box through rclone |
 | Meetings | Zoom, Fireflies, Granola, Teams, Notion (optional) |
 | Git | GitHub, GitLab, Azure Repos |
 
-These adapters ship today; another tool is [one more adapter file](adapters/README.md).
+Another tool is [one more adapter file](adapters/README.md).
 Desktop-sync backup needs one local step: [docs/drive-mount.md](docs/drive-mount.md).
 
 ## Try it

@@ -7,6 +7,17 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Jira works with only the Atlassian connector; `acli` is optional.** Every Jira step now has a
+  connector path: fetching a ticket, `/ticket --create` (with the parent epic when
+  `default_epic` is set), moving a ticket, searching, downloading attachments, and listing
+  projects for `/setup`. One rule in the adapter picks the path on each machine: `acli` when it is
+  installed and signed in there, otherwise the connector. `/setup` on a machine with only the
+  connector writes `transport: mcp` and asks nothing about `acli`; teammate onboarding reports a
+  missing `acli` as optional; and `verify_stack` reports a `both` slot whose CLI is not installed
+  as using its connector (checked in your session), not as unreachable. Adapters can now declare
+  `requires_by_transport:`, the keys only one transport needs. The adapter names the connector
+  tools that do each job as hints, and when one is missing it finds the operation through the
+  connector's own search.
 - **`/ship` merges the pull request, after asking you.** Once you say go ahead and the pull
   request is open, `/ship` asks once more (**Merge now** or **Leave it open**) and then
   squash-merges it, pinned to the commit you saw. If branch rules, a required review, a check or a

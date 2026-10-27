@@ -653,7 +653,10 @@ tool-neutrality rule for skills — is unchanged.
    ENFORCED, not decorative: `bin/verify_stack.sh` reads it and warns for every listed key the seam
    does not set. List exactly the keys the adapter cannot work without — a key named here that the
    adapter merely *prefers* produces a warning on a perfectly good config. Keys the adapter reads
-   optionally belong in the trailing comment, not the list.
+   optionally belong in the trailing comment, not the list. A key that only one way of connecting
+   needs goes in `requires_by_transport:` instead, keyed by the slot's configured `transport`
+   (`{cli: [cli], mcp: [mcp], both: [mcp]}` on Jira, where acli is optional and the connector is
+   the fallback): a connector-only install is then never told to set a CLI it does not have.
 3. Implement **every** verb section for that seam — if the tool can't do one, say so and give the
    manual fallback (skills will surface it rather than silently skipping).
 4. Add a `verify` command to your `stack.yaml` seam entry (read-only, exits non-zero when unreachable).

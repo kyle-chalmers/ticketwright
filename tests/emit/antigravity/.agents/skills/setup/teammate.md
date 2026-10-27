@@ -67,7 +67,11 @@ re-run step 0): the identity recorded is now one this machine actually resolves 
 
 Then check the rest: `for c in <the CLIs named by the configured tool slots> yq jq git; do
 command -v $c >/dev/null && echo "✓ $c" || echo "✗ $c (install)"; done`. For each missing tool give
-the install command (Homebrew / winget / apt as appropriate). Scope note: `yq` is needed only by
+the install command (Homebrew / winget / apt as appropriate). A CLI the slot can do without is
+not a missing tool: when the slot's transport is `both` and its adapter's `requires_by_transport:`
+does not list `cli` for `both` (Jira's), report it as optional ("not installed; Jira runs through
+the Atlassian connector"), give no install command unless they ask, and make sure the connector
+is connected instead (step 2). Scope note: `yq` is needed only by
 the kit's own `selftest.sh` (step 5 runs it once, as a kit-integrity check) — no skill in a
 configured repo invokes it day to day, so a missing `yq` blocks that one check, nothing else. When
 `yq_present` is not `ok`, print the doctor's platform install command and **offer to run it now**,
@@ -130,7 +134,10 @@ result mean something:
   mid-verify is a NORMAL outcome. Narrate it ("your tool is asking you to sign in — finish that
   and we'll re-run"), never report it as a failure.
 - **Probe MCP-only tool slots in-session — verify_stack.sh cannot.** A seam with `transport: mcp`
-  and `verify: null` has no shell surface, so the script reports it as *unverified*, not OK. For
+  and `verify: null` has no shell surface, so the script reports it as *unverified*, not OK. The
+  same holds for a `both` slot whose CLI is not installed on this machine (the verifier says
+  "isn't installed here, so this slot uses its MCP connector"): the connector is that person's
+  route, so probe it here. For
   each such slot: call ONE read-only tool from that MCP server in this session (the adapter's
   `auth:` notes name a suitable probe), and record the outcome — reachable or unreachable — next
   to that slot in the checklist. An unverified MCP slot is not done until this probe has run.
