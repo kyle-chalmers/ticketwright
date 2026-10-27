@@ -249,8 +249,9 @@ sent without you seeing it first."
     and goes in `stack.yaml`; the **mount root** (where that drive sits on this machine) is tier 3.
     - **Offer folders that exist.** A new folder in a shared drive is visible to everyone the
       drive is shared with: say so on that option. Ask once before looking inside someone's drive ("Can I list the
-      folders at the top of your drive to pick from?"), then list **folder names only**, never file
-      names; offer "Create a new folder: <name>" as an option they type. Folder names can't contain any of
+      folders at the top of your drive to pick from?"), then list them with the docstore adapter's
+      `list_folders` verb, which prints **folder names only**, never file names. Never list a drive
+      with a plain `ls`, which shows file names too. Offer "Create a new folder: <name>" as an option they type. Folder names can't contain any of
       `;` `|` `&` `$` `<` `>` `(` `)`, a backslash or a backtick, check a typed name now and offer a clean spelling ("Sales and Ops
       Tickets") rather than finding out after the files are written.
     - If Phase 1 found a mount root, display it and route it to the machine file, never to
