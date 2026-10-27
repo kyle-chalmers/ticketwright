@@ -98,6 +98,7 @@ always produces a *default the human confirms*, never an automatic selection.
 | `worktree` | branch | isolated worktree path (keeps one ticket apart from other work in flight) |
 | `commit` | paths, message (semantic) | commit sha |
 | `open_pr` | title (semantic), body | PR URL |
+| `merge_pr` | the PR, the head commit it must still point at | merged, or the reason it is blocked |
 
 ### `meetings` — the spoken record, by reference *(optional)*
 | Verb | Inputs | Returns |

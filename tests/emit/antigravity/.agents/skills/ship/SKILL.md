@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Finalize and deliver a reviewed ticket — backup, tracker comment, chat draft, commit + PR — with a hard halt before any external post. Run after /review approves.
+description: Finalize and deliver a reviewed ticket — commit + PR, merge (after asking), backup, tracker comment, chat draft — with a hard halt before any external post. Run after /review approves.
 ---
 
 <!-- emitted by ticketwright install v4.4.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
@@ -19,32 +19,91 @@ works regardless of the underlying tools.
 > before Phase A's first durable action.** Phase A finalizes *in the repo* — it tidies and overwrites
 > deliverable files and refreshes the committed ticket-index entry — so a model-initiated run must not
 > mutate the ticket before the human has said to ship it. Print the ticket and what Phase A will do,
-> then wait. An explicit user invocation authorizes Phase A as normal. This gate is separate from — and
+> then ask it as one question, "Ship it" or "Not now", and wait. An explicit user invocation
+> authorizes Phase A as normal, and so does a `ship` reply (or "Approve and ship") to `/review`'s
+> sign-off question for this ticket, given as the answer to that question: the person asked for the
+> ship. This gate is separate from — and
 > earlier than — the Phase B external-post HARD HALT below, which always applies regardless of who
 > invoked the skill; it is an instruction the agent follows, not a mechanical block.
+
+## How this skill asks the person something
+<!-- ticketwright:ask-rule:begin -->
+The kit's one question rule, the same in every skill that asks:
+- Read `capabilities` from this skill's `kit_paths.py --json` probe the first time a question
+  comes up, and keep the result.
+- `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+  **ask with that tool**, within `capabilities.question_limits` (when that says `unknown`: one
+  question per call, at most four options). Group up to the limit only questions that do not
+  depend on each other's answers; ask a dependent question after the one it depends on.
+- Otherwise (`no` / `unknown`, or the probe failed) → ask in chat as a short numbered list, one
+  question at a time unless this skill says a set goes in one round, and wait for an explicit
+  answer.
+- The question content is the same either way; only how it is shown changes. No skill names a
+  runtime's tool: the runtime's own adapter (`adapters/runtime/<name>.md`) does. A question tool
+  is not available inside a subagent, so the main session asks.
+- **Never invent an option.** Options come from what this run found or the fixed choices a step
+  names. A recommended option goes first, marked recommended, with where it came from; the person
+  still picks. Each option says what choosing it changes, and free text is always possible (the
+  tool's own "Other", or "or tell me something else" in prose).
+- Whatever the person needs to answer is already in chat before the question, so a picker never
+  hides it.
+- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
+  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
+  never one click.
+<!-- ticketwright:ask-rule:end -->
+
+In this skill the questions are the confirm gate above, step 1's owner choice and pending sign-off
+(asked through `/review` step ⑤.4), step 4(a)'s routing questions, step 6's merge question, and step 12's voice-profile proposal. Its
+probe is `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json`,
+run the first time one of them comes up. `ship unreviewed` (step 1) and `go ahead` (Phase B) stay
+typed.
 
 ## Phase A — Finalize (no separate approval when the user invoked `/ship`; internal to repo)
 1. **Resolve WHO first** — `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
    and show its one-line "Working as …" display; the resolved person is the shipper. Then resolve
    the **ticket locator**: `owner/id` is exact; a bare `<id>` resolves against the shipper's
    `tickets/<owner>/` first, then across other owners — **two or more foreign owners sharing it is a
-   hard stop listing the `owner/id` choices, never a pick**. Shipping a ticket whose owner isn't the
+   hard stop that asks which one, with the `owner/id` choices as the options, never a pick**. Shipping a ticket whose owner isn't the
    shipper is allowed — say so out loud before continuing.
    Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the plan +
    **the current verdict, read mechanically:**
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
    — it picks the `qc_queries/*_review_verdict.md` with the highest `<n>` (compared numerically:
    `10_` beats `9_`; never a lexical sort or an mtime), reads its lowercase `verdict:` line, and
-   returns `status`: `approve` · `request-changes` · `skipped` · `none` · `unreadable`, plus any
+   returns `status`: `approve` · `request-changes` · `awaiting-signoff` · `skipped` · `none` ·
+   `unreadable`, plus any
    `legacy_candidates`. Branch on that `status`, never on your own reading of the folder. A review
    report saved under another name by an earlier kit version still counts: read it,
    and if it states APPROVE or REQUEST-CHANGES plainly, re-save it under the fixed name with the
-   `verdict:` line first, then branch on it — never treat reviewed work as unreviewed. Four cases:
+   `verdict:` line first, then branch on it — never treat reviewed work as unreviewed. Five cases:
    - **APPROVE** → proceed.
    - **REQUEST-CHANGES** → **hard stop.** The review ran and found a defect (count mismatch, duplicate
      gap, reconciliation break, a Critical anti-pattern). Send the user back to `/build <owner>/<id>`,
      which applies the remediation (or replans, when a finding is `kind: scope`) and re-reviews.
      Not overridable here.
+   - **AWAITING-SIGNOFF** → the independent review approved, and the person's sign-off is the only
+     thing outstanding. **It is not approval:** never continue on it, never offer `ship unreviewed`,
+     and never write a `SKIPPED` record over it (that would bury the reviewer's approval). This
+     skill does not write the sign-off itself; `/review` step ⑤.4 does, the same way `/build` uses
+     it:
+     - When `/review`'s hand-off for this ticket, with its "Reply `ship`" line, is earlier in **this
+       same conversation** and the person's next message is `ship` or `/ship` for this ticket, that
+       message is the `ship` reply to ⑤.4. Do not ask again: apply ⑤.4's `ship` branch, which
+       rewrites the record.
+     - Otherwise (a new session, another person, or a different reply in between), follow
+       `/review <owner>/<id>`'s steps ⑤.1 to ⑤.4 for this ticket: open the files, print the
+       what-to-look-at list, then ask the sign-off with ⑤.4's own "Reply `ship`" line and options.
+       ⑤.4 answers a question and asks again, asks what to change before recording a change
+       request, and rewrites the record on an answer.
+     - **A sign-off taken in this run, either way, cancels `--go` for this run.** Phase B still
+       prints the delivery plan and waits for a typed `go ahead`, because the sign-off line told
+       the person it would. `--go` never answers the sign-off question itself.
+     Then re-read the verdict with `review_verdict.py --json` and branch again: `approve` after a
+     `ship` reply → continue to step 2 (in this run, ⑤.4's "route as Phase N says" means carrying on
+     here, not starting a second `/ship`); `approve` without one ("Approve, don't ship yet") → stop
+     and name `/ship <owner>/<id>` for later; `request-changes` → send the person to
+     `/build <owner>/<id>`. **Anything else, including `awaiting-signoff` still on file, stops
+     here and shows the record: never continue.**
    - **No verdict file at all, or the newest one says `SKIPPED`** → **WARN, then stop and wait.** A
      SKIPPED record never counts as approval; this gate re-fires on every ship until a real review
      supersedes it. Print, verbatim in shape:
@@ -61,8 +120,8 @@ works regardless of the underlying tools.
      (step 3) say **"shipped without an independent review"**, and the tracker comment claims no QC
      that did not happen. `--go` authorizes Phase B only — it never pre-answers this gate — and a
      model-initiated ship meets the confirm gate above first, then this one.
-   - **Anything else** — a `verdict:` value that is none of the three, a file with no `verdict:` line,
-     a truncated report — is **the missing case above, never a pass.** The gate fails closed: an
+   - **Anything else** — a `verdict:` value that is none of the four above, a file with no
+     `verdict:` line, a truncated report — is **the missing case above, never a pass.** The gate fails closed: an
      unreadable verdict is not a verdict.
    Why this is a gate and not a wall: a hard stop here was routed around (work shipped through other
    commands, leaving no record). `/build` runs the review itself, and the `review_verdict_guard` hook
@@ -102,11 +161,14 @@ works regardless of the underlying tools.
    **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
    - **9 (nothing declared)** — the plan declares nothing this slot can route on. Three shapes, and the
      CLI's message names which:
-     - *A `targets:` slot* has no `audience:`/`classification:`. Show the configured values the CLI
-       lists and ask the user which one this ticket is.
+     - *A `targets:` slot* has no `audience:`/`classification:`. Ask the user which one this ticket
+       is, with the configured values the CLI lists as the options.
      - *A tool-only chat seam* (the default shape — the stack names the tool, not a standing channel)
-       has no `chat.channel:`/`chat.recipients:`. Ask the user (with the runtime's question tool when it has one, otherwise in chat) **where this goes and who
-       it is for**: the destination (channel / DM / group DM / address) and the recipient list. This is the
+       has no `chat.channel:`/`chat.recipients:`. Ask the user, by the question rule above, **where
+       this goes and who it is for**: the destination (channel / DM / group DM / address) and the
+       recipient list. Offer as options only the audience suggestions below, with free text always
+       open, and ask for the recipients as a multi-select when the question tool allows one. This
+       is the
        per-communication decision the tool-only shape exists for — who a result goes to depends on
        who the analysis is for, so it is asked each ship, never configured once.
        **Offer suggestions as options, never as answers** (see *Audience suggestions* below).
@@ -135,8 +197,12 @@ works regardless of the underlying tools.
      there. Write the pick with `kind:` (`channel` from `lookup_channel`, `dm` or `group` from
      `lookup_user`) and `chosen_from:` (`suggested_channels`, `tracker:reporter`,
      `tracker:assignee`, `tracker:watcher` or `typed`); a suggestion they did not pick is dropped.
-   - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value
-     and the configured ones; ask which was meant. Never match it approximately.
+     For the same reason, no audience, destination or recipient option is ever marked
+     recommended: the question rule's recommended-first option does not apply to routing, because
+     nothing in a run can know who a result is for.
+   - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value,
+     then ask which was meant, with the configured values as the options. Never match it
+     approximately.
    - **3 (no plan file)** — same as 9: ask, write the file, re-run.
    The declaration is a ticket artifact, not a session choice: it is committed with the ticket, so
    the next person (or agent) can see who this went to and why.
@@ -145,9 +211,12 @@ works regardless of the underlying tools.
    ticket facts. Tracker comment ≤ `word_limits.tracker_comment`; business-first; segmented with
    counts/%/$. Chat ≤ `word_limits.chat`; carries **the routed target's own `recipients`** — never
    another target's list, and never a slot-level one; **hyperlink everything**
-   (`hyperlink_everything`). Then, in order:
+   (`hyperlink_everything`). The PR link and the backed-up file links do not exist yet: step 5
+   creates the first and step 7 the others. Write each as a named placeholder (`<link: PR>`,
+   `<link: final_deliverables/…>`) and fill it from what those steps return, before the comment
+   (step 8) and the chat message (step 9) go out. Never guess a URL. Then, in order:
    - **Comms-lint the drafts first (the hard rails):** each is within its `word_limits.*` cap; ticket
-     id(s), files, and PR are hyperlinked; the chat message carries every routed recipient. That last
+     id(s) are hyperlinked and every file and the PR has its placeholder; the chat message carries every routed recipient. That last
      rail is mechanical, so run it rather than eyeballing it:
      `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam chat [--override <name>] --check-draft <the draft file>`
      — non-zero names each recipient the draft fails to carry. Fix any miss before continuing; these
@@ -166,14 +235,15 @@ works regardless of the underlying tools.
 
 ## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
 Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
-THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong destination is a
+THE PLAN, not the word "ship". `--go` does not count in a run where step 1 took the person's
+review sign-off: then only a typed `go ahead` does. A docstore link is a shareable URL, so a wrong destination is a
 disclosure, not an inconvenience. Resolve each posting seam with
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --seam <name>`
 and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
 and docstore, render the plan below from the routing resolved in step 4(a)**, the same resolution
-that steps 5 and 7 execute from; never print that JSON or its fingerprint. Preview and execution are one resolution, not two readings of it; re-deriving either
+that steps 7 and 9 execute from; never print that JSON or its fingerprint. Preview and execution are one resolution, not two readings of it; re-deriving either
 half by hand is how they drift apart. Every line names its resolved **target** (`target: single` on
-a single mapping — stating it is the point). The plan must show exactly what steps 5–9 will
+a single mapping — stating it is the point). The plan must show exactly what steps 5–10 will
 execute — nothing the steps don't do may appear in it:
    - **docstore** — tool, target, the declared `classification` that selected it, the exact
      destination it will back up into, and the target's declared `sharing_scope`. Say plainly that
@@ -192,7 +262,8 @@ execute — nothing the steps don't do may appear in it:
      `destination: per_ticket` target the channel and recipients are the ones this ticket's plan
      declares, routed in step 4(a): print them on the same line, never a placeholder, so the person
      approves the exact destination and list;
-   - **vcs** — tool, target, the branch, and that a PR opens;
+   - **vcs** — tool, target, the branch, that a PR opens, and how it merges: squash-merged by
+     `/ship` after asking once more (`ship_merges_pr: true`), or left for the team to merge;
    - then the exact actions, in order (the numbered steps below).
 
    Print the plan in this shape, one block, with the values filled in from the resolution (the
@@ -205,20 +276,21 @@ execute — nothing the steps don't do may appear in it:
    > Sharing settings: <declared scope> (declared, not checked) | not checked (one destination).
    > Ticket: `<tool>`, target `<target>`, comment on `<owner>/<id>`.
    > Chat: `<tool>`, target `<target>`, chosen by the audience `<audience>`, in `<channel>`, to `<recipients>`, sent as `<sender>`, as a draft | sent.
-   > Code: `<tool>`, target `<target>`, branch `<branch>`, and a pull request opens.
+   > Code: `<tool>`, target `<target>`, branch `<branch>`, a pull request opens, and I merge it (squash) after asking you once more | you merge it by hand (the merge setting is off).
    > This chat target was picked for this run, not declared on the ticket.
    > What happens, in this order:
-   > 1. Scan the ticket folder for raw source material, then back it up to the documents destination above.
-   > 2. Post the approved comment on the ticket.
-   > 3. Draft the chat message for the recipients above, or send it only if you say "send it".
-   > 4. Commit the ticket files (and a separate commit for any changed Ticketwright setup files, when there are any), push the branch, and open the pull request.
-   > 5. Move the ticket toward its final status if that applies.
+   > 1. Commit the ticket files (and a separate commit for any changed Ticketwright setup files, when there are any), push the branch, and open the pull request.
+   > 2. Ask you once more, then squash-merge the pull request into `<default branch>`. If branch rules or checks block it, I stop and tell you why.
+   > 3. Scan the ticket folder for raw source material, then back it up to the documents destination above. Unsent drafts stay on this machine.
+   > 4. Post the approved comment on the ticket, with links to the backup and the pull request.
+   > 5. Draft the chat message for the recipients above, with the same links, or send it only if you say "send it".
+   > 6. Move the ticket toward its final status if that applies, and only once the pull request is merged.
    > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
    Leave out the "picked for this run" line unless the chat target came from `--chat <target>`, and
    leave out the sender when the routed JSON carries none. The numbered list is the steps below
-   (5 to 9), so drop any step the plan does not deliver (for example the documents backup when no
-   documents tool slot is configured).
+   (5 to 10), so drop any step the plan does not deliver (for example the documents backup when no
+   documents tool slot is configured, or the merge step when the merge setting is off).
 
    Resolver exit 7 (tool slot not configured) = skip that line and tell the person:
    <!-- ticketwright:user-facing:begin -->
@@ -232,7 +304,7 @@ execute — nothing the steps don't do may appear in it:
    **Pin the plan the human just authorized.** Each routed line carries the target name AND its
    `resolution_fingerprint`. Keep both from the resolution; the person is never shown the
    fingerprint or any shortened form of it. Pass both back on **every**
-   delivery_plan call in steps 5–7: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
+   delivery_plan call in steps 7 and 9: `--expect-target <name> --expect-fingerprint <hex>`, with the same `--self` you routed
    with. The name catches a swapped target; the fingerprint catches what a name check cannot — a
    config or plan edit between approval and delivery that keeps the name while moving the channel,
    the recipient list, or the declared scope. Either mismatch refuses instead of quietly delivering
@@ -240,12 +312,67 @@ execute — nothing the steps don't do may appear in it:
    than a promise. It pins the *resolution*; the file contents shipped are whatever is in the
    folder at delivery time, as always.
    Only on explicit authorization, execute in order:
-5. **Scan the source material first, then docstore.backup.** The backup copies the WHOLE ticket
-   folder, so run
+5. **vcs.commit** — **first, isolate repo-setup / AI-layer files.** If any are dirty
+   (`.claude/settings.json`, `.claude/config/stack.yaml`, `.claude/statusline.sh`, `AGENTS.md`/
+   `CLAUDE.md`, `documentation/AI_LAYER_INDEX.md`, `.gitignore`) they belong to the repo's plugin
+   setup, not this ticket — give them a separate `chore(plugins): …` commit on this ticket's branch
+   (a distinct commit that rides the ticket's one PR — not a second PR, never folded into the ticket
+   commit); `.claude/settings.local.json` +
+   `.claude/worktrees/` are gitignored, leave them. Then stage this ticket's paths (deliverable files
+   included: they're committed by default so results live with the ticket and show in the PR) **plus
+   the whole index — `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json`, and
+   `tickets/graph/` + `tickets/objects/` when `project.graph_notes` is on (the default)** (`--check`
+   gates the *rendered* ones — the two catalog files and the graph nodes, not the curated store — so
+   a rendered path left out is drift in CI; semantic message + Co-Authored-By). The render is
+   repo-wide, so review the index diff before committing: a row or node that moved for **another**
+   ticket is the renderer catching up, and belongs in the commit message rather than bundled in
+   silently. **Before staging, list the
+   `final_deliverables/` files that will be committed and confirm none carry PII/customer data that
+   shouldn't be in git** — if any do, have the user rename them `*.private.csv` (etc.) or move them
+   under a `private/` subfolder (both gitignored) first. **Then run the source-material scan**
+   (`scan_source_materials.py --ticket <ticket-dir>`, the same one step 7 runs before the backup) and halt on a non-zero exit:
+   `source_materials/` is committed too, and a raw transcript whose filename gives nothing away
+   (`notes.md`) is matched by no gitignore pattern. Here `private/` IS a valid remedy, alongside
+   trimming the file to the curated `YYYY-MM-DD-<slug>-meeting.md` form. Then **vcs.open_pr** (semantic title; body =
+   Business Impact / Deliverables / Technical Notes / QC — the QC section names the verdict on file,
+   and reads "shipped without an independent review" when it is `SKIPPED`). Keep the PR URL and the head commit sha you just pushed: step 6 merges exactly that sha, and steps
+   8 and 9 link the PR. This step runs first on purpose. The comment and the chat message are the
+   posts people read, so they go out only once every link they carry exists, and a commit or push
+   that fails stops the ship before anything has been shared or anyone told it is done.
+6. **vcs.merge_pr, after asking** (policy `ship_merges_pr`). Read it from the merged config. A
+   missing value is `true`; an unparseable one is `false`, because unparseable config must never add
+   a write. When it is `false`, or the vcs adapter says it cannot merge, skip to step 7 and say in
+   one line that the pull request is open for the team to review and merge.
+   When it is `true`, the go-ahead covered the plan, and this step still **asks once more, right
+   before the merge** (`--go` never pre-answers this question, any more than it answers the review
+   gate), because a merge lands on the team's main branch and is the one step here that
+   is awkward to take back. Ask it by the question rule above (the runtime's question tool when it
+   has one, otherwise in chat), and offer exactly these two answers:
+   <!-- ticketwright:user-facing:begin -->
+   > The pull request is open: <PR link>. Merge it into `<default branch>` now? It is squash-merged into one commit, then the backup, the comment and the chat message follow.
+   > - **Merge now**
+   > - **Leave it open**: the team reviews and merges it later, and I won't move the ticket to its final status.
+   <!-- ticketwright:user-facing:end -->
+   Only on **Merge now**, run `vcs.merge_pr` with the PR and the sha from step 5. The adapter pins
+   that sha, so anything pushed after the person confirmed makes the merge refuse instead of landing
+   unseen work. Then confirm the merged state with the adapter's verify line. **If the verify line
+   does not show the pull request merged, it is blocked**, even when the merge command exited
+   cleanly: some code hosts queue a merge or switch on auto-merge instead of merging. When branch
+   protection, a required review, a check that failed or has not finished, or a conflict blocks
+   the merge, **stop the ship here** and tell the person what is blocking it, in the code host's own
+   words. Nothing has been backed up or posted yet, so stopping costs nothing outside the repo.
+   Never retry with a bypass, admin or auto-merge option: those skip or defer exactly the checks
+   the team set. The `review_verdict_guard` hook also asks before a merge of a ticket with no
+   approving verdict on file. On **Leave it open**, carry on with step 7 and leave the merge to the
+   team.
+7. **Scan the source material first, then docstore.backup.** This runs after step 6, so what is
+   shared is the merged work. The backup copies the ticket folder except `comms/` (the unsent
+   drafts, which every docstore adapter's `backup` leaves out, since they are kept out of git for
+   the same reason), so run
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" scan_source_materials.py --ticket <ticket-dir>`
    and **halt on a non-zero exit** — a raw meeting transcript is about to be copied out of the
    repo. The remedy here is NOT the `private/` folder: `.gitignore` has no bearing on the
-   adapter's `cp -r`, so `private/` protects git and nothing else. Remove the file from the folder,
+   adapter's copy, so `private/` protects git and nothing else. Remove the file from the folder,
    or have the human approve the copy explicitly. (The `source_material_guard` hook asks about the
    same command; this call is what makes the halt visible on runtimes whose hooks are not wired.
    Neither reads MEANING — a curated summary quoting confidential material passes both.) Then
@@ -266,52 +393,34 @@ execute — nothing the steps don't do may appear in it:
    `qc_queries/` and everything else not split out by a row, so an external plan-level
    classification must be a deliberate statement about the whole folder, and the approval line
    should be read that way.
-6. **tracker.comment** — post via the adapter's rich path (smart-link cards for the docstore
-   files). Never before this point (no tracker comments without human review). Always write the
+8. **tracker.comment** — post via the adapter's rich path (smart-link cards for the docstore
+   files), with the backup links from step 7 and the PR link from step 5 filled into their
+   placeholders. Never before this point (no tracker comments without human review). Always write the
    exact posted text to `comms/draft-tracker.approved.md` — edited or not — so Phase C can diff it
    (an unedited ship just yields `initial == approved` and proposes nothing).
-7. **chat.draft** to **the routed target's destination from step 4(a)** — its channel, its
+9. **chat.draft** to **the routed target's destination from step 4(a)** — its channel, its
    recipients, its adapter (policy `chat_default_draft` — the human clicks send unless they said
-   "send it", in which case `chat.send`). Re-run `--check-draft` on the final text first: it is the
+   "send it", in which case `chat.send`). Fill the link placeholders as in step 8, then re-run
+   `--check-draft` on the final text: it is the
    last mechanical point at which a message can be caught carrying the wrong audience's list, and it
    costs one command. A routing failure here is a **stop**, never a send to another target. Smart
    links for ticket id(s), files, PR. Write the final drafted text to `comms/draft-chat.approved.md`.
    Skip when the chat seam isn't configured.
-8. **vcs.commit** — **first, isolate repo-setup / AI-layer files.** If any are dirty
-   (`.claude/settings.json`, `.claude/config/stack.yaml`, `.claude/statusline.sh`, `AGENTS.md`/
-   `CLAUDE.md`, `documentation/AI_LAYER_INDEX.md`, `.gitignore`) they belong to the repo's plugin
-   setup, not this ticket — give them a separate `chore(plugins): …` commit on this ticket's branch
-   (a distinct commit that rides the ticket's one PR — not a second PR, never folded into the ticket
-   commit); `.claude/settings.local.json` +
-   `.claude/worktrees/` are gitignored, leave them. Then stage this ticket's paths (deliverable files
-   included: they're committed by default so results live with the ticket and show in the PR) **plus
-   the whole index — `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json`, and
-   `tickets/graph/` + `tickets/objects/` when `project.graph_notes` is on (the default)** (`--check`
-   gates the *rendered* ones — the two catalog files and the graph nodes, not the curated store — so
-   a rendered path left out is drift in CI; semantic message + Co-Authored-By). The render is
-   repo-wide, so review the index diff before committing: a row or node that moved for **another**
-   ticket is the renderer catching up, and belongs in the commit message rather than bundled in
-   silently. **Before staging, list the
-   `final_deliverables/` files that will be committed and confirm none carry PII/customer data that
-   shouldn't be in git** — if any do, have the user rename them `*.private.csv` (etc.) or move them
-   under a `private/` subfolder (both gitignored) first. **Then run the same source-material scan
-   as step 5** (`scan_source_materials.py --ticket <ticket-dir>`) and halt on a non-zero exit:
-   `source_materials/` is committed too, and a raw transcript whose filename gives nothing away
-   (`notes.md`) is matched by no gitignore pattern. Here `private/` IS a valid remedy, alongside
-   trimming the file to the curated `YYYY-MM-DD-<slug>-meeting.md` form. Then **vcs.open_pr** (semantic title; body =
-   Business Impact / Deliverables / Technical Notes / QC — the QC section names the verdict on file,
-   and reads "shipped without an independent review" when it is `SKIPPED`).
-9. **transition** the ticket toward `project.terminal_status` if appropriate.
+10. **transition** the ticket toward `project.terminal_status` if appropriate, **and only when
+    step 6 merged the pull request.** When the merge was left to the team (the person chose
+    **Leave it open**, or `ship_merges_pr` is `false`), leave the status where it is and say so: a
+    ticket marked done with its work unmerged tells the team something that is not true yet.
 
 ## Phase C — Post-ship (always, even on success)
-10. **System-evolution retro** (policy `system_evolution`). Reflect briefly: did anything go wrong or
+11. **System-evolution retro** (policy `system_evolution`). Reflect briefly: did anything go wrong or
     get re-done this ticket? If so, **which layer was insufficient** — a global rule, the context
     pack, a skill, or an adapter? Propose the concrete fix to *that* artifact and note it. A repeated
     manual step is a signal to `/skillify` it. Fixing the layer, not just the ticket, is what
-    compounds. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 11, not
+    compounds. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 12, not
     this retro.)*
-11. **Voice refine** (only if a voice profile resolved for the shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
+12. **Voice refine** (only if a voice profile resolved for the shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
     differ beyond whitespace, the edits are voice signal: **propose** a small append/edit to the
     person's `voices/<id>.md` capturing the pattern (e.g. "drops the greeting", "prefers 'net:' over
-    'in summary'") and **wait for confirmation before writing** — never silent. If `initial` ==
+    'in summary'") and **ask before writing**, as one question: "Add it to my voice profile" or
+    "Skip". Never write it silently. If `initial` ==
     `approved` (no edits), or the feature is off, do nothing.

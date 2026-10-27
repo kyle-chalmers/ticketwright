@@ -14,7 +14,8 @@ JURISDICTION — outbound vcs actions, parsed by subcommand, never by substring:
   git push                       the branch leaves the machine
   gh pr create | gh pr merge     GitHub PR opened or merged
   glab mr create | glab mr merge GitLab
-  az repos pr create             Azure DevOps
+  az repos pr create | update   Azure DevOps (`update --status completed` is its merge; any
+                                 other update also asks, which only ever adds a question)
 
 `git commit` is deliberately NOT here: committing during a build is routine, and a
 REQUEST-CHANGES verdict during the fix loop is normal. The record leaves the machine at push/PR
@@ -71,7 +72,7 @@ _OUTBOUND = {
     "git": (_GIT_VALUE_FLAGS, {("push",)}),
     "gh": ({"-R", "--repo"}, {("pr", "create"), ("pr", "merge")}),
     "glab": ({"-R", "--repo"}, {("mr", "create"), ("mr", "merge")}),
-    "az": ({"-o", "--output", "--subscription", "--query"}, {("repos", "pr", "create")}),
+    "az": ({"-o", "--output", "--subscription", "--query"}, {("repos", "pr", "create"), ("repos", "pr", "update")}),
 }
 
 
