@@ -21,6 +21,30 @@ All notable changes to this project are documented here. Format loosely follows
   asks for it. (LABS-103)
 
 ### Changed
+- **Every skill asks its questions as clickable choices where the agent has a question tool.**
+  `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
+  without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,
+  "Ship now?", the replan offer), `/setup` and `/skillify` now share one question rule, copied
+  word for word into each skill: ask with the runtime's own question tool on agents that have one
+  (Claude Code today), and as numbered questions everywhere else. What the plan assumed or what was
+  detected is the first, recommended choice; options are never invented. Replies the kit checks
+  word for word stay typed (`ship unreviewed`, `go ahead`, the `yes` before destructive SQL), so an
+  unreviewed ship, an external send or an irreversible write is never one click. The skills read
+  the tool from the runtime adapter's `question_tool` and `question_limits` keys and never name a
+  tool themselves. (LABS-107)
+- **Reply `ship` at the review's sign-off to approve and deliver.** When the independent review
+  approved and only your sign-off is left, `/review` ends with "Reply `ship` to approve and
+  deliver, or tell me what to change." (with a question tool, "Approve and ship" is the first
+  choice). `ship` records the APPROVE with your sign-off and starts `/ship`, which still shows you
+  everything it would send and waits for your go-ahead. When the review found a problem, `ship`
+  approves nothing. `/build` no longer asks "Ship now?" after you have already said `ship`.
+  (LABS-107)
+- **A new verdict, `AWAITING-SIGNOFF`, records "the reviewer approved, waiting on you".**
+  `/review` saves it before handing you the files and rewrites the same record to APPROVE or
+  REQUEST-CHANGES when you answer. `bin/review_verdict.py` reports it as `awaiting-signoff`
+  (exit 7), the push guard treats it as not approved yet, and `/build` asks the pending sign-off
+  instead of rebuilding. Before this, the state was not on disk at all, so nothing could tell it
+  from "never reviewed". `/ship`'s handling of it lands in a companion change. (LABS-107)
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
   already run for every role. It was also a team setting asked as if it were about you. Every
