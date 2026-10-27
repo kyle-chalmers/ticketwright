@@ -22,8 +22,38 @@ always as `<owner>/<id>`, into the new skill's `built_from:`, with the tables th
 `read_objects:`. That is how the next repeat check finds this skill instead of suggesting a second
 one. A bare id that more than one owner has is not written: ask which ticket it meant.
 
+## How this skill asks the person something
+<!-- ticketwright:ask-rule:begin -->
+The kit's one question rule, the same in every skill that asks:
+- Read `capabilities` from this skill's `kit_paths.py --json` probe the first time a question
+  comes up, and keep the result.
+- `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+  **ask with that tool**, within `capabilities.question_limits` (when that says `unknown`: one
+  question per call, at most four options). Group up to the limit only questions that do not
+  depend on each other's answers; ask a dependent question after the one it depends on.
+- Otherwise (`no` / `unknown`, or the probe failed) → ask in chat as a short numbered list, one
+  question at a time unless this skill says a set goes in one round, and wait for an explicit
+  answer.
+- The question content is the same either way; only how it is shown changes. No skill names a
+  runtime's tool: the runtime's own adapter (`adapters/runtime/<name>.md`) does. A question tool
+  is not available inside a subagent, so the main session asks.
+- **Never invent an option.** Options come from what this run found or the fixed choices a step
+  names. A recommended option goes first, marked recommended, with where it came from; the person
+  still picks. Each option says what choosing it changes, and free text is always possible (the
+  tool's own "Other", or "or tell me something else" in prose).
+- Whatever the person needs to answer is already in chat before the question, so a picker never
+  hides it.
+- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
+  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
+  never one click.
+<!-- ticketwright:ask-rule:end -->
+
+In this skill the questions are Phase 1's interview about the workflow.
+
 ## Phase 1 — Interview the workflow (reduce_assumptions)
-Ask, with the runtime's own question tool when it has one (`bin/tw kit_paths.py --json` → `capabilities.question_tool`), otherwise as a numbered list one question at a time, for:
+Ask by the question rule in "How this skill asks the person something" above (its probe is
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json`), one question at a time
+in prose, for:
 - **Name & cadence** (→ kebab skill name) and the **parameters** that change each run (e.g.
   `--period`, `--as-of-date`, `--ticket`, an input file) — with formats + validation rules.
 - **Steps**: the ordered phases. For each, what it reads, what it writes, and whether it has
