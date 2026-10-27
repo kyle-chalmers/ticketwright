@@ -64,6 +64,10 @@ knowledge base. Each slice below was a separate command in v1 (`/prime-ticket`, 
   tag ×3, cross-ref link +5, keyword overlap ×1; recency is a tiebreak. The seed ticket is excluded.
   The verdict calls a match **strong** only when it rests on an object few tickets use or a
   cross-ref; a match only on a table most tickets read says so and reads as moderate.
+- **Check for a repeat.** Run the same command with `--repeats --json` added (same `--for` and
+  `--text-file` inputs). It lists earlier tickets that read exactly the tables this ticket names;
+  follow [repeats.md](../skillify/repeats.md) to decide whether the plan says so. The answer is
+  `provisional` here, since the ticket has no SQL yet.
 - **Read the top 2–4** candidate READMEs (+ their `final_deliverables/` and `qc_queries/`
   listings). Many candidates → spawn read-only Explore agents in parallel (findings only).
 - **Write the reuse brief** (≤ ~200 words): the closest prior work, **what to copy** (which SQL/QC

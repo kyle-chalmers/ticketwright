@@ -172,7 +172,10 @@ context brief (including the reuse brief) first, then:
      is GUIDANCE the agent follows, not a gate the runtime enforces — say so if asked.
 9. **Draft the plan — compose it, do not write it yet.** Its shape is `templates/plan.md.tmpl` under
    `kit_root`: Goal, Scope (in / explicitly out), Builds on (each prior ticket from the reuse brief and
-   why it matched), Deliverables expected, Approach, Validation strategy, Touched, Questions for
+   why it matched; when the repeat check in [repeats.md](../skillify/repeats.md) ends in a
+   suggestion, also "This is the Nth instance of <pattern> (after <owner>/<id>)", and add the
+   `/skillify <pattern>` suggestion, or the existing skill to run, to Next step: a suggestion after
+   `/ship`, never a step of this plan), Deliverables expected, Approach, Validation strategy, Touched, Questions for
    the requester, Risks, Next step, Confidence. Inputs: the priming
    brief + the reuse brief. Decide the **`spec:` value** by the criteria in the template's header —
    `not required`, or a spec path (required when the work creates or alters a persisted object others

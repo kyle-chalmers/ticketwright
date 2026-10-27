@@ -20,7 +20,7 @@ human-readable summaries.
 | `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
-| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). | — |
+| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). `--repeats` lists earlier tickets that read the same tables (the skillify suggestion). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
 | `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/status/date/tags/refs, ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
 | `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command withholds every tool (Claude Code, on its cheaper model); everywhere else, Codex CLI included, the session writes the lines from the titles. | model (headless) |
@@ -277,6 +277,18 @@ python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if any re
 python3 bin/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects
 python3 bin/build_ticket_index.py --recurring --min-tickets 8   # objects touched by many tickets → skillify candidates
 ```
+
+**A repeated analysis, at the second instance.** `--recurring` counts tickets per object, so it
+needs several tickets before a table stands out. `recall.py --for <owner>/<id> --repeats [--json]`
+answers a narrower question: which earlier tickets read *exactly the same set of tables* as this
+one. It compares only what each ticket's SQL reads (`from`/`join`), not the tables it writes and not
+its `qc_queries/`, so two runs of one analysis match even when their output tables are named
+differently. Before a ticket has SQL, its text stands in and the answer is marked `provisional`.
+The output also lists project skills that may already do the work (`built_from:` naming one of
+those tickets, or `read_objects:` naming the same tables) and honors the `skillify_everything`
+policy. `/ticket`, `/ship`'s retro and a session's closing message read it through
+`.claude/skills/skillify/repeats.md`, which has the agent confirm the deliverable shape before
+suggesting `/skillify`, and never runs it unasked.
 
 A ticket on disk but absent from `index_data.json` still appears in `INDEX.md` — the renderer falls
 back to the README's H1 + first paragraph and marks the row `▱` (not yet curated). If a README

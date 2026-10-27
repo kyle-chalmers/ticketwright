@@ -18,9 +18,13 @@ unchanged.
 
 ## verb: query
 ```bash
-bq query --use_legacy_sql=false --format=csv "<SQL>"
-bq query --use_legacy_sql=false --format=csv < file.sql
+bq query --use_legacy_sql=false --format=csv < file.sql          # a .sql file: ALWAYS on stdin
+bq query --use_legacy_sql=false --format=csv "SELECT 1"          # ad-hoc text only
 ```
+- **A `.sql` file goes in on stdin, never as `"$(cat file.sql)"`.** The kit writes
+  `-- warehouse-target: <name>` as line 1 of each `.sql`, and `bq` reads a positional argument that
+  starts with `--` as a flag: `FATAL Flags parsing error: Unknown command line flag ' warehouse-target: …'`.
+  Stdin is not parsed for flags. The same applies to any SQL text that opens with a `--` comment.
 - Deterministic exports: explicit `ORDER BY` (BQ result order is not guaranteed).
 - Cost guard: `--dry_run` to estimate bytes; `--maximum_bytes_billed` to cap.
 

@@ -48,7 +48,9 @@ the description, comments or attachments; no guard checks that. Details: [docs/t
 
 **Local reads.** The hooks read files in the repo, any `-f` SQL file a command names, your viewer
 and people config under `~/.config/ticketwright/`, and Claude Code's own
-`installed_plugins.json` (to notice a newer release). They write nothing outside the repo.
+`installed_plugins.json` (to notice a newer release). They write nothing outside the repo. When a
+team backs up to Google Drive, `/ship` reads the file id Drive for desktop stores on the
+backed-up file (`xattr`, locally) to build its share link.
 
 **Installing** fetches the plugin from GitHub (Claude Code's marketplace) or the package from
 PyPI. The maintainer-only image scripts in `scripts/readme_media/` fetch web fonts from Google

@@ -17,6 +17,12 @@ Usage:
                                                    # score older tracker tickets (a file of search_history
                                                    # rows) with the same rules; a key that already has a
                                                    # ticket folder is dropped so nothing appears twice
+  recall.py --for alice/TEST-14 --repeats [--json] # earlier tickets that read the same tables
+
+`--repeats` lists earlier tickets that read exactly the same set of tables as this one (compared by
+the table's last name part), the instance count, and any project skill that may already do the
+work. It is the mechanical half of the skillify suggestion; `.claude/skills/skillify/repeats.md`
+is the other half (the agent confirms the deliverable shape and checks the skills it names).
 
 Scoring (transparent): object match ×4 (IDF-discounted — a ubiquitous object counts less than a rare
 shared one), tag match ×3, cross-ref link +5, keyword overlap ×1 (capped). Recency is a tiebreak only.
@@ -39,7 +45,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from build_ticket_index import (repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref,
-                                objects_in_text)
+                                objects_in_text, read_objects)
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "by", "with", "from", "into",
@@ -426,6 +432,181 @@ def run_query(args, rows, df_map, n_docs, key_re=None, *, root=None, external=No
     return 0
 
 
+def ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def leaf_set(objects) -> set[str]:
+    return {leaf(o) for o in ci(objects)}
+
+
+def skillify_policy(root: Path) -> bool:
+    """`policies.skillify_everything` through the resolver. Default true (the schema's default), and
+    true when config cannot be read: a suggestion is advisory, so failing open costs one sentence."""
+    try:
+        from effective_config import resolve  # noqa: PLC0415
+        val = resolve(root).get("policies.skillify_everything", True)
+    except Exception:  # noqa: BLE001
+        return True
+    return val is not False and str(val).strip().lower() not in ("false", "no", "off", "0")
+
+
+def skill_candidates(root: Path, repeat_pairs: set[str], target_leaves: set[str], omap: dict,
+                     notes: list[str]) -> list[dict]:
+    """Project skills that MAY already do this work: one whose `built_from:` names a ticket in the
+    repeat set (`provenance`), or whose `read_objects:` reads the same tables (`same_tables`).
+    Candidates only: two skills can read the same tables and produce different things, so whether
+    one fits is the agent's call (repeats.md step 3), never this function's."""
+    try:
+        from _yamlite import parse_frontmatter  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    repeat_ids = {p.split("/", 1)[-1] for p in repeat_pairs}
+    for path in sorted((root / ".claude" / "skills").glob("*/SKILL.md")):
+        try:
+            fm, _body = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"), str(path))
+        except Exception:  # noqa: BLE001 — one malformed skill must not hide the others
+            continue
+        name = str(fm.get("name") or path.parent.name)
+        built = fm.get("built_from") or []
+        built = [built] if isinstance(built, str) else [str(b) for b in built if str(b).strip()]
+        pairs = []
+        for ref in built:
+            owner, tid = split_ref(ref.strip())
+            if owner is not None:
+                pairs.append(f"{owner}/{tid}")
+                continue
+            owners = omap.get(tid.lower(), [])
+            if len(owners) == 1:
+                pairs.append(f"{owners[0]}/{tid}")
+            elif tid.lower() in repeat_ids:  # only worth saying when it could hide a real match
+                notes.append(f"skill {name}: built_from entry {ref!r} names no single ticket "
+                             f"({'several owners have it' if owners else 'no ticket has it'}); "
+                             f"write it as <owner>/<id>.")
+        reads = fm.get("read_objects") or []
+        reads = [reads] if isinstance(reads, str) else reads
+        if repeat_pairs & {p.lower() for p in pairs}:
+            match = "provenance"
+        elif target_leaves and leaf_set(reads) == target_leaves:
+            match = "same_tables"
+        else:
+            continue
+        out.append({"skill": name, "match": match, "built_from": pairs,
+                    "description": str(fm.get("description") or "")})
+    return out
+
+
+def run_repeats(args, rows, root: Path, key_re=None) -> int:
+    """Earlier tickets that read exactly this ticket's tables. See the module docstring."""
+    notes: list[str] = []
+    omap = owners_index(rows)
+    seed = None
+    if args.seed:
+        so, si = split_ref(args.seed) if "/" in args.seed else (args.owner, args.seed)
+        if "/" in args.seed and args.owner and args.owner.lower() != so.lower():
+            sys.exit(f"recall: --for {args.seed} names owner '{so}' but --owner says '{args.owner}'; drop one.")
+        matches = [r for r in rows if r["id"].lower() == si.lower()
+                   and (not so or r["owner"].lower() == so.lower())]
+        if len(matches) > 1:
+            owners = ", ".join(sorted(r["owner"] for r in matches))
+            sys.exit(f"recall: {args.seed} exists under multiple owners ({owners}); use <owner>/<id>.")
+        if matches:
+            seed = matches[0]
+        elif not args.text_files:
+            sys.exit(f"recall: ticket {args.seed} not found. Pass its text with --text-file.")
+        else:
+            notes.append(f"{args.seed} is not in the index yet; its text alone was read.")
+
+    cache: dict = {}
+
+    def reads_of(r) -> list:
+        key = r["rel_dir"]
+        if key not in cache:
+            cache[key] = read_objects(root / "tickets" / key)
+        return cache[key]
+
+    target = f"{seed['owner']}/{seed['id']}" if seed else None
+    target_reads = reads_of(seed) if seed else []
+    strength = "confirmed"
+    if not target_reads:
+        # No code yet (a ticket being scoped): its text is the only evidence, so the answer is provisional.
+        strength = "provisional"
+        text = read_text_files(args.text_files)
+        if seed and seed.get("has_readme"):
+            try:
+                text += "\n" + (root / "tickets" / unquote(seed["link"])).read_text(errors="replace")
+            except OSError:
+                pass
+        known = sorted({o for r in rows for o in (r.get("objects") or []) + reads_of(r)}, key=str.lower)
+        target_reads = objects_in_text(text, known) if text else []
+    target_leaves = leaf_set(target_reads)
+
+    def later_than_seed(r) -> bool:
+        """Only EARLIER work counts as a previous instance: re-checking the original ticket must not
+        cite the copy made after it. Undated tickets are kept (nothing to order them by), and two
+        tickets on the same date order by ticket number."""
+        if not seed or not seed.get("date") or not r.get("date"):
+            return False
+        if r["date"] != seed["date"]:
+            return r["date"] > seed["date"]
+        return ticket_number(r["id"], key_re) > ticket_number(seed["id"], key_re)
+
+    repeats = []
+    if target_leaves:
+        for r in rows:
+            if seed and r["id"] == seed["id"] and r["owner"] == seed["owner"]:
+                continue
+            if later_than_seed(r):
+                continue
+            reads, source = reads_of(r), "sql"
+            if not reads:
+                reads, source = r.get("objects") or [], "index"
+            if leaf_set(reads) == target_leaves:
+                repeats.append({"ticket": f"{r['owner']}/{r['id']}", "title": r["title"],
+                                "date": r["date"], "read_objects": sorted(reads, key=str.lower),
+                                "source": source, "readme": r["link"]})
+    repeats.sort(key=lambda x: (x["date"] or "0000-00-00", x["ticket"]))
+    if any(x["source"] != "sql" for x in repeats):
+        strength = "provisional"
+
+    policy = skillify_policy(root)
+    pairs = {x["ticket"].lower() for x in repeats}
+    # Policy off: the repeat stays visible, but nothing is suggested, not even an existing skill.
+    candidates = skill_candidates(root, pairs, target_leaves, omap, notes) if repeats and policy else []
+    result = {"target": target, "strength": strength, "read_objects": sorted(target_reads, key=str.lower),
+              "repeats": repeats, "instance": len(repeats) + 1 if repeats else 1,
+              "policy_skillify_everything": policy, "suggest": bool(repeats) and policy,
+              "skill_candidates": candidates, "notes": notes}
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    who = target or "This ticket"
+    if not target_leaves:
+        print(f"No repeat check for {who}: no tables were found in its code or its text.")
+    elif not repeats:
+        print(f"{who} is the first ticket to read exactly these tables: {', '.join(sorted(target_leaves))}.")
+    else:
+        after = ", ".join(x["ticket"] for x in repeats)
+        how = "confirmed from the SQL" if strength == "confirmed" else "provisional: read from ticket text or the index"
+        print(f"{who} reads the same tables as {after} ({ordinal(len(repeats) + 1)} instance, {how}).")
+        for x in repeats:
+            print(f"  {x['ticket']:<14} {x['date'] or '—'}  {x['title'][:60]}")
+            print(f"                 {x['readme']}")
+        for c in candidates:
+            print(f"  A skill may already do this: /{c['skill']} ({'built from these tickets' if c['match'] == 'provenance' else 'reads the same tables'}).")
+        if not policy:
+            print("Not suggesting /skillify: this team turned the suggestion off. "
+                  "Details: policies.skillify_everything is false.")
+        else:
+            print("Next: confirm the deliverable shape as the skillify skill's repeats.md describes, "
+                  "before suggesting anything.")
+    for n in notes:
+        print(f"note: {n}")
+    return 0
+
+
 def run_eval(rows, df_map, n_docs, weights, top_k=5, key_re=None) -> dict:
     """Hold out each ticket's curated cross_refs and measure whether recall predicts them. The cross-ref
     signal is DISABLED (allow_ref=False) so the labels can't leak into scoring. Labels resolve by
@@ -490,9 +671,14 @@ def main() -> int:
     ap.add_argument("--eval", action="store_true",
                     help="diagnostic: measure recall quality against curated cross_refs (read-only, never tunes)")
     ap.add_argument("--sweep", action="store_true", help="with --eval: print MRR under several weight settings")
+    ap.add_argument("--repeats", action="store_true",
+                    help="list earlier tickets that read the same tables (with --for and/or --text-file)")
     args = ap.parse_args()
     if args.eval and args.external is not None:
         print("recall: --external cannot be combined with --eval. Run them separately.", file=sys.stderr)
+        return 2
+    if args.repeats and args.external is not None:
+        print("recall: --external cannot be combined with --repeats. Run them separately.", file=sys.stderr)
         return 2
 
     root = repo_root()
@@ -516,6 +702,10 @@ def main() -> int:
                 print(f"  ({w['obj']},{w['tag']},{w['ref']},{w['kw']}) -> MRR {m['mrr']:.3f}")
         return 0
 
+    if args.repeats:
+        if not (args.seed or args.text_files):
+            sys.exit("recall: --repeats needs --for <owner>/<id> or --text-file.")
+        return run_repeats(args, rows, root, key_re)
     external = None
     if args.external is not None:
         try:

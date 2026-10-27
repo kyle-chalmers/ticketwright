@@ -348,6 +348,11 @@ is true.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
 5. **skillify_everything** — when work recurs it becomes its own skill (`/skillify`), not another copy-paste.
+   **Before you end a session that worked a ticket** and did not reach `/ship`'s retro, run the
+   repeat check in `.claude/skills/skillify/repeats.md` (on a plugin install, under the kit:
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit`) and follow its four
+   steps. Put the outcome in your closing message as one line: the `/skillify` suggestion, the skill
+   that already does this, or nothing. Never run `/skillify` unasked.
 6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
 7. **commit_plan_before_implement** — `/ticket` commits the plan (and the spec) before `/build` runs (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
