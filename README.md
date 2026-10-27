@@ -41,7 +41,7 @@ finished ticket is filed where the next person or agent can find it.
 Every ticket lands in one folder with its business context, written assumptions, QC verdict and
 deliverables. An auto-maintained catalog (`tickets/INDEX.md`) and object map (`tickets/OBJECTS.md`)
 make that history searchable by people and agents, so `/ticket` opens new work with the closest
-prior work already ranked. Details: [docs/how-it-works.md](docs/how-it-works.md).
+prior work ranked. Details: [docs/how-it-works.md](docs/how-it-works.md).
 
 ![How /ticket finds prior work. Each past ticket folder becomes a card: the model writes the summary, tags and links, and a scan finds the tables in the SQL. Plain code scores the new ticket, TEST-130, against every card: a shared table scores 4 (rarer tables count more), a shared tag 3, a link between the two tickets 5, and each shared word 1, up to 6. Recency only breaks ties. Here bob's TEST-118 ranks first at 9.0 (a shared table, a shared tag and 2 words), ahead of alice's TEST-127 at 4.0 and bob's TEST-94 at 1.0, so the verdict is strong. The model reads the top 2 to 4 and writes the reuse brief, and you approve the plan. When the match is weak or missing, you choose whether to search older tickets in your tracker; they are scored the same way and labeled as having no folder or QC record here. That branch is drawn as if asked for, since a strong match like this one never offers it. Once shipped, TEST-130 becomes a card too.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/recall.png)
 
@@ -57,7 +57,7 @@ config line and one adapter file:
 
 | Tool slot | Works with |
 |---|---|
-| Tracker | Jira, Azure DevOps, Linear, Asana, Monday, GitHub Issues, or none (`id_mode: slug`) |
+| Tracker | Jira (`acli` optional), Azure DevOps, Linear, Asana, Monday, GitHub Issues, or none (`id_mode: slug`) |
 | Warehouse | Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse, or none |
 | Chat | Slack, Teams, Gmail, Outlook |
 | Docs | Google Drive, SharePoint, or Dropbox/S3/Box through rclone |

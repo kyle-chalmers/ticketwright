@@ -101,12 +101,12 @@ def s(k):
 print("\u001f".join([s("kind"), s("label"), s("tool"), s("adapter"), s("verify"), s("message"),
                       ",".join(d.get("unresolved") or []), ",".join(d.get("unsafe") or []),
                       ",".join(d.get("missing_required") or []), s("transport"),
-                      ",".join(d.get("pending") or []), s("seam")]))'
+                      ",".join(d.get("pending") or []), s("seam"), s("optional_cli")]))'
 }
 
 while IFS= read -r line; do
   [ -n "$line" ] || continue
-  IFS="$SEP" read -r kind label tool adapter verify message unresolved unsafe missing transport_cfg pending seam <<<"$(fields "$line")"
+  IFS="$SEP" read -r kind label tool adapter verify message unresolved unsafe missing transport_cfg pending seam cli <<<"$(fields "$line")"
   posture_line=""
   case "$kind" in
     seam_error) echo "  ✗ $message"; count_fail "${label:-config}"; continue ;;
@@ -196,6 +196,16 @@ while IFS= read -r line; do
     if [[ $seam_warned -eq 1 ]]; then count_warn "$label"; else count_ok; fi
     continue
   fi
+  # A `both` unit whose adapter declares its CLI optional (the resolver sets $cli only then), on a
+  # machine without that CLI, reaches the tool through its MCP connector instead (the adapter's
+  # rule: the CLI when it works here, otherwise the connector). Running the verify would only report
+  # "command not found" as an unreachable tool, the false lead a teammate with just the connector
+  # hit. It is still not verified: the agent probes the connector in-session.
+  if [[ "$pt" == "both" && -n "$cli" ]] && ! command -v "$cli" >/dev/null 2>&1; then
+    echo "  ⊘ $cli isn't installed here, so this slot uses its MCP connector; the agent checks that in your session"
+    flush_posture
+    count_warn "$label"; continue
+  fi
   # A verify is a quick read-only reachability check. One that opens a browser for SSO blocks
   # forever with no output, so it runs under a wall-clock cap (VERIFY_TIMEOUT seconds, default 30)
   # via perl's alarm — present on macOS and every mainstream Linux; without perl it runs uncapped.
@@ -213,7 +223,14 @@ while IFS= read -r line; do
     echo "  ⚠ timed out after ${VERIFY_TIMEOUT:-30}s — this verify appears to need interactive auth (browser/SSO). Run it yourself once, or point the slot at a non-interactive connection."
     flush_posture; count_warn "$label"
   else
-    echo "  ✗ UNREACHABLE → $verify"; flush_posture; count_fail "$label"
+    if [[ -n "$cli" ]]; then
+      # An optional CLI that is installed but did not answer (signed out, most often): the adapter
+      # falls back to the connector on this machine, so this is a warning naming both fixes.
+      echo "  ⚠ $cli didn't answer (sign in to it, or keep using the MCP connector, which the agent checks in your session) → $verify"
+      flush_posture; count_warn "$label"
+    else
+      echo "  ✗ UNREACHABLE → $verify"; flush_posture; count_fail "$label"
+    fi
   fi
 done < "$PLAN"
 

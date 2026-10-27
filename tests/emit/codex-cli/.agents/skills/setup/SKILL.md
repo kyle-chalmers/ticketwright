@@ -231,7 +231,9 @@ WRONG transport detail, and until this mode accepted them there was no documente
 repaired one. The case that forced this: a person on an MCP-only tracker whose `verify` names a CLI
 they do not have, so `verify_stack` reports a healthy tracker as unreachable. `/setup tool tracker`
 re-runs that slot's questions — transport, `mcp:`, `cli:`, and the read-only `verify` — against the
-existing config, edit-never-overwrite. Same for `vcs`.
+existing config, edit-never-overwrite. Same for `vcs`. Where the adapter declares its CLI optional
+(`requires_by_transport:`), the transport comes from detection exactly as in
+[interview.md](interview.md) round 2, and `cli:` is asked only when that CLI was detected.
 **Finishing a slot chosen before it was connected.** When the slot holds a value still written
 `TODO` (most often `mcp: TODO`; the session banner and `verify_stack.sh` both name these), this
 mode finishes it instead of asking everything again:

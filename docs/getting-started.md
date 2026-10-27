@@ -303,6 +303,13 @@ tool's own role / token scope / grant is the control, the adapter's "Permission 
 section says what to set and how to probe it read-only, and setup records the outcome in
 gitignored `.claude/config/posture.local.yaml`.
 
+**Jira needs only the Atlassian connector.** A teammate does not need `acli`. Connect the
+official Atlassian connector in Claude Code, signed in to the team's Jira site, and every Jira
+step (fetching a ticket, `/ticketwright:ticket --create`, moving a ticket, searching, comments)
+runs through it. When the team's config also names `acli`, a machine that has it uses it and a
+machine without it uses the connector; `verify_stack` says which one this machine takes. A repo
+configured on a connector-only machine records `transport: mcp` and never asks about `acli`.
+
 #### What you need installed (derived from the stack, not a fixed list)
 
 The CLIs a teammate needs depend on which tool slots the team's `stack.yaml` fills — there is no
@@ -333,7 +340,9 @@ verification or first use ships as a commented default instead.
 **What it looks at first, before asking you anything:**
 
 - **Which CLIs are on your PATH** — `snow`, `acli`, `gh`, `glab`, `bq`, `databricks`, `yq`, `jq`, `git` —
-  to pre-select the tools you already have.
+  to pre-select the tools you already have. A CLI the connector can stand in for (`acli` for Jira)
+  is never required: with only the connector, setup writes the connector route and asks nothing
+  about the CLI.
 - **Which MCP servers are connected** in the session (tracker / chat / warehouse).
 - **What's already in the repo** — an existing `.claude/config/stack.yaml` (it offers to edit and never
   overwrites), or existing ticket folders and indexes, which switch it into adopt mode.

@@ -176,7 +176,7 @@ targets". Fields of a single mapping:
 | `tool` | string | The concrete tool, e.g. `jira` / `asana` / `monday` / `linear`. |
 | `adapter` | path | The playbook that maps the verb contract → this tool's commands. |
 | `verify` | string \| null | A **read-only** smoke-test command. `{token}` interpolation from this slot's own keys + `project`. `null` = skip (skills warn). Non-zero exit ⇒ slot "unreachable". |
-| `transport` | enum | `cli` \| `mcp` \| `both` — how the adapter talks to the tool. Drives the verify fallback. |
+| `transport` | enum | `cli` \| `mcp` \| `both` — how the adapter talks to the tool. Drives the verify fallback. On `both`, each machine takes the CLI when it is installed and signed in there and the MCP connector otherwise (the adapter's path rule), so a teammate without the CLI needs no config change: `verify_stack.sh` reports that slot as using its connector, checked in-session, not as unreachable. A connector-only slot is `transport: mcp` with `mcp:` set, no `cli:`, and `verify: null`. An adapter's `requires_by_transport:` frontmatter names the keys only one transport needs. |
 | *(extra keys)* | any | Tool-specific config the adapter reads (site, warehouse, role, channel, base_path, …). |
 
 The `warehouse` slot may be `null`/omitted for non-data repos — `review`, `build`, and

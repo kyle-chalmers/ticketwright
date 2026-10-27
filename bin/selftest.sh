@@ -14537,6 +14537,183 @@ sh76="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
 grep -q 'No message is a declaration too' adapters/README.md \
   && ok "the delivery-plan schema documents chat: none" || bad "adapters/README.md does not document chat: none"
 
+hdr "77 · Jira runs on the Atlassian connector alone; acli is optional"
+# A teammate with only the official Atlassian connector must get every tracker verb, a setup that
+# never asks about acli, and a verifier that does not call the slot unreachable because acli is
+# absent. Three machines are pinned: acli and the connector, the connector only, acli only.
+JA="$TMP/ja74"; mkdir -p "$JA/both" "$JA/mcp" "$JA/cli" "$JA/mcpnokey" "$JA/fakebin"
+cat > "$JA/both/stack.yaml" <<'EOF'
+project:
+  key_prefix: TEST
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: both
+    site: example.atlassian.net
+    cli: acli
+    mcp: atlassian
+    verify: 'acli jira workitem search --jql "project = {key_prefix}" --limit 1'
+EOF
+cat > "$JA/mcp/stack.yaml" <<'EOF'
+project:
+  key_prefix: TEST
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: mcp
+    site: example.atlassian.net
+    mcp: atlassian
+    verify: null
+EOF
+cat > "$JA/cli/stack.yaml" <<'EOF'
+project:
+  key_prefix: TEST
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: cli
+    site: example.atlassian.net
+    cli: acli
+    verify: "true"
+EOF
+cat > "$JA/mcpnokey/stack.yaml" <<'EOF'
+project:
+  key_prefix: TEST
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: mcp
+    site: example.atlassian.net
+    verify: null
+EOF
+# (A) the config each machine writes validates, and only the keys its transport needs are required.
+python3 - "$JA" <<'PY' >"$TMP/ja74a.out" 2>&1
+import json, subprocess, sys
+root = sys.argv[1]
+want = {"both": [], "mcp": [], "cli": [], "mcpnokey": ["mcp"]}
+bad = []
+for name, missing in want.items():
+    r = subprocess.run([sys.executable, "bin/effective_config.py", "--stack", f"{root}/{name}/stack.yaml",
+                        "--verify-plan"], capture_output=True, text=True)
+    if r.returncode != 0:
+        bad.append(f"{name}: exit {r.returncode} {r.stderr.strip()}")
+        continue
+    rows = [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+    unit = [x for x in rows if x.get("kind") == "unit" and x.get("seam") == "tracker"]
+    if not unit:
+        bad.append(f"{name}: no tracker row")
+        continue
+    if unit[0]["missing_required"] != missing:
+        bad.append(f"{name}: missing_required={unit[0]['missing_required']} want {missing}")
+    if name == "both" and unit[0].get("optional_cli") != "acli":
+        bad.append("both: the verify plan does not carry the slot's optional cli")
+print("\n".join(bad))
+PY
+[ -z "$(cat "$TMP/ja74a.out")" ] \
+  && ok "all three Jira configs validate: acli+connector, connector only (no cli asked), acli only; a connector slot with no mcp is named" \
+  || bad "a Jira transport config failed validation or required the wrong keys" "$(cat "$TMP/ja74a.out")"
+# (B) acli and the connector, on a machine WITH acli: the verify runs (a stub acli answers).
+for c in "$SAFEBIN"/*; do ln -sf "$(readlink "$c")" "$JA/fakebin/$(basename "$c")"; done
+printf '#!/bin/sh\nexit 0\n' > "$JA/fakebin/acli"; chmod +x "$JA/fakebin/acli"
+ja74b="$(VS_PATH="$JA/fakebin" safe_verify_stack "$JA/both/stack.yaml" 2>&1)"; ja74brc=$?
+{ [ "$ja74brc" -eq 0 ] && grep -q '✓ reachable' <<<"$ja74b" && ! grep -q "isn't installed here" <<<"$ja74b"; } \
+  && ok "acli and the connector, acli installed: the acli verify runs and reports reachable" \
+  || bad "a both slot with acli installed did not run its verify" "rc=$ja74brc $ja74b"
+# (C) the same team config on a machine WITHOUT acli: the connector is the route, not a failure.
+ja74c="$(safe_verify_stack "$JA/both/stack.yaml" 2>&1)"; ja74crc=$?
+printf '%s\n' "$ja74c" > "$TMP/ja74c.out"
+{ [ "$ja74crc" -eq 0 ] && grep -q "acli isn't installed here, so this slot uses its MCP connector" <<<"$ja74c" \
+  && ! grep -q 'UNREACHABLE' <<<"$ja74c" && grep -qF '0 OK, 1 unverified (tracker).' <<<"$ja74c" \
+  && p51adj "$TMP/ja74c.out" "isn't installed here" '▸ tracker also connects through MCP'; } \
+  && ok "the same config without acli: the slot uses its connector, counts unverified (checked in-session), never unreachable" \
+  || bad "a both slot without acli was reported unreachable, or counted as verified" "rc=$ja74crc $ja74c"
+grep "isn't installed here" "$TMP/ja74c.out" | sed 's/^.*⊘ //' > "$TMP/ja74c.msg"
+python3 tests/plain_language/check.py --text "$TMP/ja74c.msg" >/dev/null 2>&1 \
+  && ok "…and that line reads plainly to the person" || bad "the connector-route line uses kit jargon" "$(cat "$TMP/ja74c.msg")"
+# (C2) acli installed but signed out: a warning naming both fixes, not a failure. Snowflake's CLI
+#      is not optional (no requires_by_transport), so its failing verify stays UNREACHABLE (51 D).
+printf '#!/bin/sh\nexit 1\n' > "$JA/fakebin/acli"
+ja74s="$(VS_PATH="$JA/fakebin" safe_verify_stack "$JA/both/stack.yaml" 2>&1)"; ja74src=$?
+{ [ "$ja74src" -eq 0 ] && grep -q "acli didn't answer (sign in to it, or keep using the MCP connector" <<<"$ja74s" \
+  && ! grep -q 'UNREACHABLE' <<<"$ja74s"; } \
+  && ok "acli installed but signed out: a warning naming both fixes, never unreachable" \
+  || bad "a signed-out optional acli failed the run" "rc=$ja74src $ja74s"
+python3 - <<'PY' >"$TMP/ja74o.out" 2>&1
+import sys
+from pathlib import Path
+sys.path.insert(0, "bin")
+import effective_config as ec
+print(ec.adapter_cli_optional("adapters/tracker/jira.md", Path(".")),
+      ec.adapter_cli_optional("adapters/warehouse/snowflake.md", Path(".")))
+PY
+[ "$(cat "$TMP/ja74o.out")" = "True False" ] \
+  && ok "only an adapter that writes its CLI out of the both list counts it optional (Jira yes, Snowflake no)" \
+  || bad "the optional-CLI test misreads an adapter" "$(cat "$TMP/ja74o.out")"
+# (D) connector only and acli only, run for real (hermetic PATH, no acli anywhere).
+ja74d="$(safe_verify_stack "$JA/mcp/stack.yaml" 2>&1)"; ja74drc=$?
+ja74e="$(safe_verify_stack "$JA/cli/stack.yaml" 2>&1)"; ja74erc=$?
+{ [ "$ja74drc" -eq 0 ] && grep -q "MCP-only: can't be checked from the terminal" <<<"$ja74d" && ! grep -q 'not set' <<<"$ja74d" \
+  && [ "$ja74erc" -eq 0 ] && grep -q '✓ reachable' <<<"$ja74e" && ! grep -qE 'connects through MCP' <<<"$ja74e"; } \
+  && ok "connector only: no CLI key asked, checked in-session; acli only: its verify runs, no connector pointer" \
+  || bad "the connector-only or acli-only slot verified wrongly" "mcp rc=$ja74drc: $ja74d | cli rc=$ja74erc: $ja74e"
+# (E) the adapter: acli optional, every verb has a connector path on both surfaces, one path rule
+#     printed with every verb, and the connector's real operation names (checked 2026-10-26).
+python3 - <<'PY' >"$TMP/ja74e.out" 2>&1
+import json, subprocess, sys
+sys.path.insert(0, "bin")
+from _yamlite import parse_frontmatter
+f = "adapters/tracker/jira.md"
+fm, _ = parse_frontmatter(open(f, encoding="utf-8").read(), f)
+bad = []
+if "cli" in (fm.get("requires") or []):
+    bad.append("requires still demands cli")
+if fm.get("requires_by_transport") != {"cli": ["cli"], "mcp": ["mcp"], "both": ["mcp"]}:
+    bad.append(f"requires_by_transport={fm.get('requires_by_transport')!r}")
+def pick(surface):
+    r = subprocess.run([sys.executable, "bin/adapter_surface.py", "--adapter", f, "--surface", surface, "--json"],
+                       capture_output=True, text=True)
+    return json.loads(r.stdout)
+need = {"fetch_ticket": ["getjiraissue("], "create_ticket": ["createjiraissue(", 'parent="{default_epic}"'],
+        "transition": ["transitionjiraissue("], "list_transitions": ['"listJiraIssueTransitions"'],
+        "search": ["searchjiraissuesusingjql("], "comment": ["addoreditjiraissuecomment("],
+        "download_attachments": ['"downloadJiraIssueAttachment"'],
+        "rank_projects_by_activity": ['"listJiraProjects"', '"insight"']}
+for surf in ("default", "codex-cli"):
+    d = pick(surf)
+    for verb, needles in need.items():
+        calls = " ".join(l for l in d["verbs"][verb].splitlines() if "mcp__" in l)
+        for n in needles:
+            if n.lower() not in calls.lower():
+                bad.append(f"{surf}:{verb}: no connector call with {n}")
+    g = " ".join((d.get("gotchas") or "").split())
+    for rule in ("Which path, for every verb (the one rule).", "otherwise the Atlassian connector",
+                 "acli is never needed", "STOP and report", "operation search"):
+        if rule not in g:
+            bad.append(f"{surf}: gotchas lack: {rule}")
+body = open(f, encoding="utf-8").read()
+for ghost in ("getTransitionsForJiraIssue", "getVisibleJiraProjects"):
+    if ghost in body:
+        bad.append(f"names a tool the connector does not have: {ghost}")
+print("\n".join(bad))
+PY
+[ -z "$(cat "$TMP/ja74e.out")" ] \
+  && ok "jira.md: acli optional; every verb has a connector path on both surfaces; the one path rule travels with every verb" \
+  || bad "the Jira adapter's connector-only path is incomplete" "$(cat "$TMP/ja74e.out")"
+# (F) the places that assumed acli now say otherwise.
+{ grep -qF 'Never ask about a CLI that was not detected' .claude/skills/setup/interview.md \
+  && grep -qF 'the connector only → `mcp`' .claude/skills/setup/interview.md \
+  && grep -qF 'report it as optional' .claude/skills/setup/teammate.md \
+  && grep -qF 'never asked to install a CLI to continue' .claude/skills/ticket/SKILL.md \
+  && grep -qF 'Jira needs only the Atlassian connector' docs/getting-started.md \
+  && grep -qF 'requires_by_transport' .claude/config/stack.schema.md \
+  && grep -qF 'requires_by_transport' adapters/README.md; } \
+  && ok "setup, teammate onboarding, /ticket --create, the schema and the docs no longer assume acli" \
+  || bad "a place that assumed acli was not updated"
+
 hdr "80 · plan.md renders from the approved sections, with no template scaffolding (LABS-112)"
 # The plan used to render as the template's guidance header plus placeholder lines (`- **In:** …`),
 # and was rewritten by hand on every ticket. Now the template is shape only and render.sh fills each

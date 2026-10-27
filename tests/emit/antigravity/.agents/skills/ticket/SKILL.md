@@ -89,7 +89,10 @@ this before?", "which tickets touched VW_X?").
    person, hard-stop and ask which one, with the `owner/id` choices as the options — never pick
    one.** For `--create`, create the
    ticket first via the tracker adapter's `create_ticket` verb (`project.default_epic` as parent if
-   set), then use the new id; created work is owned by the step-0 person.
+   set), then use the new id; created work is owned by the step-0 person. Take the path the
+   adapter's gotchas pick for this machine: where the tracker's CLI is optional and not installed
+   here, the connector creates it, and the person is never asked to install a CLI to continue.
+   Say which path ran in the one line that reports the new id.
 
 ## Phase 1 — Resume, don't restart
 4. Render `project.ticket_path` → the ticket dir, filling `{assignee}` with the **locator's owner**
