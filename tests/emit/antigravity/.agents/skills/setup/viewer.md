@@ -64,8 +64,8 @@ with a question tool group them up to the limit per call. Options:
   in the Applications folder). A name typed straight into the question tool's own "Other" counts
   the same. Never offer an app name this run has not seen.
 
-A typed name is not checked here: a name the computer cannot find makes that one file fail to open
-at review, which the hand-off reports and moves past. Say that in one line when a name is typed.
+A typed name is checked in step 5, once the file is written, so the person hears about a name the
+computer does not know now rather than at their first review.
 
 ## 5. Write and check
 
@@ -84,8 +84,8 @@ whether to remove it (this repo's `viewer.local.yaml`) or keep it. Never delete 
 never edit `people/<id>.yaml` or `stack.yaml` from here.
 
 Write the file from `.claude/config/viewer.example.yaml`: keep its shape, take the
-platform-matching `tool:`, `adapter:`, `open_cmd`, `default_cmd`, `reveal_cmd` and `verify` from
-the block for this OS, and write one `routes:` entry per glob that got a specific app (`*.csv`,
+platform-matching `tool:`, `adapter:`, `open_cmd`, `default_cmd`, `reveal_cmd`, `app_check_cmd`
+(when the block has one) and `verify` from the block for this OS, and write one `routes:` entry per glob that got a specific app (`*.csv`,
 `*.tsv` and `*.xlsx` for Tables and spreadsheets; `*.md` and `*.pdf` for Write-ups). Kinds that got
 the usual app get no route. Then check without launching anything:
 
@@ -96,6 +96,19 @@ the usual app get no route. Then check without launching anything:
   which prints the command it would open with. `handoff.sh` skips a path that does not exist, so on
   a fresh repo the plan's `routes` are the check; never create a file to have something to point
   it at.
+- When any kind got a specific app, run
+  `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh --check-apps`.
+  It asks the computer whether it has each app, and launches nothing. Exit 0: every app was found;
+  say nothing more. Exit 1: for each `NOT FOUND: <name>` line, say this, then ask one question with
+  three answers: type the name again, use the computer's usual app for that kind (remove its
+  route), or keep the name as typed. Rewrite the file and run the check again after a new name.
+
+<!-- ticketwright:user-facing:begin -->
+> Your computer can't find an app called "<name>". Check how the name is spelled where your computer lists its apps, or use your computer's usual app for these files instead.
+<!-- ticketwright:user-facing:end -->
+
+  Exit 3: this computer has no way to check app names, so the names were not checked. Say so in
+  one line: a misspelled name makes that file fail to open at review, and review says which one.
 
 Never commit the viewer file.
 

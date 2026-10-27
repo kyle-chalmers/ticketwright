@@ -49,6 +49,18 @@ open -R final_deliverables/01-summary.csv
 reveal_cmd: 'open -R {path}'
 ```
 
+## verb: check_app
+**In:** an app name from a route. **Out:** exit 0 when this computer has the app, non-zero when it
+does not. Launches nothing and reveals nothing.
+
+```yaml
+app_check_cmd: 'a={app}; a="${a%.app}.app"; for d in /Applications /Applications/Utilities /System/Applications /System/Applications/Utilities "$HOME/Applications"; do [ -d "$d/$a" ] && exit 0; done; mdfind -name "$a" 2>/dev/null | grep -qF "/$a"'
+```
+
+It looks for `<name>.app` in the usual application folders, then asks Spotlight. `open -Ra` is
+not used: `-R` reveals the app in Finder, which opens a window. With Spotlight indexing turned
+off, an app outside those folders reads as not found; the person can keep the name anyway.
+
 ## gotchas
 - **Excel holds a lock on an open `.csv`.** If a build re-exports a file the user still has open,
   the write fails or lands in a temp copy. When re-running an export, say so rather than silently

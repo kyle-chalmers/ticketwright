@@ -46,6 +46,11 @@ explorer.exe /select,"C:\repo\final_deliverables\01-summary.csv"
 reveal_cmd: 'explorer.exe /select,{path}'
 ```
 
+## verb: check_app
+**In:** an app from a route. **Out:** not available. There is no read-only way to check a
+`start` target from Git Bash or WSL, so this adapter sets no `app_check_cmd`, and
+`handoff.sh --check-apps` lists each name as not checked (exit 3) instead of implying it was.
+
 ## gotchas
 - **Under WSL, Windows applications cannot read Linux paths.** A repo at `/home/you/work` is
   invisible to Excel. Translate with `wslpath -w` first, or keep ticket repos on `/mnt/c/...`.

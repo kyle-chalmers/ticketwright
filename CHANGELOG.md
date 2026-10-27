@@ -40,6 +40,16 @@ configs keep working. A custom tracker adapter gains a `list_transitions` action
   none, declared on the ticket". `/ship` offers it as an answer whenever it asks where the message
   goes, and writes it to the plan instead of a comment no tool reads. (LABS-117)
 
+- **Setup checks each app name you type.** Right after writing your review apps, setup asks the
+  computer whether it has each app you named, and launches nothing. A name it cannot find ("Excel"
+  where the computer calls it "Microsoft Excel") is caught then, with three answers: type it again,
+  use the computer's usual app, or keep it. Before, it showed up as a file that failed to open at
+  your first review. On Windows there is no read-only check, so setup says the names were not
+  checked. `bin/handoff.sh --check-apps` runs the check (exit 0 all found, 1 one missing, 3 not
+  checked) through a new `app_check_cmd` key in the viewer config, and the viewer contract gains a
+  `check_app` verb. An existing viewer file without the key keeps working; `/setup viewer` adds it.
+  (LABS-119)
+
 ### Changed
 - **`plan.md` is written from the plan you approved, with no template text left in it.** `/ticket`
   now writes the approved plan's sections (goal, scope, builds on, deliverables, approach,
