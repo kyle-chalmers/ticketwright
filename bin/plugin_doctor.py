@@ -106,6 +106,7 @@ TIMEOUT = 10
 REQUIRED_PAYLOAD = (
     ".claude/skills/setup/SKILL.md", ".claude/skills/setup/interview.md",
     ".claude/skills/setup/scaffold.md", ".claude/skills/setup/teammate.md",
+    ".claude/skills/setup/viewer.md",
     ".claude/skills/ticket/SKILL.md", ".claude/skills/build/SKILL.md",
     ".claude/skills/review/SKILL.md", ".claude/skills/ship/SKILL.md",
     ".claude/skills/skillify/SKILL.md", ".claude/skills/refresh/SKILL.md",

@@ -357,6 +357,19 @@ deliverables open for human sign-off at `/review` only."
         export after it's written).
       - **Never** (`off`): you open files yourself.
 
+## After round 6: your review apps (person, this machine; skippable)
+
+Ask the viewer interview in [viewer.md](viewer.md), for the person running setup. It is
+person-scoped and writes a gitignored file, so it is not a team round, and its answers are only
+ever this person's: each teammate gets the same interview in `/setup --teammate`. It runs whatever
+round 6 answered or skipped, because a skipped round 6 keeps `human_review_handoff: review`, which
+still opens files at review.
+
+**Offer the skip at this header, labeled with its cost:** "Skip this and review lists the finished
+files for you to open yourself; it asks again the first time it would open them, or run
+`/setup viewer`." A skip writes no TODO line (the file is not team config) but does get a
+punch-list entry naming `/setup viewer`.
+
 ## Skipping a round
 
 - **Per-round only.** Never offer a global "answer the first rounds and I'll take defaults for

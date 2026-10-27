@@ -62,7 +62,7 @@ destructive-SQL `yes` stays typed.
 
 1. **Find the blueprint.** Read `<ticket-dir>/plan.md` first — its Scope, Deliverables and Validation
    strategy are the acceptance criteria — and take the value on the **`spec:` line of its Next step
-   section** (that line only; the template's header explains the values and must not be matched).
+   section** (that line only; an older plan's header also explains the values, and must not be matched).
    Then branch, halting by name:
    - **No `plan.md`** → stop: "No plan is on file for `<owner>/<id>` — run `/ticket <owner>/<id>`
      first; every ticket is scoped before it is built." (A spec passed as an argument does not
