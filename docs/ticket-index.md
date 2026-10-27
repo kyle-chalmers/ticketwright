@@ -128,9 +128,15 @@ Alongside `INDEX.md`/`OBJECTS.md`, the renderer writes an Obsidian-navigable gra
 - `tickets/graph/<owner>.<id>.md` — one small node per ticket, keyed by **(owner, id)** so two
   owners with the same slug get two nodes instead of one merged one (its objects, the tickets it
   **builds on** as links, and a link to its README). "Builds on" links follow the ticket locator's
-  resolution order — see "The ticket locator" above.
+  resolution order — see "The ticket locator" above. A cross-reference has no direction of its own,
+  so the node sorts each one by which ticket came first (the earlier completion date, then the lower
+  ticket number): **Builds on** lists earlier tickets this one cites, **Built on by** lists later
+  tickets that cite this one, and **Related** lists a later ticket this one mentions that does not
+  cite it back. With no date or number to compare, a link stays under Builds on.
 - `tickets/objects/<object>.md` — one node per data object, linking the ticket stubs that touched
-  it; a shared id is labeled `owner/id`.
+  it; a shared id is labeled `owner/id`. A shorter name (`schema.table`, from a curated record)
+  folds into the one longer qualified name it ends with (`db.schema.table`, from the SQL), so one
+  table is one node; when two qualified names could claim it, the short name stays as written.
 
 Object notes link the ticket stubs (so tickets cluster around shared objects) and stubs link their
 cross-refs (direct build-on lines). Plain relative markdown links — the graph works in stock Obsidian
