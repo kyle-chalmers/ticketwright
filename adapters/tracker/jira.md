@@ -56,7 +56,9 @@ comment verb you actually use, and know which grants matter: read-scoped consent
 all; comment/write consent is the thing the hard-halt is protecting.
 
 ### Read-only probe
-One read per transport (the MCP read needs the site's `cloudId`, so the site list comes first):
+One read per path this machine uses: the acli line only where acli is the route (see `## gotchas`);
+on a connector-only machine run just the two connector reads. The MCP read needs the site's
+`cloudId`, so the site list comes first:
 ```
 acli jira workitem search --jql "project = {key_prefix}" --limit 1    # CLI path, read-only
 mcp__{mcp}__getAccessibleAtlassianResources()                          # MCP path, read-only: the sites this account reaches
@@ -423,6 +425,7 @@ session, so the posture record caps at `status: unverified` exactly as above; co
 app was connected and record the outcome in `.claude/config/posture.local.yaml`.
 
 ### Read-only probe
+The acli line only where acli is the route; a connector-only machine runs just the connector reads.
 ```
 acli jira workitem search --jql "project = {key_prefix}" --limit 1    # CLI path, read-only
 mcp__codex_apps__atlassian_getaccessibleatlassianresources({})         # MCP path, read-only: the sites this account reaches
