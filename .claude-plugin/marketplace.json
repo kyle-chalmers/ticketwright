@@ -6,7 +6,7 @@
     {
       "name": "ticketwright",
       "source": "./",
-      "version": "4.6.0",
+      "version": "4.7.0",
       "description": "Ticket-driven analysis in Claude Code: prior work recalled, every result re-run and signed off, and nothing posted without your go-ahead.",
       "license": "MIT",
       "keywords": ["analytics", "tickets", "data", "qc", "workflow", "recall", "claude-code"]

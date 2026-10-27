@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-10-27
+
+Each person's ticket backups now land in a folder with their name inside the team's folder, created
+on their first `/ship` (LABS-127). Minor, not patch: the docstore routing gains `person_folder`
+fields and an optional `per_person` key, and a docstore routing now needs `--self`, which `/ship`
+already passes. Backups made before this release stay where they are.
+
 ### Added
 - **Each person's backups go into their own folder.** `/ship` now backs a ticket up into
   `<team folder>/<your name>/<TICKET-ID> <Full Title>` (for example `Tickets/Ada Lovelace/TEST-14
