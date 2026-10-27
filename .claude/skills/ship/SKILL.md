@@ -306,9 +306,20 @@ execute — nothing the steps don't do may appear in it:
 ## Phase C — Post-ship (always, even on success)
 10. **System-evolution retro** (policy `system_evolution`). Reflect briefly: did anything go wrong or
     get re-done this ticket? If so, **which layer was insufficient** — a global rule, the context
-    pack, a skill, or an adapter? Propose the concrete fix to *that* artifact and note it. A repeated
-    manual step is a signal to `/skillify` it. Fixing the layer, not just the ticket, is what
-    compounds. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 11, not
+    pack, a skill, or an adapter? Propose the concrete fix to *that* artifact and note it. Fixing
+    the layer, not just the ticket, is what compounds.
+    **Then check for a repeat, every time.** Run
+    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" recall.py --for <owner>/<id> --repeats --json`
+    (the ticket's SQL now exists, so the answer is `confirmed`) and follow the four steps in
+    [repeats.md](../skillify/repeats.md). When they end in a
+    suggestion, ask with the runtime's question tool when it has one, otherwise in chat, offering
+    **Skillify it now** and **Not now**:
+    <!-- ticketwright:user-facing:begin -->
+    > This repeats dana/TEST-5. Skillify it?
+    <!-- ticketwright:user-facing:end -->
+    **Skillify it now** starts `/skillify` with the pattern and the `built_from` list (the earlier
+    tickets plus this one, each `<owner>/<id>`). When a skill already does this work, say so
+    instead: "Next time, `/<skill>` does this." Never start `/skillify` without the yes. *(A stylistic tweak to a comms draft is **not** a layer failure — that's step 11, not
     this retro.)*
 11. **Voice refine** (only if a voice profile resolved for the shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
     differ beyond whitespace, the edits are voice signal: **propose** a small append/edit to the

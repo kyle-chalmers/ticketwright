@@ -52,10 +52,13 @@ Note: clean `rm`+`cp` mints **new** Drive item-ids, so any previously shared lin
 ## verb: link_for
 **In:** a backed-up file path. **Out:** a shareable Drive URL (for tracker/chat smart links).
 ```bash
-xattr -l "<gdrive file path>" | grep item-id          # NOT xattr -p (zsh eats the #S suffix)
-# → build: https://drive.google.com/file/d/<ITEM_ID>
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" gdrive_item_id.py "<gdrive file path>" --timeout 300
+# → prints https://drive.google.com/file/d/<ITEM_ID> (a folder gets drive/folders/<ITEM_ID>)
 ```
-Item-id is blank for a few minutes after an in-place copy — wait, or use the clean rm+cp path.
+The item-id is blank for a few minutes after a copy; the helper polls `xattr -l` (never
+`xattr -p`, whose `#S` suffix zsh eats) until it appears. Exit 1 means it timed out: say the link
+is not ready yet and leave a placeholder, never a guessed URL. Exit 2 means no such path, or not a
+Mac with Drive for desktop.
 
 ## gotchas
 - Deliverables (incl. export CSVs) commit with the ticket by default — this docstore is for durable external sharing / smart links. Keep PII exports out of git via a `*.private.csv` name or a `final_deliverables/**/private/` subfolder, and back those up here instead.

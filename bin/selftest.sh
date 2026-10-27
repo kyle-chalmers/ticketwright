@@ -589,7 +589,7 @@ err="$(bash bin/render.sh templates/generated-skill/SKILL.md.tmpl \
   skill_name=x one_line_description=x argument_hint=x workflow_name=x params_table=x \
   param_validation=x precondition=x render_run_steps=x qc_table=x output_filenames=x \
   golden_invocation=x golden_fixture=x golden_assertions=x failure_mode_tests=x side_effects=x \
-  2>&1 >/dev/null)"
+  built_from=x read_objects=x 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "generated SKILL.md stamps clean" || bad "leftover tokens in stamped SKILL.md" "$err"
 
 hdr "10 · ticket index (renderer + url template + hooks)"
@@ -11431,14 +11431,14 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
 # Exact block count per file: a file that loses a block must fail, not hide behind the total.
 c59=""
-for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
+for want59 in ".claude/skills/ship/SKILL.md:4" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
   f59="${want59%%:*}"; w59="${want59##*:}"
   g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
   { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
 done
 [ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
      --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
-  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 2 + 1 blocks)" \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (4 + 2 + 1 blocks)" \
   || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
 # --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
@@ -12501,6 +12501,169 @@ iv65="$(sed -n '/Where should finished files be kept/,/If Phase 1 found a mount 
 grep -q '^| `list_folders` |' adapters/README.md \
   && ok "the docstore contract table names list_folders" \
   || bad "adapters/README.md docstore table is missing list_folders"
+
+hdr "70 · a repeated analysis is spotted at the second instance (recall.py --repeats, LABS-116)"
+# Two tickets read the same sources but write differently named outputs and carry extra QC SQL; a
+# third reads one more table; a fourth reads something else; two owners share one id. Only the pair
+# is a repeat, its ids are owner-qualified, and outputs/QC tables never count as sources.
+RP="$TMP/repeats"
+mkdir -p "$RP/.claude/config" "$RP/tickets/dana/TEST-5/final_deliverables" "$RP/tickets/dana/TEST-5/qc_queries" \
+  "$RP/tickets/dana/TEST-11/final_deliverables" "$RP/tickets/dana/TEST-12" "$RP/tickets/dana/TEST-13" \
+  "$RP/tickets/erin/TEST-5" "$RP/.claude/skills/top-videos" "$RP/.claude/skills/video-trend"
+printf 'project:\n  key_prefix: TEST\npolicies:\n  skillify_everything: true\n' > "$RP/.claude/config/stack.yaml"
+printf '# TEST-5: Top videos first 24h\n\nx.\n' > "$RP/tickets/dana/TEST-5/README.md"
+printf -- '-- warehouse-target: bq\nCREATE TABLE OUT.TOP24 AS SELECT * FROM YT.VIDEOS v JOIN YT.DAILY_VIEWS d ON 1=1;\n' \
+  > "$RP/tickets/dana/TEST-5/final_deliverables/1_top.sql"
+printf 'SELECT COUNT(*) FROM OUT.TOP24 JOIN YT.CHANNELS c ON 1=1;\n' > "$RP/tickets/dana/TEST-5/qc_queries/1_qc.sql"
+printf '# TEST-11: Top videos first 48h\n\nx.\n' > "$RP/tickets/dana/TEST-11/README.md"
+printf 'INSERT INTO OUT.TOP48 SELECT * FROM yt.videos JOIN yt.daily_views;\n' > "$RP/tickets/dana/TEST-11/final_deliverables/1_top.sql"
+printf '# TEST-12: With channels\n\nx.\n' > "$RP/tickets/dana/TEST-12/README.md"
+printf 'SELECT * FROM YT.VIDEOS JOIN YT.DAILY_VIEWS JOIN YT.CHANNELS;\n' > "$RP/tickets/dana/TEST-12/q.sql"
+printf '# TEST-13: Orders\n\nx.\n' > "$RP/tickets/dana/TEST-13/README.md"
+printf 'SELECT * FROM S.ORDERS;\n' > "$RP/tickets/dana/TEST-13/q.sql"
+printf '# TEST-5: Erin orders\n\nx.\n' > "$RP/tickets/erin/TEST-5/README.md"
+printf 'SELECT * FROM S.ORDERS;\n' > "$RP/tickets/erin/TEST-5/q.sql"
+printf -- '---\nname: top-videos\ndescription: Top N videos by early views.\nbuilt_from: [dana/TEST-5]\nread_objects: [YT.VIDEOS, YT.DAILY_VIEWS]\n---\n# x\n' \
+  > "$RP/.claude/skills/top-videos/SKILL.md"
+printf -- '---\nname: video-trend\ndescription: Weekly trend of views.\nbuilt_from: [TEST-5]\nread_objects: [YT.VIDEOS, YT.DAILY_VIEWS]\n---\n# x\n' \
+  > "$RP/.claude/skills/video-trend/SKILL.md"
+CLAUDE_PROJECT_DIR="$RP" python3 bin/build_ticket_index.py >/dev/null 2>&1
+CLAUDE_PROJECT_DIR="$RP" python3 bin/recall.py --for dana/TEST-11 --repeats --json > "$TMP/rp70.json" 2>&1
+python3 - "$TMP/rp70.json" > "$TMP/rp70.out" 2>&1 <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+bad = []
+if [x["ticket"] for x in d["repeats"]] != ["dana/TEST-5"]: bad.append(f"repeats={[x['ticket'] for x in d['repeats']]}")
+if d["instance"] != 2: bad.append(f"instance={d['instance']}")
+if d["strength"] != "confirmed": bad.append(f"strength={d['strength']}")
+if sorted(o.lower() for o in d["read_objects"]) != ["yt.daily_views", "yt.videos"]: bad.append(f"reads={d['read_objects']}")
+if not d["suggest"]: bad.append("suggest is false")
+c = {x["skill"]: x["match"] for x in d["skill_candidates"]}
+if c != {"top-videos": "provenance", "video-trend": "same_tables"}: bad.append(f"candidates={c}")
+if not any("video-trend" in n and "TEST-5" in n for n in d["notes"]): bad.append(f"no ambiguity note: {d['notes']}")
+print("\n".join(bad))
+PY
+! grep -q . "$TMP/rp70.out" \
+  && ok "the same sources with renamed outputs and extra QC SQL read as the 2nd instance, owner-qualified, confirmed" \
+  || bad "recall --repeats got the repeat set, strength or candidates wrong" "$(cat "$TMP/rp70.out") $(head -c 400 "$TMP/rp70.json")"
+CLAUDE_PROJECT_DIR="$RP" python3 bin/recall.py --for dana/TEST-12 --repeats --json > "$TMP/rp70b.json" 2>&1
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["repeats"]==[] and not d["suggest"] else 1)' "$TMP/rp70b.json" \
+  && ok "a ticket reading one more table is not a repeat" || bad "a superset of tables was called a repeat" "$(head -c 300 "$TMP/rp70b.json")"
+printf 'Top videos by first-72h views from YT.VIDEOS and YT.DAILY_VIEWS.\n' \
+  | CLAUDE_PROJECT_DIR="$RP" python3 bin/recall.py --text-file - --repeats --json > "$TMP/rp70c.json" 2>&1
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["strength"]=="provisional" and d["instance"]==3 else 1)' "$TMP/rp70c.json" \
+  && ok "a ticket with no SQL yet gets a provisional answer from its text" || bad "text-only repeat check is not provisional" "$(head -c 300 "$TMP/rp70c.json")"
+CLAUDE_PROJECT_DIR="$RP" python3 bin/recall.py --for TEST-5 --repeats > "$TMP/rp70d.out" 2>&1; rc70=$?
+[ "$rc70" -ne 0 ] && grep -q 'multiple owners' "$TMP/rp70d.out" \
+  && ok "a bare id two owners share stops with a plain message" || bad "ambiguous --repeats seed not refused" "rc=$rc70 $(cat "$TMP/rp70d.out")"
+CLAUDE_PROJECT_DIR="$RP" python3 bin/recall.py --for dana/TEST-11 --repeats > "$TMP/rp70e.out" 2>&1
+grep -q '2nd instance' "$TMP/rp70e.out" && grep -q 'repeats.md' "$TMP/rp70e.out" \
+  && grep -v '^  \|^note:' "$TMP/rp70e.out" > "$TMP/rp70e.plain" && python3 tests/plain_language/check.py --text "$TMP/rp70e.plain" >/dev/null 2>&1 \
+  && ok "the text output names the instance, points at repeats.md, and reads in plain words" \
+  || bad "recall --repeats text output is missing the instance or uses internal terms" "$(cat "$TMP/rp70e.out")"
+printf 'project:\n  key_prefix: TEST\npolicies:\n  skillify_everything: false\n' > "$RP/.claude/config/stack.yaml"
+CLAUDE_PROJECT_DIR="$RP" python3 bin/recall.py --for dana/TEST-11 --repeats --json > "$TMP/rp70f.json" 2>&1
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["repeats"] and not d["suggest"] and d["policy_skillify_everything"] is False else 1)' "$TMP/rp70f.json" \
+  && ok "skillify_everything: false keeps the repeat visible but suggests nothing" || bad "the policy did not turn the suggestion off" "$(head -c 300 "$TMP/rp70f.json")"
+
+# Codex review (LABS-116): quoted BigQuery names with a hyphenated project still read as sources,
+# `CREATE TABLE IF NOT EXISTS` output is not a source, and only EARLIER work counts as an instance.
+RQ="$TMP/repeats-q"; mkdir -p "$RQ/.claude/config" "$RQ/tickets/dana/TEST-21" "$RQ/tickets/dana/TEST-22"
+printf 'project:\n  key_prefix: TEST\n' > "$RQ/.claude/config/stack.yaml"
+printf '# TEST-21: Top videos 24h\n\nCompleted: 2026-01-01\n' > "$RQ/tickets/dana/TEST-21/README.md"
+printf 'SELECT * FROM `sample-project.YT.VIDEOS` v JOIN `sample-project.YT.DAILY_VIEWS` d ON 1=1;\n' > "$RQ/tickets/dana/TEST-21/q.sql"
+printf '# TEST-22: Top videos 48h\n\nCompleted: 2026-02-01\n' > "$RQ/tickets/dana/TEST-22/README.md"
+printf 'CREATE TABLE IF NOT EXISTS OUT.TOP48 AS SELECT EXTRACT(HOUR FROM v.published_at) h\nFROM YT.VIDEOS v JOIN YT.DAILY_VIEWS AS d ON 1=1;\nSELECT * FROM OUT.TOP48;\nDELETE FROM OUT.SCRATCH WHERE 1=0;\n' \
+  > "$RQ/tickets/dana/TEST-22/q.sql"
+CLAUDE_PROJECT_DIR="$RQ" python3 bin/build_ticket_index.py >/dev/null 2>&1
+CLAUDE_PROJECT_DIR="$RQ" python3 bin/recall.py --for dana/TEST-22 --repeats --json > "$TMP/rq70a.json" 2>&1
+CLAUDE_PROJECT_DIR="$RQ" python3 bin/recall.py --for dana/TEST-21 --repeats --json > "$TMP/rq70b.json" 2>&1
+python3 - "$TMP/rq70a.json" "$TMP/rq70b.json" > "$TMP/rq70.out" 2>&1 <<'PY'
+import json, sys
+a, b = (json.load(open(p)) for p in sys.argv[1:3])
+bad = []
+if [x["ticket"] for x in a["repeats"]] != ["dana/TEST-21"]: bad.append(f"newer: repeats={[x['ticket'] for x in a['repeats']]} reads={a['read_objects']}")
+if sorted(o.lower() for o in a["read_objects"]) != ["yt.daily_views", "yt.videos"]: bad.append(f"IF NOT EXISTS output counted: {a['read_objects']}")
+if b["repeats"] or b["suggest"]: bad.append(f"older seed cited newer work: {[x['ticket'] for x in b['repeats']]}")
+print("\n".join(bad))
+PY
+printf 'Top videos by first-72h views from YT.VIDEOS and YT.DAILY_VIEWS.\n' \
+  | CLAUDE_PROJECT_DIR="$RQ" python3 bin/recall.py --for dana/TEST-99 --text-file - --repeats --json > "$TMP/rq70c.json" 2>&1
+python3 - "$TMP/rq70c.json" >> "$TMP/rq70.out" 2>&1 <<'PY2'
+import json, sys
+d = json.load(open(sys.argv[1]))
+if [x["ticket"] for x in d["repeats"]] != ["dana/TEST-21", "dana/TEST-22"]: print(f"text vs quoted SQL: {[x['ticket'] for x in d['repeats']]}")
+if not any("not in the index" in n for n in d["notes"]): print(f"no not-indexed note: {d['notes']}")
+PY2
+CLAUDE_PROJECT_DIR="$RQ" python3 bin/recall.py --for dana/TEST-22 --owner erin --repeats > "$TMP/rq70d.out" 2>&1 \
+  && echo "a conflicting --owner was accepted" >> "$TMP/rq70.out"
+! grep -q . "$TMP/rq70.out" \
+  && ok "quoted names count (also from ticket text), columns, IF NOT EXISTS and DELETE targets do not, and only earlier tickets are instances" \
+  || bad "repeat check mishandles quoted names, columns, conditional DDL, ticket order or --owner" "$(cat "$TMP/rq70.out")"
+
+hdr "71 · every place that suggests /skillify follows the one repeat check (LABS-116)"
+RM71=".claude/skills/skillify/repeats.md"
+python3 - "$RM71" > "$TMP/s71.out" 2>&1 <<'PY'
+import sys
+t = open(sys.argv[1], encoding="utf-8").read()
+steps = ["**`suggest` is false: say nothing.**", "**Confirm the deliverable shape.**",
+         "**Check the skills it names.**", "**Otherwise suggest `/skillify`**"]
+pos = [t.find(s) for s in steps]
+if -1 in pos or pos != sorted(pos): print(f"steps missing or out of order: {pos}")
+if "never runs `/skillify` itself" not in t: print("no never-automatic line")
+PY
+! grep -q . "$TMP/s71.out" && ok "repeats.md carries its four steps in order and says it never runs /skillify" \
+  || bad "repeats.md lost a step or its order" "$(cat "$TMP/s71.out")"
+miss71=""
+grep -q 'repeats.md' .claude/skills/ticket/SKILL.md || miss71="$miss71 ticket/SKILL.md"
+grep -q -- '--repeats' .claude/skills/ticket/priming.md && grep -q 'repeats.md' .claude/skills/ticket/priming.md || miss71="$miss71 ticket/priming.md"
+grep -q -- '--repeats' .claude/skills/ship/SKILL.md && grep -q 'repeats.md' .claude/skills/ship/SKILL.md \
+  && grep -q 'Skillify it?' .claude/skills/ship/SKILL.md && grep -q 'Never start `/skillify` without the yes' .claude/skills/ship/SKILL.md || miss71="$miss71 ship/SKILL.md"
+grep -q 'skillify/repeats.md' templates/AGENTS.md.tmpl && grep -q 'Never run `/skillify` unasked' templates/AGENTS.md.tmpl || miss71="$miss71 AGENTS.md.tmpl"
+grep -q 'A repeated manual step is a signal to `/skillify` it' .claude/skills/ship/SKILL.md && miss71="$miss71 ship-kept-the-old-soft-sentence"
+[ -z "$miss71" ] && ok "/ticket, /ship's retro and the closing rule all point at repeats.md, never a shorter rule" \
+  || bad "a skillify surface skips the shared repeat check" "$miss71"
+python3 tests/plain_language/check.py --marked "$RM71" >/dev/null 2>&1 \
+  && ok "repeats.md's say-this lines read in plain words" || bad "repeats.md say-this lines use internal terms"
+grep -q '^built_from: \[{{built_from}}\]' templates/generated-skill/SKILL.md.tmpl \
+  && grep -q '^read_objects: \[{{read_objects}}\]' templates/generated-skill/SKILL.md.tmpl \
+  && grep -q '<owner>/<id>' .claude/skills/skillify/SKILL.md \
+  && ok "a generated skill records the tickets and tables it came from" || bad "generated skill provenance fields missing"
+
+hdr "72 · the BigQuery adapter passes a .sql file on stdin (LABS-116)"
+q72="$(sed -n '/^## verb: query/,/^## verb: describe/p' adapters/warehouse/bigquery.md)"
+grep -q '< file.sql' <<<"$q72" && grep -q 'never as `"$(cat file.sql)"`' <<<"$q72" && ! grep -q '"<SQL>"' <<<"$q72" \
+  && ok "bq query takes a .sql file on stdin, so the warehouse-target header is not read as a flag" \
+  || bad "bigquery query verb still shows passing a file's SQL as an argument"
+
+hdr "73 · a Drive link waits for its item-id instead of guessing (bin/gdrive_item_id.py, LABS-116)"
+PY73="$(command -v python3)"
+GD="$TMP/gd73"; mkdir -p "$GD/fake" "$GD/drive/folder"; : > "$GD/drive/f.csv"
+cat > "$GD/fake/xattr" <<EOF
+#!/bin/sh
+n=\$(cat "$GD/count" 2>/dev/null || echo 0); n=\$((n+1)); echo \$n > "$GD/count"
+echo "com.apple.provenance: x"
+[ \$n -ge 3 ] && echo "com.google.drivefs.item-id#S: 1AbC_d-9"
+exit 0
+EOF
+chmod +x "$GD/fake/xattr"
+url73="$(PATH="$GD/fake:/usr/bin:/bin" "$PY73" bin/gdrive_item_id.py "$GD/drive/f.csv" --interval 0.05 --timeout 5 2>&1)"; rc73=$?
+[ "$rc73" -eq 0 ] && [ "$url73" = "https://drive.google.com/file/d/1AbC_d-9" ] && [ "$(cat "$GD/count")" -eq 3 ] \
+  && ok "the helper polls until the item-id appears and prints the file link" || bad "item-id helper did not wait or built the wrong link" "rc=$rc73 $url73"
+rm -f "$GD/count"; printf '#!/bin/sh\necho "com.apple.provenance: x"\n' > "$GD/fake/xattr"
+PATH="$GD/fake:/usr/bin:/bin" "$PY73" bin/gdrive_item_id.py "$GD/drive/f.csv" --interval 0.05 --timeout 0.2 > "$TMP/gd73.out" 2>&1; rc73=$?
+[ "$rc73" -eq 1 ] && grep -q 'no link yet' "$TMP/gd73.out" && ! grep -q 'drive.google.com' "$TMP/gd73.out" \
+  && python3 tests/plain_language/check.py --text "$TMP/gd73.out" >/dev/null 2>&1 \
+  && ok "a timeout exits 1 with a plain message and no guessed URL" || bad "item-id helper timeout misbehaved" "rc=$rc73 $(cat "$TMP/gd73.out")"
+printf '#!/bin/sh\necho "com.google.drivefs.item-id#S: 0Fold3r"\n' > "$GD/fake/xattr"
+url73="$(PATH="$GD/fake:/usr/bin:/bin" "$PY73" bin/gdrive_item_id.py "$GD/drive/folder" --timeout 1 2>&1)"
+[ "$url73" = "https://drive.google.com/drive/folders/0Fold3r" ] && ok "a folder gets a folders/ link" || bad "folder link wrong" "$url73"
+mkdir -p "$GD/empty"
+PATH="$GD/empty" "$PY73" bin/gdrive_item_id.py "$GD/drive/f.csv" --timeout 1 > "$TMP/gd73b.out" 2>&1; rc73=$?
+PATH="$GD/fake:/usr/bin:/bin" "$PY73" bin/gdrive_item_id.py "$GD/drive/missing.csv" > "$TMP/gd73c.out" 2>&1; rc73c=$?
+[ "$rc73" -eq 2 ] && grep -q 'Drive for desktop' "$TMP/gd73b.out" && [ "$rc73c" -eq 2 ] && grep -q 'There is no file' "$TMP/gd73c.out" \
+  && ok "no xattr, or no such path, exits 2 with a plain message" || bad "item-id helper exit-2 paths wrong" "rc=$rc73/$rc73c $(cat "$TMP/gd73b.out" "$TMP/gd73c.out")"
+grep -q 'gdrive_item_id.py' adapters/docstore/gdrive.md && ok "gdrive link_for calls the helper" || bad "gdrive link_for still says to wait by hand"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
