@@ -50,6 +50,7 @@ settings surface (OAuth consent / server config / its owner) — record the outc
 ```
 mcp__{mcp}__get-task(task_gid=<id>)
 ```
+**People, for `/ship`'s audience suggestions:** `reporter` is the task's `created_by`, `watchers` its `followers` (both in the task response). Each is a name and, when Asana shows it, an email.
 
 ## verb: create_ticket
 ```

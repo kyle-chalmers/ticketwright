@@ -24,6 +24,20 @@ and `link_for` runs against **that same target**, so a shareable link can never 
 different store than the copy. `sharing_scope:` is a DECLARATION: this adapter checks that the sync
 folder exists, never the library's real permissions.
 
+## verb: list_folders
+**In:** a parent folder (empty for the top of the library). **Out:** folder names, one per line,
+never a file name. Read-only, and still asked first: it looks inside someone's drive.
+```bash
+# Synced transport:
+parent="{mount_root}/<folder the person picked, or nothing for the top>"
+find "$parent" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print | sed 's|.*/||' | LC_ALL=C sort
+
+# Graph transport: GET /drives/{drive_id}/root:/<path>:/children?$select=name,folder
+#   keep ONLY items that carry a `folder` facet; print their `name`, drop every other item unread.
+```
+Never list a library with a plain `ls`: it prints file names too. Setup's folder question calls this
+verb and nothing else.
+
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID**).
 ```bash

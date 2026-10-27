@@ -44,6 +44,8 @@ way /ship already skips an absent chat/docstore) · 8 the declared value matches
 target, or an unknown `--override` · 9 nothing is declared for this slot (a `targets:` slot with no
 plan declaration, or a TOOL-ONLY chat seam or a chat target marked `destination: per_ticket` whose
 plan declares no `chat.channel:`/`chat.recipients:`, whether or not a plan file exists).
+A per-ticket post to a CHANNEL (`chat.kind: channel`) needs no named recipient: the channel is the
+declared audience. A direct or group message (`dm` / `group`, or no kind) still needs one.
 0/2/3/4/7/8 carry the same meanings as the resolver's published family; **9 is a delivery-plan
 EXTENSION**, not part of that family — a missing declaration is a state only a persisted plan
 resolves.
@@ -106,6 +108,10 @@ SHARING_SCOPES = ("team", "org", "external")
 # are chosen on each ticket". A target ALWAYS declares this on itself (read from the target's own
 # mapping, never from inherited values), exactly like a routing key.
 DESTINATION_MODE_KEY, PER_TICKET = "destination", "per_ticket"
+# What a per-ticket chat destination IS, declared in the plan's `chat.kind:` from the lookup that
+# found it (`lookup_channel` gives a channel; `lookup_user` gives a DM or a group DM). A channel is
+# its own audience, so it routes with no named recipient; a DM or group DM names who it is for.
+CHAT_KINDS = ("channel", "dm", "group")
 
 # An adapter-supplied key NAME is executable input, not documentation (the wave-A lesson: a markdown
 # file reads as inert in code review). It is validated before it is ever used as a lookup, and an
@@ -660,6 +666,13 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
     vals = unit["values"]
     out.update({"target": unit["target"], "selected_by": selected_by, "label": unit["label"],
                 "tool": vals.get("tool"), "adapter": vals.get("adapter")})
+    if seam_name == "chat":
+        # Channels the team posts to often, offered at /ship as CHOICES for a per-ticket
+        # destination. Returned on every exit, including the "nothing declared" halt, because that
+        # is when /ship asks. Never routed: a suggestion becomes a destination only when the person
+        # picks it and it is written to the plan's `chat.channel:`.
+        out["suggested_channels"] = [c for c in (_str_list(vals.get("suggested_channels")) or [])
+                                     if not _unsafe(c)]
 
     dkey, dkey_err = destination_key(seam_name, vals.get("adapter"), res.root)
     if dkey_err:
@@ -801,13 +814,25 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
             # A tool-only seam authors its recipients per-communication too (`chat.recipients:`).
             # Empty is a HALT — never solo-DM a stakeholder — the same precondition a named target's
             # `always_include` enforces, applied to the plan-sourced list.
-            names = _str_list((plan_chat or {}).get("recipients"))
-            if not names:
-                err = _err("no_declaration",
-                           "chat names a tool but no standing recipient list — declare "
-                           "`chat.recipients:` (a non-empty list) in the delivery plan and re-run; "
-                           "a message is never sent with no stakeholder list")
+            kind = (plan_chat or {}).get("kind")
+            if kind is not None and kind not in CHAT_KINDS:
+                err = _err("malformed", f"{unit['label']}: `chat.kind:` must be one of "
+                                        f"{', '.join(CHAT_KINDS)}, got {kind!r}. Set it from the "
+                                        f"lookup that found the destination and re-run.")
                 return _fail(out, err)
+            names = _str_list((plan_chat or {}).get("recipients"))
+            if not names and kind == "channel":
+                # A post to a channel: the channel is the declared audience, so nobody has to be
+                # named. Still never empty: the destination itself was declared for this ticket.
+                names = []
+            elif not names:
+                err = _err("no_declaration",
+                           "this ticket's message has no recipients. For a direct or group "
+                           "message, list who it is for in `chat.recipients:`; for a post to a "
+                           "channel, set `chat.kind: channel`. Then re-run. A direct message is "
+                           "never sent without a named recipient")
+                return _fail(out, err)
+            out["kind"] = kind
             plan_names = list(names)
             if per_ticket and own is not None and "always_include" in own:
                 # A per-ticket target MAY keep a standing list too (a manager on every email). It
@@ -919,7 +944,7 @@ def _fingerprint(out: dict) -> str:
     """
     basis = {k: out.get(k) for k in ("seam", "target", "tool", "adapter", "destination",
                                      "destination_key", "recipients", "include_self",
-                                     "sender", "sender_key", "sharing_scope", "mode")}
+                                     "sender", "sender_key", "sharing_scope", "mode", "kind")}
     return hashlib.sha256(json.dumps(basis, sort_keys=True, default=str)
                           .encode("utf-8")).hexdigest()[:12]
 

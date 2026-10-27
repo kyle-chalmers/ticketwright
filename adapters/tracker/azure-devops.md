@@ -29,6 +29,7 @@ Maps the `tracker` verb contract to Azure Boards via the `az boards` CLI.
 az boards work-item show --id <id> --output json
 ```
 Description is `fields."System.Description"` (HTML). Relations (parents, attachments) are in `relations`.
+**People, for `/ship`'s audience suggestions:** `reporter` is `fields."System.CreatedBy"` (display name and unique name). `watchers`: not available (the CLI does not list a work item's followers).
 
 ## verb: create_ticket
 ```bash

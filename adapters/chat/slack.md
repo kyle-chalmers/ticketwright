@@ -58,7 +58,7 @@ draft-first rule above stays the operative control, and the skills' hard-halt st
 ### Read-only probe
 The read call the auth block already names — it proves reachability and which tools exist:
 ```
-mcp__{mcp}__slack_search_channels(query=<any channel name>)   # read-only
+mcp__{mcp}__slack_search_channels(keywords=[<any channel name>], natural_language_query="", limit=1, response_format="concise")   # read-only
 ```
 **What it cannot prove, stated plainly:** the connector's grant set is NOT introspectable
 read-only from inside the session, so the posture record caps at `status: unverified` and the
@@ -81,27 +81,37 @@ mcp__{mcp}__slack_send_message(channel_id=<id>, message=<body>)
 
 ## verb: lookup_user
 ```
-mcp__{mcp}__slack_search_users(query=<name or email>)   # → user ID for <@ID> mentions
+mcp__{mcp}__slack_search_users(keywords=[<name or email>], natural_language_query="", response_format="concise")   # → user ID for <@ID> mentions, and a DM's channel_id
 ```
 
 ## verb: lookup_channel
 ```
-mcp__{mcp}__slack_search_channels(query=<name>)          # → channel ID
+mcp__{mcp}__slack_search_channels(keywords=[<name>], natural_language_query="", response_format="concise")   # → channel ID
 ```
 Existing group DMs can be reused by searching; new multi-person DMs must be created in the UI first.
 
 ## gotchas
 - Slack's tools take **standard Markdown** on every agent: use `[text](URL)` links, not Slack
   `<URL|text>` mrkdwn.
-- Exact parameter names vary by Slack MCP server; this adapter targets one exposing `channel_id` + `message`.
-  Slack's own server, as Codex CLI lists it, takes `keywords` (a list of single words or quoted
-  phrases) for both search tools rather than `query`; if your connector is that server, pass the
-  same shape here.
+- Checked against Slack's own hosted connector (the one claude.ai and the Claude apps connect),
+  observed 2026-10-26 from the connector's tool declarations in a Claude Code session: draft and
+  send take `channel_id` + `message` (+ optional `thread_ts`), and both search tools take
+  `keywords` (a list of single words or quoted phrases, all must match) plus a required
+  `natural_language_query` (pass `""` for a plain lookup), not `query`. A self-hosted Slack MCP
+  server can spell these differently; this adapter targets the hosted one.
+- **A DM is a `channel_id` too:** pass the person's user id (from `lookup_user`) as `channel_id`.
+  A group DM must already exist (find it with `lookup_channel`); the connector cannot create one.
+- **One draft per channel.** `slack_send_message_draft` answers `attached_draft_exists` when the
+  person already has a draft there; say so and ask them to send or delete it, never overwrite it.
+- The hosted connector **cannot post to Slack Connect (externally shared) channels**. A ticket
+  whose audience lives in one goes out another way; say so at `/ship` rather than failing at send.
 - Tool names differ by agent: Codex CLI adds a `slack_` app prefix (in its own section of this file).
   `bin/adapter_surface.py --adapter adapters/chat/slack.md` picks the right section for the agent
   running now. A name missing from your session's tool list is a gap to report so the kit can
   record it, never a local edit here or in a skill.
-- Tag the stakeholders the channel context calls for, but `{always_include}` is non-negotiable.
+- Tag the people the routed plan names; `{always_include}` is non-negotiable when the target has
+  one. A per-ticket post to a channel (`chat.kind: channel`) may name nobody: the channel is the
+  audience.
 
 ## Runtime surface: codex-cli
 

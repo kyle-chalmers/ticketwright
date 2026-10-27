@@ -63,6 +63,17 @@ mints accountless URLs, and neither fact is visible to the kit.
   is absent or holds a different token — a real failure, not a hoped-for one. Say the comparison out
   loud during setup: "your remote reaches the team's configured destination" — or name the mismatch.
 
+## verb: list_folders
+**In:** a path on the person's remote (empty for the top). **Out:** folder names, one per line,
+never a file name. Read-only, and still asked first: it looks inside someone's storage.
+```bash
+rclone lsf --dirs-only "{remote}:<path the person picked, or nothing for the top>"
+```
+`lsf` lists one level unless told otherwise, and `--dirs-only` keeps files out of the output
+entirely; each name ends in `/`, which is the folder marker, not part of the name. This runs before
+`remote_path` is chosen, so it reads the person's own remote alias, never `{base_path}`. On an
+object store the top level lists buckets. Setup's folder question calls this verb and nothing else.
+
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).
 ```bash

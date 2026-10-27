@@ -33,7 +33,7 @@ verb in that seam's contract. A verb section gives the command(s), inputs, the e
 ### `tracker` — the ticket system
 | Verb | Inputs | Returns |
 |---|---|---|
-| `fetch_ticket` | `id` | title, description, status, type, assignee, links, attachments list |
+| `fetch_ticket` | `id` | title, description, status, type, assignee, links, attachments list; `reporter` and `watchers` where the tracker exposes them, else "not available" (people for `/ship`'s audience suggestions) |
 | `create_ticket` | type, summary, description, assignee, parent/epic | new `id` + URL |
 | `transition` | `id`, `status` | ok/fail |
 | `comment` | `id`, body, optional smart-link cards | ok/fail (rendered, not plain text) |
@@ -84,11 +84,12 @@ always produces a *default the human confirms*, never an automatic selection.
 | `lookup_user` | name/email | user ID for mentions |
 | `lookup_channel` | name | channel ID |
 
-### `docstore` — durable backup + shareable links
+### `docstore` — durable backup, shareable links, folder picking
 | Verb | Inputs | Returns |
 |---|---|---|
 | `backup` | local ticket dir, dest name | files copied to the store |
 | `link_for` | a backed-up file | a shareable URL (for tracker/chat smart links) |
+| `list_folders` | a parent folder (empty for the top of the drive or remote) | folder names only, never file names (read-only; setup's folder question) |
 
 ### `vcs` — version control + PRs
 | Verb | Inputs | Returns |
@@ -318,6 +319,10 @@ did. **The same per-ticket shape works one target at a time**: a named chat targ
 `chat.recipients:` once a ticket's `audience:` selects it, and halts (exit 9) without them, so one
 slot can hold Gmail and Slack with recipients that differ per analysis. It never falls back to
 another target, and a `chat.target:` naming a different target than the one routed halts (exit 4).
+A chat slot or target may also list `suggested_channels:`, channels the team posts to often. Routing
+returns them on every exit (exit 9 included, which is when `/ship` asks) and **never routes to
+one**: a suggestion becomes a destination only when the person picks it and it is written to
+`chat.channel:`.
 The schema:
 
     schema_version: 1
@@ -330,11 +335,17 @@ The schema:
       channel: "#eng-updates"          # the destination — authored HERE for a tool-only seam or a
                                        # `destination: per_ticket` target (asked at /ship), else the
                                        # resolved echo of a standing target's own destination
+      kind: channel                    # what `channel:` is, from the lookup that found it: channel |
+                                       # dm | group. A `channel` post may leave `recipients:` empty (the
+                                       # channel is the audience); a dm or group always names someone
       recipients: [Alice]              # the recipient list — authored here for a tool-only seam or a
-                                       # per-ticket target (non-empty; never solo-DM), else the target's
-                                       # always_include as applied (+ the shipper when include_self is
-                                       # set). A per-ticket target's own always_include, when set, is
-                                       # added after these
+                                       # per-ticket target (non-empty unless kind: channel), else the
+                                       # target's always_include as applied (+ the shipper when
+                                       # include_self is set). A per-ticket target's own always_include,
+                                       # when set, is added after these
+      chosen_from: tracker:reporter    # OPTIONAL, a record only: where the destination came from
+                                       # (suggested_channels | tracker:reporter | tracker:assignee |
+                                       # tracker:watcher | typed). Never read by routing
     docstore:
       target: archive                  # chosen docstore target (null when single)
       destination: "Shared drives/Tickets/TEST-1234 example-analysis"

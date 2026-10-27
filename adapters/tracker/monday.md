@@ -51,6 +51,7 @@ settings surface (OAuth consent / server config / its owner) — record the outc
 mcp__{mcp}__get-item(item_id=<id>)
 # or GraphQL: items(ids:[<id>]){ name column_values{ id text value } updates{ body } assets{ url } }
 ```
+**People, for `/ship`'s audience suggestions:** `reporter` is the item's `creator { name email }` and `watchers` its `subscribers { name email }` (ask for both in the GraphQL query).
 
 ## verb: create_ticket
 ```
