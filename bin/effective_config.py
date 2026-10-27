@@ -133,6 +133,9 @@ RESERVED_SEAM_KEYS = {
     # `destination: per_ticket` turns a chat target's standing destination off and reads it from
     # each ticket instead: a per-machine file flipping it would move WHERE a message goes.
     "destination",
+    # `per_person:` decides whether a docstore backup lands in a folder named for the shipper or at
+    # the team folder itself, so it moves WHERE files go and stays a team decision.
+    "per_person",
 }
 # Whole blocks no overlay may contribute, at any tier.
 RESERVED_BLOCKS = {"policies", "project"}

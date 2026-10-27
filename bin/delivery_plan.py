@@ -130,6 +130,50 @@ DESTINATION_MODE_KEY, PER_TICKET = "destination", "per_ticket"
 # its own audience, so it routes with no named recipient; a DM or group DM names who it is for.
 CHAT_KINDS = ("channel", "dm", "group")
 
+# PER-PERSON BACKUP FOLDERS. A docstore backup lands in `<destination>/<person folder>/` by default,
+# where the person folder is the shipper's display name (`--self`). `per_person: false` on the slot
+# or a target turns it off and backs up into the team folder itself. The folder name is the display
+# name with these characters removed: the shell metacharacters every routed destination refuses, plus
+# `/` (a name is one folder, never a path) and `"` (adapters quote the destination in double quotes).
+# Spaces, apostrophes, hyphens and accents are kept.
+PER_PERSON_KEY = "per_person"
+PERSON_FOLDER_DROP = ec.SHELL_METACHARS | {"/", '"'}
+
+
+def person_folder_name(display_name: Any) -> str | None:
+    """The folder name for one person: forbidden characters removed, whitespace collapsed to single
+    spaces, and leading or trailing spaces and dots trimmed (so a name never becomes `.`, `..` or a
+    hidden folder). None when nothing usable is left, which routing treats as a halt, never a guess."""
+    if not isinstance(display_name, str):
+        return None
+    kept = "".join(" " if c.isspace() else c for c in display_name
+                   if c.isspace() or c not in PERSON_FOLDER_DROP)
+    kept = " ".join(kept.split()).strip(" .")
+    return kept or None
+
+
+def per_person_setting(value: Any) -> tuple[bool | None, str | None]:
+    """(on, error) for a `per_person:` value. Absent means on. Anything but a boolean is refused:
+    a value nobody can read must not quietly move every backup to a different folder."""
+    if value is None:
+        return True, None
+    if isinstance(value, bool):
+        return value, None
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true", None
+    return None, (f"`{PER_PERSON_KEY}:` must be true or false, got {value!r}. Set it in the "
+                  f"documents tool slot config and re-run.")
+
+
+def _join_dest(base: str, name: str) -> str:
+    """One folder under `base`, keeping the root it names. `remote:` (a remote's home) and `remote:/`
+    (its root) are different places to rclone, so neither is rewritten into the other; a local path
+    that happens to end in `:` is still a directory and gets a `/`."""
+    if base.endswith("/") or (base.endswith(":") and not os.path.isabs(base)):
+        return f"{base}{name}"
+    return f"{base}/{name}"
+
+
 # An adapter-supplied key NAME is executable input, not documentation (the wave-A lesson: a markdown
 # file reads as inert in code review). It is validated before it is ever used as a lookup, and an
 # invalid one HALTS rather than falling back to a guessed key — guessing between `channel` and
@@ -365,6 +409,16 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
                 dkey, _ = destination_key(seam_name, seam.get("adapter"), res.root)
                 if dkey and dkey in seam:
                     out.append(("error", _both_message(seam_name, dkey)))
+        if seam_name == "docstore" and isinstance(seam, dict):
+            # `per_person:` is new, so checking it everywhere it appears breaks no shipped config.
+            spots = [("docstore", seam)] + ([(f"docstore target `{t}`", v)
+                                             for t, v in seam["targets"].items() if isinstance(v, dict)]
+                                            if _is_multi(seam) else [])
+            for where, mapping in spots:
+                if PER_PERSON_KEY in mapping:
+                    _, pp_err = per_person_setting(mapping.get(PER_PERSON_KEY))
+                    if pp_err:
+                        out.append(("error", f"{where}: {pp_err}"))
         if not _is_multi(seam):
             continue
         rkey = ROUTING_KEY[seam_name]
@@ -611,7 +665,8 @@ def _blank(seam_name: str, declared: str | None) -> dict:
             "target": None, "selected_by": None, "label": None, "tool": None, "adapter": None,
             "destination": None, "destination_key": None, "recipients": None,
             "include_self": None, "mode": None, "sender": None, "sender_key": None,
-            "sharing_scope": None,
+            "sharing_scope": None, "per_person": None, "person_folder": None,
+            "person_folder_label": None, "person_folder_new": None,
             "configured": [], "unsafe": [], "warnings": [], "error": None,
             "resolution_fingerprint": None}
 
@@ -985,6 +1040,37 @@ def _fill(out: dict, res: "ec.Resolution", seam_name: str, unit: dict,
                                         f"a human cannot authorize")
                 return _fail(out, err)
         out["sharing_scope"] = str(scope).strip() if isinstance(scope, str) and scope.strip() else None
+        on, pp_err = per_person_setting(vals.get(PER_PERSON_KEY))
+        if pp_err:
+            return _fail(out, _err("malformed", f"{unit['label']}: {pp_err}"))
+        out["per_person"] = on
+        if on:
+            # The person folder is part of the DESTINATION, so it is inside the fingerprint: a run
+            # with a different `--self` than the approved one refuses instead of filing the backup
+            # under someone else's name. Whether the folder exists yet is reported, never pinned
+            # (it stops being new the moment the backup creates it, between approval and record).
+            folder = person_folder_name(self_name)
+            if folder is None:
+                err = _err("no_declaration",
+                           "Backups go into a folder for each person, and this run does not say "
+                           "whose. Details: pass `--self \"<display name>\"` (the shipper, from "
+                           "`whoami.py`), or set `per_person: false` on the documents tool slot to "
+                           "back up into the team folder itself.")
+                return _fail(out, err)
+            if not isinstance(dest, str) or not dest.strip():
+                return _fail(out, _err("malformed",
+                                       f"{unit['label']}: no team folder is set, so there is no "
+                                       f"folder to put {folder}'s backups in. Details: set "
+                                       f"`{dkey or 'drive_folder'}` in the documents tool slot "
+                                       f"config."))
+            team_root = dest
+            dest = _join_dest(team_root, folder)
+            out["destination"] = dest
+            out["person_folder"] = folder
+            label_root = vals.get(dkey) if dkey and isinstance(vals.get(dkey), str) else team_root
+            out["person_folder_label"] = _join_dest(str(label_root), folder) + "/"
+            # Existence is checkable only for a local mount path; a remote (`name:path`) says null.
+            out["person_folder_new"] = (not Path(dest).is_dir()) if os.path.isabs(dest) else None
     out["resolution_fingerprint"] = _fingerprint(out)
     return out, None
 
@@ -1014,7 +1100,8 @@ def _fail(out: dict, err: dict) -> tuple[dict, dict]:
     """Blank the routed fields. No caller can read a destination out of a failed routing."""
     out.update({"target": None, "selected_by": None, "label": None, "destination": None,
                 "destination_key": None, "recipients": None, "sender": None, "sender_key": None,
-                "sharing_scope": None, "resolution_fingerprint": None, "error": err})
+                "sharing_scope": None, "resolution_fingerprint": None, "error": err,
+                "person_folder": None, "person_folder_label": None, "person_folder_new": None})
     return out, err
 
 
