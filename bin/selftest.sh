@@ -114,7 +114,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 4;;
+    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 5;;
     viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -123,6 +123,11 @@ for f in adapters/*/*.md; do
   seam="$(basename "$(dirname "$f")")"; want="$(verbs_expected "$seam")"
   got="$(grep -c '^## verb:' "$f")"
   [ "$got" -eq "$want" ] && ok "$f ($got/$want verbs)" || bad "$f has $got verbs, expected $want"
+done
+# The count above cannot tell a renamed verb from the right one. /ship calls vcs.merge_pr by name
+# (LABS-106), so every vcs adapter must carry that exact heading.
+for f in adapters/vcs/*.md; do
+  grep -q '^## verb: merge_pr$' "$f" && ok "$f implements merge_pr by name" || bad "$f is missing '## verb: merge_pr'"
 done
 
 # Counting headings proves each adapter has the RIGHT NUMBER of verbs, not the RIGHT ONES: a typo'd
@@ -2557,13 +2562,15 @@ grep -q 'resolve_user.py' .claude/skills/ship/SKILL.md \
   && ok "/ship lints the hard rails BEFORE the voice phrasing pass" || bad "/ship missing lint-before-voice ordering"
 grep -qi 'fail open' <<<"$shipflat" \
   && ok "/ship voice consume fails open (no profile ⇒ unchanged)" || bad "/ship voice step missing fail-open"
-{ grep -qi 'Voice refine' <<<"$shipflat" && grep -qi 'wait for confirmation before writing' <<<"$shipflat"; } \
-  && ok "/ship voice-refine proposes + waits for confirmation (never silent)" || bad "/ship voice-refine not gated on confirmation"
+{ grep -qi 'Voice refine' <<<"$shipflat" && grep -qiE 'ask before writing\*\*, +as one question' <<<"$shipflat" \
+  && grep -qi 'Never write it silently' <<<"$shipflat"; } \
+  && ok "/ship voice-refine proposes + asks before writing (never silent)" || bad "/ship voice-refine not gated on confirmation"
 grep -qi 'layer failure' <<<"$shipflat" \
   && ok "/ship keeps voice-refine separate from system_evolution retro" || bad "voice-refine grafted onto system_evolution (should be separate)"
-# (F) the policy list is unchanged — voice is a config block, never a policy.
+# (F) the policy list is unchanged — voice is a config block, never a policy. (11 since LABS-106
+# added ship_merges_pr; a twelfth needs the same deliberate bump here.)
 np="$(yq '.policies | keys | length' .claude/config/stack.yaml 2>/dev/null)"
-{ [ "$np" = "10" ] && ! yq -e '.policies | keys | .[]' .claude/config/stack.yaml 2>/dev/null | grep -qi voice; } \
+{ [ "$np" = "11" ] && ! yq -e '.policies | keys | .[]' .claude/config/stack.yaml 2>/dev/null | grep -qi voice; } \
   && ok "policy list unchanged ($np); no voice policy added" || bad "policy count changed / a voice policy leaked in" "count=$np"
 # (G) setup --voice is a first-class mode (not a seam) + the playbook ships.
 { grep -q '\-\-voice' .claude/skills/setup/SKILL.md && [ -f .claude/skills/setup/voice.md ] \
@@ -6700,6 +6707,102 @@ grep -q 'Route the delivery FIRST' "$SH45" \
 grep -q 'tracker and vcs' "$SH45" \
   && ok "/ship still halts on named targets for the two DEFERRED slots (tracker, vcs)" \
   || bad "/ship dropped the tracker/vcs named-target halt"
+
+hdr "45b · /ship's order follows its links, it merges only after asking, and backups leave comms/ local (LABS-106)"
+# A first real delivery (LABS-105 feedback) drafted the chat message before the PR it links
+# existed, moved a ticket to Done with its PR unmerged, and copied the unsent drafts in comms/ to a
+# shared drive. Each pin below fails if one of those comes back.
+SH45B=".claude/skills/ship/SKILL.md"
+asc45b() { p=0; for n in "$@"; do [ "$n" -gt "$p" ] || return 1; p="$n"; done; }   # strictly ascending, none 0
+# (A) the executed order: commit+PR, merge, backup, comment, chat, transition.
+o45b=""
+for pat in '^5\. \*\*vcs\.commit\*\*' '^6\. \*\*vcs\.merge_pr' '^7\. \*\*Scan the source material first, then docstore\.backup' \
+           '^8\. \*\*tracker\.comment\*\*' '^9\. \*\*chat\.draft\*\*' '^10\. \*\*transition\*\*'; do
+  n="$(grep -nE "$pat" "$SH45B" | head -1 | cut -d: -f1)"; o45b="$o45b ${n:-0}"
+done
+# shellcheck disable=SC2086
+asc45b $o45b \
+  && ok "/ship runs PR, merge, backup, comment, chat, transition in that order (every link exists before it is posted)" \
+  || bad "/ship's Phase B order changed: a post could link something not yet created" "lines:$o45b"
+# (B) the preview the person approves lists the same order.
+p45b=""
+for pat in 'open the pull request\.$' 'squash-merge the pull request' 'back it up to the documents destination' \
+           'Post the approved comment' 'Draft the chat message' 'only once the pull request is merged'; do
+  n="$(grep -nE "^   > [0-9]\. .*$pat" "$SH45B" | head -1 | cut -d: -f1)"; p45b="$p45b ${n:-0}"
+done
+# shellcheck disable=SC2086
+asc45b $p45b \
+  && ok "the delivery plan preview lists the steps in the order they run" \
+  || bad "the preview's order no longer matches the steps (what is approved is not what runs)" "lines:$p45b"
+# (C) the merge asks first, can be declined, stops when blocked, and never bypasses.
+sh45b="$(tr '\n' ' ' < "$SH45B")"
+{ grep -q 'ship_merges_pr' <<<"$sh45b" && grep -q '\*\*Merge now\*\*' <<<"$sh45b" && grep -q '\*\*Leave it open\*\*' <<<"$sh45b" \
+  && grep -qE "by the question rule above +\(the runtime's question tool when it +has one" <<<"$sh45b" && grep -qE 'asks once more, right +before the merge' <<<"$sh45b" \
+  && grep -q '`--go` never pre-answers this question' <<<"$sh45b"; } \
+  && ok "/ship asks once more, as a choice, right before it merges, and --go never answers it" || bad "/ship can merge without its own confirm"
+grep -qE 'If the verify line +does not show the pull request merged, it is blocked' <<<"$sh45b" \
+  && ok "a merge that exits cleanly but is only queued counts as blocked" || bad "a queued or deferred merge can be read as merged"
+{ grep -q 'stop the ship here' <<<"$sh45b" && grep -q 'Never retry with a bypass, admin or auto-merge option' <<<"$sh45b"; } \
+  && ok "a blocked merge stops the ship with the reason, and is never bypassed" || bad "a blocked merge is skipped or bypassed"
+grep -q 'an unparseable one is `false`' <<<"$sh45b" \
+  && ok "an unparseable ship_merges_pr means no merge (unparseable config never adds a write)" || bad "an unparseable merge setting can still merge"
+grep -qE 'and only when +step 6 merged the pull request' <<<"$sh45b" \
+  && ok "the ticket moves to its final status only after the merge" || bad "a ticket can be marked done with its PR unmerged"
+# (D) every vcs adapter's merge command pins the reviewed commit where it can, and runs no bypass.
+cat > "$TMP/s45b_verbs.py" <<'PY'
+import re, sys, pathlib
+BYPASS = ("--admin", "--auto", "--auto-merge", "--auto-complete", "--bypass-policy")
+def block(text, verb):
+    m = re.search(r"^## verb: %s\n(.*?)(?=^## )" % re.escape(verb), text, re.S | re.M)
+    return m.group(1) if m else None
+def code(sec):
+    return "\n".join(re.findall(r"```bash\n(.*?)```", sec, re.S))
+mode, paths = sys.argv[1], sys.argv[2:]
+bad = []
+for p in paths:
+    t = pathlib.Path(p).read_text() + "\n## end\n"
+    if mode == "merge":
+        sec = block(t, "merge_pr")
+        cmds = code(sec) if sec else ""
+        if not cmds: bad.append(p + ": no runnable merge_pr command")
+        # `--auto-merge=false` is the one allowed spelling: it switches OFF glab's default deferral.
+        if any(re.search(r"(^|\s)%s(\s|=(?!false\b)|$)" % re.escape(f), cmds) for f in BYPASS): bad.append(p + ": a bypass flag is runnable")
+        if "--squash" not in cmds: bad.append(p + ": not a squash merge")
+    else:
+        sec = block(t, "backup")
+        cmds = code(sec) if sec else ""
+        # An actual exclude on the copy, never just the word (a comment saying "no comms/" passes nothing).
+        if not re.search(r"--exclude[= ]['\"]?/?comms/", cmds): bad.append(p + ": the backup command copies comms/")
+if bad:
+    print("\n".join(bad))
+PY
+python3 "$TMP/s45b_verbs.py" merge adapters/vcs/*.md > "$TMP/s45b_m.out" 2>&1
+[ ! -s "$TMP/s45b_m.out" ] && ok "every vcs adapter's merge_pr squash-merges and runs no bypass flag" \
+  || bad "a vcs adapter's merge_pr is unsafe" "$(cat "$TMP/s45b_m.out")"
+{ grep -q -- '--match-head-commit <SHA>' adapters/vcs/github.md && grep -q -- '--sha <SHA> --auto-merge=false' adapters/vcs/gitlab.md \
+  && grep -q 'lastMergeSourceCommit' adapters/vcs/azure-repos.md; } \
+  && ok "each merge is pinned to the commit the person confirmed" || bad "a merge can land commits pushed after the confirm"
+# (E) every docstore backup leaves comms/ out, with a negative control proving the check bites.
+python3 "$TMP/s45b_verbs.py" backup adapters/docstore/*.md > "$TMP/s45b_b.out" 2>&1
+[ ! -s "$TMP/s45b_b.out" ] && ok "every docstore adapter's backup leaves the unsent drafts in comms/ local" \
+  || bad "a docstore backup copies comms/ to the shared store" "$(cat "$TMP/s45b_b.out")"
+printf '## verb: backup\n```bash\ncp -r "<dir>" "$dest"\n```\n' > "$TMP/s45b_neg.md"
+printf '## verb: backup\n```bash\nrsync -r "<dir>/" "$dest/"\nls "$dest"   # verify; no comms/ folder\n```\n' > "$TMP/s45b_neg2.md"
+python3 "$TMP/s45b_verbs.py" backup "$TMP/s45b_neg.md" > "$TMP/s45b_n.out" 2>&1
+python3 "$TMP/s45b_verbs.py" backup "$TMP/s45b_neg2.md" > "$TMP/s45b_n2.out" 2>&1
+{ [ -s "$TMP/s45b_n.out" ] && [ -s "$TMP/s45b_n2.out" ]; } \
+  && ok "negative controls: a whole-folder copy is caught, even when a comment mentions comms/" \
+  || bad "the comms/ backup check passes a copy with no exclude (it checks a word, not the command)"
+# (F) the setting is documented everywhere a reader looks, and /setup asks it.
+{ grep -q 'ship_merges_pr' .claude/config/stack.yaml && grep -q 'ship_merges_pr' .claude/config/stack.schema.md \
+  && grep -q 'ship_merges_pr' templates/AGENTS.md.tmpl && grep -q 'ship_merges_pr' .claude/skills/setup/interview.md; } \
+  && ok "ship_merges_pr is in stack.yaml, the schema, the AGENTS template and /setup round 6" \
+  || bad "ship_merges_pr is undocumented somewhere a reader looks"
+# (G) the step-by-step page exists, is indexed, and its diagram is committed.
+{ [ -f docs/ship.md ] && [ -f docs/images/ship-steps.png ] && grep -q '(ship.md)' docs/README.md \
+  && grep -q 'docs/images/ship-steps.png' docs/ship.md; } \
+  && ok "docs/ship.md shows the steps with its diagram, and docs/README.md links it" \
+  || bad "the /ship step page, its diagram, or its index entry is missing"
 
 hdr "46 · email is a chat target: gmail/outlook adapters + sender-pinned stakeholder routing (PROMPT 10)"
 # Email is the delivery path where a wrong audience is LEAST recoverable — a sent mail cannot be
@@ -10841,7 +10944,11 @@ printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/12_review_verd
 rc="$(rv57)"; grep -q '"status": "skipped"' "$TMP/rv57.out" && [ "$rc" = 6 ] \
   && ok "classifier: SKIPPED is its own status (exit 6) — an unreviewed ship is on record, not approval" \
   || bad "classifier misreads SKIPPED" "rc=$rc $(cat "$TMP/rv57.out")"
-rm "$T57/qc_queries/12_review_verdict.md" "$T57/qc_queries/11_review_verdict.md" "$T57/qc_queries/10_review_verdict.md"
+printf 'verdict: AWAITING-SIGNOFF\nreview_mode: independent-subagent\n' > "$T57/qc_queries/13_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "awaiting-signoff"' "$TMP/rv57.out" && [ "$rc" = 7 ] \
+  && ok "classifier: AWAITING-SIGNOFF is its own status (exit 7): the reviewer approved, the person's sign-off is pending" \
+  || bad "classifier misreads AWAITING-SIGNOFF (it would read as never reviewed, or as approved)" "rc=$rc $(cat "$TMP/rv57.out")"
+rm "$T57/qc_queries/13_review_verdict.md" "$T57/qc_queries/12_review_verdict.md" "$T57/qc_queries/11_review_verdict.md" "$T57/qc_queries/10_review_verdict.md"
 rc="$(rv57)"; grep -q '"status": "request-changes"' "$TMP/rv57.out" && [ "$rc" = 5 ] \
   && ok "classifier: REQUEST-CHANGES → exit 5" || bad "classifier misreads REQUEST-CHANGES" "rc=$rc"
 rm "$T57/qc_queries/9_review_verdict.md"
@@ -10860,7 +10967,7 @@ o="$(g57 "$(pay57 'git push -u origin ENG-7')")"
 grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'has not been approved in review' <<<"$o" \
   && ok "hook ASKS on git push when the branch's ticket has deliverables and no verdict (the raw-git bypass closed)" \
   || bad "a raw git push of an unreviewed ticket is not gated" "$o"
-for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7'; do
+for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7' 'az repos pr update --id 4 --status completed --squash true'; do
   o="$(g57 "$(pay57 "$act")")"
   grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook catches the outbound spelling: $act" \
     || bad "an outbound spelling evades the guard: $act" "$o"
@@ -10876,7 +10983,11 @@ printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/5_review_verdi
 # that happens to appear elsewhere in the text.
 o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'shipped unreviewed before, which is not an approval (5_review_verdict.md)' <<<"$o" \
   && ok "hook re-fires on a SKIPPED record — an unreviewed ship on record is not approval" || bad "SKIPPED passes the hook" "$o"
-rm "$T57/qc_queries/5_review_verdict.md" "$T57/qc_queries/4_review_verdict.md"
+printf 'verdict: AWAITING-SIGNOFF\nreview_mode: independent-subagent\n' > "$T57/qc_queries/6_review_verdict.md"
+o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'your sign-off is still needed' <<<"$o" \
+  && ok "hook asks on AWAITING-SIGNOFF: a reviewer's APPROVE without the person's sign-off is not approval" \
+  || bad "AWAITING-SIGNOFF passes the hook, or its message does not say the sign-off is pending" "$o"
+rm "$T57/qc_queries/6_review_verdict.md" "$T57/qc_queries/5_review_verdict.md" "$T57/qc_queries/4_review_verdict.md"
 rm "$T57/final_deliverables/1_rows_2.csv"
 o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "hook is silent for a ticket with no deliverables yet (a WIP push costs no prompt)" \
   || bad "hook prompts on an empty scaffold" "$o"
@@ -11431,14 +11542,14 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
 # Exact block count per file: a file that loses a block must fail, not hide behind the total.
 c59=""
-for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
+for want59 in ".claude/skills/ship/SKILL.md:4" ".claude/skills/review/SKILL.md:3" ".claude/agents/qc-reviewer.md:1"; do
   f59="${want59%%:*}"; w59="${want59##*:}"
   g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
   { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
 done
 [ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
      --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
-  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 2 + 1 blocks)" \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 3 + 1 blocks)" \
   || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
 # --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
@@ -11615,6 +11726,172 @@ python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p, pa
 # (h) the suite's own git config is hermetic (the leak a per-user GIT_CONFIG_GLOBAL exposed).
 case "$GIT_CONFIG_GLOBAL" in "$TMP"/*) ok "the suite reads an empty, suite-owned git config (no contributor identity leaks in)" ;;
   *) bad "GIT_CONFIG_GLOBAL is not suite-owned" "$GIT_CONFIG_GLOBAL" ;; esac
+
+hdr "61b · /ticket asks with the runtime's question tool, numbered prose elsewhere"
+# A clean-profile /ticket run (DATA-12, LABS-107) asked its three plan assumptions and the approval
+# as text the person had to type out, on a runtime whose adapter declares a question tool. /ticket
+# now reads the same capability keys /setup does (section 61) and never names the tool itself.
+SK61b=".claude/skills/ticket/SKILL.md"; tf61b="$TMP/tk61b.flat"; tr -s '[:space:]' ' ' < "$SK61b" > "$tf61b"
+# (a) the gate: the tool comes from kit_paths' capabilities, with a prose fallback.
+{ grep -q 'capabilities.structured_questions' "$SK61b" && grep -q 'capabilities.question_tool' "$SK61b" \
+  && grep -q 'capabilities.question_limits' "$SK61b" && grep -q 'kit_paths.py --json' "$SK61b" \
+  && grep -q 'numbered list' "$tf61b" && grep -q 'one question at a time' "$tf61b"; } \
+  && ok "/ticket asks with capabilities.question_tool when there is one, numbered prose otherwise" \
+  || bad "/ticket's question rule lost its capability gate or its prose fallback"
+# (b) the rule is stated before the first question it governs (Phase 0's ambiguous person).
+r61b="$(grep -n '^## How this skill asks the person something' "$SK61b" | head -1 | cut -d: -f1)"
+a61b="$(grep -n '`ambiguous` — ask which person' "$SK61b" | head -1 | cut -d: -f1)"
+{ [ -n "$r61b" ] && [ -n "$a61b" ] && [ "$r61b" -lt "$a61b" ]; } \
+  && ok "the question rule comes before Phase 0's first question" \
+  || bad "/ticket's question rule is missing or placed after a question it governs" "rule=${r61b:-none} first-ask=${a61b:-none}"
+# (c) every ask point is wired to it, with options that come from the run, never invented.
+m61b=""
+grep -q "whoami's \`candidates\` as the" "$tf61b" || m61b="$m61b ambiguous-person"
+grep -q 'ask whether to continue \*\*local-only\*\*' "$tf61b" || m61b="$m61b local-only"
+grep -q 'ask which one, with the `owner/id` choices as the options' "$tf61b" || m61b="$m61b owner-choice"
+grep -q 'what the plan assumed is the first, recommended option' "$tf61b" || m61b="$m61b assumptions"
+grep -q 'revise the plan and say what changed before' "$tf61b" || m61b="$m61b assumption-changes-plan"
+{ grep -q '"Approve and build", "Approve, don.t build yet" and "Change the' "$tf61b" \
+  && grep -q 'never in the same call' "$tf61b" && grep -q 'none is marked recommended' "$tf61b"; } \
+  || m61b="$m61b approval"
+grep -q 'Never invent an option' "$tf61b" || m61b="$m61b no-invented-options"
+grep -q '"Never pick one" still holds' "$tf61b" || m61b="$m61b never-pick"
+[ -z "$m61b" ] && ok "each /ticket ask point uses the rule (person, local-only, owner, assumptions, approval)" \
+  || bad "a /ticket ask point is not wired to the question rule" "$m61b"
+# (d) no runtime's question tool is named in /ticket, its references, or its emitted copies.
+n61b=""
+for t in $(grep -h '^question_tool:' adapters/runtime/*.md | awk '{print $2}' | sort -u); do
+  case "$t" in none) continue ;; *[[:upper:]_]*) ;; *) continue ;; esac
+  grep -rqw "$t" .claude/skills/ticket tests/emit/*/.agents/skills/ticket 2>/dev/null && n61b="$n61b $t"
+done
+[ -z "$n61b" ] && ok "/ticket and its emitted copies never name a runtime's question tool" \
+  || bad "/ticket hard-codes a question tool name" "$n61b"
+e61b=""
+for f in tests/emit/*/.agents/skills/ticket/SKILL.md; do
+  grep -q 'capabilities.question_tool' "$f" || e61b="$e61b $f"
+done
+[ -z "$e61b" ] && ok "the emitted /ticket copies carry the same question rule" \
+  || bad "an emitted /ticket copy lacks the question rule (regenerate tests/emit)" "$e61b"
+# (e) the capability is the adapter's: kit_paths reports each runtime's declared question_tool, so a
+# runtime with none (the prose branch) and one with a tool (the picker branch) both resolve.
+q61b=""
+for f in adapters/runtime/*.md; do
+  rt="$(basename "$f" .md)"; [ "$rt" = "README" ] && continue
+  want="$(grep -m1 '^question_tool:' "$f" | awk '{print $2}')"
+  got="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$rt" python3 bin/kit_paths.py --json 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["capabilities"].get("question_tool"))' 2>/dev/null)"
+  [ -n "$want" ] && [ "$got" = "$want" ] || q61b="$q61b $rt(want=$want got=$got)"
+done
+[ -z "$q61b" ] && ok "kit_paths reports every runtime adapter's declared question tool (the value /ticket branches on)" \
+  || bad "kit_paths and a runtime adapter disagree on the question tool" "$q61b"
+
+hdr "61c · one question rule in every skill that asks, and /review's 'ship' sign-off"
+# Kyle: interactive questions should be standard across the skills (LABS-107). The rule is one
+# block, copied verbatim between ask-rule markers into each skill that asks the person anything,
+# because a runtime injects only a skill's own body. /refresh asks nothing, so it carries none
+# (an identical copy is checked wherever one appears).
+AR61c="setup ticket build review skillify ship"
+python3 - $AR61c <<'PY' >"$TMP/ar61c.out" 2>&1
+import sys, pathlib, re
+B, E = "<!-- ticketwright:ask-rule:begin -->", "<!-- ticketwright:ask-rule:end -->"
+H = "## How this skill asks the person something"
+need, bad, blocks = sys.argv[1:], [], {}
+files = sorted(pathlib.Path(".claude/skills").glob("*/SKILL.md")) + \
+        sorted(pathlib.Path("tests/emit").glob("*/.agents/skills/*/SKILL.md"))
+for f in files:
+    s = f.read_text()
+    n = s.count(B)
+    name = f.parent.name
+    if n == 0:
+        if name in need:
+            bad.append(f"{f}: no ask-rule block")
+        continue
+    if n != 1 or s.count(E) != 1:
+        bad.append(f"{f}: {n} ask-rule blocks (want exactly 1)")
+        continue
+    blk = s[s.index(B):s.index(E) + len(E)]
+    blocks.setdefault(blk, []).append(str(f))
+    h = s.find(H)
+    if h < 0 or h > s.index(B):
+        bad.append(f"{f}: the block is not under '{H}'")
+    if "In this skill the questions are" not in s[s.index(E):s.index(E) + 400]:
+        bad.append(f"{f}: no 'In this skill the questions are' line right after the block")
+if len(blocks) > 1:
+    bad.append("the ask-rule blocks differ: " + " | ".join(v[0] for v in blocks.values()))
+if blocks:
+    blk = re.sub(r"\s+", " ", next(iter(blocks)))
+    for want in ("capabilities.structured_questions", "capabilities.question_tool",
+                 "capabilities.question_limits", "kit_paths.py --json", "numbered list",
+                 "one question at a time", "Never invent an option", "`ship unreviewed`",
+                 "`go ahead`", "never one click", "inside a subagent"):
+        if want not in blk:
+            bad.append(f"the ask-rule block lost: {want}")
+print("\n".join(bad))
+PY
+[ -z "$(tr -d '[:space:]' < "$TMP/ar61c.out")" ] \
+  && ok "every skill that asks carries the one question rule, identical everywhere (emitted copies too)" \
+  || bad "the shared question rule is missing, duplicated or drifted" "$(cat "$TMP/ar61c.out")"
+# (b) /review: `ship` signs off only after the second pass approved; it never merges /ship's halt.
+RV61c="$TMP/rv61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/review/SKILL.md > "$RV61c"
+m61c=""
+grep -q '`ship` counts as a sign-off \*\*only when the second pass returned APPROVE\*\*' "$RV61c" || m61c="$m61c only-after-approve"
+grep -q 'First save the record as `verdict: AWAITING-SIGNOFF`' "$RV61c" || m61c="$m61c awaiting-before-handoff"
+grep -q '"Approve and ship" (first)' "$RV61c" || m61c="$m61c approve-and-ship-first"
+grep -q 'so `ship` cannot approve this ticket' "$RV61c" || m61c="$m61c hard-halt-holds"
+grep -q 'its hard halt before anything is sent still does' "$RV61c" || m61c="$m61c ship-halt-kept"
+grep -q 'update \*\*that same file\*\* when the person answers' "$RV61c" || m61c="$m61c same-file"
+grep -q "stop here and wait for step ⑤.4's answer" "$RV61c" || m61c="$m61c routing-waits-for-signoff"
+grep -q 'APPROVE after a `ship` reply ⇒ \*\*follow `/ship <owner>/<id>`' "$RV61c" || m61c="$m61c phase-n-ships-on-ship"
+[ -z "$m61c" ] && ok "/review: 'ship' signs off only on a reviewer APPROVE, records AWAITING-SIGNOFF first, keeps /ship's halt" \
+  || bad "/review's ship sign-off lost a condition" "$m61c"
+python3 - <<'PY' >"$TMP/sh61c.out" 2>&1
+import re
+s = open(".claude/skills/review/SKILL.md").read()
+blocks = re.findall(r"<!-- ticketwright:user-facing:begin -->(.*?)<!-- ticketwright:user-facing:end -->", s, re.S)
+hit = [b for b in blocks if "Reply `ship` to approve and deliver, or tell me what to change." in b]
+print("ok" if hit and "checked the numbers" in hit[0] and "go-ahead" in hit[0] else "missing")
+PY
+[ "$(cat "$TMP/sh61c.out")" = "ok" ] \
+  && ok "the 'Reply ship to approve and deliver' line is marked say-this text, saying what ship means and that /ship still halts" \
+  || bad "the ship sign-off line is missing, unmarked, or drops what ship means" "$(cat "$TMP/sh61c.out")"
+# (c) /build stays consistent: no second ship question after a `ship` sign-off, and a pending
+# sign-off is asked again, never read as approval.
+BD61c="$TMP/bd61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/build/SKILL.md > "$BD61c"
+{ grep -q "already answered \`/review\`'s sign-off with \`ship\`" "$BD61c" && grep -q 'do not ask again' "$BD61c" \
+  && grep -q '\*\*AWAITING-SIGNOFF\*\* → the reviewer approved' "$BD61c" \
+  && grep -q 'Never treat this status as an approval' "$BD61c" \
+  && grep -q "step ⑤.4 instructions for this ticket" "$BD61c" && grep -q 'never writes a verdict itself' "$BD61c" \
+  && grep -q "When it is \`awaiting-signoff\`" "$BD61c" && grep -q "go straight to step 8's AWAITING-SIGNOFF branch" "$BD61c"; } \
+  && ok "/build: a 'ship' sign-off is not asked twice, and AWAITING-SIGNOFF is asked again, never approved" \
+  || bad "/build's ship question and /review's sign-off disagree"
+# (d) /ship: AWAITING-SIGNOFF is its own case. It hands the sign-off to /review step ⑤.4 (as /build
+# does), takes a same-conversation `/ship` right after /review's "Reply ship" line as that reply,
+# never offers `ship unreviewed` or writes SKIPPED over the reviewer's approval, and a sign-off taken
+# in the run cancels --go, so Phase B still waits for a typed go ahead (the Leslie gap, LABS-107).
+SH61c="$TMP/sh61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/ship/SKILL.md > "$SH61c"
+m61d=""
+grep -q '`approve` · `request-changes` · `awaiting-signoff` ·' "$SH61c" || m61d="$m61d status-list"
+grep -q 'Five cases:' "$SH61c" || m61d="$m61d five-cases"
+grep -q '\*\*AWAITING-SIGNOFF\*\* → the independent review approved' "$SH61c" || m61d="$m61d case"
+grep -q 'never offer `ship unreviewed`, and never write a `SKIPPED` record over it' "$SH61c" || m61d="$m61d no-skipped-over"
+grep -q "This skill does not write the sign-off itself; \`/review\` step ⑤.4 does" "$SH61c" || m61d="$m61d defers-to-review"
+grep -q "is earlier in \*\*this same conversation\*\* and the person's next message is \`ship\` or \`/ship\` for this ticket" "$SH61c" || m61d="$m61d same-conversation-scope"
+grep -q 'Do not ask again' "$SH61c" || m61d="$m61d no-second-ask"
+grep -q 'Otherwise (a new session, another person, or a different reply in between)' "$SH61c" || m61d="$m61d otherwise-clause"
+grep -q "steps ⑤.1 to ⑤.4 for this ticket: open the files, print the what-to-look-at list" "$SH61c" || m61d="$m61d opens-files"
+grep -q '\*\*A sign-off taken in this run, either way, cancels `--go` for this run.\*\*' "$SH61c" || m61d="$m61d go-cancelled"
+grep -q '`--go` does not count in a run where step 1 took the person' "$SH61c" || m61d="$m61d phase-b-go"
+grep -q '`--go` never answers the sign-off question itself' "$SH61c" || m61d="$m61d go-not-signoff"
+grep -q 'Anything else, including `awaiting-signoff` still on file, stops here and shows the record: never continue.' "$SH61c" || m61d="$m61d reparse-stops"
+grep -q 'none of the four above' "$SH61c" || m61d="$m61d fallthrough"
+grep -q 'sign-off question for this ticket, given as the answer to that question' "$SH61c" || m61d="$m61d confirm-gate-scope"
+grep -q 'ask it as one question, "Ship it" or "Not now"' "$SH61c" || m61d="$m61d confirm-gate-question"
+grep -q 'no audience, destination or recipient option is ever marked recommended' "$SH61c" || m61d="$m61d routing-not-recommended"
+grep -q 'Ask the user which one this ticket is, with the configured values the CLI lists as the options' "$SH61c" || m61d="$m61d exit9-options"
+grep -q 'then ask which was meant, with the configured values as the options' "$SH61c" || m61d="$m61d exit8-options"
+grep -q '`ship unreviewed` (step 1) and `go ahead` (Phase B) stay typed' "$SH61c" || m61d="$m61d typed-tokens"
+[ -z "$m61d" ] && ok "/ship: AWAITING-SIGNOFF goes through /review ⑤.4, never ship unreviewed or SKIPPED, and a sign-off keeps the typed go ahead" \
+  || bad "/ship's pending sign-off case lost a condition" "$m61d"
 
 hdr "60 · the plugin directory listing: icon, listing links, disclosure, example prompts"
 # The Claude plugin directory reads plugin.json's listing fields and shows README.md as the listing

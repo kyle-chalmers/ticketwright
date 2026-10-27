@@ -68,7 +68,7 @@ or more than one **named target** — routed end to end today for `warehouse`, `
 which is how a repo with no tracker runs unchanged. The wiring is hybrid — config names the tools,
 verification proves them:
 
-1. **`.claude/config/stack.yaml`** names which tool fills each slot + project facts + the 10
+1. **`.claude/config/stack.yaml`** names which tool fills each slot + project facts + the 11
    policies. Schema: [.claude/config/stack.schema.md](../.claude/config/stack.schema.md).
 2. **`adapters/<seam>/<tool>.md`** maps the abstract **verb contract** (`fetch_ticket`, `query`,
    `draft`, `backup`, `commit`, …) to that tool's concrete commands. Contract:
@@ -138,7 +138,7 @@ teammate one person's machine. Config is therefore three files:
 
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
-| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 10 policies |
+| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 11 policies |
 | 2 person, portable | `people/<id>.yaml` | yes | display name, identities, comms voice, file-type preferences |
 | 3 person, machine | `.claude/config/connections.local.yaml` | no | named profiles/connections, local mount roots |
 
@@ -191,8 +191,8 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
 - **`review_verdict_guard.py`** (PreToolUse/Bash) — the review-before-ship gate at the command
   layer. `bin/review_verdict.py` is the classifier (the highest-numbered
   `qc_queries/<n>_review_verdict.md`, its lowercase `verdict:` line → `approve` / `request-changes`
-  / `skipped` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
-  `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create`, locating the ticket from the
+  / `skipped` / `awaiting-signoff` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
+  `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create|update`, locating the ticket from the
   command's paths, its cwd, or the checked-out branch, and asks when a ticket with deliverables has
   anything but an approved review result on file. Silenced by `hard_halt_before_external_posts: false`. The three
   lifecycle skills call the same classifier, so the read is one implementation, not three readings.

@@ -99,6 +99,7 @@ policies:
                                           # in their own apps. WHICH apps is per-user + gitignored:
                                           # see .claude/config/viewer.example.yaml
   chat_default_draft: true
+  ship_merges_pr: true                    # /ship asks, then squash-merges the PR; false = merge by hand
   hyperlink_everything: true
   skillify_everything: true
   reduce_assumptions: true

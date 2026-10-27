@@ -28,6 +28,36 @@ first (show the "Working as …" line). `<ticket-id>` is `owner/id` (exact) or a
 against the resolved person's `tickets/<owner>/` first, then other owners — **a bare id two or more
 foreign owners share is a hard stop listing the `owner/id` choices, never a pick**.
 
+## How this skill asks the person something
+<!-- ticketwright:ask-rule:begin -->
+The kit's one question rule, the same in every skill that asks:
+- Read `capabilities` from this skill's `kit_paths.py --json` probe the first time a question
+  comes up, and keep the result.
+- `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+  **ask with that tool**, within `capabilities.question_limits` (when that says `unknown`: one
+  question per call, at most four options). Group up to the limit only questions that do not
+  depend on each other's answers; ask a dependent question after the one it depends on.
+- Otherwise (`no` / `unknown`, or the probe failed) → ask in chat as a short numbered list, one
+  question at a time unless this skill says a set goes in one round, and wait for an explicit
+  answer.
+- The question content is the same either way; only how it is shown changes. No skill names a
+  runtime's tool: the runtime's own adapter (`adapters/runtime/<name>.md`) does. A question tool
+  is not available inside a subagent, so the main session asks.
+- **Never invent an option.** Options come from what this run found or the fixed choices a step
+  names. A recommended option goes first, marked recommended, with where it came from; the person
+  still picks. Each option says what choosing it changes, and free text is always possible (the
+  tool's own "Other", or "or tell me something else" in prose).
+- Whatever the person needs to answer is already in chat before the question, so a picker never
+  hides it.
+- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
+  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
+  never one click.
+<!-- ticketwright:ask-rule:end -->
+
+In this skill the questions are the `human_review_handoff: all` sign-offs (step 4), the ship
+question and the replan offer (step 8). Its probe is step 2b's `kit_paths.py --json`. Step 5's
+destructive-SQL `yes` stays typed.
+
 ## Phase 1 — Load what was approved
 
 1. **Find the blueprint.** Read `<ticket-dir>/plan.md` first — its Scope, Deliverables and Validation
@@ -98,7 +128,9 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    cap), do not redo Phase 2 from the start: go straight to step 8's REQUEST-CHANGES branch with
    that verdict. If `plan.md` changed after that verdict was written (its git history shows a later
    commit), the replan its scope findings asked for already happened, so treat those findings as
-   handled and carry only the defects forward. Any other `status` → continue to Phase 2.
+   handled and carry only the defects forward. When it is `awaiting-signoff` (the reviewer approved
+   and the person's sign-off never came), do not rebuild either: go straight to step 8's
+   AWAITING-SIGNOFF branch. Any other `status` → continue to Phase 2.
 
 ## Phase 2 — Implement in small build-and-check loops
 
@@ -116,8 +148,8 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
    lives in `/review` — put a human in the loop twice: hand the generated SQL over *before* its
    first warehouse run (a bad join is cheapest to catch before it costs a warehouse-minute), and
    hand the exported CSVs over after. Both via
-   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <paths>`, then wait for
-   sign-off before continuing. Say a file was opened only when handoff printed an `opened:` line
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <paths>`, then ask for
+   sign-off as one question (options: continue, or say what to change) and wait before continuing. Say a file was opened only when handoff printed an `opened:` line
    for it. With no viewer config, `enabled: false`, or only `would run:` lines, nothing opened: say
    so once, with the reason handoff gave (for example "No viewer is configured, so nothing was
    opened"), list the paths, and carry on. This never blocks a build.
@@ -142,7 +174,11 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
 8. **Branch on the verdict `/review` wrote** — read it with
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
    (the highest-numbered `qc_queries/<n>_review_verdict.md`, its `verdict:` line), never by eye:
-   - **APPROVE** → ask, in one line:
+   - **APPROVE** → if the person already answered `/review`'s sign-off with `ship` (or "Approve and
+     ship"), they have said to ship: do not ask again, and go straight to `/ship` below. If they
+     signed off and chose not to ship yet, stop and name `/ship <owner>/<id>` for later. Otherwise
+     (the sign-off gate is `off`, so nobody has been asked), ask as one question, options "Ship now"
+     and "Not yet":
      <!-- ticketwright:user-facing:begin -->
      > Review approved. Ship now?
      <!-- ticketwright:user-facing:end -->
@@ -151,6 +187,10 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
      tracker comment, chat post and PR and waits for approval before anything leaves the repo, and
      the `review_verdict_guard` hook still asks at push time, so this question only saves you
      typing the command. On no, stop and name `/ship <owner>/<id>` for later.
+   - **AWAITING-SIGNOFF** → the reviewer approved and the person has not answered the sign-off
+     yet. Follow `/review <owner>/<id>`'s step ⑤.4 instructions for this ticket (its `ship` reply
+     counts there too). That step rewrites the record; this skill still never writes a verdict
+     itself. Then branch again on the rewritten verdict. Never treat this status as an approval.
    - **REQUEST-CHANGES** → read each finding's `kind:` and tier. A finding with no `kind:` (an older
      reviewer) counts as `defect`.
      - **No hard-halt `scope` finding** → apply the remediation list, re-run the affected gates from
@@ -159,7 +199,8 @@ foreign owners share is a hard stop listing the `owner/id` choices, never a pick
        Warn-tier `scope` finding is listed for the person, not acted on. **Two REQUEST-CHANGES
        rounds is the cap:** after the second, stop and hand the findings to the human rather than
        looping — a defect the build cannot clear is a scoping problem or a data problem, not a retry
-       problem — and offer the replan below as one way forward.
+       problem — and offer the replan below as one way forward, as one question (options "Replan" and
+       "Stop here").
      - **Any hard-halt `scope` finding** (or the person chose a replan at the cap) → the plan is
        wrong, so rebuilding will not fix it. Run `/ticket <owner>/<id>` Phase 4 **in replan mode**:
        follow its instructions in full, in this window. It updates `plan.md` and the spec in place,

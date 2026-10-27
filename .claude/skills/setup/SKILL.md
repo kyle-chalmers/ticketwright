@@ -93,18 +93,11 @@ plainly what is about to happen and why, before it happens.
 3. **Every question explains itself.** One line on what it decides and why it matters; each option
    says what choosing it changes. A detected value is the recommended option (first, marked
    recommended, with where it came from), never the answer: the person still picks.
-4. **Ask with the runtime's own question tool when it has one.** Read the runtime's capabilities:
-   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/kit_paths.py" --json`
-   - `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
-     ask with that tool, within `capabilities.question_limits` (when that says `unknown`: one
-     question per call, at most four options). Group up to the limit only questions that do not
-     depend on each other's answers; ask a dependent question after the one it depends on.
-   - Otherwise (`no` / `unknown`) → ask in chat as a short numbered list, **one question at a
-     time**, and wait for an explicit answer before the next. A detected value is still only a
-     recommendation.
-   The question content is the same either way; only how it is shown changes. This skill never
-   names a runtime's tool itself, the runtime's own adapter (`adapters/runtime/<name>.md`) does.
-   A question tool is not available inside a subagent, so an interview never runs in one.
+4. **Ask by the question rule** in "How this skill asks the person something" below. This skill's
+   probe is
+   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/kit_paths.py" --json`.
+   In prose the interview goes **one question at a time**, waiting for an explicit answer before
+   the next, and an interview never runs in a subagent.
 5. **Option rules** (both presentations):
    - Options come from detection, from the person's own words, or from the fixed choices a question
      defines. **Never invent a value** (a project key, a folder, a dataset, a channel) and offer it
@@ -142,6 +135,37 @@ plainly what is about to happen and why, before it happens.
    ([interview.md](interview.md) § Suggestions from past usage).
 9. **End on a named state** (Phase 4, step 8): **"Ready for your first ticket"**, or **"Ready, with
    N things to finish"** followed by each item and the command that finishes it.
+
+
+## How this skill asks the person something
+<!-- ticketwright:ask-rule:begin -->
+The kit's one question rule, the same in every skill that asks:
+- Read `capabilities` from this skill's `kit_paths.py --json` probe the first time a question
+  comes up, and keep the result.
+- `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+  **ask with that tool**, within `capabilities.question_limits` (when that says `unknown`: one
+  question per call, at most four options). Group up to the limit only questions that do not
+  depend on each other's answers; ask a dependent question after the one it depends on.
+- Otherwise (`no` / `unknown`, or the probe failed) → ask in chat as a short numbered list, one
+  question at a time unless this skill says a set goes in one round, and wait for an explicit
+  answer.
+- The question content is the same either way; only how it is shown changes. No skill names a
+  runtime's tool: the runtime's own adapter (`adapters/runtime/<name>.md`) does. A question tool
+  is not available inside a subagent, so the main session asks.
+- **Never invent an option.** Options come from what this run found or the fixed choices a step
+  names. A recommended option goes first, marked recommended, with where it came from; the person
+  still picks. Each option says what choosing it changes, and free text is always possible (the
+  tool's own "Other", or "or tell me something else" in prose).
+- Whatever the person needs to answer is already in chat before the question, so a picker never
+  hides it.
+- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
+  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
+  never one click.
+<!-- ticketwright:ask-rule:end -->
+
+In this skill the questions are the interview's, the plan review's yes before anything is written,
+and each mode's own confirmations. Rules 3 to 5 above add setup's own wording and option rules on
+top of this one.
 
 ## Start here, in the default mode: show the map before anything else
 The very first thing a default-mode run outputs is the four-step map in "How setup talks to the
@@ -240,7 +264,7 @@ exactly one round of [interview.md](interview.md) against the existing config, e
 - **`/setup team`** re-runs round 1's roster question: who else is on the team, writing one
   identity-free `people/<id>.yaml` placeholder per new person named (files, never folders), under
   the scope invariant above.
-- **`/setup policies`** re-runs round 6: `db_write_requires_approval` and `human_review_handoff`.
+- **`/setup policies`** re-runs round 6: `db_write_requires_approval`, `human_review_handoff` and `ship_merges_pr`.
 Each also clears its round's `# TODO(setup)` line from `stack.yaml` once the answers are written.
 These exist so a skipped round is a deferral, not a dead end — every skip's punch-list entry names
 the command that finishes it. Requires an existing `stack.yaml`.
@@ -458,7 +482,7 @@ I'd set up. Nothing is written until you say yes." The plan names:
 
 Only on explicit confirmation, execute — **source of truth first, derived files after**:
 5. Write `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
-   commented blocks; the 10 policies with a one-line "when to change this" comment each) as the
+   commented blocks; the 11 policies with a one-line "when to change this" comment each) as the
    FIRST write, then `.claude/settings.json` per [scaffold.md](scaffold.md) (hooks — omitted on a
    plugin install — + read-only CLI allows). Step 6 renders FROM `stack.yaml`, and some runtimes
    refuse every write under `.claude/` in a non-interactive run — a categorical path guard (the

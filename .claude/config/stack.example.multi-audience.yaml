@@ -159,6 +159,7 @@ policies:
   db_write_requires_approval: high_risk
   human_review_handoff: review
   chat_default_draft: true
+  ship_merges_pr: true
   hyperlink_everything: true
   skillify_everything: true
   reduce_assumptions: true

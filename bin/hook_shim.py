@@ -371,7 +371,7 @@ def run_review_verdict_guard(protocol: str, root_arg: str | None) -> int:
 
     Same shape as the other two: the judgment is bin/review_verdict.py's, reached through the
     Claude presenter's pure `assess()` so the jurisdiction (git push / gh pr create|merge / glab
-    mr / az repos pr create) and the message are decided in ONE place and mirrored nowhere.
+    mr / az repos pr create|update) and the message are decided in ONE place and mirrored nowhere.
     """
     hooks_dir = Path(__file__).resolve().parent.parent / ".claude" / "hooks"
     sys.path.insert(0, str(hooks_dir))

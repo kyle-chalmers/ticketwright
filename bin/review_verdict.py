@@ -19,7 +19,8 @@ bin/sql_scan.py + db_write_guard.py, bin/scan_source_materials.py + source_mater
 THE CONTRACT it reads (written by /review, and by /ship for an unreviewed ship):
 
     <ticket-dir>/qc_queries/<n>_review_verdict.md      <n> = an unpadded integer
-    verdict: APPROVE | REQUEST-CHANGES | SKIPPED         the first such line; lowercase key, exact
+    verdict: APPROVE | REQUEST-CHANGES | SKIPPED | AWAITING-SIGNOFF
+                                                         the first such line; lowercase key, exact
 
 The CURRENT verdict is the file with the HIGHEST <n>, compared numerically — `10_` beats `9_`.
 A lexical sort gets that wrong and an mtime is meaningless after a clone; neither is consulted.
@@ -32,6 +33,11 @@ STATUSES (closed vocabulary; `status` in --json, and the exit code):
   request-changes  5   the current verdict is REQUEST-CHANGES
   skipped          6   the current verdict is SKIPPED — /ship recorded an unreviewed ship; this
                        never counts as approval and a later real review supersedes it
+  awaiting-signoff 7   the current verdict is AWAITING-SIGNOFF — the second pass approved and the
+                       person's sign-off (layer 5) is the only thing outstanding. /review writes
+                       it before the hand-off and rewrites the same file to APPROVE or
+                       REQUEST-CHANGES on the answer. Never an approval: without it, "the reviewer
+                       approved, waiting on you" read exactly like "never reviewed" to /ship.
 
 Anything that is not `approve` is a reason to stop and look; `unreadable` is deliberately its own
 status rather than a guess in either direction — a verdict nobody can read is not a verdict.
@@ -60,6 +66,7 @@ from pathlib import Path
 STATUS_APPROVE = "approve"
 STATUS_REQUEST_CHANGES = "request-changes"
 STATUS_SKIPPED = "skipped"
+STATUS_AWAITING_SIGNOFF = "awaiting-signoff"
 STATUS_NONE = "none"
 STATUS_UNREADABLE = "unreadable"
 
@@ -69,12 +76,14 @@ EXIT_CODE = {
     STATUS_UNREADABLE: 4,
     STATUS_REQUEST_CHANGES: 5,
     STATUS_SKIPPED: 6,
+    STATUS_AWAITING_SIGNOFF: 7,
 }
 
 _VALUES = {
     "APPROVE": STATUS_APPROVE,
     "REQUEST-CHANGES": STATUS_REQUEST_CHANGES,
     "SKIPPED": STATUS_SKIPPED,
+    "AWAITING-SIGNOFF": STATUS_AWAITING_SIGNOFF,
 }
 
 VERDICT_FILE_RE = re.compile(r"^(\d+)_review_verdict\.md$")
@@ -136,7 +145,7 @@ def read_verdict(path: Path) -> dict:
     status = _VALUES.get(value)
     if status is None:
         return {"status": STATUS_UNREADABLE, "value": value, "review_mode": review_mode,
-                "reason": f"`verdict: {value}` is outside APPROVE | REQUEST-CHANGES | SKIPPED"}
+                "reason": f"`verdict: {value}` is outside APPROVE | REQUEST-CHANGES | SKIPPED | AWAITING-SIGNOFF"}
     return {"status": status, "value": value, "review_mode": review_mode, "reason": None}
 
 
@@ -262,6 +271,9 @@ def describe(record: dict) -> str:
         return f"the review asked for changes ({name})"
     if s == STATUS_SKIPPED:
         return f"shipped unreviewed before, which is not an approval ({name})"
+    if s == STATUS_AWAITING_SIGNOFF:
+        return (f"the reviewer approved, but your sign-off is still needed; reply `ship` at the "
+                f"review's sign-off question, or run `/review` again ({name})")
     if s == STATUS_UNREADABLE:
         return (f"the review file {name} can't be read; its first line should be "
                 f"`verdict: APPROVE` (or `REQUEST-CHANGES` / `SKIPPED`). Details: {record['reason']}")

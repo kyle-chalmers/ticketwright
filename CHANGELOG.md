@@ -8,12 +8,65 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [4.5.0] - 2026-10-26
 
-Fixes from a first-run setup test (LABS-104). Nothing to migrate: existing configs keep working.
+`/ship` now merges the pull request after asking and runs in the order its links need (LABS-106,
+LABS-107), plus fixes from a first-run setup test (LABS-104). Nothing to migrate: existing
+configs keep working.
 Two things a teammate may notice after updating: a slot still holding `mcp: TODO` now shows as a
 warning in `verify_stack.sh` and the session banner until it is finished, and the plugin doctor
 has two more checks (`install_commit`, `stale_cache`).
 
+### Added
+- **`/ship` merges the pull request, after asking you.** Once you say go ahead and the pull
+  request is open, `/ship` asks once more (**Merge now** or **Leave it open**) and then
+  squash-merges it, pinned to the commit you saw. If branch rules, a required review, a check or a
+  conflict blocks the merge, it stops and tells you why before anything is backed up or posted,
+  and it never uses a bypass option. The new policy `ship_merges_pr` (default `true`, asked in
+  `/setup` round 6) turns it off for teams that merge by hand; the delivery plan always says which
+  way it is set. Every vcs adapter gains a `merge_pr` verb, and the `review_verdict_guard` hook
+  now also asks before an Azure Repos merge (`az repos pr update`) of an unapproved ticket.
+  (LABS-106)
+- **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
+  with a diagram, which link each post needs from an earlier step, and each moment it waits for
+  you. (LABS-106)
+
+### Changed
+- **`/ship` runs in the order its links need.** It now commits and opens the pull request first,
+  merges, backs up, then posts the tracker comment and drafts the chat message, so both posts
+  carry real links to the pull request and the backed-up files. Before, the chat draft linked a
+  pull request that did not exist yet. A ticket moves to its final status only once its pull
+  request is merged. (LABS-106)
+- **Every skill asks its questions as clickable choices where the agent has a question tool.**
+  `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
+  without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,
+  "Ship now?", the replan offer), `/setup` and `/skillify` now share one question rule, copied
+  word for word into each skill: ask with the runtime's own question tool on agents that have one
+  (Claude Code today), and as numbered questions everywhere else. What the plan assumed or what was
+  detected is the first, recommended choice; options are never invented. Replies the kit checks
+  word for word stay typed (`ship unreviewed`, `go ahead`, the `yes` before destructive SQL), so an
+  unreviewed ship, an external send or an irreversible write is never one click. The skills read
+  the tool from the runtime adapter's `question_tool` and `question_limits` keys and never name a
+  tool themselves. (LABS-107)
+- **Reply `ship` at the review's sign-off to approve and deliver.** When the independent review
+  approved and only your sign-off is left, `/review` ends with "Reply `ship` to approve and
+  deliver, or tell me what to change." (with a question tool, "Approve and ship" is the first
+  choice). `ship` records the APPROVE with your sign-off and starts `/ship`, which still shows you
+  everything it would send and waits for your go-ahead. When the review found a problem, `ship`
+  approves nothing. `/build` no longer asks "Ship now?" after you have already said `ship`.
+  (LABS-107)
+- **A new verdict, `AWAITING-SIGNOFF`, records "the reviewer approved, waiting on you".**
+  `/review` saves it before handing you the files and rewrites the same record to APPROVE or
+  REQUEST-CHANGES when you answer. `bin/review_verdict.py` reports it as `awaiting-signoff`
+  (exit 7), the push guard treats it as not approved yet, and `/build` asks the pending sign-off
+  instead of rebuilding. Before this, the state was not on disk at all, so nothing could tell it
+  from "never reviewed". `/ship` asks a pending sign-off the same way, and after a sign-off it
+  always waits for a typed `go ahead`, even with `--go`. (LABS-107)
+
 ### Fixed
+- **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole
+  ticket folder, including `comms/`, which holds `/ship`'s unsent tracker and chat drafts and is
+  gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
+  `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
+  (LABS-106)
 - **Each ticket picks its own audience, and a post to a channel no longer needs a named person.**
   A first run could not set up "post results to our channel", because every route required a
   named person. Recipients change per ticket, so the delivery plan now records what the

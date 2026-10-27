@@ -43,11 +43,11 @@ against the bulk artifact, not a confidentiality review, and nothing in it repla
 reading the file.
 
 `review_verdict_guard` is the review-before-ship gate at the command layer: it sees **Bash** —
-`git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` — finds
+`git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` / `update` — finds
 the ticket from the command's paths, its cwd, or the checked-out branch, and asks when that ticket
 has files in `final_deliverables/` and the verdict on file (read by `bin/review_verdict.py`, the
 highest-numbered `qc_queries/<n>_review_verdict.md`) is anything but APPROVE: none, SKIPPED,
-REQUEST-CHANGES, or unreadable. It never denies, and `hard_halt_before_external_posts: false`
+REQUEST-CHANGES, AWAITING-SIGNOFF (the reviewer approved, your sign-off is pending), or unreadable. It never denies, and `hard_halt_before_external_posts: false`
 silences it. A push from a git client, an IDE button, or a browser never reaches it, and it reads
 the record, not the work.
 
