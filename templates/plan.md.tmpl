@@ -1,57 +1,35 @@
 # Plan — {{ticket_id}}: {{title}}
 
-> Written by `/ticket` for every ticket, before anything is built — the one-page scoping record.
-> Drafted first, written to the ticket only after the human approves it; on file before `/build`
-> runs (committed when policy `commit_plan_before_implement` is on).
-> **Confidence (1–10): {{confidence}}** — below 7, the Next step requires a spec.
->
-> **The `spec:` decision, decided here and read by `/build`:** `not required` (the plan is the
-> build's blueprint) · `<ticket-dir>/specs/<id>-<slug>.md`, spelled out from the repo root (a spec
-> was required and is on file at that path —
-> required when the work creates or alters a persisted object others depend on: a warehouse object,
-> a model, a published report; or reconciles two or more sources; or confidence is below 7) ·
-> `after-root-cause` (an investigation whose fix cannot be blueprinted before the cause is known:
-> the Approach scopes the investigation, and `/build` returns to `/ticket` for the spec once the
-> cause is found — its Phase 1 states the exact condition).
+**Confidence (1–10): {{confidence}}**
 
 ## Goal
-{{goal}} — the outcome and why it matters to the requester.
+{{goal}}
 
 ## Scope
-- **In:** …
-- **Explicitly out:** … (what this ticket will not answer, so nobody assumes it did)
+{{scope}}
 
 ## Builds on
-*Prior tickets from recall this plan reuses: `<owner>/<id>`, why it matched (a shared object, named by
-its name, a shared tag, a cross-reference, or keyword overlap only), and what is reused. "None found" is
-a valid answer.*
-- …
+{{builds_on}}
 
 ## Deliverables expected
-*Numbered in review order; each names its grain and carries its record count in the filename.*
-1. …
+{{deliverables_expected}}
 
 ## Approach
-*Ordered steps. Keep build-and-check loops small — one object/change at a time.*
-1. …
+{{approach}}
 
 ## Validation strategy (defined BEFORE code)
-*How each step is verified; the success criteria `/review` will check against.*
-- Duplicate detection on the grain key (primary test).
-- Record-count reconciliation (source vs output).
-- …
+{{validation_strategy}}
 
 ## Touched
-- **Objects/files:** …
-- **Tool slots:** tracker / warehouse / chat / docstore / meetings / vcs (which, for what)
+{{touched}}
 
 ## Questions for the requester
-*Asked before approval (policy `reduce_assumptions`); the answers become README assumptions.*
-- …
+{{questions_for_the_requester}}
 
 ## Risks
-- …
+{{risks}}
 
 ## Next step
 - **spec:** {{spec_required}}
 - Then `/build {{owner}}/{{ticket_id}}` → `/ship {{owner}}/{{ticket_id}}` on APPROVE.
+{{after_ship}}

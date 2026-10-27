@@ -169,7 +169,7 @@ fails (`✗ UNREACHABLE` on a
 `rclone` route: <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/drive-mount.md>. Mention the `db_write_guard` hook so they know destructive
 warehouse statements prompt for confirmation **by design**.
 
-Then run `/setup viewer` with them. The repo's `human_review_handoff` policy already decides *when*
+Then run the viewer interview in [viewer.md](viewer.md) with them (the same one `/setup viewer` runs). The repo's `human_review_handoff` policy already decides *when*
 work pauses for a human to eyeball deliverables; this is where **they** pick which of their own apps
 those files open in. It is per-user and gitignored, so whoever configured the repo could not answer
 it on their behalf — and skipping it just means the gate prints paths instead of opening anything.

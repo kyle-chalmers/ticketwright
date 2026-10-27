@@ -127,7 +127,10 @@ it opens: the portable half (which file types you care about) lives in your comm
 `.claude/config/connections.local.yaml`, and a full per-repo `.claude/config/viewer.local.yaml`
 (or a user-level file covering all your repos) wins when present. `bin/handoff.sh` resolves the
 layers and owns the rails — it never launches in CI or a headless session, never opens a path
-outside the project, and is a silent no-op when nothing is configured. Details:
+outside the project, and is a silent no-op when nothing is configured. Setup asks each person which
+app opens each kind of deliverable in one shared interview,
+[`.claude/skills/setup/viewer.md`](../.claude/skills/setup/viewer.md), which `/setup viewer`,
+`/setup --teammate` and `/review`'s first hand-off also follow. Details:
 [.claude/config/viewer.example.yaml](../.claude/config/viewer.example.yaml).
 
 ## Config is three tiers behind one resolver
@@ -269,7 +272,7 @@ before it is paid.
   `README.md`, or to `README.ticketwright.md` when a README already exists), ticket README, plan,
   spec, `.gitignore` (deliverables committed by default; PII opts out via `*.private.csv` / a
   `private/` subfolder), role snippets, and the generated-skill skeleton.
-- **`bin/`**: `verify_stack.sh`, `render.sh` + `render_and_validate.sh` (render gate),
+- **`bin/`**: `verify_stack.sh`, `render.sh` (`--sections` fills multi-line prose such as `plan.md` from `## Heading` blocks) + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
   (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), the runtime installer
