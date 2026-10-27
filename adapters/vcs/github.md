@@ -49,6 +49,23 @@ gh pr create --title "<type>: <TICKET-ID> <description>" \
 `semantic_pr: true` ⇒ non-semantic titles fail the Semantic-PR check. Honor `word_limits.pr` (<200).
 External action ⇒ requires approval (policy `hard_halt_before_external_posts`).
 
+## verb: merge_pr
+**In:** the PR number from `open_pr`, and the commit sha `/ship` pushed.
+```bash
+gh pr merge <PR-NUMBER> --squash --match-head-commit <SHA>
+gh pr view <PR-NUMBER> --json state,mergedAt   # verify: state MERGED
+```
+Squash is the kit's merge style: one commit per ticket on `{default_branch}`. `--match-head-commit`
+refuses the merge if anything was pushed to the branch after the person confirmed it, so the merge
+lands exactly what they saw. External action ⇒ requires approval (policy
+`hard_halt_before_external_posts`), and `/ship` asks again right before this step (policy
+`ship_merges_pr`). When branch protection, a required review, a failing or pending check, or a
+conflict blocks it, `gh` usually exits non-zero with the reason: report that reason and stop. On a
+branch with a merge queue, or when required checks have not finished, `gh` can instead queue the PR
+or turn on auto-merge and exit 0 without merging, so the verify line decides: anything but `MERGED`
+means blocked. Never retry with `--admin` or `--auto`, which bypass or defer exactly the checks the
+team set.
+
 ## gotchas
 - `gh pr create` prompts interactively (which can hang an agent) unless the branch is already pushed
   — push first, as above.
