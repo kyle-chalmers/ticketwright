@@ -81,8 +81,11 @@ stack.yaml so it's passed automatically.
 ```bash
 acli jira workitem transition --key "<id>" --status "<status>" --yes
 ```
-`<status>` is the `to` of a move `list_transitions` returned (the status name, which is what `acli`
-takes). Never a status name typed from memory: workflows differ per project, and a status this
+`<status>` is the `to` of a move `list_transitions` returned: `acli` takes the status NAME. The
+connector's `transitionJiraIssue` takes the move's `via` instead, as `transitionId`. When two moves
+reach the same status (`transition_plan.py` reports `ambiguous` and the person picks one), only the
+`via` tells them apart, so make that move through the connector with the picked `via`, never with
+`acli --status`. Never a status name typed from memory: workflows differ per project, and a status this
 ticket cannot reach fails with `No allowed transitions found for given status`. Without `--yes` the
 CLI waits for a confirmation prompt and a non-interactive run hangs.
 
@@ -96,7 +99,8 @@ acli jira workitem view <id> --json      # `current` = fields.status.name
 Observed 2026-10-26 on the Atlassian connector: `listJiraIssueTransitions` is not one of its
 primary tools; it runs through the read-only operation runner `executeRead` (find it with
 `discover`, query "list available transitions for a jira issue", if the name moves).
-Map each returned transition to `to` = `to.name`, `via` = its `id`, and `category` from
+Map each returned transition to `to` = `to.name`, `via` = its `id`, `name` = its own `name`
+(what the person recognizes when two moves reach one status), and `category` from
 `to.statusCategory.key` (`new` = `todo`, `indeterminate` = `in_progress`, `done` = `done`). Only
 transitions with `isAvailable: true` count. The connector lists the moves open to the signed-in
 person, which is who `transition` runs as.
@@ -238,8 +242,11 @@ stack.yaml so it's passed automatically.
 ```bash
 acli jira workitem transition --key "<id>" --status "<status>" --yes
 ```
-`<status>` is the `to` of a move `list_transitions` returned (the status name, which is what `acli`
-takes). Never a status name typed from memory: workflows differ per project, and a status this
+`<status>` is the `to` of a move `list_transitions` returned: `acli` takes the status NAME. The
+connector's `transitionJiraIssue` takes the move's `via` instead, as `transitionId`. When two moves
+reach the same status (`transition_plan.py` reports `ambiguous` and the person picks one), only the
+`via` tells them apart, so make that move through the connector with the picked `via`, never with
+`acli --status`. Never a status name typed from memory: workflows differ per project, and a status this
 ticket cannot reach fails with `No allowed transitions found for given status`. Without `--yes` the
 CLI waits for a confirmation prompt and a non-interactive run hangs.
 
@@ -253,7 +260,8 @@ acli jira workitem view <id> --json      # `current` = fields.status.name
 Not observed on Codex: the app's read-only operation runner is assumed to follow the
 connector's naming (`executeRead` lower-cased behind `atlassian_`). If the session does not list
 it, return `unavailable` rather than guessing another name.
-Map each returned transition to `to` = `to.name`, `via` = its `id`, and `category` from
+Map each returned transition to `to` = `to.name`, `via` = its `id`, `name` = its own `name`
+(what the person recognizes when two moves reach one status), and `category` from
 `to.statusCategory.key` (`new` = `todo`, `indeterminate` = `in_progress`, `done` = `done`). Only
 transitions with `isAvailable: true` count. The connector lists the moves open to the signed-in
 person, which is who `transition` runs as.

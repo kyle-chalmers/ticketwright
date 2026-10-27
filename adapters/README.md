@@ -36,7 +36,7 @@ verb in that seam's contract. A verb section gives the command(s), inputs, the e
 | `fetch_ticket` | `id` | title, description, status, type, assignee, links, attachments list; `reporter` and `watchers` where the tracker exposes them, else "not available" (people for `/ship`'s audience suggestions) |
 | `create_ticket` | type, summary, description, assignee, parent/epic | new `id` + URL |
 | `transition` | `id`, `status` | ok/fail |
-| `list_transitions` | `id` | `{current, transitions: [{to, via, category}], free_form}`: the statuses this ticket can move to from where it is now — or `unsupported` / `unavailable` + reason |
+| `list_transitions` | `id` | `{current, transitions: [{to, via, category, name?}], free_form}`: the statuses this ticket can move to from where it is now — or `unsupported` / `unavailable` + reason |
 | `comment` | `id`, body, optional smart-link cards | ok/fail (rendered, not plain text) |
 | `search` | query (JQL/equivalent), limit — or `ids` | list of `{id, summary, status}` |
 | `download_attachments` | `id`, dest dir | files written (silent if none) |
@@ -53,13 +53,15 @@ rather than guesses). The return shape is the same for every tool:
       "transitions": [ { "to": "Done",                # the status the move lands in (what is matched)
                          "via": "31",                 # what `transition` takes to make it: a
                                                       # transition id, a state id, or the status name
-                         "category": "done" } ],      # todo | in_progress | done | null, when the
+                         "category": "done",          # todo | in_progress | done | null, when the
                                                       # tracker groups its statuses
+                         "name": "Close" } ],         # OPTIONAL: the move's own name, when the
+                                                      # tracker gives moves names (Jira)
       "free_form": false }                            # true when any status word is accepted (`local`)
 
 `to` is always the status name the person sees; `via` is whatever the adapter's `transition` verb
 needs, which is the transition's own id on a tracker (Jira) whose transition names and target
-statuses can differ. `unsupported` means the tool has no workflow to read; `unavailable` means it
+statuses can differ; each adapter's `transition` section says which of the two its call takes. `unsupported` means the tool has no workflow to read; `unavailable` means it
 has one that this transport cannot list (an `acli`-only Jira install: the CLI has no listing
 command). Both are said to the person, and the plan then names `project.terminal_status` with "not
 checked against the tracker" beside it.

@@ -47,8 +47,9 @@ status typed from memory: the moves differ per workflow.
 ```bash
 gh issue view <number> --repo {repo} --json state,stateReason
 ```
-An issue has two states. `OPEN` gives one move, `{to: "closed", via: "close", category: "done"}`;
-`CLOSED` gives `{to: "open", via: "reopen", category: "todo"}`. `current` is `open` or `closed`, in
+An issue has two states, so there is one move at a time: `to` is the state it lands in and `via`
+the `gh issue` subcommand that makes it. `OPEN` gives `{to: "closed", via: "close", category:
+"done"}`; `CLOSED` gives `{to: "open", via: "reopen", category: "todo"}`. `current` is `open` or `closed`, in
 lower case, so set `project.terminal_status: closed` for this tracker. A team that tracks progress
 through labels or a Projects board has no workflow `gh issue` can read: say so rather than listing
 labels as statuses.

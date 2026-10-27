@@ -34,7 +34,7 @@ from datetime import date
 from pathlib import Path
 
 from build_ticket_index import (discover, repo_root, sha256_file, ref_key, load_config,
-                               ticket_url, id_key_regex, clean_status)
+                               ticket_url, id_key_regex, clean_status, readme_status)
 
 VALID_STATUS = {"Completed", "Deployed", "In Review", "In Progress", "Blocked", "Unknown"}
 
@@ -127,6 +127,9 @@ def record_statuses(store: dict, dirs: dict, rows: list[dict], read_on: str) -> 
             rec = store.get(k) or {"id": k[1], "owner": k[0]}
             rec["tracker_status"] = status
             rec["tracker_status_read"] = read_on
+            # What the README's Status line said at the read. If the line changes later (the `local`
+            # tracker's transition writes it; /ticket rewrites it), the README is the newer copy.
+            rec["readme_status_at_read"] = readme_status(dirs[k].get("readme"))
             store[k] = rec
             recorded += 1
     return recorded, skipped, rejected
@@ -218,7 +221,7 @@ def main() -> int:
         if url:
             rec["ticket_url"] = url
         prev = store.get((owner, tid)) or {}
-        for k in ("tracker_status", "tracker_status_read"):
+        for k in ("tracker_status", "tracker_status_read", "readme_status_at_read"):
             if k in prev:   # the tracker's own read has its own writer; a curated upsert keeps it
                 rec[k] = prev[k]
         store[(owner, tid)] = rec

@@ -75,6 +75,19 @@ def clean_status(value) -> str | None:
         return None
     return s
 
+
+def readme_status(path) -> str | None:
+    """The README's `- **Status:**` line, cleaned, or None (no README, no line, a placeholder)."""
+    try:
+        text = Path(path).read_text(errors="replace") if path else ""
+    except OSError:
+        return None
+    for ln in text.splitlines():
+        mm = README_STATUS.match(ln)
+        if mm:
+            return clean_status(mm.group(1))
+    return None
+
 # ── Obsidian graph-view auto-config (.obsidian/graph.json) ─────────────────────────────────────
 # The renderer owns exactly two things in graph.json: the `search` filter and its two color groups
 # (keyed by these constant query strings). It creates the file if missing and re-creates those
@@ -758,8 +771,14 @@ def build_rows(root: Path) -> list[dict]:
             date_val = parsed["date"]
             tags = []
         curated = clean_status(entry.get("status")) if enriched else None
+        tracked = clean_status((entry or {}).get("tracker_status"))
+        if tracked and "readme_status_at_read" in (entry or {}) \
+                and parsed.get("status") and parsed["status"] != entry["readme_status_at_read"]:
+            # The README's Status line changed after the tracker read (a `local` transition writes
+            # it, /ticket rewrites it), so it is the newer copy of the tracker's status.
+            tracked = None
         status, status_source, status_read = "Unknown", "none", None
-        for cand, src in ((clean_status((entry or {}).get("tracker_status")), "tracker"),
+        for cand, src in ((tracked, "tracker"),
                           (None if curated == "Unknown" else curated, "curated"),
                           (parsed.get("status"), "readme"),
                           (t["emoji_status"], "folder")):

@@ -79,8 +79,9 @@ destination and no recipients. That is a decision a person recorded with the tic
 neither `no_plan` (exit 3) nor "nothing declared" (exit 9), and /ship prints it as "Chat: none,
 declared on the ticket" instead of asking. `none: true` beside a `channel:`, `kind:`,
 `recipients:`, `target:` or `chosen_from:` is malformed (exit 4: the plan says both), and so is any
-`chat:` scalar other than `none`. `--override` still routes (an explicit human choice), with a
-warning that it contradicts the declaration; `--check-draft` refuses, as there is no draft to check.
+`chat:` scalar other than `none`. `--override` still routes (an explicit human choice), marked
+`overrides_declared_none: true` with a warning, so the approval shows a message going out that the
+ticket says it does not need; `--check-draft` refuses, as there is no draft to check.
 An unconfigured chat slot is still exit 7: the declaration does not configure anything.
 
 ON EVERY NON-ZERO EXIT, `target` AND `destination` ARE NULL. A caller cannot pick a usable
@@ -1210,12 +1211,16 @@ def main(argv: list[str] | None = None) -> int:
                 return _emit(out, EXIT_NO_TARGET, args.quiet)
             return _emit(out, EXIT_OK, args.quiet)
         if is_none:
-            none_warning = (f"--override `{args.override}` CONTRADICTS the ticket's declared "
-                            f"`chat: none` — sending a message the ticket says it does not need")
+            none_warning = (f"This ticket declares no chat message, and this run sends one anyway "
+                            f"because the chat target was picked for this run. Details: --override "
+                            f"`{args.override}` against `chat: none` in the delivery plan.")
             plan_chat = None
 
     out, err = route(res, args.seam, declared, args.override, args.self_name, plan_chat)
     if none_warning and not err:
+        # A field, not only a warning string: /ship prints its own plan line for it, because a
+        # message the ticket said it does not need is exactly what the approver must see.
+        out["overrides_declared_none"] = True
         out["warnings"] = (out.get("warnings") or []) + [none_warning]
     # `single` is the sentinel /ship already renders for a single mapping's null target (#38's
     # convention), so passing that plan line back must MATCH rather than look like a changed target.
