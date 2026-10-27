@@ -79,11 +79,37 @@ stack.yaml so it's passed automatically.
 
 ## verb: transition
 ```bash
-acli jira workitem transition --key "<id>" --status "<status>"
+acli jira workitem transition --key "<id>" --status "<status>" --yes
 ```
-The done state is `{terminal_status}` (defaults to `Done`; set it to your workflow's terminal state).
-Status names are workflow-specific: don't assume a fixed ladder; resolve the valid target statuses
-from your Jira workflow (the project's board columns / transitions).
+`<status>` is the `to` of a move `list_transitions` returned: `acli` takes the status NAME. The
+connector's `transitionJiraIssue` takes the move's `via` instead, as `transitionId`. When two moves
+reach the same status (`transition_plan.py` reports `ambiguous` and the person picks one), only the
+`via` tells them apart, so make that move through the connector with the picked `via`, never with
+`acli --status`. Never a status name typed from memory: workflows differ per project, and a status this
+ticket cannot reach fails with `No allowed transitions found for given status`. Without `--yes` the
+CLI waits for a confirmation prompt and a non-interactive run hangs.
+
+## verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker), or `unavailable` + reason.
+```
+mcp__{mcp}__executeRead(cloudId=<the {site} cloudId>, name="listJiraIssueTransitions", inputs={"issueIdOrKey": "<id>"})
+acli jira workitem view <id> --json      # `current` = fields.status.name
+```
+Observed 2026-10-26 on the Atlassian connector: `listJiraIssueTransitions` is not one of its
+primary tools; it runs through the read-only operation runner `executeRead` (find it with
+`discover`, query "list available transitions for a jira issue", if the name moves).
+Map each returned transition to `to` = `to.name`, `via` = its `id`, `name` = its own `name`
+(what the person recognizes when two moves reach one status), and `category` from
+`to.statusCategory.key` (`new` = `todo`, `indeterminate` = `in_progress`, `done` = `done`). Only
+transitions with `isAvailable: true` count. The connector lists the moves open to the signed-in
+person, which is who `transition` runs as.
+
+The `cloudId` is resolved as in `search`: the site whose URL's host is `{site}`, or STOP. **`acli`
+cannot list transitions** (its `workitem` commands are archive, assign, attachment, clone, comment,
+create, edit, link, search, transition, view and watcher; checked 2026-10-26), so on a CLI-only
+install return `unavailable` with that reason. The caller then says the target status was not
+checked against the tracker.
 
 ## verb: comment
 Use the tracker's **MCP** (`{mcp}`), not acli: the connector converts the comment to ADF, so links
@@ -114,6 +140,14 @@ The MCP alternative needs the `cloudId` of `{site}`: list the sites once per ses
 (`mcp__{mcp}__getAccessibleAtlassianResources()`) and take the one whose URL's host is `{site}`. If
 none matches, STOP and report rather than search another site.
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
+
+**By `ids`** (the index status read): one search for the whole list, in batches of 50 keys.
+```bash
+acli jira workitem search --jql "key in (TEST-1, TEST-2)" --fields "key,summary,status" --limit 50 --json
+# MCP alt: mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=<the {site} cloudId>, jql="key in (TEST-1, TEST-2)", maxResults=50)
+```
+`status` is `fields.status.name`. A key the site does not know makes Jira reject the whole JQL, so
+on that error retry the batch one key at a time and leave out the ones that fail.
 
 ## verb: search_history
 Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
@@ -240,11 +274,37 @@ stack.yaml so it's passed automatically.
 
 ### verb: transition
 ```bash
-acli jira workitem transition --key "<id>" --status "<status>"
+acli jira workitem transition --key "<id>" --status "<status>" --yes
 ```
-The done state is `{terminal_status}` (defaults to `Done`; set it to your workflow's terminal state).
-Status names are workflow-specific: don't assume a fixed ladder; resolve the valid target statuses
-from your Jira workflow (the project's board columns / transitions).
+`<status>` is the `to` of a move `list_transitions` returned: `acli` takes the status NAME. The
+connector's `transitionJiraIssue` takes the move's `via` instead, as `transitionId`. When two moves
+reach the same status (`transition_plan.py` reports `ambiguous` and the person picks one), only the
+`via` tells them apart, so make that move through the connector with the picked `via`, never with
+`acli --status`. Never a status name typed from memory: workflows differ per project, and a status this
+ticket cannot reach fails with `No allowed transitions found for given status`. Without `--yes` the
+CLI waits for a confirmation prompt and a non-interactive run hangs.
+
+### verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker), or `unavailable` + reason.
+```
+mcp__codex_apps__atlassian_executeread(cloudId=<the {site} cloudId>, name="listJiraIssueTransitions", inputs={"issueIdOrKey": "<id>"})
+acli jira workitem view <id> --json      # `current` = fields.status.name
+```
+Not observed on Codex: the app's read-only operation runner is assumed to follow the
+connector's naming (`executeRead` lower-cased behind `atlassian_`). If the session does not list
+it, return `unavailable` rather than guessing another name.
+Map each returned transition to `to` = `to.name`, `via` = its `id`, `name` = its own `name`
+(what the person recognizes when two moves reach one status), and `category` from
+`to.statusCategory.key` (`new` = `todo`, `indeterminate` = `in_progress`, `done` = `done`). Only
+transitions with `isAvailable: true` count. The connector lists the moves open to the signed-in
+person, which is who `transition` runs as.
+
+The `cloudId` is resolved as in `search`: the site whose URL's host is `{site}`, or STOP. **`acli`
+cannot list transitions** (its `workitem` commands are archive, assign, attachment, clone, comment,
+create, edit, link, search, transition, view and watcher; checked 2026-10-26), so on a CLI-only
+install return `unavailable` with that reason. The caller then says the target status was not
+checked against the tracker.
 
 ### verb: comment
 Use the MCP path, not acli: the connector converts the comment to ADF, so links render clickable;
@@ -273,6 +333,14 @@ The MCP alternative needs the `cloudId` of `{site}`: list the sites once per ses
 (`mcp__codex_apps__atlassian_getaccessibleatlassianresources({})`) and take the one whose URL's host
 is `{site}`. If none matches, STOP and report rather than search another site.
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
+
+**By `ids`** (the index status read): one search for the whole list, in batches of 50 keys.
+```bash
+acli jira workitem search --jql "key in (TEST-1, TEST-2)" --fields "key,summary,status" --limit 50 --json
+# MCP alt: mcp__codex_apps__atlassian_searchjiraissuesusingjql(cloudId=<the {site} cloudId>, jql="key in (TEST-1, TEST-2)", maxResults=50)
+```
+`status` is `fields.status.name`. A key the site does not know makes Jira reject the whole JQL, so
+on that error retry the batch one key at a time and leave out the ones that fail.
 
 ### verb: search_history
 Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,

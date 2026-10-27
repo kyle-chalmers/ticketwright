@@ -120,7 +120,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 8;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 5;;
+    tracker) echo 9;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 5;;
     viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -2088,12 +2088,12 @@ grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/de
   || ok "ingest does not invent a tracker number for a key-shaped slug id"
 
 hdr "27 · local tracker adapter (the filesystem IS the tracker)"
-# The whole point is zero skill edits: the adapter must satisfy the same 8-verb contract, so /ticket
+# The whole point is zero skill edits: the adapter must satisfy the same 9-verb contract, so /ticket
 # and /ship keep calling tracker verbs without knowing there's no API.
 lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
-[ "$lv" -eq 8 ] && ok "local adapter implements all 8 tracker verbs" || bad "local adapter has $lv verbs, expected 8"
+[ "$lv" -eq 9 ] && ok "local adapter implements all 9 tracker verbs" || bad "local adapter has $lv verbs, expected 9"
 lvmiss=""
-for v in fetch_ticket create_ticket transition comment search search_history download_attachments \
+for v in fetch_ticket create_ticket transition list_transitions comment search search_history download_attachments \
          rank_projects_by_activity; do
   grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
 done
@@ -6758,7 +6758,7 @@ asc45b $o45b \
 # (B) the preview the person approves lists the same order.
 p45b=""
 for pat in 'open the pull request\.$' 'squash-merge the pull request' 'back it up to the documents destination' \
-           'Post the approved comment' 'Draft the chat message' 'only once the pull request is merged'; do
+           'Post the approved comment' 'Draft the chat message' 'once the pull request is merged\.$'; do
   n="$(grep -nE "^   > [0-9]\. .*$pat" "$SH45B" | head -1 | cut -d: -f1)"; p45b="$p45b ${n:-0}"
 done
 # shellcheck disable=SC2086
@@ -14291,6 +14291,253 @@ PATH="$GD/fake:/usr/bin:/bin" "$PY73" bin/gdrive_item_id.py "$GD/drive/missing.c
 [ "$rc73" -eq 2 ] && grep -q 'Drive for desktop' "$TMP/gd73b.out" && [ "$rc73c" -eq 2 ] && grep -q 'There is no file' "$TMP/gd73c.out" \
   && ok "no xattr, or no such path, exits 2 with a plain message" || bad "item-id helper exit-2 paths wrong" "rc=$rc73/$rc73c $(cat "$TMP/gd73b.out" "$TMP/gd73c.out")"
 grep -q 'gdrive_item_id.py' adapters/docstore/gdrive.md && ok "gdrive link_for calls the helper" || bad "gdrive link_for still says to wait by hand"
+
+hdr "74 · /ship names the exact status it moves to, read from the tracker (list_transitions, LABS-117)"
+# A delivery planned a move to `In Review` on a board that has no such status, and the transition
+# failed at the last step. The moves now come from the tracker (`list_transitions`, every adapter),
+# and bin/transition_plan.py picks the target deterministically: matched, never guessed.
+grep -q '^| `list_transitions` | `id` |' adapters/README.md \
+  && ok "the tracker contract table names list_transitions" || bad "adapters/README.md tracker table is missing list_transitions"
+lt74=""
+for f in adapters/tracker/*.md; do
+  sec="$(sed -n '/^## verb: list_transitions$/,/^## /p' "$f" | tr '\n' ' ')"
+  case "$f" in
+    */local.md) grep -q 'free_form: true' <<<"$sec" || lt74="$lt74 $(basename "$f"):free_form" ;;
+    *) grep -q 'free_form: false' <<<"$sec" || lt74="$lt74 $(basename "$f"):free_form" ;;
+  esac
+  # `local` has no moves to describe (free_form), so it names `current` only.
+  { grep -q 'current' <<<"$sec" && { [ "$(basename "$f")" = "local.md" ] \
+      || { grep -q '`to`' <<<"$sec" && grep -q '`via`' <<<"$sec"; }; }; } \
+    || lt74="$lt74 $(basename "$f"):shape"
+done
+[ -z "$lt74" ] && ok "every tracker adapter's list_transitions returns the contract shape (current, to, via, free_form)" \
+  || bad "a tracker adapter's list_transitions does not say how it fills the shape" "$lt74"
+# Jira: the connector lists the moves; acli cannot (an acli-only install is `unavailable`, said plainly).
+j74="$(sed -n '/^## verb: list_transitions$/,/^## /p' adapters/tracker/jira.md | tr '\n' ' ')"
+{ grep -q 'listJiraIssueTransitions' <<<"$j74" && grep -q 'cannot list transitions' <<<"$j74" \
+  && grep -q 'unavailable' <<<"$j74"; } \
+  && ok "jira lists moves through the connector, and says acli cannot" || bad "jira list_transitions hides that acli cannot list moves"
+grep -q '^### verb: list_transitions$' adapters/tracker/jira.md \
+  && ok "jira's codex-cli surface carries list_transitions too" || bad "jira's codex-cli surface has no list_transitions"
+{ [ "$(grep -c "as \`transitionId\`" adapters/tracker/jira.md)" -eq 2 ] && [ "$(grep -c '`name` = its own `name`' adapters/tracker/jira.md)" -eq 2 ]; } \
+  && ok "jira says acli takes the status name and the connector the move's id, on both surfaces" \
+  || bad "jira does not say which half of a move each transport takes"
+grep -q -- '--status "<status>" --yes' adapters/tracker/jira.md \
+  && ok "jira transition passes --yes (a prompt would hang a non-interactive run)" || bad "jira transition can hang on its confirmation prompt"
+
+TP74="$TMP/tp74"; mkdir -p "$TP74/.claude/config"
+printf 'project:\n  key_prefix: TEST\n  terminal_status: Closed\n' > "$TP74/.claude/config/stack.yaml"
+cat > "$TP74/moves.json" <<'EOF'
+{"current":"In Progress","transitions":[{"to":"Inbox","via":"2","category":"todo"},{"to":"Needs you","via":"3","category":"in_progress"},{"to":"To Do","via":"11","category":"todo"},{"to":"Done","via":"31","category":"done"}],"free_form":false}
+EOF
+tp74() { env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT python3 bin/transition_plan.py --root "$TP74" "$@" >"$TMP/tp74.out" 2>"$TMP/tp74.err"; TP74RC=$?; }
+tpj() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print($1)" "$TMP/tp74.out" 2>/dev/null; }
+# (a) the reported failure: In Review on a workflow without it. Exit 8, no target, the moves listed.
+tp74 --transitions "$TP74/moves.json" --want "In Review" --id TEST-14
+{ [ "$TP74RC" -eq 8 ] && [ "$(tpj 'd["result"]')" = "no_route" ] && [ "$(tpj 'd["target"]')" = "None" ] \
+  && [ "$(tpj '",".join(d["available"])')" = "Inbox,Needs you,To Do,Done" ] \
+  && [ "$(tpj 'd["suggestion"]')" = "Done" ]; } \
+  && ok "a status the workflow lacks is exit 8 with no target, the real moves listed, Done only suggested" \
+  || bad "transition_plan guessed or hid the moves for a missing status" "rc=$TP74RC $(head -c 300 "$TMP/tp74.out")"
+grep -q 'TEST-14` cannot move to `In Review` from `In Progress`. It can move to:' "$TMP/tp74.err" \
+  && ok "the no-route message names the ticket, where it is and where it can go" || bad "the no-route message is unclear" "$(cat "$TMP/tp74.err")"
+python3 "$KIT/tests/plain_language/check.py" --text "$TMP/tp74.err" >"$TMP/tp74.pl" 2>&1 \
+  && ok "that message leads in plain words (tests/plain_language/check.py)" || bad "the no-route message is not plain" "$(cat "$TMP/tp74.pl")"
+# (b) a match, case aside: the tracker's spelling and its via come back.
+tp74 --transitions "$TP74/moves.json" --want done
+{ [ "$TP74RC" -eq 0 ] && [ "$(tpj 'd["target"]')" = "Done" ] && [ "$(tpj 'd["via"]')" = "31" ]; } \
+  && ok "a matching move returns the tracker's spelling and the id transition needs" || bad "a matching move was not returned" "rc=$TP74RC"
+# (c) --want absent: the merged config's project.terminal_status (Closed here), not a default.
+tp74 --transitions "$TP74/moves.json"
+{ [ "$TP74RC" -eq 8 ] && [ "$(tpj 'd["want"]')" = "Closed" ]; } \
+  && ok "the wanted status is read from project.terminal_status" || bad "transition_plan ignored project.terminal_status" "want=$(tpj 'd["want"]')"
+# (d) already there, free-form (local), unreadable (unavailable), ambiguous, malformed.
+printf '{"current":"Done","transitions":[{"to":"To Do","via":"11"}],"free_form":false}' > "$TP74/there.json"
+tp74 --transitions "$TP74/there.json" --want Done
+{ [ "$TP74RC" -eq 0 ] && [ "$(tpj 'd["result"]')" = "already_there" ]; } \
+  && ok "a ticket already in the status needs no move" || bad "already-there was not recognized" "rc=$TP74RC"
+printf '{"current":"In Progress","transitions":[],"free_form":true}' > "$TP74/free.json"
+tp74 --transitions "$TP74/free.json" --want Done
+{ [ "$TP74RC" -eq 0 ] && [ "$(tpj 'd["result"]')" = "free_form" ] && [ "$(tpj 'd["target"]')" = "Done" ]; } \
+  && ok "a free-form tracker (local) takes the configured status as written" || bad "free-form moves were refused" "rc=$TP74RC"
+printf '{"status":"unavailable","reason":"acli cannot list transitions"}' > "$TP74/un.json"
+tp74 --transitions "$TP74/un.json" --want Done
+{ [ "$TP74RC" -eq 7 ] && [ "$(tpj 'd["checked"]')" = "False" ] && [ "$(tpj 'd["target"]')" = "Done" ] \
+  && grep -q 'not checked against the tracker' "$TMP/tp74.err"; } \
+  && ok "unreadable moves are exit 7: the configured status, marked not checked" || bad "unreadable moves read as checked" "rc=$TP74RC"
+printf '{"current":"A","transitions":[{"to":"Done","via":"1"},{"to":"done","via":"2"}]}' > "$TP74/amb.json"
+tp74 --transitions "$TP74/amb.json" --want Done
+{ [ "$TP74RC" -eq 8 ] && [ "$(tpj 'd["result"]')" = "ambiguous" ] && [ "$(tpj 'd["via"]')" = "None" ]; } \
+  && ok "two moves to the same status are asked about, never picked" || bad "an ambiguous move was picked" "rc=$TP74RC"
+printf '{"current":"A","transitions":[{"to":"Done","via":"31","name":"Done"},{"to":"Done","via":"41","name":"Won'"'"'t do"},{"to":"To Do","via":"11"}]}' > "$TP74/named.json"
+tp74 --transitions "$TP74/named.json" --want Done
+{ [ "$TP74RC" -eq 8 ] && [ "$(tpj '",".join(o["name"] for o in d["options"])')" = "Done,Won't do" ] \
+  && [ "$(tpj '",".join(d["available"])')" = "Done,To Do" ]; } \
+  && ok "an ambiguous move lists each option by its name (and the moves once each)" || bad "ambiguous options are unnamed" "$(head -c 300 "$TMP/tp74.out")"
+tp74 --transitions "$TP74/named.json" --want Done --via 41
+{ [ "$TP74RC" -eq 0 ] && [ "$(tpj 'd["via"]')" = "41" ]; } \
+  && ok "--via picks the person's choice among moves to the wanted status" || bad "--via did not select the picked move" "rc=$TP74RC"
+tp74 --transitions "$TP74/named.json" --want Done --via 11
+[ "$TP74RC" -eq 8 ] && ok "--via naming a move to another status is refused (never lands elsewhere)" || bad "--via moved the ticket to a status the plan did not name" "rc=$TP74RC"
+printf '{"transitions":[{"via":"1"}]}' > "$TP74/bad.json"
+tp74 --transitions "$TP74/bad.json" --want Done
+[ "$TP74RC" -eq 4 ] && ok "a move with no target status is malformed (exit 4)" || bad "a malformed move list was accepted" "rc=$TP74RC"
+# (e) /ship reads the moves before the plan, names the exact status, and transitions to that one only.
+sh74="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
+{ grep -q 'tracker.list_transitions' <<<"$sh74" && grep -q 'transition_plan.py --transitions' <<<"$sh74" \
+  && grep -q '6. Move `<id>` to `<status>` once the pull request is merged.' .claude/skills/ship/SKILL.md \
+  && grep -q '(not checked against the tracker)' <<<"$sh74" \
+  && ! grep -q 'toward its final status if that applies' <<<"$sh74" \
+  && grep -qE 'transition\*\* the ticket to the status the approved plan named' <<<"$sh74" \
+  && grep -q -- "--via <the picked option's via>" <<<"$sh74" && grep -q 'exit \*\*4\*\* → the reply could not be parsed' <<<"$sh74"; } \
+  && ok "/ship reads the moves, names the exact status in the plan, and moves to that one" \
+  || bad "/ship still names a status it did not read from the tracker"
+
+hdr "75 · the index shows the tracker's status: one source for README, index and tracker (LABS-117)"
+# The index showed a curated `In Review` after the tracker had the ticket Done, and `Unknown` for a
+# ticket whose README said `Status: Inbox`. Order now: a tracker read, a curated status (older kits
+# only), the README bullet, a folder emoji, Unknown. No model writes a status.
+IX75="$TMP/ix75"; mkdir -p "$IX75/.claude/config" "$IX75/bin" "$IX75/tickets/dana/TEST-14_views" "$IX75/tickets/dana/TEST-15_other" "$IX75/tickets/lee/TEST-14_views"
+cp bin/build_ticket_index.py bin/ingest_index_records.py "$IX75/bin/"
+printf 'project:\n  key_prefix: TEST\n  graph_notes: false\n' > "$IX75/.claude/config/stack.yaml"
+printf '# TEST-14: views\n\n## Ticket Information\n- **Status:** Inbox\n\nCounted the first-day views per video.\n' > "$IX75/tickets/dana/TEST-14_views/README.md"
+cp "$IX75/tickets/dana/TEST-14_views/README.md" "$IX75/tickets/lee/TEST-14_views/README.md"
+printf '# TEST-15: other\n\n- **Status:** {{status}}\n\nAnother piece of analysis work.\n' > "$IX75/tickets/dana/TEST-15_other/README.md"
+ix75() { (cd "$IX75" && TICKETWRIGHT_PROJECT="$IX75" python3 bin/"$@"); }
+row75() { grep "^| \[$1\]" "$IX75/tickets/INDEX.md" | grep "| $2 |" | cut -d'|' -f4 | tr -d ' '; }
+ix75 build_ticket_index.py >/dev/null 2>&1
+{ [ "$(row75 TEST-14 dana)" = "Inbox" ] && [ "$(row75 TEST-15 dana)" = "Unknown" ]; } \
+  && ok "an uncurated row shows the README's Status line; a template placeholder is not a status" \
+  || bad "the README Status line is not read" "14=$(row75 TEST-14 dana) 15=$(row75 TEST-15 dana)"
+printf '{"statuses":[{"id":"TEST-14","status":"Done"},{"id":"TEST-99","status":"Done"},{"id":"TEST-15","status":"a|b"}]}' > "$IX75/st.json"
+ix75 ingest_index_records.py --tracker-status "$IX75/st.json" --read-on 2026-10-26 >"$TMP/ix75.err" 2>&1
+ix75 build_ticket_index.py >/dev/null 2>&1
+{ [ "$(row75 TEST-14 dana)" = "Done" ] && [ "$(row75 TEST-14 lee)" = "Done" ] && [ "$(row75 TEST-15 dana)" = "Unknown" ] \
+  && grep -q 'Status: read from the tracker for 2 of 3 tickets, oldest read 2026-10-26.' "$IX75/tickets/INDEX.md"; } \
+  && ok "a tracker read wins, lands on every owner's folder for that id, and the header dates it" \
+  || bad "the tracker status did not reach the index" "$(grep -E '^\| \[|^Status:' "$IX75/tickets/INDEX.md" | cut -c1-120)"
+{ grep -q 'Skipped 1 (no matching folder): TEST-99' "$TMP/ix75.err" && grep -q 'TEST-15: status' "$TMP/ix75.err"; } \
+  && ok "an id with no folder is skipped and a status that breaks a table cell is refused, both reported" \
+  || bad "unmatched or unsafe statuses were not reported" "$(cat "$TMP/ix75.err")"
+printf '[{"id":"TEST-14","owner":"dana","title":"views","status":"In Review","summary":"Counted the first-day views."}]' > "$IX75/rec.json"
+ix75 ingest_index_records.py --from-json "$IX75/rec.json" >/dev/null 2>&1
+ix75 build_ticket_index.py >/dev/null 2>&1
+[ "$(row75 TEST-14 dana)" = "Done" ] \
+  && ok "a later curated record keeps the tracker status, and the curated guess does not override it" \
+  || bad "a curated upsert erased or beat the tracker status" "got $(row75 TEST-14 dana)"
+printf '[{"id":"TEST-14","owner":"lee","title":"views","summary":"Counted the first-day views."}]' > "$IX75/rec2.json"
+python3 - "$IX75/tickets/index_data.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p))
+for t in d["tickets"]:
+    if t["owner"] == "lee":
+        t.pop("tracker_status", None); t.pop("tracker_status_read", None)
+json.dump(d, open(p, "w"), indent=2)
+PY
+ix75 ingest_index_records.py --from-json "$IX75/rec2.json" >/dev/null 2>&1
+ix75 build_ticket_index.py >/dev/null 2>&1
+[ "$(row75 TEST-14 lee)" = "Inbox" ] \
+  && ok "a curated record with no status (Unknown) does not hide the README's Status line" \
+  || bad "a curated Unknown hid the README status" "got $(row75 TEST-14 lee)"
+# The `local` tracker's transition (and /ticket) rewrite the README line AFTER a read: then the
+# README is the newer copy, and a stale tracker read must not hide it.
+sed 's/^- \*\*Status:\*\* Inbox$/- **Status:** Closed/' "$IX75/tickets/lee/TEST-14_views/README.md" > "$IX75/r.tmp" \
+  && mv "$IX75/r.tmp" "$IX75/tickets/lee/TEST-14_views/README.md"
+printf '{"statuses":[{"id":"TEST-14","owner":"lee","status":"Done"}]}' > "$IX75/st2.json"
+ix75 ingest_index_records.py --tracker-status "$IX75/st2.json" --read-on 2026-10-26 >/dev/null 2>&1
+ix75 build_ticket_index.py >/dev/null 2>&1
+r75a="$(row75 TEST-14 lee)"
+sed 's/^- \*\*Status:\*\* Closed$/- **Status:** Archived/' "$IX75/tickets/lee/TEST-14_views/README.md" > "$IX75/r.tmp" \
+  && mv "$IX75/r.tmp" "$IX75/tickets/lee/TEST-14_views/README.md"
+ix75 build_ticket_index.py >/dev/null 2>&1
+{ [ "$r75a" = "Done" ] && [ "$(row75 TEST-14 lee)" = "Archived" ]; } \
+  && ok "a README Status line changed after the tracker read wins (a local transition shows at once)" \
+  || bad "a stale tracker read hid a newer README status" "before=$r75a after=$(row75 TEST-14 lee)"
+sed 's/^- \*\*Status:\*\* Archived$/- **Status:** Closed/' "$IX75/tickets/lee/TEST-14_views/README.md" > "$IX75/r.tmp" \
+  && mv "$IX75/r.tmp" "$IX75/tickets/lee/TEST-14_views/README.md"
+ix75 build_ticket_index.py >/dev/null 2>&1
+printf '{"statuses":[{"id":"TEST-15","status":"To Do"}]}' > "$IX75/st3.json"
+ix75 ingest_index_records.py --tracker-status "$IX75/st3.json" --read-on 2026-10-26 >/dev/null 2>&1
+ix75 build_ticket_index.py >/dev/null 2>&1
+CLAUDE_PROJECT_DIR="$IX75" TICKETWRIGHT_PROJECT="$IX75" python3 .claude/hooks/ticket_index_context.py >"$TMP/ix75.banner" 2>&1
+{ grep -q '3 tickets indexed (Done 2)' "$TMP/ix75.banner" && grep -q '1 newer ticket(s) on disk not yet enriched' "$TMP/ix75.banner" \
+  && ! grep -q 'dana/TEST-15' "$TMP/ix75.banner"; } \
+  && ok "the session banner counts the tracker's statuses and only curated records" \
+  || bad "the session banner counts curated guesses or status-only records" "$(head -3 "$TMP/ix75.banner")"
+ix75 build_ticket_index.py --stats >"$TMP/ix75.stats" 2>&1
+grep -q '^status from: tracker 3$' "$TMP/ix75.stats" \
+  && ok "--stats says where each status came from" || bad "--stats does not name the status sources" "$(grep 'status from' "$TMP/ix75.stats")"
+ix75 build_ticket_index.py --check >/dev/null 2>&1 \
+  && ok "the render stays byte-stable with tracker statuses in the store" || bad "the index is not byte-stable after a tracker read"
+# Nothing asks a model for a status any more, and the refresh skill reads it from the tracker.
+{ ! grep -q '"status": one of' bin/enrich_ticket.py && ! grep -q 'In Review if awaiting' bin/enrich_ticket.py; } \
+  && ok "the headless enrich prompt no longer asks the model for a status" || bad "enrich_ticket still has the model guess a status"
+ri75="$(tr '\n' ' ' < .claude/skills/refresh/index.md)"
+{ grep -q 'ingest_index_records.py --tracker-status -' <<<"$ri75" && grep -q 'tracker.search` by `ids`' <<<"$ri75" \
+  && ! grep -q 'Status vocab' <<<"$ri75" && grep -q 'Leave `status` out' <<<"$ri75"; } \
+  && ok "/refresh index reads statuses from the tracker and writes none itself" || bad "/refresh index still curates a status"
+sid75=""
+for f in adapters/tracker/*.md; do
+  sed -n '/^## verb: search$/,/^## /p' "$f" | grep -q '^\*\*By `ids`\*\*' || sid75="$sid75 $(basename "$f")"
+done
+[ -z "$sid75" ] && ok "every tracker adapter documents search by ids" || bad "tracker adapter(s) cannot search by ids" "$sid75"
+
+hdr "76 · no chat message is a declaration: chat: none (LABS-117)"
+# "No chat message" was chosen at /ship and written as a YAML comment, which no tool reads, so the
+# plan routed as exit 9 (nothing declared). `chat: none` is now a routing outcome of its own.
+DP76="$TMP/dp76"; mkdir -p "$DP76"
+dp76() { env -u CLAUDE_PROJECT_DIR python3 bin/delivery_plan.py --root "$KIT" --plan "$DP76/$1" --seam chat --quiet "${@:2}" >"$TMP/dp76.out" 2>&1; DP76RC=$?; }
+dpj() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print($1)" "$TMP/dp76.out" 2>/dev/null; }
+printf 'schema_version: 1\nchat: none\n' > "$DP76/short.yaml"
+printf 'schema_version: 1\nchat:\n  none: true\n  reason: "The requester reads the tracker comment."\n' > "$DP76/long.yaml"
+printf 'schema_version: 1\nchat:\n  none: true\n  channel: "#x"\n' > "$DP76/both.yaml"
+printf 'schema_version: 1\nchat: None\n' > "$DP76/near.yaml"
+printf 'schema_version: 1\nchat:\n  none: false\n' > "$DP76/off.yaml"
+dp76 short.yaml
+{ [ "$DP76RC" -eq 0 ] && [ "$(dpj 'd["skipped"]')" = "declared" ] && [ "$(dpj 'd["target"]')" = "None" ] \
+  && [ "$(dpj 'd["destination"]')" = "None" ] && [ "$(dpj 'd["recipients"]')" = "None" ]; } \
+  && ok "chat: none is exit 0, skipped by declaration, with no target, destination or recipients" \
+  || bad "chat: none did not route as a declared skip" "rc=$DP76RC $(head -c 300 "$TMP/dp76.out")"
+dp76 long.yaml
+{ [ "$DP76RC" -eq 0 ] && [ "$(dpj 'd["skip_reason"]')" = "The requester reads the tracker comment." ]; } \
+  && ok "the long form carries its reason for the plan line" || bad "the reason for no message was lost" "rc=$DP76RC"
+dp76 both.yaml; [ "$DP76RC" -eq 4 ] && ok "no message beside a destination is malformed (the plan would say two things)" || bad "a contradictory chat block routed" "rc=$DP76RC"
+dp76 near.yaml; [ "$DP76RC" -eq 4 ] && ok "a near-miss (chat: None) halts instead of reading as the declaration" || bad "a near-miss chat value was accepted" "rc=$DP76RC"
+dp76 off.yaml; [ "$DP76RC" -eq 9 ] && ok "none: false is no declaration: the block routes as before (exit 9 with no channel)" || bad "none: false changed routing" "rc=$DP76RC"
+dp76 short.yaml --check-draft "$DP76/short.yaml"; [ "$DP76RC" -eq 4 ] && ok "--check-draft refuses: there is no draft to check" || bad "--check-draft passed on a ticket with no message" "rc=$DP76RC"
+dp76 short.yaml --expect-target single; [ "$DP76RC" -eq 8 ] && ok "an approved target that is now chat: none refuses (the plan changed)" || bad "a plan edited to chat: none kept its old approval" "rc=$DP76RC"
+dp76 short.yaml --expect-target none; [ "$DP76RC" -eq 0 ] && ok "the approved 'none' line is pinned by --expect-target none" || bad "--expect-target none was refused" "rc=$DP76RC"
+cat > "$TMP/dp76_fp.py" <<'PY'
+import hashlib, json, sys
+sys.path.insert(0, "bin")
+import delivery_plan as dp
+out = dp._blank("chat", None); out.update({"target": "t", "destination": "#c", "recipients": ["A"]})
+keys = ("seam", "target", "tool", "adapter", "destination", "destination_key", "recipients",
+        "include_self", "sender", "sender_key", "sharing_scope", "mode", "kind")
+want = hashlib.sha256(json.dumps({k: out.get(k) for k in keys}, sort_keys=True, default=str)
+                      .encode("utf-8")).hexdigest()[:12]
+print("same" if dp._fingerprint(out) == want else "moved")
+PY
+[ "$(python3 "$TMP/dp76_fp.py" 2>&1)" = "same" ] \
+  && ok "a routed plan's fingerprint is unchanged (approvals made before this release still match)" \
+  || bad "adding the skip moved every routed fingerprint"
+MT76="$TMP/mt76"; mkdir -p "$MT76/.claude/config" "$MT76/adapters/chat"; cp adapters/chat/slack.md "$MT76/adapters/chat/"
+printf 'project:\n  key_prefix: TEST\nseams:\n  chat:\n    tool: slack\n    adapter: adapters/chat/slack.md\n    targets:\n      internal:\n        audience: internal\n        default_channel: "#team"\n        always_include: [Alice]\n' > "$MT76/.claude/config/stack.yaml"
+env -u CLAUDE_PROJECT_DIR python3 bin/delivery_plan.py --root "$MT76" --plan "$DP76/short.yaml" --seam chat --override internal --quiet >"$TMP/dp76.out" 2>&1; DP76RC=$?
+{ [ "$DP76RC" -eq 0 ] && [ "$(dpj 'd["overrides_declared_none"]')" = "True" ] && [ "$(dpj 'd["destination"]')" = "#team" ] \
+  && [ "$(dpj 'd["warnings"][-1].startswith("This ticket declares no chat message")')" = "True" ]; } \
+  && ok "--chat over a declared chat: none still routes, flagged so the plan shows it" \
+  || bad "an override of chat: none is not flagged" "rc=$DP76RC $(head -c 300 "$TMP/dp76.out")"
+sh76="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
+{ grep -q '> Chat: none, declared on the ticket (<reason>).' .claude/skills/ship/SKILL.md \
+  && grep -q '"No chat message" is always one of the answers' <<<"$sh76" \
+  && grep -q 'write `chat: none` into the plan' <<<"$sh76" \
+  && grep -q 'or when the ticket declares `chat: none`' <<<"$sh76" \
+  && grep -q 'overrides_declared_none: true' <<<"$sh76"; } \
+  && ok "/ship offers 'no chat message', records it as chat: none, and prints it on the plan" \
+  || bad "/ship does not record or show a declared no-message"
+grep -q 'No message is a declaration too' adapters/README.md \
+  && ok "the delivery-plan schema documents chat: none" || bad "adapters/README.md does not document chat: none"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

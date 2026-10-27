@@ -57,6 +57,20 @@ has two more checks (`install_commit`, `stale_cache`).
 - **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
   with a diagram, which link each post needs from an earlier step, and each moment it waits for
   you. (LABS-106)
+- **`/ship` names the exact status it will move the ticket to, read from your tracker.** Before it
+  prints the delivery plan, `/ship` asks the tracker which statuses this ticket can move to right
+  now, and the plan says "Move TEST-14 to Done once the pull request is merged" instead of "toward
+  its final status if that applies". When none of the moves reaches your configured final status
+  (`project.terminal_status`), it asks you which one to use rather than trying a status your
+  workflow does not have. Every tracker adapter gains a `list_transitions` action, and the new
+  `bin/transition_plan.py` makes the pick (exit 8 when nothing matches, 7 when the tracker could not
+  be read, in which case the plan says the status was not checked). On Jira the moves come through
+  the Atlassian connector; `acli` has no command that lists them. (LABS-117)
+- **"No chat message" is a choice the delivery plan records.** Write `chat: none` in a ticket's
+  `delivery-plan.yaml`, or `chat:` with `none: true` and a `reason:`. Routing returns a clean
+  "skipped by declaration" result (exit 0) instead of asking again, and the plan prints "Chat:
+  none, declared on the ticket". `/ship` offers it as an answer whenever it asks where the message
+  goes, and writes it to the plan instead of a comment no tool reads. (LABS-117)
 - **Ticketwright suggests `/skillify` the second time a team runs the same analysis.** A new
   `recall.py --repeats` finds earlier tickets that read exactly the same tables (from the SQL's
   `from`/`join`, not counting output tables or QC queries), with owner-qualified ids, the instance
@@ -90,6 +104,14 @@ has two more checks (`install_commit`, `stale_cache`).
   carry real links to the pull request and the backed-up files. Before, the chat draft linked a
   pull request that did not exist yet. A ticket moves to its final status only once its pull
   request is merged. (LABS-106)
+- **The ticket index takes each status from the tracker.** `/refresh index` now reads the current
+  status of the tickets it refreshes from the tracker (each tracker's `search` takes a list of ids)
+  and records it with `ingest_index_records.py --tracker-status`. The index shows that status first,
+  then the ticket README's `Status:` line, so a ticket the tracker has as Done no longer shows a
+  stale "In Review", and a new ticket shows its README status instead of "Unknown". The model no
+  longer writes a status when it summarizes a ticket. The index header says how many statuses came
+  from the tracker and the date of the oldest read, and `build_ticket_index.py --stats` prints where
+  each status came from. The session-start banner counts the same statuses. (LABS-117)
 - **Every skill asks its questions as clickable choices where the agent has a question tool.**
   `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
   without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,

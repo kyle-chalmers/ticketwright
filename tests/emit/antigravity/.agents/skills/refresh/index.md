@@ -10,8 +10,15 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
   `tickets/graph/` + `tickets/objects/` unless `project.graph_notes` is off. `--check` (staleness
   gate, covers every file it renders) · `--stats` (coverage) · `--recurring` (frequently-touched
   objects — skillify candidates).
-- **`tickets/index_data.json`** — the curated store (title/status/date/summary/tags/cross_refs/
-  objects + each README's content hash). This skill writes it.
+- **`tickets/index_data.json`** — the curated store (title/date/summary/tags/cross_refs/objects +
+  each README's content hash), plus each ticket's status as last read from the tracker. This skill
+  writes it.
+
+**Status has one source: the tracker.** The index shows the status read from the tracker in Phase
+1b, else a curated status an older kit version wrote, else the ticket README's `- **Status:**`
+line (written from the tracker by `/ticket`), else `Unknown`. No step here writes a status from a
+reading of the README: that guess is what drifted (a ticket shown as `In Review` after the tracker
+had it `Done`, on a workflow with no `In Review` at all).
 
 ## Phase 0 — Preflight
 1. Confirm `stack.yaml` has `key_prefix`/`key_prefixes` — or `id_mode: slug`, where folder names are
@@ -23,6 +30,20 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 3. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py` — every ticket
    on disk now has a row (un-enriched ones get a deterministic title + first-paragraph summary,
    marked `▱`).
+
+## Phase 1b — Read statuses from the tracker (no model)
+3b. When the stack has a tracker tool slot, read the current status of the tickets in scope (every
+   ticket on a full refresh, the named ones otherwise) with **`tracker.search` by `ids`** (one call
+   for the list where the adapter allows it; `adapters/README.md` § tracker). Write what came back,
+   verbatim, and re-render:
+   ```bash
+   echo '{"statuses":[{"id":"<ID>","status":"<status exactly as the tracker returned it>"}, ...]}' \
+     | bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --tracker-status -
+   bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py
+   ```
+   An id the tracker does not return is left out, never filled in. When the tracker cannot be
+   reached (not signed in, connector not connected), say so in one line and carry on: the index
+   keeps the last status it read, and its header names the date of the oldest read.
 
 ## Phase 2 — Enrich (the model half)
 4. Decide scope (enrichment is the model (re)writing curated summaries — **never rewrite curated
@@ -38,10 +59,11 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
    - **`--force`** (a.k.a. `--reenrich-all`): genuinely re-enrich **everything**, rewriting even
      hand-curated, non-stale summaries. Rare, and destructive to curation — only on an explicit ask.
 5. For each target ticket, read its `README.md` and write ONE record:
-   `{id, owner, title, status, date, summary (<=180 chars, lead with what was delivered + key
+   `{id, owner, title, date, summary (<=180 chars, lead with what was delivered + key
    numbers), tags (1-4 kebab-case), cross_refs (other ticket ids), objects (qualified data objects
    the ticket read/wrote, e.g. SCHEMA.VIEW; [] if none)}`. **id/owner come from the folder, not
-   your judgment.** Status vocab: Completed · Deployed · In Review · In Progress · Blocked · Unknown.
+   your judgment.** Leave `status` out: it comes from the tracker (Phase 1b) or the README's
+   Status line, never from this record.
 6. Collect them and upsert + re-render:
    ```bash
    echo '{"records":[ ... ]}' | bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --from-json -
@@ -59,7 +81,8 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 ## Phase 3 — Verify
 7. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py --check` must
    pass (INDEX.md + OBJECTS.md + the graph layer == fresh render).
-8. Report: total tickets, status breakdown, any still un-enriched. Commit `tickets/INDEX.md` +
+8. Report: total tickets, status breakdown and where the statuses came from (`--stats` prints
+   `status from: tracker N · readme N · …`), any still un-enriched. Commit `tickets/INDEX.md` +
    `tickets/OBJECTS.md` + `tickets/index_data.json`, plus `tickets/graph/` + `tickets/objects/` when
    `project.graph_notes` is on (the default) — `--check` gates every *rendered* file, so one left
    behind is drift in CI (the curated store is an input, not a rendering).

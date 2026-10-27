@@ -41,6 +41,21 @@ Returns the new issue URL (number is the id). Epic → `--milestone` or a parent
 gh issue close <number> --repo {repo}                       # map terminal_status → closed
 gh issue edit <number> --repo {repo} --add-label "{done_label}"   # if you track status via labels/Projects
 ```
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** issue number. **Out:** `{current, transitions: [{to, via, category}], free_form: false}`
+(shape in `adapters/README.md` § tracker).
+```bash
+gh issue view <number> --repo {repo} --json state,stateReason
+```
+An issue has two states, so there is one move at a time: `to` is the state it lands in and `via`
+the `gh issue` subcommand that makes it. `OPEN` gives `{to: "closed", via: "close", category:
+"done"}`; `CLOSED` gives `{to: "open", via: "reopen", category: "todo"}`. `current` is `open` or `closed`, in
+lower case, so set `project.terminal_status: closed` for this tracker. A team that tracks progress
+through labels or a Projects board has no workflow `gh issue` can read: say so rather than listing
+labels as statuses.
 
 ## verb: comment
 ```bash
@@ -54,6 +69,10 @@ gh issue list --repo {repo} --search "<query>" --state all --limit <n> \
   --json number,title,state
 ```
 `--search` takes GitHub's issue search syntax (`is:open label:bug ...`).
+
+**By `ids`** (the index status read): `gh issue view <number> --repo {repo} --json
+number,title,state` per number, or for a long list one `gh issue list --repo {repo} --state all
+--limit 1000 --json number,title,state` filtered to the numbers asked for.
 
 ## verb: search_history
 Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
