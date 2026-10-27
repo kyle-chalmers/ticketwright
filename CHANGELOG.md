@@ -58,12 +58,39 @@ All notable changes to this project are documented here. Format loosely follows
   then the lower ticket number. With neither, the link stays under Builds on as before. Only the
   graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
   (LABS-57)
+- **A tool picked before it was connected gets finished later instead of forgotten.** Setup writes
+  `mcp: TODO` for a tool that isn't connected in the session yet, and after that nothing mentioned
+  it again, so finishing it meant editing `stack.yaml` by hand. The resolver now reports a value
+  still written `TODO` as pending. `verify_stack.sh` names it as a warning with the order to fix
+  it (connect, reload with `/reload-plugins` or a new session, then `/setup tool <slot>`), and the
+  session banner repeats it until it is done. `/setup tool <slot>` on a pending slot now finishes
+  it: it writes the tool prefix from the session's own tool list, runs the read-only probe, records
+  the permission check, and asks only the questions that were skipped. Setup also says up front
+  that a newly connected tool needs a reload.
+- **The team roster is asked one person at a time.** A free-text list left names and ids to
+  guesswork. Setup now asks for one teammate per answer, with a "That's everyone" choice, and
+  shows the id and display name before writing each file.
+- **The kit now says when the plugin files on disk are not the ones this repo installed.**
+  Claude Code keeps one plugin folder per version, so when two repos install the same version at
+  different commits, the later install rewrites the folder for both. The version still matched
+  everywhere, so nothing said so. The session banner and `bin/plugin_doctor.py` (new check
+  `install_commit`) now compare the recorded commits and give the reinstall command. A new
+  `stale_cache` check lists cached version folders no install uses, with a removal line for each;
+  it deletes nothing. A session in a git worktree now finds its main checkout's install record, so
+  the kit resolves and the banner speaks there too.
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
   item (`- {location: …, note: …}`) also parses now; it used to be read as a key named
   `{location`. One side effect: a flow mapping with no space after its colons (`{a:b}`) now fails
   with a clear error instead of being read as `{a: b}`. No shipped file uses that form.
+- **Picking a drive folder in setup shows folders only.** Setup promised folder names only when it
+  looked inside someone's drive, but no adapter had a way to list folders, so a first run fell back
+  to a plain `ls` that printed file names too. The docstore contract gains a read-only
+  `list_folders` verb: the Google Drive and SharePoint adapters list directory entries one level
+  down, skipping dot folders, and rclone runs `rclone lsf --dirs-only` on the person's own remote.
+  Setup's folder question now calls it, and selftest runs it on a tree of files and folders to show
+  no file name gets through.
 - **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
   the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,
   `microsoft_outlook_email_send_email`, `microsoft_outlook_email_search_people`). That app has
