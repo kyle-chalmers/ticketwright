@@ -63,6 +63,22 @@ Linear auto-mints the identifier from `{team_id}` (your `key_prefix`). Epic → 
 update-issue(id=<id>, stateId={done_state_id})     # move to the workflow state for terminal_status
 ```
 Fetch the team's states once to map `project.terminal_status` → `{done_state_id}`.
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker).
+```
+get-issue(id=<id>)                     # current = the issue's state name
+list-issue-statuses(team={team_id})    # the team's workflow states
+```
+Linear sets no rules on moves: an issue can go to any workflow state of its team, so every state
+except the current one is a transition. `to` = the state's name, `via` = its id (what
+`update-issue(stateId=...)` takes), `category` from its `type`: `backlog` and `unstarted` =
+`todo`, `started` = `in_progress`, `completed` = `done`, `canceled` = `null` (closed, but not
+done). The tool names follow this adapter's other calls; a server that spells them differently is
+checked once in its own tool list.
 
 ## verb: comment
 ```
@@ -75,6 +91,40 @@ Linear comments support full markdown links — `[TEST-123](url)`, file links, P
 ```
 list-issues(team={team_id}, query=<text>, filter={state, label, ...})
 ```
+
+**By `ids`** (the index status read): `get-issue(id=<id>)` once per id, taking `title` and the
+state's name; an id the team does not have is left out.
+
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes the server's own filter object: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Linear
+team, default `{team_id}`), `<limit>` (default 20), `<filter>` (optional, exactly one of `project:<x>`,
+`label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title, description,
+labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches. `description` is cut to
+600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```
+list-issues(team=<scope>, query=<text>, filter={createdAt: {lt: <before>}}, limit=<limit>)
+```
+An empty `<before>` means no date clause: drop the `createdAt` entry, leaving
+`list-issues(team=<scope>, query=<text>, limit=<limit>)`. Argument names depend on the connected server
+(see the MCP note in `adapters/README.md`); if it has no way to filter on an upper date, fetch a larger
+page first (a bigger `limit`, then further pages if the server has them, at most 5 pages in all), drop every
+row whose `created` is on or after `<before>`, and only then keep `<limit>` rows. Capping before the drop
+would discard the very rows that qualify and return `[]` for a search that has matches. The 5-page cap
+keeps a team with years of newer tickets from paging through all of them: after 5 pages, keep what
+qualified, even when that is fewer than `<limit>` rows.
+
+Filters: `project:<x>` replaces `<scope>` (`team=<x>`, since a Linear team is this adapter's container);
+`label:<x>` adds `label=<x>`; `parent:<x>` adds `parentId=<x>` for a parent issue, or `project=<x>` for a
+Linear Project (the epic stand-in); `person:<x>` adds `assignee=<x>` (an email or user id).
+
+If the server is not connected, the token cannot read issues, or the server rejects the search, say so in
+one plain sentence and return `[]`.
+
+Output mapping: `key` and `fetch_id` are both the issue `identifier` (`TEST-130`); `title` is `title`;
+`description` is `description` (markdown); `labels` is the names in `labels`; `created` is `createdAt` cut
+to `YYYY-MM-DD`; `url` is `url`; `status` is `state.name`.
 
 ## verb: download_attachments
 Read the issue's `attachments{ url }`, `curl -L` each to the dest dir. (Linear attachments are URLs.)

@@ -135,6 +135,7 @@ this before?", "which tickets touched VW_X?").
 7. Follow [priming.md](priming.md), in order:
    - **Ticket slice** — the ticket body + folder + related prior tickets;
    - **Recall** — rank prior art (`bin/recall.py`), read the top 2–4, note what to **reuse**;
+     it also offers the tracker's older tickets when recall is weak (priming §2b);
    - **Domain slice** — glossary/rules for the ticket's topic (from `documentation/`);
    - **Warehouse slice** — schemas/samples/lineage for the specific objects in play (skip cleanly
      if no warehouse is configured).

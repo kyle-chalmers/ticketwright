@@ -41,6 +41,10 @@ What that buys, and the mechanism behind each piece:
   The failure mode, plainly: curation can fail or be skipped, and a skipped ticket falls back to
   its bare README title (`▱` in the catalog) - keep skipping and the corpus rots toward a folder
   of SQL nobody can find. Details: [docs/ticket-index.md](ticket-index.md).
+- **Older tickets in your tracker, on your yes.** When the repo's own tickets give a weak match,
+  `/ticket` offers a read-only search of the tickets your team tracked before this repo existed. The
+  closest few come back labeled as having no ticket folder or QC record here. How it is triggered,
+  scored and limited per tracker: [docs/ticket-index.md](ticket-index.md#older-tickets-in-your-tracker).
 - **Object-level memory.** `tickets/OBJECTS.md` maps every warehouse object to the tickets that
   touched it, so "has anyone used this view, and what did they learn about it?" is a lookup. This
   is the institutional knowledge hardest to keep in people's heads.

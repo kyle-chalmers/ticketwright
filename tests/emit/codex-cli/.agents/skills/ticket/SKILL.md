@@ -3,7 +3,7 @@ name: ticket
 description: The front door — open or resume a ticket, auto-load its context and prior art, write the plan (and the spec when the plan calls for one), and wait for your approval before anything is built. Start every ticket here.
 ---
 
-<!-- emitted by ticketwright install v4.4.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.5.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /ticket
 
@@ -135,6 +135,7 @@ this before?", "which tickets touched VW_X?").
 7. Follow [priming.md](priming.md), in order:
    - **Ticket slice** — the ticket body + folder + related prior tickets;
    - **Recall** — rank prior art (`bin/recall.py`), read the top 2–4, note what to **reuse**;
+     it also offers the tracker's older tickets when recall is weak (priming §2b);
    - **Domain slice** — glossary/rules for the ticket's topic (from `documentation/`);
    - **Warehouse slice** — schemas/samples/lineage for the specific objects in play (skip cleanly
      if no warehouse is configured).

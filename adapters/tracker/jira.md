@@ -112,21 +112,46 @@ and retry once, and never create a second issue when the first response already 
 
 ## verb: transition
 ```bash
-acli jira workitem transition --key "<id>" --status "<status>"
+acli jira workitem transition --key "<id>" --status "<status>" --yes
 ```
-The done state is `{terminal_status}` (defaults to `Done`; set it to your workflow's terminal state).
-Status names are workflow-specific: don't assume a fixed ladder; resolve the valid target statuses
-from your Jira workflow (the project's board columns / transitions).
-**Connector path:** list the moves this issue can make now, then make the one that lands on
-`<status>`.
+`<status>` is the `to` of a move `list_transitions` returned: `acli` takes the status NAME. The
+connector's `transitionJiraIssue` takes the move's `via` instead, as `transitionId`. When two moves
+reach the same status (`transition_plan.py` reports `ambiguous` and the person picks one), only the
+`via` tells them apart, so make that move through the connector with the picked `via`, never with
+`acli --status`. Never a status name typed from memory: workflows differ per project, and a status this
+ticket cannot reach fails with `No allowed transitions found for given status`. Without `--yes` the
+CLI waits for a confirmation prompt and a non-interactive run hangs.
+
+**Connector path:** take the move from `list_transitions` whose `to` is `<status>`, then make it
+by its `via`:
+```
+mcp__{mcp}__transitionJiraIssue(cloudId=<the {site} cloudId>, issueIdOrKey=<id>, transitionId=<that move's via>)
+```
+No move reaches `<status>` from where the issue is now: stop and report the statuses it can reach,
+never step through others to get there. The call returns the status the issue landed in, so no
+read-back is needed.
+
+## verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker), or `unavailable` + reason.
 ```
 mcp__{mcp}__executeRead(cloudId=<the {site} cloudId>, name="listJiraIssueTransitions", inputs={"issueIdOrKey": "<id>"})
-mcp__{mcp}__transitionJiraIssue(cloudId=<the {site} cloudId>, issueIdOrKey=<id>, transitionId=<the id of the transition whose target status is <status>>)
+acli jira workitem view <id> --json      # `current` = fields.status.name
 ```
-Match the transition's **target status**, not its name ("Review->Done" is a transition that lands
-on `Done`). No transition leads to `<status>` from where the issue is now: stop and report the
-statuses it can reach, never step through others to get there. The transition call returns the
-status the issue landed in, so no read-back is needed.
+Observed 2026-10-26 on the Atlassian connector: `listJiraIssueTransitions` is not one of its
+primary tools; it runs through the read-only operation runner `executeRead` (find it with
+`discover`, query "list available transitions for a jira issue", if the name moves).
+Map each returned transition to `to` = `to.name`, `via` = its `id`, `name` = its own `name`
+(what the person recognizes when two moves reach one status), and `category` from
+`to.statusCategory.key` (`new` = `todo`, `indeterminate` = `in_progress`, `done` = `done`). Only
+transitions with `isAvailable: true` count. The connector lists the moves open to the signed-in
+person, which is who `transition` runs as.
+
+The `cloudId` is resolved as in `search`: the site whose URL's host is `{site}`, or STOP. **`acli`
+cannot list transitions** (its `workitem` commands are archive, assign, attachment, clone, comment,
+create, edit, link, search, transition, view and watcher; checked 2026-10-26), so on a CLI-only
+install return `unavailable` with that reason. The caller then says the target status was not
+checked against the tracker.
 
 ## verb: comment
 Use the tracker's **MCP** (`{mcp}`), not acli: the connector converts the comment to ADF, so links
@@ -161,6 +186,48 @@ The connector path needs the `cloudId` of `{site}`: list the sites once per sess
 (`mcp__{mcp}__getAccessibleAtlassianResources()`) and take the one whose URL's host is `{site}`. If
 none matches, STOP and report rather than search another site.
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
+
+**By `ids`** (the index status read): one search for the whole list, in batches of 50 keys.
+```bash
+acli jira workitem search --jql "key in (TEST-1, TEST-2)" --fields "key,summary,status" --limit 50 --json
+# MCP alt: mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=<the {site} cloudId>, jql="key in (TEST-1, TEST-2)", maxResults=50)
+```
+`status` is `fields.status.name`. A key the site does not know makes Jira reject the whole JQL, so
+on that error retry the batch one key at a time and leave out the ones that fail.
+
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes raw JQL: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Jira
+project, default `{key_prefix}`), `<limit>` (default 20), `<filter>` (optional, exactly one of
+`project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title,
+description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```bash
+# <JQL> = project = <scope> AND text ~ "<text>" AND created < "<before>" ORDER BY created DESC
+acli jira workitem search --jql "<JQL>" --limit <limit> --json --fields summary,description,labels,created,status
+# MCP alt: mcp__{mcp}__searchJiraIssuesUsingJql(cloudId=<the {site} cloudId>, jql="<JQL>", maxResults=<limit>)
+```
+Escape `"` and `\` in `<text>` with a backslash. An empty `<before>` means no date clause: the JQL is
+`project = <scope> AND text ~ "<text>" ORDER BY created DESC`.
+
+Filters: `project:<x>` replaces `<scope>` (`project = <x>`); `label:<x>` adds `AND labels = "<x>"`;
+`parent:<x>` adds `AND parent = <x>` (an epic or parent key); `person:<x>` adds
+`AND (assignee = "<x>" OR reporter = "<x>")` (`<x>` is the person's email).
+
+If the build rejects `--fields`, drop it, search for the keys alone, then run `fetch_ticket` once per hit, in
+order, stopping at the first auth error (an instant `250001/370001` is the MFA lockout: do not retry).
+The MCP alternative needs the `cloudId` of `{site}`: take the one whose URL's host is `{site}`, as in
+`search`; if none matches, STOP and report rather than search another site. Ask for the same five fields
+when the tool takes a `fields` argument.
+
+If `acli` is not signed in, the site cannot be reached, or the tracker rejects the search, say so in one
+plain sentence and return `[]`.
+
+Output mapping: `key` and `fetch_id` are both the issue key (`TEST-130`); `title` is `fields.summary`;
+`description` is `fields.description` as plain text (flattened if it arrives as a document tree); `labels`
+is `fields.labels`; `created` is `fields.created` cut to `YYYY-MM-DD`; `url` is
+`https://{site}/browse/<key>`; `status` is `fields.status.name`.
 
 ## verb: download_attachments
 Pull a ticket's attachments into its `source_materials/` (skip silently when there are none).
@@ -309,21 +376,46 @@ and retry once, and never create a second issue when the first response already 
 
 ### verb: transition
 ```bash
-acli jira workitem transition --key "<id>" --status "<status>"
+acli jira workitem transition --key "<id>" --status "<status>" --yes
 ```
-The done state is `{terminal_status}` (defaults to `Done`; set it to your workflow's terminal state).
-Status names are workflow-specific: don't assume a fixed ladder; resolve the valid target statuses
-from your Jira workflow (the project's board columns / transitions).
-**Connector path:** list the moves this issue can make now, then make the one that lands on
-`<status>`.
+`<status>` is the `to` of a move `list_transitions` returned: `acli` takes the status NAME. The
+connector's `transitionJiraIssue` takes the move's `via` instead, as `transitionId`. When two moves
+reach the same status (`transition_plan.py` reports `ambiguous` and the person picks one), only the
+`via` tells them apart, so make that move through the connector with the picked `via`, never with
+`acli --status`. Never a status name typed from memory: workflows differ per project, and a status this
+ticket cannot reach fails with `No allowed transitions found for given status`. Without `--yes` the
+CLI waits for a confirmation prompt and a non-interactive run hangs.
+
+**Connector path:** take the move from `list_transitions` whose `to` is `<status>`, then make it
+by its `via`:
+```
+mcp__codex_apps__atlassian_transitionjiraissue(cloudId=<the {site} cloudId>, issueIdOrKey=<id>, transitionId=<that move's via>)
+```
+No move reaches `<status>` from where the issue is now: stop and report the statuses it can reach,
+never step through others to get there. The call returns the status the issue landed in, so no
+read-back is needed.
+
+### verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker), or `unavailable` + reason.
 ```
 mcp__codex_apps__atlassian_executeread(cloudId=<the {site} cloudId>, name="listJiraIssueTransitions", inputs={"issueIdOrKey": "<id>"})
-mcp__codex_apps__atlassian_transitionjiraissue(cloudId=<the {site} cloudId>, issueIdOrKey=<id>, transitionId=<the id of the transition whose target status is <status>>)
+acli jira workitem view <id> --json      # `current` = fields.status.name
 ```
-Match the transition's **target status**, not its name ("Review->Done" is a transition that lands
-on `Done`). No transition leads to `<status>` from where the issue is now: stop and report the
-statuses it can reach, never step through others to get there. The transition call returns the
-status the issue landed in, so no read-back is needed.
+Not observed on Codex: the app's read-only operation runner is assumed to follow the
+connector's naming (`executeRead` lower-cased behind `atlassian_`). If the session does not list
+it, return `unavailable` rather than guessing another name.
+Map each returned transition to `to` = `to.name`, `via` = its `id`, `name` = its own `name`
+(what the person recognizes when two moves reach one status), and `category` from
+`to.statusCategory.key` (`new` = `todo`, `indeterminate` = `in_progress`, `done` = `done`). Only
+transitions with `isAvailable: true` count. The connector lists the moves open to the signed-in
+person, which is who `transition` runs as.
+
+The `cloudId` is resolved as in `search`: the site whose URL's host is `{site}`, or STOP. **`acli`
+cannot list transitions** (its `workitem` commands are archive, assign, attachment, clone, comment,
+create, edit, link, search, transition, view and watcher; checked 2026-10-26), so on a CLI-only
+install return `unavailable` with that reason. The caller then says the target status was not
+checked against the tracker.
 
 ### verb: comment
 Use the MCP path, not acli: the connector converts the comment to ADF, so links render clickable;
@@ -356,6 +448,49 @@ The connector path needs the `cloudId` of `{site}`: list the sites once per sess
 (`mcp__codex_apps__atlassian_getaccessibleatlassianresources({})`) and take the one whose URL's host is `{site}`. If
 none matches, STOP and report rather than search another site.
 Example (related prior tickets): `project = {key_prefix} AND text ~ "<topic>" ORDER BY created DESC`.
+
+**By `ids`** (the index status read): one search for the whole list, in batches of 50 keys.
+```bash
+acli jira workitem search --jql "key in (TEST-1, TEST-2)" --fields "key,summary,status" --limit 50 --json
+# MCP alt: mcp__codex_apps__atlassian_searchjiraissuesusingjql(cloudId=<the {site} cloudId>, jql="key in (TEST-1, TEST-2)", maxResults=50)
+```
+`status` is `fields.status.name`. A key the site does not know makes Jira reject the whole JQL, so
+on that error retry the batch one key at a time and leave out the ones that fail.
+
+### verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes raw JQL: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Jira
+project, default `{key_prefix}`), `<limit>` (default 20), `<filter>` (optional, exactly one of
+`project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title,
+description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```bash
+# <JQL> = project = <scope> AND text ~ "<text>" AND created < "<before>" ORDER BY created DESC
+acli jira workitem search --jql "<JQL>" --limit <limit> --json --fields summary,description,labels,created,status
+# MCP alt: mcp__codex_apps__atlassian_searchjiraissuesusingjql(cloudId=<the {site} cloudId>, jql="<JQL>", maxResults=<limit>)
+```
+Escape `"` and `\` in `<text>` with a backslash. An empty `<before>` means no date clause: the JQL is
+`project = <scope> AND text ~ "<text>" ORDER BY created DESC`.
+
+Filters: `project:<x>` replaces `<scope>` (`project = <x>`); `label:<x>` adds `AND labels = "<x>"`;
+`parent:<x>` adds `AND parent = <x>` (an epic or parent key); `person:<x>` adds
+`AND (assignee = "<x>" OR reporter = "<x>")` (`<x>` is the person's email).
+
+If the build rejects `--fields`, drop it, search for the keys alone, then run `fetch_ticket` once per hit, in
+order, stopping at the first auth error (an instant `250001/370001` is the MFA lockout: do not retry).
+The MCP alternative needs the `cloudId` of `{site}`: list the sites once per session
+(`mcp__codex_apps__atlassian_getaccessibleatlassianresources({})`) and take the one whose URL's host is
+`{site}`. If none matches, STOP and report rather than search another site. Ask for the same five fields
+when the tool takes a `fields` argument.
+
+If `acli` is not signed in, the site cannot be reached, or the tracker rejects the search, say so in one
+plain sentence and return `[]`.
+
+Output mapping: `key` and `fetch_id` are both the issue key (`TEST-130`); `title` is `fields.summary`;
+`description` is `fields.description` as plain text (flattened if it arrives as a document tree); `labels`
+is `fields.labels`; `created` is `fields.created` cut to `YYYY-MM-DD`; `url` is
+`https://{site}/browse/<key>`; `status` is `fields.status.name`.
 
 ### verb: download_attachments
 Pull a ticket's attachments into its `source_materials/` (skip silently when there are none).

@@ -68,6 +68,19 @@ change-column-value(item_id=<id>, board_id={board_id}, column_id={status_column_
                     value="{\"label\":\"<status>\"}")
 ```
 `project.terminal_status` maps to `{done_label}`.
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** item id. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker).
+```
+get-item(item_id=<id>)                      # current = the {status_column_id} column's text
+get-board-schema(board_id={board_id})       # the status column's labels, in its settings
+```
+monday sets no rules on moves: the status column takes any of its labels. Every label except the
+current one is a move, `to` and `via` = the label text (what `change-column-value` takes), and
+`category: done` for `{done_label}`, `null` for the rest.
 
 ## verb: comment
 ```
@@ -81,6 +94,45 @@ Updates render links inline. Honor `word_limits.tracker_comment`. Never post bef
 items-page-by-column-values(board_id={board_id}, columns=[…])   # filter by column
 # or a text query across the board's items
 ```
+
+**By `ids`** (the index status read): one GraphQL read for the whole list.
+```
+items(ids:[<id>, <id>]){ id name column_values(ids:["{status_column_id}"]){ text } }
+```
+
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes the server's own arguments: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the board,
+default `{board_id}`), `<limit>` (default 20), `<filter>` (optional, exactly one of `project:<x>`,
+`label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title, description,
+labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches. `description` is cut to
+600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```
+# GraphQL: boards(ids:[<scope>]){ items_page(limit:100,
+#   query_params:{rules:[{column_id:"name", compare_value:["<text>"], operator:contains_text}]}){
+#   items{ id name created_at url column_values{ type text } } } }
+```
+The date test and the cap are client-side. Read one page of up to 100 items, drop every item whose
+`created_at` is on or after `<before>`, sort the rest newest first and keep `<limit>`. An empty `<before>`
+means no date clause: skip the drop and keep the newest `<limit>`. One page, not a loop: monday rejects
+queries by complexity (see gotchas).
+
+Filters: `project:<x>` replaces `<scope>` (`boards(ids:[<x>])`); `label:<x>` keeps items whose `tags` column
+text contains `<x>` (client-side); `parent:<x>` adds the rule
+`{column_id:"group", compare_value:["<x>"], operator:any_of}` (a board group, the epic stand-in), and a
+subitem's parent is not supported; `person:<x>` keeps items whose `people` column text contains `<x>`
+(client-side).
+
+If the server is not connected, the token cannot read the board, or the server rejects the query (for
+example for complexity), say so in one plain sentence and return `[]`.
+
+Output mapping: `key` is `{key_prefix}-<item id>` (the `OPS-<itemId>` convention in the note above) and
+`fetch_id` is the bare item `id`, which is what `fetch_ticket` takes; `title` is `name`; `description` is an
+empty string, since a monday item has no description field; `labels` is the `text` of the `tags` column split
+on commas, or `[]`; `created` is `created_at` cut to `YYYY-MM-DD`; `url` is `url`; `status` is the `text` of
+the board's `status` column, or `null`. When `{key_prefix}` is unset, `key` is the bare item `id`, the same
+as `fetch_id`, so duplicate suppression still compares like with like.
 
 ## verb: download_attachments
 Read the item's **file column** `assets{ url }`, then `curl -L <asset url> -o <dest>` per file.

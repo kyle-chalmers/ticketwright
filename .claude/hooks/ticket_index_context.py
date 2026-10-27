@@ -85,7 +85,9 @@ def main() -> int:
         try:
             loaded = json.loads(data_file.read_text())
             if isinstance(loaded, dict) and isinstance(loaded.get("tickets"), list):
-                tickets = [t for t in loaded["tickets"] if isinstance(t, dict)]
+                # Only curated records: `/refresh index` also stores a status-only record (the
+                # tracker read) for a ticket nobody has summarized yet, and that is not enrichment.
+                tickets = [t for t in loaded["tickets"] if isinstance(t, dict) and t.get("summary")]
         except (OSError, json.JSONDecodeError):
             tickets = []
 
@@ -103,7 +105,12 @@ def main() -> int:
     total = discovered_total(root) or len(tickets)
     by_status: dict[str, int] = {}
     for t in tickets:
-        s = t.get("status") or "Unknown"
+        # The renderer's order, minus the README read: the tracker's status first, then a curated
+        # one. A curated `Unknown` is no status (the model no longer writes one).
+        s = t.get("tracker_status") or (t.get("status") if t.get("status") != "Unknown" else None) \
+            or "Unknown"
+        if not isinstance(s, str) or not s.strip():
+            s = "Unknown"
         by_status[s] = by_status.get(s, 0) + 1
     extra = sorted(s for s in by_status if s not in STATUS_ORDER)
     status_line = " · ".join(f"{s} {by_status[s]}" for s in (STATUS_ORDER + extra) if by_status.get(s))
