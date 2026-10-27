@@ -144,6 +144,20 @@ results at the caller's limit (`| head -<n>`).
 render — re-run it (or rely on the PostToolUse hook) before trusting a negative result. For ranked
 prior-art search, `bin/recall.py` is better than either grep.
 
+## verb: search_history
+Returns `[]`. Repo tickets are already covered by `bin/recall.py`: the ticket folder IS the ticket, so
+there is no older tracker to look through. Read-only, and nothing is run.
+**In:** `<text>`, `<before>` (an ISO date, or empty for no cutoff), `<scope>`, `<limit>` and `<filter>` are
+accepted and ignored. **Out:** `[]`. Every other tracker returns rows of `{key, fetch_id, title, description,
+labels, created, url, status}`; this one has none to return.
+
+Filters: `project:<x>` not supported; `label:<x>` not supported; `parent:<x>` not supported; `person:<x>`
+not supported (there is nothing to filter). An empty `<before>` changes nothing: with no tracker there is no
+date clause to drop.
+
+Output mapping: none, since no rows come back. If it ever did, `key` and `fetch_id` would both be the ticket
+folder name.
+
 ## verb: download_attachments
 Nothing to download: there is no remote holding files. Report that plainly and point the human at
 `<ticket-dir>/source_materials/` to drop files in by hand — a silent no-op would read as "there were

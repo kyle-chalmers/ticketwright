@@ -77,6 +77,45 @@ Asana stories render URLs inline. Honor `word_limits.tracker_comment`; never pos
 search-tasks(workspace={workspace_gid}, text=<topic>)   # or typeahead-search
 ```
 
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes the server's own arguments: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Asana
+project, default the seam's `default_project_gid`), `<limit>` (default 20), `<filter>` (optional, exactly
+one of `project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id,
+title, description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```
+search-tasks(workspace={workspace_gid}, text=<text>, projects.any=<scope>, created_on.before=<before>, limit=<limit>)
+```
+An empty `<before>` means no date clause: drop `created_on.before`. Ask for the fields `name`, `notes`,
+`tags.name`, `created_at`, `permalink_url`, `completed` and `memberships.section.name` when the tool takes
+an `opt_fields` argument.
+
+Filters: `project:<x>` replaces `<scope>` (`projects.any=<x>`); `label:<x>` adds `tags.any=<x>` (an Asana
+tag is its label; `<x>` is a tag gid); `parent:<x>` adds `sections.any=<x>` (a project section, the epic
+stand-in), and a parent task's subtasks are not supported; `person:<x>` adds `assignee.any=<x>` (a user gid
+or email).
+
+**On a free workspace the search is refused** (task search is a paid feature, as `rank_projects_by_activity`
+notes). Fall back to
+```
+typeahead-search(workspace={workspace_gid}, resource_type="task", query=<text>, count=<limit>)
+```
+which ranks by name only. Then run `fetch_ticket` on each candidate, up to `<limit>`, to read its
+`created_at` and project memberships (and its tags and assignee when a filter needs them), and drop any task
+outside `<scope>`, created on or after `<before>`, or failing the filter. If those fields cannot be read,
+return `[]` with the plain note "Older-ticket search needs Asana's paid search here." If the server is not
+connected, or rejects the search for any reason other than that paid-tier refusal, say so in one plain
+sentence and return `[]`.
+
+Output mapping: `key` is `{key_prefix}-<gid>` (the tag-plus-number convention in the note above) and
+`fetch_id` is the bare task `gid`, which is what `fetch_ticket` takes; `title` is `name`; `description` is
+`notes`; `labels` is the names in `tags`; `created` is `created_at` cut to `YYYY-MM-DD`; `url` is
+`permalink_url`; `status` is the name of the task's section in `<scope>` (`memberships[].section.name`), or
+`completed` or `open` when it has none. When `{key_prefix}` is unset, `key` is the bare `gid`, the same as
+`fetch_id`, so duplicate suppression still compares like with like.
+
 ## verb: download_attachments
 ```
 get-attachments-for-task(task_gid=<id>)  → download each attachment's `download_url` with curl

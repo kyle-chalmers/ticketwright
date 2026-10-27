@@ -10,7 +10,7 @@ you're trying to do.
 | [Getting started](getting-started.md) | You're bringing Ticketwright into a repo, joining a repo that has it, adopting an existing repo, or installing without the plugin |
 | [How it works](how-it-works.md) | You want the lifecycle in detail, the team brain, voice profiles, or every hook in full |
 | [Troubleshooting](troubleshooting.md) | A skill failed, a tool is unreachable, a hook isn't running, or you're upgrading |
-| [The ticket index](ticket-index.md) | You want to know how `INDEX.md`, `OBJECTS.md` and prior-art recall find past work |
+| [The ticket index](ticket-index.md) | You want to know how `INDEX.md`, `OBJECTS.md` and prior-art recall find past work, including older tickets in your tracker |
 | [Obsidian graph](obsidian.md) | You want to browse which tickets touched which tables as a graph |
 | [What /ship does](ship.md) | You want to see every /ship step in order before it runs: when it merges, backs up, comments and drafts the chat message, and what you approve |
 | [Cloud drive backup](drive-mount.md) | `/ship` backs up to Google Drive or SharePoint through a desktop sync folder, or you want rclone instead |
