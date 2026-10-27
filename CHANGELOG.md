@@ -6,6 +6,31 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`plan.md` is written from the plan you approved, with no template text left in it.** `/ticket`
+  now writes the approved plan's sections (goal, scope, builds on, deliverables, approach,
+  validation, touched, questions, risks) to a scratch file and renders `plan.md` from them, so the
+  committed plan no longer carries the template's guidance header or placeholder lines such as
+  `- **In:** …`, and nobody rewrites it by hand. `templates/plan.md.tmpl` is now the shape only;
+  the guidance for each section, and the `spec:` criteria, moved into `/ticket`. `bin/render.sh`
+  gains `--sections FILE`, which fills each `{{token}}` from the matching `## Heading` block, and
+  under `--strict` refuses a leftover `…` placeholder, an empty section, a heading the template has
+  no place for, or the same heading twice. Plans written before this change still work: `/build`
+  reads only their `spec:` line. Two `render.sh` changes apply to every template: a value is now
+  inserted in one pass and never re-scanned, so text such as `{{ ref('x') }}` inside a plan renders
+  as written instead of failing; and a failed `--strict` render prints nothing, so redirecting it
+  into a file never leaves a half-filled record behind. Output for a successful render is
+  unchanged. (LABS-112)
+- **Setup asks which app opens each kind of deliverable.** After the house rules, setup explains in
+  one sentence what the review stage is for, then asks where the choice applies (this repo, every
+  repo, or don't open files), which kinds of files you check (tables and spreadsheets, queries,
+  write-ups), and which app opens each, with your computer's usual app as the recommended answer.
+  The answers go to the same per-person viewer file as before, so `/review` opens your files at
+  sign-off instead of saying nothing was opened. The question is skippable, and a skip is listed
+  with `/setup viewer` as the way to finish it. `/setup viewer`, `/setup --teammate` and `/review`'s
+  first hand-off now ask the same questions from one shared file. Choosing "don't open files" is
+  remembered: `/review` no longer offers the setup again to someone who opted out. (LABS-118)
+
 ## [4.5.0] - 2026-10-26
 
 `/ticket` can search a team's older tracker tickets when recall is weak (LABS-90), `/ship` merges

@@ -170,21 +170,46 @@ context brief (including the reuse brief) first, then:
      the same steps in the current context, with the approval as an explicit reply. In plain terms:
      **nothing is written to the ticket until step 12; no runtime mode is required.** Read-only here
      is GUIDANCE the agent follows, not a gate the runtime enforces — say so if asked.
-9. **Draft the plan — compose it, do not write it yet.** Its shape is `templates/plan.md.tmpl` under
-   `kit_root`: Goal, Scope (in / explicitly out), Builds on (each prior ticket from the reuse brief and
-   why it matched; when the repeat check in [repeats.md](../skillify/repeats.md) ends in a
-   suggestion, also "This is the Nth instance of <pattern> (after <owner>/<id>)", and add the
-   `/skillify <pattern>` suggestion, or the existing skill to run, to Next step: a suggestion after
-   `/ship`, never a step of this plan), Deliverables expected, Approach, Validation strategy, Touched, Questions for
-   the requester, Risks, Next step, Confidence. Inputs: the priming
-   brief + the reuse brief. Decide the **`spec:` value** by the criteria in the template's header —
-   `not required`, or a spec path (required when the work creates or alters a persisted object others
-   depend on, reconciles two or more sources, or confidence is below 7), or `after-root-cause` for an
-   **investigation-shaped ticket** ("where is this error coming from", "why did this number drift"):
-   you cannot blueprint a fix you have not root-caused, and a spec written from the ticket's own
-   hypothesis specifies a fix to the wrong place, so the Approach scopes the investigation and
-   `/build` returns here for the spec once the cause is found (its Phase 1 owns that condition).
-   Scoping is still first; it is scoped to what can honestly be planned.
+9. **Draft the plan — compose it, do not write it yet.** Compose it as Markdown, one `## <Section>`
+   block per heading of `templates/plan.md.tmpl` under `kit_root` from Goal to Risks, in its order,
+   because step 12 renders the file from exactly these blocks. Next step is not a block: the
+   template writes it from the `spec:` value. The template holds the shape only; what goes in each
+   block is here:
+   - **Goal**: the outcome and why it matters to the requester.
+   - **Scope**: `- **In:**` and `- **Explicitly out:**` (what this ticket will not answer, so nobody
+     assumes it did).
+   - **Builds on**: each prior ticket from the reuse brief as `<owner>/<id>`, why it matched (a
+     shared object, named by its name, a shared tag, a cross-reference, or keyword overlap only),
+     and what is reused. "None found" is a valid answer. When the repeat check in
+     [repeats.md](../skillify/repeats.md) ends in a suggestion, also "This is the Nth instance of
+     <pattern> (after <owner>/<id>)".
+   - **Deliverables expected**: numbered in review order; each names its grain and carries its
+     record count in the filename.
+   - **Approach**: ordered steps, with build-and-check loops kept small (one object or change at a
+     time).
+   - **Validation strategy**: how each step is verified, decided before any code; these are the
+     success criteria `/review` checks against (duplicate detection on the grain key and
+     record-count reconciliation, source against output, unless the plan says why not).
+   - **Touched**: `- **Objects/files:**` and `- **Tool slots:**` (which tracker, warehouse, chat,
+     docstore, meetings or vcs, and for what).
+   - **Questions for the requester**: asked in step 11; after the answers, each question with its
+     answer (they become README assumptions), or "None open".
+   - **Risks**: what could make the result wrong or late, and how the plan watches for it.
+   Every block has real content: no `…` placeholder lines, no template hints, nothing empty. Header
+   facts are not blocks: the ticket id, title, Confidence (1 to 10; below 7, a spec is required),
+   owner, `after_ship` and the **`spec:` value**. `after_ship` is empty unless the repeat check
+   ends in a suggestion; then it is that one Next step line ("- After /ship: `/skillify <pattern>` (a
+   suggestion, not part of this plan)", or the existing skill to run), never a step of this plan.
+   The `spec:` value is exactly one of `not required` (the plan is the build's
+   blueprint), the spec's path spelled from the repo root as `<ticket-dir>/specs/<id>-<slug>.md`, or
+   `after-root-cause`. Inputs: the priming brief + the reuse brief. A spec is required when the work
+   creates or alters a persisted object others depend on (a warehouse object, a model, a published
+   report), reconciles two or more sources, or confidence is below 7. Choose `after-root-cause` for
+   an **investigation-shaped ticket** ("where is this error coming from", "why did this number
+   drift"): you cannot blueprint a fix you have not root-caused, and a spec written from the
+   ticket's own hypothesis specifies a fix to the wrong place, so the Approach scopes the
+   investigation and `/build` returns here for the spec once the cause is found (its Phase 1 owns
+   that condition). Scoping is still first; it is scoped to what can honestly be planned.
 10. **When a spec is required, draft it now, in this phase** — follow [spec.md](spec.md) (it consumes
     the Phase 3 brief and researches only the delta). Spec authoring is read-only by design, which is
     why it belongs here and not in `/build`. Nothing about planning is left for the build stage.
@@ -206,11 +231,18 @@ context brief (including the reuse brief) first, then:
     > Approving starts the build right away. To save the plan without building yet, say "approve, don't build yet".
     <!-- ticketwright:user-facing:end -->
     **Only after the human says go** do the artifacts
-    touch the ticket: render the plan with
-    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$kit_root/templates/plan.md.tmpl" ticket_id=… title=… confidence=… goal=… spec_required=… owner=… --strict`
-    (all six tokens; `--strict` so a missing one is an error, not a `{{token}}` committed into the
-    record) into `<ticket-dir>/plan.md` — **if a `plan.md` already exists (a resumed or re-scoped
-    ticket), update it in place; never re-render over an approved plan** — then write the spec
+    touch the ticket. Write the approved `## <Section>` blocks, exactly as approved (with step 11's
+    answers folded in), to a scratch file outside the repo, then render the plan from them with
+    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$kit_root/templates/plan.md.tmpl" ticket_id=… title=… confidence=… spec_required=… owner=… after_ship='…' --sections <scratch file> --strict`
+    into a scratch output file, and move it to `<ticket-dir>/plan.md` only when the render exits 0.
+    The six header tokens go on the command line (`after_ship=''` when there is no suggestion;
+    single-quote a filled one, since it carries backticks); every section comes from the file, so multi-line
+    Markdown never passes through shell quoting, and section text is inserted as written (a `{{ }}`
+    inside it stays text). `--strict` makes each of these an error that prints nothing: a missing
+    section or token, a heading the template has no place for, an empty section, a leftover `…`
+    placeholder line. On an error, fix the blocks and render again; never hand-edit the output to
+    get past it. **If a `plan.md` already exists (a resumed or re-scoped ticket), update it in
+    place; never re-render over an approved plan** — then write the spec
     (`<ticket-dir>/specs/<id>-<slug>.md`) when one was drafted, and commit them together **through
     the vcs adapter's `commit` verb** — `docs: <id> plan for <thing>`, or `docs: <id> plan + spec for
     <thing>` — when `commit_plan_before_implement` is on; leave them uncommitted when it is off.

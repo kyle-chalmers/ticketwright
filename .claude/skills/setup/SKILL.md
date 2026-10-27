@@ -270,22 +270,14 @@ These exist so a skipped round is a deferral, not a dead end — every skip's pu
 the command that finishes it. Requires an existing `stack.yaml`.
 
 ## Mode: `viewer` — which apps open *your* deliverables (person-scoped)
-A re-run entry point, kept on purpose: the primary path is the just-in-time interview at the
-`/review` gate, which asks these same questions the first time a handoff needs them. Which app
-opens a `.sql` is a personal choice, so it lives in a gitignored per-user file and each teammate
-answers for themselves — this mode never touches `stack.yaml`. Ask:
-
-1. Which application should open `.sql` files? (or *none*)
-2. Which should open `.csv` files? (or *none*)
-3. This repo only, or all your ticket repos?
-
-Then write `.claude/config/viewer.local.yaml` (this repo) or
-`${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml` (all repos), copying the shape and the
-platform-matching `open_cmd`/`reveal_cmd` from `.claude/config/viewer.example.yaml` and pointing
-`adapter:` at the `adapters/viewer/` file for this OS. "None / don't ask again" ⇒ `enabled: false`.
-Confirm with
-`!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/handoff.sh" --dry-run <any ticket file>`,
-which prints the resolved commands without launching anything. Never commit this file.
+The re-run entry point for the viewer interview in [viewer.md](viewer.md): follow it in full. The
+same interview runs after round 6 of the default path, in `--teammate`, and at the `/review`
+hand-off the first time it finds no usable viewer, so a skipped answer is asked again where it is
+needed. Which app opens a `.sql` is a personal choice, so it lives in a gitignored per-user file and
+each teammate answers for themselves; this mode never touches `stack.yaml`. It opens with the one
+sentence on what the review stage is for, then asks where the choices apply, which kinds of files
+the person checks at review, and which app opens each kind, and confirms with `handoff.sh
+--dry-run`, which prints the resolved commands without launching anything. Never commit this file.
 
 ## Default mode — configure the repo
 
@@ -472,6 +464,8 @@ I'd set up. Nothing is written until you say yes." The plan names:
   "You share results by email and Slack → both are set up; you pick who gets each result when you
   ship it"), with any tool left for later and the command that adds it;
 - the result of the draft check (clean, or the items the person chose to finish later);
+- the person's own review apps from the viewer interview, when it was answered: "your review apps
+  (this machine only, not committed)" and the file it goes to (see [viewer.md](viewer.md));
 - every file this phase will create **or change** — `.claude/config/stack.yaml`, `AGENTS.md`,
   `CLAUDE.md`, the human-facing `README.md` (or `README.ticketwright.md` if a README already
   exists — never overwritten), `.claude/settings.json`, `.gitignore`, the AI-layer index, the
@@ -506,6 +500,10 @@ Only on explicit confirmation, execute — **source of truth first, derived file
 
    *Check:* that prints a kit path. If it errors, stop — step 6 renders commands that all route
    through this launcher.
+5c. **Write the person's review apps**, when the viewer interview after round 6 was answered: step 5
+   of [viewer.md](viewer.md) (it reads the current plan, writes the gitignored file, and checks it).
+   It runs after 5b because the check goes through the launcher. A skipped interview writes nothing
+   here; the punch list in step 8 names `/setup viewer`.
 6. Scaffold the rest per [scaffold.md](scaffold.md): render `AGENTS.md` (+ role focus) and a one-line
    `CLAUDE.md` (`@AGENTS.md`, so Claude Code auto-loads the rules), the human-facing `README.md`
    (rendered to `README.ticketwright.md` instead if a README already exists — never overwritten),
@@ -546,7 +544,8 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    it. Then say which check was which (the install check = the kit's files; the tool check = *your*
    tools), the chosen stack, files written, and any `# TODO` keys. Include, when they apply:
    - **The punch list** — one entry per skipped round, each naming its re-entry command
-     (`/setup role` for round 5, `/setup policies` for round 6). Deferring must be trackable;
+     (`/setup role` for round 5, `/setup policies` for round 6, `/setup viewer` for the review
+     apps). Deferring must be trackable;
      "took defaults" must never be indistinguishable from "chose".
    - **`project.assignee_dir`, in one line — what the key is for, not a warning.** It is the
      last-resort owner subdir under `tickets/` for a repo with no `people/` roster. Once a roster

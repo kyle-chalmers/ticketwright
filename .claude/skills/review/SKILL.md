@@ -126,11 +126,16 @@ canonical order resolves next — the ticket's declared target before the seam d
      or `would run:` in a session with no desktop), nothing was opened: say so plainly and **once**
      (for example "No viewer is configured, so nothing was opened"), list the paths so the person
      can open them, and continue. Never block. Its stderr names which case it was.
-  2. If it opened nothing and no **usable** config exists, offer the one-time setup (as questions;
-     they do not depend on each other): which app
-     for `.sql`, which for `.csv`, this repo only or all their repos. Their answers are written to
-     `.claude/config/viewer.local.yaml` (gitignored, per-user) or the user-level path — see
-     `.claude/config/viewer.example.yaml`. "None / don't ask again" writes `enabled: false`.
+  2. If it opened nothing, no **usable** config exists, and the person has not opted out, offer the
+     one-time setup: the viewer
+     interview `/setup` asks, in `.claude/skills/setup/viewer.md` under the kit root
+     (`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit` prints it). Follow
+     it in full: the one sentence on what this stage is for, then where the choices apply, which
+     kinds of files, and which app opens each. Its answers are written to
+     `.claude/config/viewer.local.yaml` (gitignored, per-user) or the user-level path, and "Don't
+     open files for me" writes `enabled: false`. Then run step 1 again for these files. An opt-out
+     is `"enabled": false` with a `source` set in the plan below: never offer the setup again then,
+     because the person already answered (`/setup viewer` is how they change it).
      Check usable, not merely present:
      `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --viewer-plan`
      reports `"usable": false` when config exists but opens nothing — a real state now that the

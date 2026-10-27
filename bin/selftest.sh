@@ -10790,16 +10790,15 @@ done
   && grep -q 'why it matched' .claude/skills/ticket/SKILL.md; } \
   && ok "the reuse brief and the plan name each prior ticket and why recall matched it" \
   || bad "/ticket can build on prior work without saying why it matched"
-pl_err="$(bash bin/render.sh templates/plan.md.tmpl ticket_id=x title=x confidence=x goal=x \
-          spec_required=x owner=x --strict 2>&1 >/dev/null)"
-[ -z "$pl_err" ] && ok "plan.md.tmpl stamps --strict with the six tokens /ticket names" || bad "leftover tokens in plan.md.tmpl" "$pl_err"
+# The --strict render itself (header tokens on the command line, sections from a file) is pinned
+# in section 80; here only that the template is shape, with the spec: criteria stated in /ticket.
 ns_l="$(grep -n '^## Next step' templates/plan.md.tmpl | cut -d: -f1)"
 tail -n +"$ns_l" templates/plan.md.tmpl > "$TMP/plan56.next"
-if grep -q 'persisted object' templates/plan.md.tmpl && grep -q 'after-root-cause' templates/plan.md.tmpl \
-   && ! grep -q 'persisted object\|after-root-cause\|not required' "$TMP/plan56.next"; then
-  ok "the spec: criteria live once, in the plan header — the rendered Next step carries only the value"
+if grep -q 'persisted object' "$TMP/tk56.flat" && grep -q 'after-root-cause' "$TMP/tk56.flat" \
+   && ! grep -q 'persisted object\|after-root-cause\|not required' templates/plan.md.tmpl; then
+  ok "the spec: criteria live once, in /ticket's step 9; the template and the rendered Next step carry only the value"
 else
-  bad "plan.md.tmpl states the spec: criteria in the Next step (a rendered plan would match every value)" "$(cat "$TMP/plan56.next")"
+  bad "plan.md.tmpl states the spec: criteria (a rendered plan would match every value), or /ticket lost them" "$(cat "$TMP/plan56.next")"
 fi
 # (c) /build: reads the spec: LINE, halts by name, handles the investigation lane, bounded review loop
 { grep -q '^name: build' "$bd56" && grep -q 'No plan is on file' "$TMP/bd56.flat" \
@@ -10807,7 +10806,7 @@ fi
   && grep -q 'Anything else on that line' "$TMP/bd56.flat"; } \
   && ok "/build reads the plan's spec: line (only), halts by name on a missing plan or spec, and fails closed on an unreadable value" \
   || bad "/build lost a load-order halt or matches spec: values anywhere in the plan"
-{ grep -q 'after-root-cause' templates/plan.md.tmpl && grep -q 'after-root-cause' "$tk56" \
+{ grep -q 'after-root-cause' "$tk56" \
   && grep -q 'after-root-cause' "$bd56" && grep -q 'route back to' "$TMP/bd56.flat" \
   && grep -q 'the one condition this skill owns' "$TMP/bd56.flat"; } \
   && ok "the investigation lane exists in template, /ticket and /build, and /build owns the return condition" \
@@ -10914,9 +10913,8 @@ grep -q 'reference file, verbatim' bin/emit_runtime.py \
 { ! grep -qE '^Create .*`specs/`' .claude/skills/setup/scaffold.md \
   && grep -q '<ticket-dir>/specs/<id>-<slug>.md' .claude/skills/ticket/SKILL.md \
   && grep -q '<ticket-dir>/specs/<id>-<slug>.md' .claude/skills/ticket/spec.md \
-  && grep -q '<ticket-dir>/specs/<id>-<slug>.md' templates/plan.md.tmpl \
   && grep -q '<ticket-dir>/specs/<id>-<slug>.md' .claude/skills/build/SKILL.md; } \
-  && ok "setup creates no repo-root specs/, and /ticket, spec.md, the plan template and /build all name <ticket-dir>/specs/" \
+  && ok "setup creates no repo-root specs/, and /ticket, spec.md and /build all name <ticket-dir>/specs/" \
   || bad "a spec path is ambiguous again (repo-root specs/ created, or a surface lost <ticket-dir>/specs/)"
 # A bare `specs/<id>-<slug>.md` may appear only in /build's fallback for plans written before the fix.
 bare56="$(grep -n '`specs/<id>-<slug>.md`' .claude/skills/ticket/SKILL.md .claude/skills/ticket/spec.md \
@@ -14538,6 +14536,219 @@ sh76="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
   || bad "/ship does not record or show a declared no-message"
 grep -q 'No message is a declaration too' adapters/README.md \
   && ok "the delivery-plan schema documents chat: none" || bad "adapters/README.md does not document chat: none"
+
+hdr "80 · plan.md renders from the approved sections, with no template scaffolding (LABS-112)"
+# The plan used to render as the template's guidance header plus placeholder lines (`- **In:** …`),
+# and was rewritten by hand on every ticket. Now the template is shape only and render.sh fills each
+# `## Heading` token from the approved draft (--sections), failing --strict on anything unfilled.
+# This replaces section 56's six-token render check deliberately: `goal` moved into the sections.
+tp80="templates/plan.md.tmpl"; tk80=".claude/skills/ticket/SKILL.md"
+# (a) the template is shape: a title, the confidence line, each heading over one {{token}}, Next step
+grep -nE '…|^>|^\*[A-Z(]|^- \*\*In:\*\*|not required|persisted object' "$tp80" > "$TMP/s80.scaf" || true
+[ ! -s "$TMP/s80.scaf" ] \
+  && ok "plan.md.tmpl carries no guidance header, hint lines or placeholders to commit" \
+  || bad "plan.md.tmpl still carries scaffolding that would land in every plan" "$(cat "$TMP/s80.scaf")"
+awk '/^## / && !/^## Next step/ { h=$0; getline; if ($0 !~ /^\{\{[a-z_]+\}\}$/) print h " -> " $0 }' "$tp80" > "$TMP/s80.tok"
+[ ! -s "$TMP/s80.tok" ] \
+  && ok "every plan section heading is followed by exactly one {{token}} line" \
+  || bad "a plan section is not a single token, so --sections cannot fill it" "$(cat "$TMP/s80.tok")"
+# (b) a full render: header tokens on the command line, sections from a file, under stock bash too
+cat > "$TMP/s80.sec" <<'MD'
+Text before the first heading is ignored.
+
+## Goal
+Rank the top 10 videos by first-day views for TEST-14.
+
+## Scope
+- **In:** videos published this year.
+- **Explicitly out:** paid promotion.
+
+## Builds on
+None found.
+
+## Deliverables expected
+1. `01-top10_videos-10.csv`: one row per video.
+
+## Approach
+1. Read `$views` from `analytics.videos` with "quotes" kept.
+2. Build on {{ ref('stg_orders') }}; the {{risks}} token here stays text.
+
+```sql
+## inside a fence, not a heading
+select 1;
+```
+
+## Validation strategy (defined BEFORE code)
+- Duplicate detection on `video_id`.
+
+## Touched
+- **Objects/files:** `analytics.videos`
+- **Tool slots:** warehouse (query)
+
+## Questions for the requester
+- Which time zone? UTC, per the requester.
+
+## Risks
+- Late-arriving view counts.
+MD
+r80() {  # r80 SHELL SECTIONS-FILE [--strict] -> rendered plan on stdout, stderr to $TMP/s80.err
+  "$1" bin/render.sh "$tp80" ticket_id=TEST-14 title="Top videos" confidence=8 \
+    spec_required="not required" owner=alice after_ship='' --sections "$2" ${3:-} 2>"$TMP/s80.err"
+}
+for sh80 in bash /bin/bash; do
+  command -v "$sh80" >/dev/null 2>&1 || continue
+  r80 "$sh80" "$TMP/s80.sec" --strict > "$TMP/s80.out"; rc80=$?
+  { [ "$rc80" -eq 0 ] && [ ! -s "$TMP/s80.err" ] && ! grep -q '…' "$TMP/s80.out" \
+    && grep -q '^- \*\*spec:\*\* not required$' "$TMP/s80.out" && grep -q '/build alice/TEST-14' "$TMP/s80.out" \
+    && grep -qF 'Read `$views` from `analytics.videos` with "quotes" kept.' "$TMP/s80.out" \
+    && grep -q '^## inside a fence, not a heading$' "$TMP/s80.out" \
+    && ! grep -q 'Text before the first heading' "$TMP/s80.out" \
+    && grep -qF "2. Build on {{ ref('stg_orders') }}; the {{risks}} token here stays text." "$TMP/s80.out" \
+    && [ "$(grep -c 'Late-arriving view counts' "$TMP/s80.out")" -eq 1 ] \
+    && [ "$(sed -n '/^## Scope$/{n;p;}' "$TMP/s80.out")" = '- **In:** videos published this year.' ] \
+    && [ "$(sed -n '/^## Risks$/{n;p;}' "$TMP/s80.out")" = '- Late-arriving view counts.' ] \
+    && [ "$(sed -n '/^## Builds on$/{n;p;}' "$TMP/s80.out")" = 'None found.' ] \
+    && [ "$(tail -n 1 "$TMP/s80.out")" = '- Then `/build alice/TEST-14` → `/ship alice/TEST-14` on APPROVE.' ]; } \
+    && ok "[$sh80] a --strict render from sections is clean: each body under its own heading, values verbatim (a quoted {{ }} stays text), a fenced ## kept, preamble dropped" \
+    || bad "[$sh80] the --sections render failed or changed the content" "rc=$rc80 $(cat "$TMP/s80.err")"
+done
+# A repeat check's suggestion (skillify/repeats.md) is the one optional Next step line: after_ship.
+bash bin/render.sh "$tp80" ticket_id=TEST-14 title="Top videos" confidence=8 spec_required="not required" \
+  owner=alice after_ship='- After /ship: `/skillify top videos by early views` (a suggestion, not part of this plan).' \
+  --sections "$TMP/s80.sec" --strict > "$TMP/s80.as" 2>"$TMP/s80.err"; rc80=$?
+{ [ "$rc80" -eq 0 ] && [ "$(sed -n '/^## Next step$/,$p' "$TMP/s80.as" | tail -n 1)" = '- After /ship: `/skillify top videos by early views` (a suggestion, not part of this plan).' ] \
+  && grep -q 'after_ship' "$tk80" && grep -q 'repeats.md' "$tk80"; } \
+  && ok "a repeat's /skillify suggestion lands as the last Next step line, and an empty after_ship adds nothing" \
+  || bad "the repeat suggestion has no place in the rendered plan" "rc=$rc80 $(tail -n 2 "$TMP/s80.as")"
+# (c) every way a plan can still be unfilled is a --strict error that names the section
+s80case() {  # s80case LABEL WANT-IN-STDERR  (sections file already at $TMP/s80.bad)
+  r80 bash "$TMP/s80.bad" --strict > "$TMP/s80.badout"; rc80=$?
+  { [ "$rc80" -eq 2 ] && grep -qF -- "$2" "$TMP/s80.err" && [ ! -s "$TMP/s80.badout" ]; } \
+    && ok "--strict refuses $1, printing nothing a redirect could leave behind" \
+    || bad "--strict let $1 through, or printed a half-filled plan" "rc=$rc80 $(cat "$TMP/s80.err")"
+}
+sed 's/^- \*\*Explicitly out:\*\* paid promotion\.$/- **Explicitly out:** …/' "$TMP/s80.sec" > "$TMP/s80.bad"
+s80case "a leftover placeholder line" 'still has a placeholder line: - **Explicitly out:** …'
+r80 bash "$TMP/s80.bad" >/dev/null; rc80=$?
+{ [ "$rc80" -eq 0 ] && grep -q 'placeholder line' "$TMP/s80.err"; } \
+  && ok "without --strict the same placeholder only warns (render.sh never fails a non-strict caller)" \
+  || bad "a non-strict render changed exit behavior" "rc=$rc80"
+sed 's/^## Risks$/## Riskz/' "$TMP/s80.sec" > "$TMP/s80.bad"
+s80case "a heading the template has no place for" 'has no {{riskz}} in the template'
+sed 's/^None found\.$//' "$TMP/s80.sec" > "$TMP/s80.bad"
+s80case "an empty section" '"## Builds on" is empty'
+{ cat "$TMP/s80.sec"; printf '\n## Goal\nA second goal.\n'; } > "$TMP/s80.bad"
+s80case "the same heading twice" 'the heading "Goal" appears twice'
+sed '/^## Risks$/,$d' "$TMP/s80.sec" > "$TMP/s80.bad"
+s80case "a missing section (its token stays unresolved)" '{{risks}}'
+# (d) /ticket composes those blocks and renders with --sections; nothing is hand-edited past an error
+tr '\n' ' ' < "$tk80" | tr -s ' ' > "$TMP/tk80.flat"
+{ grep -q "render.sh \"\$kit_root/templates/plan.md.tmpl\" ticket_id=… title=… confidence=… spec_required=… owner=… after_ship='…' --sections <scratch file> --strict" "$tk80" \
+  && ! grep -q 'goal=…' "$tk80" && grep -q 'one `## <Section>` block per heading' "$TMP/tk80.flat" \
+  && grep -q 'never hand-edit the output to get past it' "$TMP/tk80.flat" \
+  && grep -q 'scratch file outside the repo' "$TMP/tk80.flat" \
+  && grep -q 'from Goal to Risks' "$TMP/tk80.flat" && grep -q 'Next step is not a block' "$TMP/tk80.flat" \
+  && grep -q 'move it to `<ticket-dir>/plan.md` only when the render exits 0' "$TMP/tk80.flat"; } \
+  && ok "/ticket drafts Goal..Risks blocks, renders --sections --strict to a scratch file, moves it only on exit 0, never hand-patches" \
+  || bad "/ticket still renders the skeleton, or lets a failed render be hand-edited into the record"
+mis80=""
+for k80 in Goal Scope "Builds on" "Deliverables expected" Approach "Validation strategy" Touched "Questions for the requester" Risks; do
+  grep -q "\*\*$k80\*\*:" "$TMP/tk80.flat" || mis80="$mis80 [$k80]"
+done
+[ -z "$mis80" ] && ok "/ticket's step 9 says what goes in every plan section (the guidance the template used to carry)" \
+  || bad "/ticket lost the guidance for a plan section" "$mis80"
+
+hdr "81 · /setup asks which app opens each kind of deliverable, once, in one shared interview (LABS-118)"
+# /review's hand-off found no viewer, said nothing opened, and moved on: setup never asked. The
+# interview now lives in setup/viewer.md, and setup (default path + --teammate), `/setup viewer` and
+# /review's first hand-off all follow it. It writes the existing per-user viewer config, nothing new.
+vw81=".claude/skills/setup/viewer.md"; sk81=".claude/skills/setup/SKILL.md"
+iv81=".claude/skills/setup/interview.md"; tm81=".claude/skills/setup/teammate.md"; rv81=".claude/skills/review/SKILL.md"
+tr '\n' ' ' < "$vw81" | tr -s ' ' > "$TMP/vw81.flat"
+# (a) one plain sentence on what the review stage is for, inside a checked say-this block
+{ [ "$(grep -c 'ticketwright:user-facing:begin' "$vw81")" -eq 1 ] \
+  && grep -q 'so you can check the numbers are right before anything is shared' "$vw81" \
+  && python3 "$PL59" --marked "$vw81" >"$TMP/pl81.out" 2>&1; } \
+  && ok "the viewer interview opens with one plain sentence on what review is for (plain-language checked)" \
+  || bad "the viewer interview lost its review-stage sentence or uses kit terms" "$(cat "$TMP/pl81.out" 2>/dev/null)"
+# (b) per kind of file, with the kit's own config as the only write
+{ grep -q 'Tables and spreadsheets\*\* (`.csv`, `.tsv`, `.xlsx`)' "$vw81" && grep -q 'Queries\*\* (`.sql`)' "$vw81" \
+  && grep -q 'Write-ups\*\* (`.md`, `.pdf`)' "$vw81" && grep -q 'All of these' "$vw81" \
+  && grep -q 'One question per picked kind' "$vw81" && grep -q 'Detect first' "$TMP/vw81.flat" \
+  && grep -q "Never offer an app name this run has not seen" "$TMP/vw81.flat"; } \
+  && ok "it asks which kinds of files, then one app question per kind, detecting first and inventing no app" \
+  || bad "the viewer interview no longer asks per kind of deliverable"
+{ grep -q '.claude/config/viewer.local.yaml' "$vw81" && grep -q 'ticketwright/viewer.yaml' "$vw81" \
+  && grep -q 'viewer.example.yaml' "$vw81" && grep -q 'handoff.sh --dry-run' "$vw81" \
+  && grep -q "Don't open files for me" "$vw81" && grep -q 'enabled: false' "$vw81" \
+  && grep -q 'never touches `stack.yaml`' "$TMP/vw81.flat" && grep -q 'Never commit the viewer file' "$TMP/vw81.flat"; } \
+  && ok "it writes only the existing per-user viewer config, checks with handoff --dry-run, and touches no team file" \
+  || bad "the viewer interview writes somewhere new, or skips the dry-run check"
+# (c) every entry point follows the same file
+{ grep -q '\[viewer.md\](viewer.md)' "$sk81" && grep -q '\[viewer.md\](viewer.md)' "$iv81" \
+  && grep -q '\[viewer.md\](viewer.md)' "$tm81" && grep -q '.claude/skills/setup/viewer.md' "$rv81"; } \
+  && ok "/setup viewer, the default interview, --teammate and /review all follow setup/viewer.md" \
+  || bad "an entry point asks its own viewer questions instead of the shared interview"
+if grep -q 'for `.sql`, which for `.csv`' "$rv81" || grep -q 'Which application should open `.sql` files' "$sk81"; then
+  bad "an old .sql-and-.csv-only viewer question survives"
+else
+  ok "the old .sql-and-.csv-only viewer questions are gone"
+fi
+# (d) the default path asks it after round 6, skippable with its cost, and lists the write in the plan
+tr '\n' ' ' < "$iv81" | tr -s ' ' > "$TMP/iv81.flat"; tr '\n' ' ' < "$sk81" | tr -s ' ' > "$TMP/sk81.flat"
+r6_81="$(grep -n '^## Round 6' "$iv81" | cut -d: -f1)"; va81="$(grep -n '^## After round 6: your review apps' "$iv81" | cut -d: -f1)"
+sk_81="$(grep -n '^## Skipping a round' "$iv81" | cut -d: -f1)"
+{ [ -n "$r6_81" ] && [ -n "$va81" ] && [ -n "$sk_81" ] && [ "$r6_81" -lt "$va81" ] && [ "$va81" -lt "$sk_81" ] \
+  && grep -q 'Skip this and review lists the finished files for you to open yourself' "$TMP/iv81.flat" \
+  && grep -q 'punch-list entry naming `/setup viewer`' "$TMP/iv81.flat" \
+  && grep -q 'your review apps (this machine only, not committed)' "$TMP/sk81.flat" \
+  && grep -q '`/setup viewer` for the review apps' "$TMP/sk81.flat"; } \
+  && ok "setup asks the review apps after round 6, labels the skip's cost, lists the file in the plan, and punch-lists a skip" \
+  || bad "the default setup path does not ask the viewer question in order, or a skip is untracked" "r6=$r6_81 viewer=$va81 skip=$sk_81"
+# (d2) the write lands in Phase 3 (after the launcher), and a fresh repo is checked through the plan
+p5b81="$(grep -n '^5b\. ' "$sk81" | cut -d: -f1)"; p5c81="$(grep -n '^5c\. \*\*Write the person.s review apps' "$sk81" | cut -d: -f1)"
+p681="$(grep -n '^6\. Scaffold the rest' "$sk81" | cut -d: -f1)"
+{ [ -n "$p5b81" ] && [ -n "$p5c81" ] && [ -n "$p681" ] && [ "$p5b81" -lt "$p5c81" ] && [ "$p5c81" -lt "$p681" ] \
+  && grep -q "Phase 3's step 5c" "$TMP/vw81.flat"; } \
+  && ok "setup's Phase 3 writes the review apps as step 5c, after the launcher and before the scaffold" \
+  || bad "the review apps are listed in setup's plan but no Phase 3 step writes them" "5b=$p5b81 5c=$p5c81 6=$p681"
+{ grep -q 'never create a file to have something to point' "$TMP/vw81.flat" \
+  && grep -q 'Its `source` must be the file just written' "$TMP/vw81.flat" \
+  && grep -q 'the new file would be ignored' "$TMP/vw81.flat" && grep -q 'Never delete it without the yes' "$TMP/vw81.flat"; } \
+  && ok "the interview checks through --viewer-plan on a fresh repo, and names a higher-ranked file instead of writing one that loses" \
+  || bad "the viewer check needs a file a fresh repo lacks, or an every-repo answer can be silently outranked"
+# (d3) an opt-out is an answer: the plan marks it, and /review never re-offers the setup for it
+mkdir -p "$TMP/v81off/.claude/config"; : > "$TMP/v81off/.git"
+printf 'enabled: false\n' > "$TMP/v81off/.claude/config/viewer.local.yaml"
+XDG_CONFIG_HOME="$TMP/noxdg" python3 bin/effective_config.py --root "$TMP/v81off" --viewer-plan --quiet > "$TMP/v81off.json" 2>/dev/null || true
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("enabled") is False and d.get("source") and d.get("usable") is False else 1)' "$TMP/v81off.json" 2>/dev/null \
+  && { tr '\n' ' ' < "$rv81" | tr -s ' ' | grep -q 'the person has not opted out'; } \
+  && { tr '\n' ' ' < "$rv81" | tr -s ' ' | grep -q 'never offer the setup again then'; } \
+  && ok "an opt-out shows as enabled false with a source, and /review does not ask it again" \
+  || bad "/review would re-ask a person who chose not to open files" "$(cat "$TMP/v81off.json" 2>/dev/null)"
+# (e) behavior: the shape viewer.md writes resolves through the existing handoff. A kind given an app
+# routes to it; a kind left on the usual app has no route and opens with the OS default.
+vproj s81 <<'YAML' >"$TMP/vp81.out"
+enabled: true
+tool: macos-open
+adapter: adapters/viewer/macos-open.md
+open_cmd: 'open -a {app} {path}'
+default_cmd: 'open {path}'
+reveal_cmd: 'open -R {path}'
+routes:
+  - glob: "*.csv"
+    app: Sheet App
+  - glob: "*.tsv"
+    app: Sheet App
+  - glob: "*.xlsx"
+    app: Sheet App
+YAML
+VP81="$(cat "$TMP/vp81.out")"
+o81="$(hoff "$VP81" --dry-run "$VP81/tickets/one.csv" "$VP81/tickets/q.sql")"
+{ grep -q "open -a Sheet\\\\ App .*one.csv" <<<"$o81" && grep -q "would run: open .*q.sql" <<<"$o81" \
+  && ! grep -q "open -a .*q.sql" <<<"$o81"; } \
+  && ok "a kind with an app opens in it, and a kind left on the usual app opens with the computer's default" \
+  || bad "the viewer interview's written shape does not route as it promises" "$o81"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
