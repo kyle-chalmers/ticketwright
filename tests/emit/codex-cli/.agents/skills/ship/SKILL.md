@@ -3,7 +3,7 @@ name: ship
 description: Finalize and deliver a reviewed ticket — commit + PR, merge (after asking), backup, tracker comment, chat draft — with a hard halt before any external post. Run after /review approves.
 ---
 
-<!-- emitted by ticketwright install v4.4.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.5.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /ship
 
@@ -157,7 +157,11 @@ typed.
    `include_self` target adds them). Same call with `--seam docstore`. Exit **7** = that slot isn't
    configured → skip its artifact and name `/setup tool chat` / `/setup tool docstore` as the
    enabler, exactly as before. Exit **0** → use the returned `target`, `destination`, `recipients`,
-   `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes.
+   `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes. A chat exit
+   **0** carrying `skipped: declared` is the ticket's own `chat: none`: there is no chat message,
+   so draft none, print the plan's Chat line as "none, declared on the ticket" (with the returned
+   `skip_reason` when there is one), and leave out the chat step. It is a decision already made, so
+   nothing is asked.
    **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
    - **9 (nothing declared)** — the plan declares nothing this slot can route on. Three shapes, and the
      CLI's message names which:
@@ -178,6 +182,10 @@ typed.
        **where this goes and who it is for**. If the person picks an audience whose target is
        per-ticket, ask for its destination and recipients in the same turn rather than re-running
        twice.
+     **"No chat message" is always one of the answers**, beside the destinations. When the person
+     picks it, write `chat: none` into the plan (or `chat:` with `none: true` and their `reason:`
+     when they gave one), never a comment: a comment is read by no tool, so the next run would ask
+     again and the record would not show the decision.
      In each case, write the answer into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md`
      § The delivery plan) — the `audience:` for a targets slot, the `chat:` block
      (`channel:`, `kind:` and `recipients:`, which may be empty only for `kind: channel`) for a
@@ -233,6 +241,25 @@ typed.
      `comms/draft-chat.initial.md`). These are **immutable** — the record of what the plugin proposed,
      for the voice-refine diff in Phase C. `comms/` is gitignored (unsent wording never rides the PR).
 
+   **(c) Read where the ticket can move, before the plan names a status.** A status typed from
+   memory fails at the very last step when the workflow does not have it (`No allowed transitions
+   found for given status`, on a board with no `In Review`). So ask the tracker: run
+   **`tracker.list_transitions`** for the ticket, save what it returns, and pick the target with
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" transition_plan.py --transitions <that file> --id <id>`
+   (it reads `project.terminal_status` from the merged config). Exit **0** → its `target` is the
+   status the plan names and step 10 moves to, through its `via`; `already_there` means step 10 has
+   nothing to do. Exit **8** → no single move reaches the configured status: ask the person which
+   status this ticket should end in, offering the `available` moves it lists (the `suggestion`
+   first when there is one, labelled as the one the tracker files under done), and use their pick
+   for this run. If they say it is the workflow's real final status, offer to set
+   `project.terminal_status` to it, as a separate change. An exit 8 whose `result` is `ambiguous`
+   means two moves reach that status: ask which one, offering each of its `options` by `name`, and
+   re-run with `--via <the picked option's via>`. Exit **7** → the moves could not be read (an
+   `unavailable` or `unsupported` reply), and exit **4** → the reply could not be parsed: in both,
+   the plan names the configured status and says it was not checked against the tracker, so nobody
+   reads it as checked. Skip this when the stack has no
+   tracker tool slot, or when the merge setting is off (step 10 then moves nothing).
+
 ## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
 Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
 THE PLAN, not the word "ship". `--go` does not count in a run where step 1 took the person's
@@ -276,19 +303,27 @@ execute — nothing the steps don't do may appear in it:
    > Sharing settings: <declared scope> (declared, not checked) | not checked (one destination).
    > Ticket: `<tool>`, target `<target>`, comment on `<owner>/<id>`.
    > Chat: `<tool>`, target `<target>`, chosen by the audience `<audience>`, in `<channel>`, to `<recipients>`, sent as `<sender>`, as a draft | sent.
+   > Chat: none, declared on the ticket (<reason>).
    > Code: `<tool>`, target `<target>`, branch `<branch>`, a pull request opens, and I merge it (squash) after asking you once more | you merge it by hand (the merge setting is off).
    > This chat target was picked for this run, not declared on the ticket.
+   > This ticket declares no chat message, and this run sends one anyway because you picked the chat target.
    > What happens, in this order:
    > 1. Commit the ticket files (and a separate commit for any changed Ticketwright setup files, when there are any), push the branch, and open the pull request.
    > 2. Ask you once more, then squash-merge the pull request into `<default branch>`. If branch rules or checks block it, I stop and tell you why.
    > 3. Scan the ticket folder for raw source material, then back it up to the documents destination above. Unsent drafts stay on this machine.
    > 4. Post the approved comment on the ticket, with links to the backup and the pull request.
    > 5. Draft the chat message for the recipients above, with the same links, or send it only if you say "send it".
-   > 6. Move the ticket toward its final status if that applies, and only once the pull request is merged.
+   > 6. Move `<id>` to `<status>` once the pull request is merged.
    > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
    Leave out the "picked for this run" line unless the chat target came from `--chat <target>`, and
-   leave out the sender when the routed JSON carries none. The numbered list is the steps below
+   leave out the sender when the routed JSON carries none. When the routed chat JSON carries
+   `overrides_declared_none: true`, also print the "declares no chat message" line under it, so the
+   person sees they are sending what the ticket said it does not need. Print one of the two Chat lines: the
+   "none, declared" one only when routing returned `skipped: declared` (drop the parentheses when
+   no reason was given), and then leave out the chat step. Step 6 names the exact status from
+   step 4(c), and adds "(not checked against the tracker)" when the moves could not be read; when
+   the ticket is already there, it reads "`<id>` is already in `<status>`, so it stays there." The numbered list is the steps below
    (5 to 10), so drop any step the plan does not deliver (for example the documents backup when no
    documents tool slot is configured, or the merge step when the merge setting is off).
 
@@ -405,9 +440,14 @@ execute — nothing the steps don't do may appear in it:
    last mechanical point at which a message can be caught carrying the wrong audience's list, and it
    costs one command. A routing failure here is a **stop**, never a send to another target. Smart
    links for ticket id(s), files, PR. Write the final drafted text to `comms/draft-chat.approved.md`.
-   Skip when the chat seam isn't configured.
-10. **transition** the ticket toward `project.terminal_status` if appropriate, **and only when
-    step 6 merged the pull request.** When the merge was left to the team (the person chose
+   Skip when the chat seam isn't configured, or when the ticket declares `chat: none`.
+10. **transition** the ticket to the status the approved plan named (step 4(c): its `target`, and
+    its `via` where the adapter's `transition` section says the call takes one), never another one,
+    **and only when
+    step 6 merged the pull request.** A move that fails anyway (the workflow changed since step
+    4(c)) is reported in the tracker's own words; do not try other statuses. The index row keeps
+    the status read in step 3 until the next `/refresh index` reads the new one from the tracker:
+    the merged work is not edited again here. When the merge was left to the team (the person chose
     **Leave it open**, or `ship_merges_pr` is `false`), leave the status where it is and say so: a
     ticket marked done with its work unmerged tells the team something that is not true yet.
 

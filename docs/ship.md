@@ -24,8 +24,12 @@ moment it waits for you.
    both with the ticket.
 4. **Pick where it goes, then draft.** The ticket's delivery plan decides which chat channel,
    recipients and documents folder it goes to; when it doesn't say, `/ship` asks you rather than
-   guessing. The tracker comment and chat message are drafted now, with placeholders where the
-   pull request and backup links will go.
+   guessing. "No chat message" is one of the answers, and it is saved in the plan as
+   `chat: none`, so the next run reads it instead of asking again. The tracker comment and chat
+   message are drafted now, with placeholders where the pull request and backup links will go.
+   `/ship` also asks the tracker which statuses this ticket can move to, so the plan names the
+   exact one ("Move TEST-14 to Done") instead of a status your workflow may not have. When none
+   matches your configured final status, it asks you which one to use.
 
 **The hard halt.** `/ship` prints the delivery plan: every destination, every recipient, whether
 it will merge, and the steps below. Nothing happens until you reply `go ahead`.
@@ -45,8 +49,8 @@ it will merge, and the steps below. Nothing happens until you reply `go ahead`.
 8. **Comment on the ticket**, with links to the backed-up files and the pull request.
 9. **Draft the chat message** for the recipients in the plan, with the same links. It stays a
    draft for you to send, unless you said "send it".
-10. **Move the ticket toward done**, only when the pull request merged. If it was left open, the
-    status stays where it is.
+10. **Move the ticket to the status the plan named**, only when the pull request merged. If it
+    was left open, the status stays where it is.
 
 **Then, every time.**
 

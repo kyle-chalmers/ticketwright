@@ -10,6 +10,16 @@ flag stale summaries), upserts by (owner, id), and writes the store.
 Usage:
   ingest_index_records.py --from-json records.json     # bulk upsert from {"records":[...]} or [...]
   ingest_index_records.py --from-json -                # read JSON from stdin
+  ingest_index_records.py --tracker-status statuses.json [--read-on YYYY-MM-DD]
+                                                       # record statuses READ FROM THE TRACKER
+
+Statuses have one source, the tracker. `--tracker-status` takes what `tracker.search` returned for a
+list of ids ({"statuses":[{id, status, owner?}]} or [...]) and records it on every ticket folder with
+that id (one tracker ticket can have a folder under more than one owner) as `tracker_status` plus
+the date it was read. The renderer shows it ahead of the curated status, which is a model's reading
+of the README and drifts. A curated upsert keeps the recorded tracker status: they are separate
+fields with separate writers. A status is free text from the tracker, checked for shape only
+(`build_ticket_index.clean_status`); one that fails is reported and not recorded.
 
 After ingesting, run: python3 bin/build_ticket_index.py
 Stdlib only.
@@ -24,7 +34,7 @@ from datetime import date
 from pathlib import Path
 
 from build_ticket_index import (discover, repo_root, sha256_file, ref_key, load_config,
-                               ticket_url, id_key_regex)
+                               ticket_url, id_key_regex, clean_status, readme_status)
 
 VALID_STATUS = {"Completed", "Deployed", "In Review", "In Progress", "Blocked", "Unknown"}
 
@@ -81,10 +91,67 @@ def load_records(spec: str) -> list[dict]:
     return data
 
 
+def load_statuses(spec: str) -> list[dict]:
+    text = sys.stdin.read() if spec == "-" else Path(spec).read_text()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        sys.exit(f"ERROR: --tracker-status input is not valid JSON ({e}).")
+    if isinstance(data, dict):
+        data = data.get("statuses", [])
+    if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
+        sys.exit('ERROR: statuses must be a JSON array of objects (or {"statuses": [...]}).')
+    return data
+
+
+def record_statuses(store: dict, dirs: dict, rows: list[dict], read_on: str) -> tuple[int, list, list]:
+    """Write each tracker status onto every on-disk folder with that id. Returns (recorded, skipped,
+    rejected). An id with no folder is skipped, never stored: the index lists folders, not tickets."""
+    recorded, skipped, rejected = 0, [], []
+    for r in rows:
+        tid, owner = r.get("id"), r.get("owner")
+        if not isinstance(tid, str) or not tid.strip():
+            rejected.append(f"{r!r}: no id")
+            continue
+        tid = tid.strip()
+        status = clean_status(r.get("status"))
+        if status is None:
+            rejected.append(f"{tid}: status {r.get('status')!r} cannot go in a table cell (empty, over "
+                            f"40 characters, or carrying one of | ` < > {{ }} [ ] \\)")
+            continue
+        keys = [k for k in dirs if k[1] == tid and (owner is None or k[0] == owner)]
+        if not keys:
+            skipped.append(f"{owner + '/' if owner else ''}{tid}")
+            continue
+        for k in keys:
+            rec = store.get(k) or {"id": k[1], "owner": k[0]}
+            rec["tracker_status"] = status
+            rec["tracker_status_read"] = read_on
+            # What the README's Status line said at the read. If the line changes later (the `local`
+            # tracker's transition writes it; /ticket rewrites it), the README is the newer copy.
+            rec["readme_status_at_read"] = readme_status(dirs[k].get("readme"))
+            store[k] = rec
+            recorded += 1
+    return recorded, skipped, rejected
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Upsert records into tickets/index_data.json")
-    ap.add_argument("--from-json", required=True, help="path to records JSON, or '-' for stdin")
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--from-json", help="path to records JSON, or '-' for stdin")
+    mode.add_argument("--tracker-status", metavar="FILE",
+                      help="statuses read from the tracker (tracker.search by ids), or '-' for stdin")
+    ap.add_argument("--read-on", default=None, metavar="YYYY-MM-DD",
+                    help="with --tracker-status: the date the statuses were read (default: today)")
     args = ap.parse_args()
+    if args.read_on is not None and not args.tracker_status:
+        ap.error("--read-on goes with --tracker-status")
+    read_on = date.today().isoformat()
+    if args.read_on is not None:
+        try:
+            read_on = date.fromisoformat(args.read_on.strip()).isoformat()
+        except ValueError:
+            ap.error(f"--read-on must be a date like 2026-10-26, got {args.read_on!r}")
 
     root = repo_root()
     dirs = {(t["owner"], t["id"]): t for t in discover(root)}
@@ -105,6 +172,23 @@ def main() -> int:
             sys.exit("ERROR: existing tickets/index_data.json must be an object with a 'tickets' list.")
         store = {(t["owner"], t["id"]): t for t in sdata["tickets"]
                  if isinstance(t, dict) and isinstance(t.get("owner"), str) and isinstance(t.get("id"), str)}
+
+    if args.tracker_status:
+        recorded, skipped, rejected = record_statuses(store, dirs, load_statuses(args.tracker_status),
+                                                      read_on)
+        tickets = sorted(store.values(),
+                         key=lambda t: ((t.get("date") or "0000-00-00"), ref_key(t["id"], key_re), t["owner"]),
+                         reverse=True)
+        payload = json.dumps({"schema_version": 1, "tickets": tickets}, indent=2, ensure_ascii=False) + "\n"
+        store_path.parent.mkdir(parents=True, exist_ok=True)
+        store_path.write_bytes(payload.encode("utf-8"))
+        print(f"Recorded the tracker status for {recorded} ticket folder(s), read on {read_on}.",
+              file=sys.stderr)
+        if skipped:
+            print(f"Skipped {len(skipped)} (no matching folder): {', '.join(skipped)}", file=sys.stderr)
+        if rejected:
+            print(f"Not recorded ({len(rejected)}): " + "; ".join(rejected), file=sys.stderr)
+        return 0
 
     incoming = load_records(args.from_json)
     upserted, skipped = 0, []
@@ -136,6 +220,10 @@ def main() -> int:
         url = r.get("ticket_url") or r.get("jira_url") or ticket_url(url_template, tid, key_re)
         if url:
             rec["ticket_url"] = url
+        prev = store.get((owner, tid)) or {}
+        for k in ("tracker_status", "tracker_status_read", "readme_status_at_read"):
+            if k in prev:   # the tracker's own read has its own writer; a curated upsert keeps it
+                rec[k] = prev[k]
         store[(owner, tid)] = rec
         upserted += 1
 

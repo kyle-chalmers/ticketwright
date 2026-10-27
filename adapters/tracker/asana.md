@@ -65,6 +65,20 @@ Asana "status" = moving a task between **sections** or setting a custom field.
 update-task(task_gid=<id>, ...) / add-task-to-section(section_gid=<terminal_status section>)
 ```
 `terminal_status` in stack.yaml names the "done" section.
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** task GID. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker).
+```
+get-task(task_gid=<id>)                               # memberships (section) + completed
+get-project-sections(project_gid={default_project_gid})
+```
+A task's status is its section, or "completed". Every section of the project other than the
+current one is a move, `to` = the section's name and `via` = its GID (what `add-task-to-section`
+takes), `category: null`; one more move is `{to: "completed", via: "completed=true", category:
+"done"}` while the task is open. `current` is the task's section name, or `completed`.
 
 ## verb: comment
 ```
@@ -76,6 +90,9 @@ Asana stories render URLs inline. Honor `word_limits.tracker_comment`; never pos
 ```
 search-tasks(workspace={workspace_gid}, text=<topic>)   # or typeahead-search
 ```
+
+**By `ids`** (the index status read): `get-task(task_gid=<id>)` once per GID, taking `name` and
+the section name (or `completed`) as status.
 
 ## verb: search_history
 Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,

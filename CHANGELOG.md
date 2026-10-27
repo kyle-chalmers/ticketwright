@@ -6,6 +6,42 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`plan.md` is written from the plan you approved, with no template text left in it.** `/ticket`
+  now writes the approved plan's sections (goal, scope, builds on, deliverables, approach,
+  validation, touched, questions, risks) to a scratch file and renders `plan.md` from them, so the
+  committed plan no longer carries the template's guidance header or placeholder lines such as
+  `- **In:** …`, and nobody rewrites it by hand. `templates/plan.md.tmpl` is now the shape only;
+  the guidance for each section, and the `spec:` criteria, moved into `/ticket`. `bin/render.sh`
+  gains `--sections FILE`, which fills each `{{token}}` from the matching `## Heading` block, and
+  under `--strict` refuses a leftover `…` placeholder, an empty section, a heading the template has
+  no place for, or the same heading twice. Plans written before this change still work: `/build`
+  reads only their `spec:` line. Two `render.sh` changes apply to every template: a value is now
+  inserted in one pass and never re-scanned, so text such as `{{ ref('x') }}` inside a plan renders
+  as written instead of failing; and a failed `--strict` render prints nothing, so redirecting it
+  into a file never leaves a half-filled record behind. Output for a successful render is
+  unchanged. (LABS-112)
+- **Setup asks which app opens each kind of deliverable.** After the house rules, setup explains in
+  one sentence what the review stage is for, then asks where the choice applies (this repo, every
+  repo, or don't open files), which kinds of files you check (tables and spreadsheets, queries,
+  write-ups), and which app opens each, with your computer's usual app as the recommended answer.
+  The answers go to the same per-person viewer file as before, so `/review` opens your files at
+  sign-off instead of saying nothing was opened. The question is skippable, and a skip is listed
+  with `/setup viewer` as the way to finish it. `/setup viewer`, `/setup --teammate` and `/review`'s
+  first hand-off now ask the same questions from one shared file. Choosing "don't open files" is
+  remembered: `/review` no longer offers the setup again to someone who opted out. (LABS-118)
+
+## [4.5.0] - 2026-10-26
+
+`/ticket` can search a team's older tracker tickets when recall is weak (LABS-90), `/ship` merges
+the pull request after asking and runs in the order its links need (LABS-106, LABS-107), the kit
+suggests `/skillify` when an analysis repeats (LABS-116), and fixes from a first-run setup test
+(LABS-104). Existing configs keep working. **One contract change:** a custom tracker adapter must
+add the new `search_history` verb (see Changed).
+Two things a teammate may notice after updating: a slot still holding `mcp: TODO` now shows as a
+warning in `verify_stack.sh` and the session banner until it is finished, and the plugin doctor
+has two more checks (`install_commit`, `stale_cache`).
+
 ### Added
 - `/ticket` can search your tracker's older tickets. When the repo's own tickets give a weak match
   (recall says `weak` or `no prior art found`), it offers to search the tickets your team tracked
@@ -46,6 +82,20 @@ All notable changes to this project are documented here. Format loosely follows
 - **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
   with a diagram, which link each post needs from an earlier step, and each moment it waits for
   you. (LABS-106)
+- **`/ship` names the exact status it will move the ticket to, read from your tracker.** Before it
+  prints the delivery plan, `/ship` asks the tracker which statuses this ticket can move to right
+  now, and the plan says "Move TEST-14 to Done once the pull request is merged" instead of "toward
+  its final status if that applies". When none of the moves reaches your configured final status
+  (`project.terminal_status`), it asks you which one to use rather than trying a status your
+  workflow does not have. Every tracker adapter gains a `list_transitions` action, and the new
+  `bin/transition_plan.py` makes the pick (exit 8 when nothing matches, 7 when the tracker could not
+  be read, in which case the plan says the status was not checked). On Jira the moves come through
+  the Atlassian connector; `acli` has no command that lists them. (LABS-117)
+- **"No chat message" is a choice the delivery plan records.** Write `chat: none` in a ticket's
+  `delivery-plan.yaml`, or `chat:` with `none: true` and a `reason:`. Routing returns a clean
+  "skipped by declaration" result (exit 0) instead of asking again, and the plan prints "Chat:
+  none, declared on the ticket". `/ship` offers it as an answer whenever it asks where the message
+  goes, and writes it to the plan instead of a comment no tool reads. (LABS-117)
 - **Ticketwright suggests `/skillify` the second time a team runs the same analysis.** A new
   `recall.py --repeats` finds earlier tickets that read exactly the same tables (from the SQL's
   `from`/`join`, not counting output tables or QC queries), with owner-qualified ids, the instance
@@ -63,29 +113,6 @@ All notable changes to this project are documented here. Format loosely follows
   says the link is not ready and never guesses one. (LABS-116)
 
 ### Changed
-- **`plan.md` is written from the plan you approved, with no template text left in it.** `/ticket`
-  now writes the approved plan's sections (goal, scope, builds on, deliverables, approach,
-  validation, touched, questions, risks) to a scratch file and renders `plan.md` from them, so the
-  committed plan no longer carries the template's guidance header or placeholder lines such as
-  `- **In:** …`, and nobody rewrites it by hand. `templates/plan.md.tmpl` is now the shape only;
-  the guidance for each section, and the `spec:` criteria, moved into `/ticket`. `bin/render.sh`
-  gains `--sections FILE`, which fills each `{{token}}` from the matching `## Heading` block, and
-  under `--strict` refuses a leftover `…` placeholder, an empty section, a heading the template has
-  no place for, or the same heading twice. Plans written before this change still work: `/build`
-  reads only their `spec:` line. Two `render.sh` changes apply to every template: a value is now
-  inserted in one pass and never re-scanned, so text such as `{{ ref('x') }}` inside a plan renders
-  as written instead of failing; and a failed `--strict` render prints nothing, so redirecting it
-  into a file never leaves a half-filled record behind. Output for a successful render is
-  unchanged. (LABS-112)
-- **Setup asks which app opens each kind of deliverable.** After the house rules, setup explains in
-  one sentence what the review stage is for, then asks where the choice applies (this repo, every
-  repo, or don't open files), which kinds of files you check (tables and spreadsheets, queries,
-  write-ups), and which app opens each, with your computer's usual app as the recommended answer.
-  The answers go to the same per-person viewer file as before, so `/review` opens your files at
-  sign-off instead of saying nothing was opened. The question is skippable, and a skip is listed
-  with `/setup viewer` as the way to finish it. `/setup viewer`, `/setup --teammate` and `/review`'s
-  first hand-off now ask the same questions from one shared file. Choosing "don't open files" is
-  remembered: `/review` no longer offers the setup again to someone who opted out. (LABS-118)
 - **If you wrote your own tracker adapter:** `search_history` is now a required verb, so the tracker
   contract has 8 verbs and selftest section 2 fails an adapter without it. Copy the closest shipped
   adapter's section; an adapter whose tracker cannot search returns no rows with one plain sentence,
@@ -102,6 +129,14 @@ All notable changes to this project are documented here. Format loosely follows
   carry real links to the pull request and the backed-up files. Before, the chat draft linked a
   pull request that did not exist yet. A ticket moves to its final status only once its pull
   request is merged. (LABS-106)
+- **The ticket index takes each status from the tracker.** `/refresh index` now reads the current
+  status of the tickets it refreshes from the tracker (each tracker's `search` takes a list of ids)
+  and records it with `ingest_index_records.py --tracker-status`. The index shows that status first,
+  then the ticket README's `Status:` line, so a ticket the tracker has as Done no longer shows a
+  stale "In Review", and a new ticket shows its README status instead of "Unknown". The model no
+  longer writes a status when it summarizes a ticket. The index header says how many statuses came
+  from the tracker and the date of the oldest read, and `build_ticket_index.py --stats` prints where
+  each status came from. The session-start banner counts the same statuses. (LABS-117)
 - **Every skill asks its questions as clickable choices where the agent has a question tool.**
   `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
   without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,
@@ -138,6 +173,48 @@ All notable changes to this project are documented here. Format loosely follows
   gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
   `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
   (LABS-106)
+- **Each ticket picks its own audience, and a post to a channel no longer needs a named person.**
+  A first run could not set up "post results to our channel", because every route required a
+  named person. Recipients change per ticket, so the delivery plan now records what the
+  destination is (`chat.kind: channel | dm | group`). A channel post routes with nobody named; a
+  direct or group message still names who it is for, and the kind is part of the approval
+  fingerprint. Setup asks which channels the team posts to often and saves them as
+  `suggested_channels`, which routing hands back when `/ship` asks but never sends to on its own.
+  `/ship` also offers the ticket's own people (reporter, assignee and watchers from the tracker's
+  structured fields, now listed in every tracker adapter's `fetch_ticket`) as labeled choices,
+  never preselected, and records `chosen_from:` in the plan.
+- **The Slack adapter's searches match Slack's hosted connector.** Checked against the connector's
+  own tool declarations: draft and send already matched, but user and channel search take
+  `keywords` plus `natural_language_query`, not `query`, so every lookup would have failed on
+  first use. The adapter also says how to DM someone (their user id as `channel_id`), that only
+  one draft per channel is allowed, and that the connector cannot post to Slack Connect channels.
+- **A tool picked before it was connected gets finished later instead of forgotten.** Setup writes
+  `mcp: TODO` for a tool that isn't connected in the session yet, and after that nothing mentioned
+  it again, so finishing it meant editing `stack.yaml` by hand. The resolver now reports a value
+  still written `TODO` as pending. `verify_stack.sh` names it as a warning with the order to fix
+  it (connect, reload with `/reload-plugins` or a new session, then `/setup tool <slot>`), and the
+  session banner repeats it until it is done. `/setup tool <slot>` on a pending slot now finishes
+  it: it writes the tool prefix from the session's own tool list, runs the read-only probe, records
+  the permission check, and asks only the questions that were skipped. Setup also says up front
+  that a newly connected tool needs a reload.
+- **The team roster is asked one person at a time.** A free-text list left names and ids to
+  guesswork. Setup now asks for one teammate per answer, with a "That's everyone" choice, and
+  shows the id and display name before writing each file.
+- **The kit now says when the plugin files on disk are not the ones this repo installed.**
+  Claude Code keeps one plugin folder per version, so when two repos install the same version at
+  different commits, the later install rewrites the folder for both. The version still matched
+  everywhere, so nothing said so. The session banner and `bin/plugin_doctor.py` (new check
+  `install_commit`) now compare the recorded commits and give the reinstall command. A new
+  `stale_cache` check lists cached version folders no install uses, with a removal line for each;
+  it deletes nothing. A session in a git worktree now finds its main checkout's install record, so
+  the kit resolves and the banner speaks there too.
+- **Picking a drive folder in setup shows folders only.** Setup promised folder names only when it
+  looked inside someone's drive, but no adapter had a way to list folders, so a first run fell back
+  to a plain `ls` that printed file names too. The docstore contract gains a read-only
+  `list_folders` verb: the Google Drive and SharePoint adapters list directory entries one level
+  down, skipping dot folders, and rclone runs `rclone lsf --dirs-only` on the person's own remote.
+  Setup's folder question now calls it, and selftest runs it on a tree of files and folders to show
+  no file name gets through.
 - **The BigQuery adapter passes a `.sql` file on stdin.** `bq query "$(cat file.sql)"` failed on
   every kit-written file, because line 1 is the `-- warehouse-target:` header and `bq` read it as a
   flag. The query verb now says to use `bq query ... < file.sql`. (LABS-116)
@@ -165,21 +242,6 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
-- **Each ticket picks its own audience, and a post to a channel no longer needs a named person.**
-  A first run could not set up "post results to our channel", because every route required a
-  named person. Recipients change per ticket, so the delivery plan now records what the
-  destination is (`chat.kind: channel | dm | group`). A channel post routes with nobody named; a
-  direct or group message still names who it is for, and the kind is part of the approval
-  fingerprint. Setup asks which channels the team posts to often and saves them as
-  `suggested_channels`, which routing hands back when `/ship` asks but never sends to on its own.
-  `/ship` also offers the ticket's own people (reporter, assignee and watchers from the tracker's
-  structured fields, now listed in every tracker adapter's `fetch_ticket`) as labeled choices,
-  never preselected, and records `chosen_from:` in the plan.
-- **The Slack adapter's searches match Slack's hosted connector.** Checked against the connector's
-  own tool declarations: draft and send already matched, but user and channel search take
-  `keywords` plus `natural_language_query`, not `query`, so every lookup would have failed on
-  first use. The adapter also says how to DM someone (their user id as `channel_id`), that only
-  one draft per channel is allowed, and that the connector cannot post to Slack Connect channels.
 - **The Obsidian graph shows one node per table.** A ticket's curated index record could name a
   table `schema.table` while its SQL named it `db.schema.table`, and the graph drew two nodes for
   the one table, with the short one linked only to that ticket. A shorter name now folds into the
@@ -194,39 +256,12 @@ All notable changes to this project are documented here. Format loosely follows
   then the lower ticket number. With neither, the link stays under Builds on as before. Only the
   graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
   (LABS-57)
-- **A tool picked before it was connected gets finished later instead of forgotten.** Setup writes
-  `mcp: TODO` for a tool that isn't connected in the session yet, and after that nothing mentioned
-  it again, so finishing it meant editing `stack.yaml` by hand. The resolver now reports a value
-  still written `TODO` as pending. `verify_stack.sh` names it as a warning with the order to fix
-  it (connect, reload with `/reload-plugins` or a new session, then `/setup tool <slot>`), and the
-  session banner repeats it until it is done. `/setup tool <slot>` on a pending slot now finishes
-  it: it writes the tool prefix from the session's own tool list, runs the read-only probe, records
-  the permission check, and asks only the questions that were skipped. Setup also says up front
-  that a newly connected tool needs a reload.
-- **The team roster is asked one person at a time.** A free-text list left names and ids to
-  guesswork. Setup now asks for one teammate per answer, with a "That's everyone" choice, and
-  shows the id and display name before writing each file.
-- **The kit now says when the plugin files on disk are not the ones this repo installed.**
-  Claude Code keeps one plugin folder per version, so when two repos install the same version at
-  different commits, the later install rewrites the folder for both. The version still matched
-  everywhere, so nothing said so. The session banner and `bin/plugin_doctor.py` (new check
-  `install_commit`) now compare the recorded commits and give the reinstall command. A new
-  `stale_cache` check lists cached version folders no install uses, with a removal line for each;
-  it deletes nothing. A session in a git worktree now finds its main checkout's install record, so
-  the kit resolves and the banner speaks there too.
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
   item (`- {location: …, note: …}`) also parses now; it used to be read as a key named
   `{location`. One side effect: a flow mapping with no space after its colons (`{a:b}`) now fails
   with a clear error instead of being read as `{a: b}`. No shipped file uses that form.
-- **Picking a drive folder in setup shows folders only.** Setup promised folder names only when it
-  looked inside someone's drive, but no adapter had a way to list folders, so a first run fell back
-  to a plain `ls` that printed file names too. The docstore contract gains a read-only
-  `list_folders` verb: the Google Drive and SharePoint adapters list directory entries one level
-  down, skipping dot folders, and rclone runs `rclone lsf --dirs-only` on the person's own remote.
-  Setup's folder question now calls it, and selftest runs it on a tree of files and folders to show
-  no file name gets through.
 - **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
   the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,
   `microsoft_outlook_email_send_email`, `microsoft_outlook_email_search_people`). That app has

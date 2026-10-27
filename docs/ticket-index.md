@@ -16,13 +16,13 @@ human-readable summaries.
 
 | File | Role | Authored by |
 |---|---|---|
-| `tickets/index_data.json` | Enrichment store: per-ticket `title`, `status`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time. | model (refresh skill / ship step) |
+| `tickets/index_data.json` | Enrichment store: per-ticket `title`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time; and `tracker_status` + `tracker_status_read`, the status as last read from the tracker. | model (refresh skill / ship step); the tracker read (`ingest_index_records.py --tracker-status`) |
 | `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
 | `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). `--repeats` lists earlier tickets that read the same tables (the skillify suggestion). | — |
 | `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
-| `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/status/date/tags/refs, ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
+| `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/date/tags/refs (never the status), ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
 | `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command withholds every tool (Claude Code, on its cheaper model); everywhere else, Codex CLI included, the session writes the lines from the titles. | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
 | `.claude/hooks/regenerate_ticket_index.py` | PostToolUse (Write/Edit) hook: auto-re-renders `INDEX.md` whenever a file under `tickets/` changes — new tickets appear immediately, edited READMEs flag `⚠`. | — |
@@ -30,6 +30,16 @@ human-readable summaries.
 **Why split?** Regex can't write a good summary, but a model isn't reproducible and can't run in a
 pre-commit gate. So the model writes summaries into `index_data.json`; the renderer only *renders*
 (no model at render time) and stays byte-stable for the same on-disk state.
+
+**Status has one source: the tracker.** The Status column shows, in order: the status `/refresh
+index` last read from the tracker (through the tracker's `search` by ids), a curated status an
+older kit version wrote, the ticket README's `- **Status:**` line (written from the tracker by
+`/ticket`), a folder-name emoji, else `Unknown`. No model writes a status any more: a model's guess
+is what showed a finished ticket as `In Review`, on a workflow that has no such status. When any
+status came from the tracker, the index header says for how many tickets and the date of the oldest
+read, and `build_ticket_index.py --stats` prints `status from: tracker N · readme N · …`. When the
+tracker cannot be reached, the index keeps the last status it read. If the README's Status line changes
+after a read (the `local` tracker writes it on every transition), the README wins, being the newer copy.
 
 ## What counts as a ticket
 
