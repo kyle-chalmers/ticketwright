@@ -121,12 +121,17 @@ The checks, in the order the doctor runs them:
 12. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
     Behind means a tagged release was not picked up; the fix is the uninstall-and-install pair the
     session banner names, at the scope the record carries.
-13. **`yq` is installed.** <!-- doctor-check: yq_present -->
+13. **The plugin files on disk are the ones this repo installed.** <!-- doctor-check: install_commit -->
+    One plugin folder per version: another repo's later install of the same version at another
+    commit rewrites it. Fix: uninstall and install again at the recorded scope.
+14. **No unused plugin versions in the cache.** <!-- doctor-check: stale_cache -->
+    Unused version folders never load. The doctor prints a removal line for each and deletes nothing.
+15. **`yq` is installed.** <!-- doctor-check: yq_present -->
     `command -v yq`. Needed only by the kit's self-test. macOS `brew install yq`; Linux your
     distribution's package; Windows `winget install MikeFarah.yq`.
-14. **Git identity is set.** <!-- doctor-check: git_identity -->
+16. **Git identity is set.** <!-- doctor-check: git_identity -->
     `git config --get user.name` / `--get user.email`, else the first commit fails.
-15. **Restart the right way.** <!-- doctor-check: restart -->
+17. **Restart the right way.** <!-- doctor-check: restart -->
     Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit the
     Claude app (Cmd+Q on macOS, File → Exit on Windows/Linux) and relaunch. A new chat inside the
     running app is not a restart.
