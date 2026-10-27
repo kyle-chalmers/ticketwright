@@ -19,32 +19,91 @@ works regardless of the underlying tools.
 > before Phase A's first durable action.** Phase A finalizes *in the repo* — it tidies and overwrites
 > deliverable files and refreshes the committed ticket-index entry — so a model-initiated run must not
 > mutate the ticket before the human has said to ship it. Print the ticket and what Phase A will do,
-> then wait. An explicit user invocation authorizes Phase A as normal. This gate is separate from — and
+> then ask it as one question, "Ship it" or "Not now", and wait. An explicit user invocation
+> authorizes Phase A as normal, and so does a `ship` reply (or "Approve and ship") to `/review`'s
+> sign-off question for this ticket, given as the answer to that question: the person asked for the
+> ship. This gate is separate from — and
 > earlier than — the Phase B external-post HARD HALT below, which always applies regardless of who
 > invoked the skill; it is an instruction the agent follows, not a mechanical block.
+
+## How this skill asks the person something
+<!-- ticketwright:ask-rule:begin -->
+The kit's one question rule, the same in every skill that asks:
+- Read `capabilities` from this skill's `kit_paths.py --json` probe the first time a question
+  comes up, and keep the result.
+- `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+  **ask with that tool**, within `capabilities.question_limits` (when that says `unknown`: one
+  question per call, at most four options). Group up to the limit only questions that do not
+  depend on each other's answers; ask a dependent question after the one it depends on.
+- Otherwise (`no` / `unknown`, or the probe failed) → ask in chat as a short numbered list, one
+  question at a time unless this skill says a set goes in one round, and wait for an explicit
+  answer.
+- The question content is the same either way; only how it is shown changes. No skill names a
+  runtime's tool: the runtime's own adapter (`adapters/runtime/<name>.md`) does. A question tool
+  is not available inside a subagent, so the main session asks.
+- **Never invent an option.** Options come from what this run found or the fixed choices a step
+  names. A recommended option goes first, marked recommended, with where it came from; the person
+  still picks. Each option says what choosing it changes, and free text is always possible (the
+  tool's own "Other", or "or tell me something else" in prose).
+- Whatever the person needs to answer is already in chat before the question, so a picker never
+  hides it.
+- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
+  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
+  never one click.
+<!-- ticketwright:ask-rule:end -->
+
+In this skill the questions are the confirm gate above, step 1's owner choice and pending sign-off
+(asked through `/review` step ⑤.4), step 4(a)'s routing questions, step 6's merge question, and step 12's voice-profile proposal. Its
+probe is `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json`,
+run the first time one of them comes up. `ship unreviewed` (step 1) and `go ahead` (Phase B) stay
+typed.
 
 ## Phase A — Finalize (no separate approval when the user invoked `/ship`; internal to repo)
 1. **Resolve WHO first** — `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
    and show its one-line "Working as …" display; the resolved person is the shipper. Then resolve
    the **ticket locator**: `owner/id` is exact; a bare `<id>` resolves against the shipper's
    `tickets/<owner>/` first, then across other owners — **two or more foreign owners sharing it is a
-   hard stop listing the `owner/id` choices, never a pick**. Shipping a ticket whose owner isn't the
+   hard stop that asks which one, with the `owner/id` choices as the options, never a pick**. Shipping a ticket whose owner isn't the
    shipper is allowed — say so out loud before continuing.
    Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the plan +
    **the current verdict, read mechanically:**
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
    — it picks the `qc_queries/*_review_verdict.md` with the highest `<n>` (compared numerically:
    `10_` beats `9_`; never a lexical sort or an mtime), reads its lowercase `verdict:` line, and
-   returns `status`: `approve` · `request-changes` · `skipped` · `none` · `unreadable`, plus any
+   returns `status`: `approve` · `request-changes` · `awaiting-signoff` · `skipped` · `none` ·
+   `unreadable`, plus any
    `legacy_candidates`. Branch on that `status`, never on your own reading of the folder. A review
    report saved under another name by an earlier kit version still counts: read it,
    and if it states APPROVE or REQUEST-CHANGES plainly, re-save it under the fixed name with the
-   `verdict:` line first, then branch on it — never treat reviewed work as unreviewed. Four cases:
+   `verdict:` line first, then branch on it — never treat reviewed work as unreviewed. Five cases:
    - **APPROVE** → proceed.
    - **REQUEST-CHANGES** → **hard stop.** The review ran and found a defect (count mismatch, duplicate
      gap, reconciliation break, a Critical anti-pattern). Send the user back to `/build <owner>/<id>`,
      which applies the remediation (or replans, when a finding is `kind: scope`) and re-reviews.
      Not overridable here.
+   - **AWAITING-SIGNOFF** → the independent review approved, and the person's sign-off is the only
+     thing outstanding. **It is not approval:** never continue on it, never offer `ship unreviewed`,
+     and never write a `SKIPPED` record over it (that would bury the reviewer's approval). This
+     skill does not write the sign-off itself; `/review` step ⑤.4 does, the same way `/build` uses
+     it:
+     - When `/review`'s hand-off for this ticket, with its "Reply `ship`" line, is earlier in **this
+       same conversation** and the person's next message is `ship` or `/ship` for this ticket, that
+       message is the `ship` reply to ⑤.4. Do not ask again: apply ⑤.4's `ship` branch, which
+       rewrites the record.
+     - Otherwise (a new session, another person, or a different reply in between), follow
+       `/review <owner>/<id>`'s steps ⑤.1 to ⑤.4 for this ticket: open the files, print the
+       what-to-look-at list, then ask the sign-off with ⑤.4's own "Reply `ship`" line and options.
+       ⑤.4 answers a question and asks again, asks what to change before recording a change
+       request, and rewrites the record on an answer.
+     - **A sign-off taken in this run, either way, cancels `--go` for this run.** Phase B still
+       prints the delivery plan and waits for a typed `go ahead`, because the sign-off line told
+       the person it would. `--go` never answers the sign-off question itself.
+     Then re-read the verdict with `review_verdict.py --json` and branch again: `approve` after a
+     `ship` reply → continue to step 2 (in this run, ⑤.4's "route as Phase N says" means carrying on
+     here, not starting a second `/ship`); `approve` without one ("Approve, don't ship yet") → stop
+     and name `/ship <owner>/<id>` for later; `request-changes` → send the person to
+     `/build <owner>/<id>`. **Anything else, including `awaiting-signoff` still on file, stops
+     here and shows the record: never continue.**
    - **No verdict file at all, or the newest one says `SKIPPED`** → **WARN, then stop and wait.** A
      SKIPPED record never counts as approval; this gate re-fires on every ship until a real review
      supersedes it. Print, verbatim in shape:
@@ -61,8 +120,8 @@ works regardless of the underlying tools.
      (step 3) say **"shipped without an independent review"**, and the tracker comment claims no QC
      that did not happen. `--go` authorizes Phase B only — it never pre-answers this gate — and a
      model-initiated ship meets the confirm gate above first, then this one.
-   - **Anything else** — a `verdict:` value that is none of the three, a file with no `verdict:` line,
-     a truncated report — is **the missing case above, never a pass.** The gate fails closed: an
+   - **Anything else** — a `verdict:` value that is none of the four above, a file with no
+     `verdict:` line, a truncated report — is **the missing case above, never a pass.** The gate fails closed: an
      unreadable verdict is not a verdict.
    Why this is a gate and not a wall: a hard stop here was routed around (work shipped through other
    commands, leaving no record). `/build` runs the review itself, and the `review_verdict_guard` hook
@@ -102,11 +161,14 @@ works regardless of the underlying tools.
    **Any other exit is a HALT, and you resolve it by ASKING, never by choosing:**
    - **9 (nothing declared)** — the plan declares nothing this slot can route on. Three shapes, and the
      CLI's message names which:
-     - *A `targets:` slot* has no `audience:`/`classification:`. Show the configured values the CLI
-       lists and ask the user which one this ticket is.
+     - *A `targets:` slot* has no `audience:`/`classification:`. Ask the user which one this ticket
+       is, with the configured values the CLI lists as the options.
      - *A tool-only chat seam* (the default shape — the stack names the tool, not a standing channel)
-       has no `chat.channel:`/`chat.recipients:`. Ask the user (with the runtime's question tool when it has one, otherwise in chat) **where this goes and who
-       it is for**: the destination (channel / DM / address) and the recipient list. This is the
+       has no `chat.channel:`/`chat.recipients:`. Ask the user, by the question rule above, **where
+       this goes and who it is for**: the destination (channel / DM / address) and the recipient
+       list. Offer as options only destinations and people this run actually found, with free
+       text always open, and ask for the recipients as a multi-select when the question tool
+       allows one. This is the
        per-communication decision the tool-only shape exists for — who a result goes to depends on
        who the analysis is for, so it is asked each ship, never configured once.
      - *A per-ticket chat target* (the declared audience selected a target marked
@@ -121,9 +183,13 @@ works regardless of the underlying tools.
      the routed target for a per-ticket target — then re-run. **Never infer** the
      audience, the channel, OR the recipients from the ticket README, channel names, a label, or how
      the work "feels" — an inferred destination is exactly how a result reaches the wrong room.
-     "I could not tell, so I picked the first one" is not available.
-   - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value
-     and the configured ones; ask which was meant. Never match it approximately.
+     "I could not tell, so I picked the first one" is not available. For the same reason, no
+     audience, destination or recipient option is ever marked recommended: the question rule's
+     recommended-first option does not apply to routing, because nothing in a run can know who a
+     result is for.
+   - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value,
+     then ask which was meant, with the configured values as the options. Never match it
+     approximately.
    - **3 (no plan file)** — same as 9: ask, write the file, re-run.
    The declaration is a ticket artifact, not a session choice: it is committed with the ticket, so
    the next person (or agent) can see who this went to and why.
@@ -156,7 +222,8 @@ works regardless of the underlying tools.
 
 ## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
 Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
-THE PLAN, not the word "ship". A docstore link is a shareable URL, so a wrong destination is a
+THE PLAN, not the word "ship". `--go` does not count in a run where step 1 took the person's
+review sign-off: then only a typed `go ahead` does. A docstore link is a shareable URL, so a wrong destination is a
 disclosure, not an inconvenience. Resolve each posting seam with
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --seam <name>`
 and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
@@ -266,8 +333,8 @@ execute — nothing the steps don't do may appear in it:
    When it is `true`, the go-ahead covered the plan, and this step still **asks once more, right
    before the merge** (`--go` never pre-answers this question, any more than it answers the review
    gate), because a merge lands on the team's main branch and is the one step here that
-   is awkward to take back. Ask with the runtime's question tool when it has one, otherwise in chat,
-   and offer exactly these two answers:
+   is awkward to take back. Ask it by the question rule above (the runtime's question tool when it
+   has one, otherwise in chat), and offer exactly these two answers:
    <!-- ticketwright:user-facing:begin -->
    > The pull request is open: <PR link>. Merge it into `<default branch>` now? It is squash-merged into one commit, then the backup, the comment and the chat message follow.
    > - **Merge now**
@@ -341,5 +408,6 @@ execute — nothing the steps don't do may appear in it:
 12. **Voice refine** (only if a voice profile resolved for the shipper). Diff `comms/draft-<kind>.initial.md` against `comms/draft-<kind>.approved.md`. If they
     differ beyond whitespace, the edits are voice signal: **propose** a small append/edit to the
     person's `voices/<id>.md` capturing the pattern (e.g. "drops the greeting", "prefers 'net:' over
-    'in summary'") and **wait for confirmation before writing** — never silent. If `initial` ==
+    'in summary'") and **ask before writing**, as one question: "Add it to my voice profile" or
+    "Skip". Never write it silently. If `initial` ==
     `approved` (no edits), or the feature is off, do nothing.

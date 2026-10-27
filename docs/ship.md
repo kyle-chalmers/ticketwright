@@ -2,8 +2,8 @@
 
 `/ship` is the one skill that reaches outside your repo: it opens and merges a pull request, backs
 the ticket up to your documents tool, comments on the ticket and drafts the chat message. This page
-shows every step in the order it runs, what each one needs from the step before it, and the three
-moments it waits for you.
+shows every step in the order it runs, what each one needs from the step before it, and each
+moment it waits for you.
 
 ![/ship in order. Before the go-ahead, inside your repo: 1 check who is shipping and that /review approved the work, 2 re-run the final queries, 3 tidy the files and refresh the ticket index, 4 pick where it goes and draft the comment and chat message with link placeholders. Hard halt: you read the delivery plan and say go ahead. After the go-ahead, in your tools: 5 commit, push and open the pull request, 6 merge the pull request (squash), after asking you first, 7 back up the ticket folder with unsent drafts left out, 8 comment on the ticket with links to the backup and the pull request, 9 draft the chat message with the same links, 10 move the ticket's status only once the pull request is merged. The PR link from step 5 and the file links from step 7 feed steps 8 and 9. With ship_merges_pr set to false the team merges by hand, step 6 is skipped and step 10 waits. Then, every time: 11 a short retro and 12 voice tuning, both proposals only.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/ship-steps.png)
 
@@ -12,10 +12,16 @@ moments it waits for you.
 **Before the go-ahead.** Everything here stays inside your repo.
 
 1. **Check who is shipping, and the review result.** An approval from `/review` lets the ship
-   continue. Requested changes send you back to `/build`. With no review on file, `/ship` asks you
-   to type `ship unreviewed`, and records that you did.
+   continue. Requested changes send you back to `/build`. When the reviewer approved and only your
+   sign-off is left, `/ship` opens the files and asks for it the way `/review` does
+   (**Approve and ship**, **Approve, don't ship yet**, or **Change something**). If `/review` has
+   just asked for that sign-off in this conversation, typing `/ship` next is your answer. Either
+   way, `/ship` then waits for a typed `go ahead`, even with `--go`. With no review on file, `/ship`
+   asks you to type `ship unreviewed`, and records that you did.
 2. **Re-run the final queries.** The results must match the committed files exactly.
-3. **Tidy the files and refresh the ticket index**, so the ticket is findable later.
+3. **Tidy the files and refresh the ticket index**, so the ticket is findable later. The same
+   render updates the graph notes (`tickets/graph/` and `tickets/objects/`), and step 5 commits
+   both with the ticket.
 4. **Pick where it goes, then draft.** The ticket's delivery plan decides which chat channel,
    recipients and documents folder it goes to; when it doesn't say, `/ship` asks you rather than
    guessing. The tracker comment and chat message are drafted now, with placeholders where the
@@ -65,6 +71,7 @@ anyone has been told the work is done.
 
 | Moment | What you say | What it covers |
 |---|---|---|
+| Your review sign-off, if still pending | `ship` or **Approve and ship** | that you checked the numbers and they are right |
 | The delivery plan | `go ahead` | everything in the plan, in that order |
 | Right before the merge | **Merge now** or **Leave it open** | landing the work on the main branch |
 | The chat draft | "send it" (optional) | sending instead of leaving a draft |

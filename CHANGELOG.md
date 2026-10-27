@@ -17,8 +17,8 @@ All notable changes to this project are documented here. Format loosely follows
   now also asks before an Azure Repos merge (`az repos pr update`) of an unapproved ticket.
   (LABS-106)
 - **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
-  with a diagram, which link each post needs from an earlier step, and the three moments it waits
-  for you. (LABS-106)
+  with a diagram, which link each post needs from an earlier step, and each moment it waits for
+  you. (LABS-106)
 
 ### Changed
 - **`/ship` runs in the order its links need.** It now commits and opens the pull request first,
@@ -49,7 +49,8 @@ All notable changes to this project are documented here. Format loosely follows
   REQUEST-CHANGES when you answer. `bin/review_verdict.py` reports it as `awaiting-signoff`
   (exit 7), the push guard treats it as not approved yet, and `/build` asks the pending sign-off
   instead of rebuilding. Before this, the state was not on disk at all, so nothing could tell it
-  from "never reviewed". `/ship` asks for the pending sign-off too. (LABS-107)
+  from "never reviewed". `/ship` asks a pending sign-off the same way, and after a sign-off it
+  always waits for a typed `go ahead`, even with `--go`. (LABS-107)
 
 ### Fixed
 - **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole

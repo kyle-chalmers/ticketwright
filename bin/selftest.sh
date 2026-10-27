@@ -2562,8 +2562,9 @@ grep -q 'resolve_user.py' .claude/skills/ship/SKILL.md \
   && ok "/ship lints the hard rails BEFORE the voice phrasing pass" || bad "/ship missing lint-before-voice ordering"
 grep -qi 'fail open' <<<"$shipflat" \
   && ok "/ship voice consume fails open (no profile ⇒ unchanged)" || bad "/ship voice step missing fail-open"
-{ grep -qi 'Voice refine' <<<"$shipflat" && grep -qi 'wait for confirmation before writing' <<<"$shipflat"; } \
-  && ok "/ship voice-refine proposes + waits for confirmation (never silent)" || bad "/ship voice-refine not gated on confirmation"
+{ grep -qi 'Voice refine' <<<"$shipflat" && grep -qiE 'ask before writing\*\*, +as one question' <<<"$shipflat" \
+  && grep -qi 'Never write it silently' <<<"$shipflat"; } \
+  && ok "/ship voice-refine proposes + asks before writing (never silent)" || bad "/ship voice-refine not gated on confirmation"
 grep -qi 'layer failure' <<<"$shipflat" \
   && ok "/ship keeps voice-refine separate from system_evolution retro" || bad "voice-refine grafted onto system_evolution (should be separate)"
 # (F) the policy list is unchanged — voice is a config block, never a policy. (11 since LABS-106
@@ -6736,7 +6737,7 @@ asc45b $p45b \
 # (C) the merge asks first, can be declined, stops when blocked, and never bypasses.
 sh45b="$(tr '\n' ' ' < "$SH45B")"
 { grep -q 'ship_merges_pr' <<<"$sh45b" && grep -q '\*\*Merge now\*\*' <<<"$sh45b" && grep -q '\*\*Leave it open\*\*' <<<"$sh45b" \
-  && grep -q "runtime's question tool when it has one" <<<"$sh45b" && grep -qE 'asks once more, right +before the merge' <<<"$sh45b" \
+  && grep -qE "by the question rule above +\(the runtime's question tool when it +has one" <<<"$sh45b" && grep -qE 'asks once more, right +before the merge' <<<"$sh45b" \
   && grep -q '`--go` never pre-answers this question' <<<"$sh45b"; } \
   && ok "/ship asks once more, as a choice, right before it merges, and --go never answers it" || bad "/ship can merge without its own confirm"
 grep -qE 'If the verify line +does not show the pull request merged, it is blocked' <<<"$sh45b" \
@@ -11787,9 +11788,9 @@ done
 hdr "61c · one question rule in every skill that asks, and /review's 'ship' sign-off"
 # Kyle: interactive questions should be standard across the skills (LABS-107). The rule is one
 # block, copied verbatim between ask-rule markers into each skill that asks the person anything,
-# because a runtime injects only a skill's own body. /refresh asks nothing, so it carries none;
-# /ship is listed once it carries the block (an identical copy is checked wherever one appears).
-AR61c="setup ticket build review skillify"
+# because a runtime injects only a skill's own body. /refresh asks nothing, so it carries none
+# (an identical copy is checked wherever one appears).
+AR61c="setup ticket build review skillify ship"
 python3 - $AR61c <<'PY' >"$TMP/ar61c.out" 2>&1
 import sys, pathlib, re
 B, E = "<!-- ticketwright:ask-rule:begin -->", "<!-- ticketwright:ask-rule:end -->"
@@ -11863,6 +11864,34 @@ BD61c="$TMP/bd61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/build/SKILL.md >
   && grep -q "When it is \`awaiting-signoff\`" "$BD61c" && grep -q "go straight to step 8's AWAITING-SIGNOFF branch" "$BD61c"; } \
   && ok "/build: a 'ship' sign-off is not asked twice, and AWAITING-SIGNOFF is asked again, never approved" \
   || bad "/build's ship question and /review's sign-off disagree"
+# (d) /ship: AWAITING-SIGNOFF is its own case. It hands the sign-off to /review step ⑤.4 (as /build
+# does), takes a same-conversation `/ship` right after /review's "Reply ship" line as that reply,
+# never offers `ship unreviewed` or writes SKIPPED over the reviewer's approval, and a sign-off taken
+# in the run cancels --go, so Phase B still waits for a typed go ahead (the Leslie gap, LABS-107).
+SH61c="$TMP/sh61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/ship/SKILL.md > "$SH61c"
+m61d=""
+grep -q '`approve` · `request-changes` · `awaiting-signoff` ·' "$SH61c" || m61d="$m61d status-list"
+grep -q 'Five cases:' "$SH61c" || m61d="$m61d five-cases"
+grep -q '\*\*AWAITING-SIGNOFF\*\* → the independent review approved' "$SH61c" || m61d="$m61d case"
+grep -q 'never offer `ship unreviewed`, and never write a `SKIPPED` record over it' "$SH61c" || m61d="$m61d no-skipped-over"
+grep -q "This skill does not write the sign-off itself; \`/review\` step ⑤.4 does" "$SH61c" || m61d="$m61d defers-to-review"
+grep -q "is earlier in \*\*this same conversation\*\* and the person's next message is \`ship\` or \`/ship\` for this ticket" "$SH61c" || m61d="$m61d same-conversation-scope"
+grep -q 'Do not ask again' "$SH61c" || m61d="$m61d no-second-ask"
+grep -q 'Otherwise (a new session, another person, or a different reply in between)' "$SH61c" || m61d="$m61d otherwise-clause"
+grep -q "steps ⑤.1 to ⑤.4 for this ticket: open the files, print the what-to-look-at list" "$SH61c" || m61d="$m61d opens-files"
+grep -q '\*\*A sign-off taken in this run, either way, cancels `--go` for this run.\*\*' "$SH61c" || m61d="$m61d go-cancelled"
+grep -q '`--go` does not count in a run where step 1 took the person' "$SH61c" || m61d="$m61d phase-b-go"
+grep -q '`--go` never answers the sign-off question itself' "$SH61c" || m61d="$m61d go-not-signoff"
+grep -q 'Anything else, including `awaiting-signoff` still on file, stops here and shows the record: never continue.' "$SH61c" || m61d="$m61d reparse-stops"
+grep -q 'none of the four above' "$SH61c" || m61d="$m61d fallthrough"
+grep -q 'sign-off question for this ticket, given as the answer to that question' "$SH61c" || m61d="$m61d confirm-gate-scope"
+grep -q 'ask it as one question, "Ship it" or "Not now"' "$SH61c" || m61d="$m61d confirm-gate-question"
+grep -q 'no audience, destination or recipient option is ever marked recommended' "$SH61c" || m61d="$m61d routing-not-recommended"
+grep -q 'Ask the user which one this ticket is, with the configured values the CLI lists as the options' "$SH61c" || m61d="$m61d exit9-options"
+grep -q 'then ask which was meant, with the configured values as the options' "$SH61c" || m61d="$m61d exit8-options"
+grep -q '`ship unreviewed` (step 1) and `go ahead` (Phase B) stay typed' "$SH61c" || m61d="$m61d typed-tokens"
+[ -z "$m61d" ] && ok "/ship: AWAITING-SIGNOFF goes through /review ⑤.4, never ship unreviewed or SKIPPED, and a sign-off keeps the typed go ahead" \
+  || bad "/ship's pending sign-off case lost a condition" "$m61d"
 
 hdr "60 · the plugin directory listing: icon, listing links, disclosure, example prompts"
 # The Claude plugin directory reads plugin.json's listing fields and shows README.md as the listing
