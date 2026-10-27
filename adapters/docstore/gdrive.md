@@ -30,10 +30,18 @@ routed file is not evidence that the destination's permissions match the declare
 ```bash
 dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
 rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
-cp -r "<local ticket dir>" "$dest"
-ls -la "$dest"                       # verify
+mkdir -p "$dest"
+rsync -r --exclude '/comms/' "<local ticket dir>/" "$dest/"   # unsent drafts stay local
+ls -la "$dest"                       # verify; no comms/ folder
 ```
 Requires explicit approval (external side effect) — policy `hard_halt_before_external_posts`.
+
+**`comms/` stays out of the backup.** It holds `/ship`'s unsent tracker and chat drafts, which are
+gitignored so unsent wording never leaves the machine; a folder copy would carry them to a shared
+drive all the same. `rsync` skips the folder before anything reaches the synced mount, so the sync
+client never sees it. With no `rsync` on the machine (Git Bash on Windows), use
+`cp -r "<local ticket dir>" "$dest" && rm -rf "$dest/comms"` and say plainly that the sync client
+may upload the drafts for the moment before the delete.
 **Never** `rm -rf "<ID>"*` — a prefix glob also matches `<ID>0`, `<ID>1234`, etc. If a prior backup
 used a different title, `ls "{base_path}"` and remove that one exact path by name.
 Note: clean `rm`+`cp` mints **new** Drive item-ids, so any previously shared links go stale — repost.

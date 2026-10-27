@@ -223,7 +223,7 @@ exactly one round of [interview.md](interview.md) against the existing config, e
 - **`/setup team`** re-runs round 1's roster question: who else is on the team, writing one
   identity-free `people/<id>.yaml` placeholder per new person named (files, never folders), under
   the scope invariant above.
-- **`/setup policies`** re-runs round 6: `db_write_requires_approval` and `human_review_handoff`.
+- **`/setup policies`** re-runs round 6: `db_write_requires_approval`, `human_review_handoff` and `ship_merges_pr`.
 Each also clears its round's `# TODO(setup)` line from `stack.yaml` once the answers are written.
 These exist so a skipped round is a deferral, not a dead end — every skip's punch-list entry names
 the command that finishes it. Requires an existing `stack.yaml`.
@@ -441,7 +441,7 @@ I'd set up. Nothing is written until you say yes." The plan names:
 
 Only on explicit confirmation, execute — **source of truth first, derived files after**:
 5. Write `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
-   commented blocks; the 10 policies with a one-line "when to change this" comment each) as the
+   commented blocks; the 11 policies with a one-line "when to change this" comment each) as the
    FIRST write, then `.claude/settings.json` per [scaffold.md](scaffold.md) (hooks — omitted on a
    plugin install — + read-only CLI allows). Step 6 renders FROM `stack.yaml`, and some runtimes
    refuse every write under `.claude/` in a non-interactive run — a categorical path guard (the

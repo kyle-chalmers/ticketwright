@@ -114,7 +114,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
+    tracker) echo 7;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 5;;
     viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -123,6 +123,11 @@ for f in adapters/*/*.md; do
   seam="$(basename "$(dirname "$f")")"; want="$(verbs_expected "$seam")"
   got="$(grep -c '^## verb:' "$f")"
   [ "$got" -eq "$want" ] && ok "$f ($got/$want verbs)" || bad "$f has $got verbs, expected $want"
+done
+# The count above cannot tell a renamed verb from the right one. /ship calls vcs.merge_pr by name
+# (LABS-106), so every vcs adapter must carry that exact heading.
+for f in adapters/vcs/*.md; do
+  grep -q '^## verb: merge_pr$' "$f" && ok "$f implements merge_pr by name" || bad "$f is missing '## verb: merge_pr'"
 done
 
 # Counting headings proves each adapter has the RIGHT NUMBER of verbs, not the RIGHT ONES: a typo'd
@@ -2561,9 +2566,10 @@ grep -qi 'fail open' <<<"$shipflat" \
   && ok "/ship voice-refine proposes + waits for confirmation (never silent)" || bad "/ship voice-refine not gated on confirmation"
 grep -qi 'layer failure' <<<"$shipflat" \
   && ok "/ship keeps voice-refine separate from system_evolution retro" || bad "voice-refine grafted onto system_evolution (should be separate)"
-# (F) the policy list is unchanged — voice is a config block, never a policy.
+# (F) the policy list is unchanged — voice is a config block, never a policy. (11 since LABS-106
+# added ship_merges_pr; a twelfth needs the same deliberate bump here.)
 np="$(yq '.policies | keys | length' .claude/config/stack.yaml 2>/dev/null)"
-{ [ "$np" = "10" ] && ! yq -e '.policies | keys | .[]' .claude/config/stack.yaml 2>/dev/null | grep -qi voice; } \
+{ [ "$np" = "11" ] && ! yq -e '.policies | keys | .[]' .claude/config/stack.yaml 2>/dev/null | grep -qi voice; } \
   && ok "policy list unchanged ($np); no voice policy added" || bad "policy count changed / a voice policy leaked in" "count=$np"
 # (G) setup --voice is a first-class mode (not a seam) + the playbook ships.
 { grep -q '\-\-voice' .claude/skills/setup/SKILL.md && [ -f .claude/skills/setup/voice.md ] \
@@ -6700,6 +6706,102 @@ grep -q 'Route the delivery FIRST' "$SH45" \
 grep -q 'tracker and vcs' "$SH45" \
   && ok "/ship still halts on named targets for the two DEFERRED slots (tracker, vcs)" \
   || bad "/ship dropped the tracker/vcs named-target halt"
+
+hdr "45b · /ship's order follows its links, it merges only after asking, and backups leave comms/ local (LABS-106)"
+# A first real delivery (LABS-105 feedback) drafted the chat message before the PR it links
+# existed, moved a ticket to Done with its PR unmerged, and copied the unsent drafts in comms/ to a
+# shared drive. Each pin below fails if one of those comes back.
+SH45B=".claude/skills/ship/SKILL.md"
+asc45b() { p=0; for n in "$@"; do [ "$n" -gt "$p" ] || return 1; p="$n"; done; }   # strictly ascending, none 0
+# (A) the executed order: commit+PR, merge, backup, comment, chat, transition.
+o45b=""
+for pat in '^5\. \*\*vcs\.commit\*\*' '^6\. \*\*vcs\.merge_pr' '^7\. \*\*Scan the source material first, then docstore\.backup' \
+           '^8\. \*\*tracker\.comment\*\*' '^9\. \*\*chat\.draft\*\*' '^10\. \*\*transition\*\*'; do
+  n="$(grep -nE "$pat" "$SH45B" | head -1 | cut -d: -f1)"; o45b="$o45b ${n:-0}"
+done
+# shellcheck disable=SC2086
+asc45b $o45b \
+  && ok "/ship runs PR, merge, backup, comment, chat, transition in that order (every link exists before it is posted)" \
+  || bad "/ship's Phase B order changed: a post could link something not yet created" "lines:$o45b"
+# (B) the preview the person approves lists the same order.
+p45b=""
+for pat in 'open the pull request\.$' 'squash-merge the pull request' 'back it up to the documents destination' \
+           'Post the approved comment' 'Draft the chat message' 'only once the pull request is merged'; do
+  n="$(grep -nE "^   > [0-9]\. .*$pat" "$SH45B" | head -1 | cut -d: -f1)"; p45b="$p45b ${n:-0}"
+done
+# shellcheck disable=SC2086
+asc45b $p45b \
+  && ok "the delivery plan preview lists the steps in the order they run" \
+  || bad "the preview's order no longer matches the steps (what is approved is not what runs)" "lines:$p45b"
+# (C) the merge asks first, can be declined, stops when blocked, and never bypasses.
+sh45b="$(tr '\n' ' ' < "$SH45B")"
+{ grep -q 'ship_merges_pr' <<<"$sh45b" && grep -q '\*\*Merge now\*\*' <<<"$sh45b" && grep -q '\*\*Leave it open\*\*' <<<"$sh45b" \
+  && grep -q "runtime's question tool when it has one" <<<"$sh45b" && grep -qE 'asks once more, right +before the merge' <<<"$sh45b" \
+  && grep -q '`--go` never pre-answers this question' <<<"$sh45b"; } \
+  && ok "/ship asks once more, as a choice, right before it merges, and --go never answers it" || bad "/ship can merge without its own confirm"
+grep -qE 'If the verify line +does not show the pull request merged, it is blocked' <<<"$sh45b" \
+  && ok "a merge that exits cleanly but is only queued counts as blocked" || bad "a queued or deferred merge can be read as merged"
+{ grep -q 'stop the ship here' <<<"$sh45b" && grep -q 'Never retry with a bypass, admin or auto-merge option' <<<"$sh45b"; } \
+  && ok "a blocked merge stops the ship with the reason, and is never bypassed" || bad "a blocked merge is skipped or bypassed"
+grep -q 'an unparseable one is `false`' <<<"$sh45b" \
+  && ok "an unparseable ship_merges_pr means no merge (unparseable config never adds a write)" || bad "an unparseable merge setting can still merge"
+grep -qE 'and only when +step 6 merged the pull request' <<<"$sh45b" \
+  && ok "the ticket moves to its final status only after the merge" || bad "a ticket can be marked done with its PR unmerged"
+# (D) every vcs adapter's merge command pins the reviewed commit where it can, and runs no bypass.
+cat > "$TMP/s45b_verbs.py" <<'PY'
+import re, sys, pathlib
+BYPASS = ("--admin", "--auto", "--auto-merge", "--auto-complete", "--bypass-policy")
+def block(text, verb):
+    m = re.search(r"^## verb: %s\n(.*?)(?=^## )" % re.escape(verb), text, re.S | re.M)
+    return m.group(1) if m else None
+def code(sec):
+    return "\n".join(re.findall(r"```bash\n(.*?)```", sec, re.S))
+mode, paths = sys.argv[1], sys.argv[2:]
+bad = []
+for p in paths:
+    t = pathlib.Path(p).read_text() + "\n## end\n"
+    if mode == "merge":
+        sec = block(t, "merge_pr")
+        cmds = code(sec) if sec else ""
+        if not cmds: bad.append(p + ": no runnable merge_pr command")
+        # `--auto-merge=false` is the one allowed spelling: it switches OFF glab's default deferral.
+        if any(re.search(r"(^|\s)%s(\s|=(?!false\b)|$)" % re.escape(f), cmds) for f in BYPASS): bad.append(p + ": a bypass flag is runnable")
+        if "--squash" not in cmds: bad.append(p + ": not a squash merge")
+    else:
+        sec = block(t, "backup")
+        cmds = code(sec) if sec else ""
+        # An actual exclude on the copy, never just the word (a comment saying "no comms/" passes nothing).
+        if not re.search(r"--exclude[= ]['\"]?/?comms/", cmds): bad.append(p + ": the backup command copies comms/")
+if bad:
+    print("\n".join(bad))
+PY
+python3 "$TMP/s45b_verbs.py" merge adapters/vcs/*.md > "$TMP/s45b_m.out" 2>&1
+[ ! -s "$TMP/s45b_m.out" ] && ok "every vcs adapter's merge_pr squash-merges and runs no bypass flag" \
+  || bad "a vcs adapter's merge_pr is unsafe" "$(cat "$TMP/s45b_m.out")"
+{ grep -q -- '--match-head-commit <SHA>' adapters/vcs/github.md && grep -q -- '--sha <SHA> --auto-merge=false' adapters/vcs/gitlab.md \
+  && grep -q 'lastMergeSourceCommit' adapters/vcs/azure-repos.md; } \
+  && ok "each merge is pinned to the commit the person confirmed" || bad "a merge can land commits pushed after the confirm"
+# (E) every docstore backup leaves comms/ out, with a negative control proving the check bites.
+python3 "$TMP/s45b_verbs.py" backup adapters/docstore/*.md > "$TMP/s45b_b.out" 2>&1
+[ ! -s "$TMP/s45b_b.out" ] && ok "every docstore adapter's backup leaves the unsent drafts in comms/ local" \
+  || bad "a docstore backup copies comms/ to the shared store" "$(cat "$TMP/s45b_b.out")"
+printf '## verb: backup\n```bash\ncp -r "<dir>" "$dest"\n```\n' > "$TMP/s45b_neg.md"
+printf '## verb: backup\n```bash\nrsync -r "<dir>/" "$dest/"\nls "$dest"   # verify; no comms/ folder\n```\n' > "$TMP/s45b_neg2.md"
+python3 "$TMP/s45b_verbs.py" backup "$TMP/s45b_neg.md" > "$TMP/s45b_n.out" 2>&1
+python3 "$TMP/s45b_verbs.py" backup "$TMP/s45b_neg2.md" > "$TMP/s45b_n2.out" 2>&1
+{ [ -s "$TMP/s45b_n.out" ] && [ -s "$TMP/s45b_n2.out" ]; } \
+  && ok "negative controls: a whole-folder copy is caught, even when a comment mentions comms/" \
+  || bad "the comms/ backup check passes a copy with no exclude (it checks a word, not the command)"
+# (F) the setting is documented everywhere a reader looks, and /setup asks it.
+{ grep -q 'ship_merges_pr' .claude/config/stack.yaml && grep -q 'ship_merges_pr' .claude/config/stack.schema.md \
+  && grep -q 'ship_merges_pr' templates/AGENTS.md.tmpl && grep -q 'ship_merges_pr' .claude/skills/setup/interview.md; } \
+  && ok "ship_merges_pr is in stack.yaml, the schema, the AGENTS template and /setup round 6" \
+  || bad "ship_merges_pr is undocumented somewhere a reader looks"
+# (G) the step-by-step page exists, is indexed, and its diagram is committed.
+{ [ -f docs/ship.md ] && [ -f docs/images/ship-steps.png ] && grep -q '(ship.md)' docs/README.md \
+  && grep -q 'docs/images/ship-steps.png' docs/ship.md; } \
+  && ok "docs/ship.md shows the steps with its diagram, and docs/README.md links it" \
+  || bad "the /ship step page, its diagram, or its index entry is missing"
 
 hdr "46 · email is a chat target: gmail/outlook adapters + sender-pinned stakeholder routing (PROMPT 10)"
 # Email is the delivery path where a wrong audience is LEAST recoverable — a sent mail cannot be
@@ -10860,7 +10962,7 @@ o="$(g57 "$(pay57 'git push -u origin ENG-7')")"
 grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'alice/ENG-7' <<<"$o" && grep -q 'has not been approved in review' <<<"$o" \
   && ok "hook ASKS on git push when the branch's ticket has deliverables and no verdict (the raw-git bypass closed)" \
   || bad "a raw git push of an unreviewed ticket is not gated" "$o"
-for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7'; do
+for act in 'gh pr create --title x --body y' 'gh -R o/r pr merge 4 --squash' 'glab mr create --fill' 'az repos pr create --source-branch ENG-7' 'az repos pr update --id 4 --status completed --squash true'; do
   o="$(g57 "$(pay57 "$act")")"
   grep -q '"permissionDecision": "ask"' <<<"$o" && ok "hook catches the outbound spelling: $act" \
     || bad "an outbound spelling evades the guard: $act" "$o"
@@ -11431,7 +11533,7 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
 # Exact block count per file: a file that loses a block must fail, not hide behind the total.
 c59=""
-for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
+for want59 in ".claude/skills/ship/SKILL.md:4" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
   f59="${want59%%:*}"; w59="${want59##*:}"
   g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
   { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"

@@ -43,7 +43,7 @@ against the bulk artifact, not a confidentiality review, and nothing in it repla
 reading the file.
 
 `review_verdict_guard` is the review-before-ship gate at the command layer: it sees **Bash** —
-`git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` — finds
+`git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` / `update` — finds
 the ticket from the command's paths, its cwd, or the checked-out branch, and asks when that ticket
 has files in `final_deliverables/` and the verdict on file (read by `bin/review_verdict.py`, the
 highest-numbered `qc_queries/<n>_review_verdict.md`) is anything but APPROVE: none, SKIPPED,

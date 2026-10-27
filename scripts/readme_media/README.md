@@ -10,7 +10,7 @@ stays stdlib-only.
 | `docs/images/logo-light.svg`, `logo-dark.svg` | `brand.py` | the mark geometry in `brand.py`, plus Space Grotesk SemiBold outlined to paths |
 | `scripts/readme_media/icon.svg` | `brand.py` | the same mark on a full-bleed black square |
 | `.claude-plugin/icon.png` (1024x1024) | `rsvg-convert` | `icon.svg`. The Claude plugin directory takes it as the listing icon once, at the first save in the developer portal. Rendering it again later changes only the repo copy |
-| `docs/images/lifecycle.png`, `tool-slots.png` | `render_diagrams.py` | each `<svg class="diagram">` in `diagrams.html` |
+| `docs/images/lifecycle.png`, `tool-slots.png`, `ship-steps.png` | `render_diagrams.py` | each `<svg class="diagram">` in `diagrams.html` (`ship-steps.png` is for `docs/ship.md`) |
 | `docs/images/demo.gif` | `render_gif.py` | the scenes in `claude_flow.py` |
 | `docs/images/social-preview.png` (1280x640) | `render_social.py` | `social_preview.html`; upload it by hand under Settings, General, Social preview |
 

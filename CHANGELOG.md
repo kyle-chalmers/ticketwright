@@ -17,8 +17,25 @@ All notable changes to this project are documented here. Format loosely follows
   an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
   any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
   asks for it. (LABS-103)
+- **`/ship` merges the pull request, after asking you.** Once you say go ahead and the pull
+  request is open, `/ship` asks once more (**Merge now** or **Leave it open**) and then
+  squash-merges it, pinned to the commit you saw. If branch rules, a required review, a check or a
+  conflict blocks the merge, it stops and tells you why before anything is backed up or posted,
+  and it never uses a bypass option. The new policy `ship_merges_pr` (default `true`, asked in
+  `/setup` round 6) turns it off for teams that merge by hand; the delivery plan always says which
+  way it is set. Every vcs adapter gains a `merge_pr` verb, and the `review_verdict_guard` hook
+  now also asks before an Azure Repos merge (`az repos pr update`) of an unapproved ticket.
+  (LABS-106)
+- **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
+  with a diagram, which link each post needs from an earlier step, and the three moments it waits
+  for you. (LABS-106)
 
 ### Changed
+- **`/ship` runs in the order its links need.** It now commits and opens the pull request first,
+  merges, backs up, then posts the tracker comment and drafts the chat message, so both posts
+  carry real links to the pull request and the backed-up files. Before, the chat draft linked a
+  pull request that did not exist yet. A ticket moves to its final status only once its pull
+  request is merged. (LABS-106)
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
   already run for every role. It was also a team setting asked as if it were about you. Every
@@ -27,6 +44,11 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
+- **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole
+  ticket folder, including `comms/`, which holds `/ship`'s unsent tracker and chat drafts and is
+  gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
+  `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
+  (LABS-106)
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list
