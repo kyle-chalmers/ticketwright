@@ -17,8 +17,12 @@
 follows the same five phases, every result is re-run and signed off before it ships, and every
 finished ticket is filed where the next person or agent can find it.
 
-> **Quick start:** run the two commands in [Get started](#get-started), restart Claude Code, then
-> run `/ticketwright:setup`. On another agent, see [Other coding agents](#other-coding-agents).
+> **Quick start.** Open your coding agent (Claude Code, Codex, Cursor and others) in your team's
+> ticket repo and say:
+>
+> *"Read the install prompt in github.com/kyle-chalmers/ticketwright and follow it."*
+>
+> Prefer typing the steps? See [Get started](#get-started).
 
 ## Mission
 
@@ -145,6 +149,46 @@ your-repo/
 
 Alice's TEST-130 cites Bob's TEST-118, so her reviewer can trace the numbers back to his.
 
+## Install with your coding agent
+
+<details>
+<summary><b>Show the install prompt</b></summary>
+
+```text
+Install Ticketwright (https://github.com/kyle-chalmers/ticketwright) for me at the
+project level: for this repo only, never at the user level or with --global. Confirm
+with me before installing anything, ask me each setup question yourself and wait for
+my answer (never answer one for me), and show me the file list before committing.
+
+1. Work in the git repo where my team keeps its ticket work. Ask me which folder if
+   unsure; if it is new, create it and run `git init`. Run every command below from
+   its root.
+
+2. If you are Claude Code: run
+   `claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project`
+   and then `claude plugin install ticketwright@ticketwright --scope project`. Both
+   record the plugin in this repo's .claude/settings.json, not my user settings. If
+   either fails, run `python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py`
+   (on disk once the marketplace is added) and follow its fixes in order. Then tell me
+   to run `/reload-plugins` (or fully quit and relaunch the app; a new chat is not a
+   restart), then `/ticketwright:setup`, or `/ticketwright:setup --teammate` if the
+   repo already has .claude/config/stack.yaml. Stop there; setup does the rest.
+
+3. Any other agent: with Python 3.9 or newer, run `pip install ticketwright`, then
+   `ticketwright init`, then `ticketwright install --runtime <name>`, where <name> is
+   codex-cli, cursor, opencode, cline, devin or antigravity. Tell me plainly that
+   /setup runs only in Claude Code, so here the config is written by hand. If the repo
+   has no .claude/config/stack.yaml, offer to draft it with me from
+   .claude/config/stack.schema.md and the closest .claude/config/stack.example.*.yaml,
+   asking me which tool fills each slot, then check it with
+   `bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run`.
+
+Rules: never ask me for a password, token or key in chat; I sign in to each tool
+myself. While installing, run no warehouse SQL and post nothing to my tracker or chat.
+```
+
+</details>
+
 ## Get started
 
 Install project-scoped, from the root of your ticket repo, so the whole team runs one version:
@@ -154,14 +198,13 @@ claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git 
 claude plugin install ticketwright@ticketwright --scope project
 ```
 
-Run `/reload-plugins` (or fully quit the app; a new chat is not a restart), then
-`/ticketwright:setup`; it detects your tools and interviews you before writing anything. Steps
-for the first person and for joiners: [docs/getting-started.md](docs/getting-started.md).
+Run `/reload-plugins` (or fully quit the app), then `/ticketwright:setup`, which interviews you
+before writing anything. Step by step: [docs/getting-started.md](docs/getting-started.md).
 Upgrading: [uninstall, install, relaunch](docs/troubleshooting.md#upgrading).
 
 ### Other coding agents
 
-The same kit installs from PyPI for Codex, Cursor, OpenCode, Cline, Devin and Antigravity:
+From PyPI, for Codex, Cursor, OpenCode, Cline, Devin and Antigravity:
 
 ```bash
 pip install ticketwright
@@ -169,8 +212,7 @@ ticketwright init                         # copy the kit into this repo
 ticketwright install --runtime codex-cli  # write the skills where your agent reads them
 ```
 
-You get the skills and command-line engines. `/setup` runs in Claude Code, so elsewhere you
-write the config yourself, and the guards are proven only in Claude Code. Details:
+`/setup` runs only in Claude Code, so elsewhere you write the config yourself, and the guards are proven only in Claude Code. Details:
 [docs/runtimes.md](docs/runtimes.md) and
 [installing without the plugin](docs/getting-started.md#installing-without-the-plugin).
 

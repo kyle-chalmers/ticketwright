@@ -55,6 +55,17 @@ dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call \
 reveal_cmd: 'xdg-open {path}'   # {path} is the FILE; this adapter opens its parent directory
 ```
 
+## verb: check_app
+**In:** a `.desktop` id from a route. **Out:** exit 0 when a matching `.desktop` file exists in
+the user, local, system or Flatpak application folders, non-zero when none does. Launches nothing.
+
+```yaml
+app_check_cmd: 'a={app}; for d in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" /usr/local/share/applications /usr/share/applications /var/lib/flatpak/exports/share/applications; do [ -e "$d/$a" ] && exit 0; done; exit 1'
+```
+
+A route naming a binary instead (the `setsid {app} {path} &` form) is not a `.desktop` id, so this
+check reads it as not found; use `app_check_cmd: 'command -v {app}'` with that form.
+
 ## gotchas
 - **Headless sessions have nothing to open into.** Over plain SSH with no `$DISPLAY` /
   `$WAYLAND_DISPLAY`, `xdg-open` either errors or silently opens a terminal browser. `handoff.sh`

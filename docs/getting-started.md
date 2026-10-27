@@ -11,6 +11,11 @@ carries its own one-line check, so a stall is diagnosable instead of mysterious.
 
 ### Track 1 — Setting up a repo
 
+**On any coding agent, one line is enough.** Say *"Read the install prompt in
+github.com/kyle-chalmers/ticketwright and follow it."* The agent reads the
+[install prompt](../README.md#install-with-your-coding-agent) in the README, installs for this repo
+only, and hands you each setup question. The prompt below is the shorter Claude Code version.
+
 **Hand it to your agent.** Paste this into a Claude Code session opened on the repo, and the
 five steps below happen with you answering rather than driving:
 

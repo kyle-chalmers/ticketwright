@@ -8,9 +8,13 @@
 # Usage:
 #   bin/handoff.sh [--dry-run] [--reveal] PATH [PATH ...]
 #   bin/handoff.sh --dry-run tickets/alice/TEST-1/final_deliverables/out.csv
+#   bin/handoff.sh --check-apps
 #
-#   --dry-run  resolve routes and print the commands; never launch anything
-#   --reveal   show each path in the OS file manager instead of opening it
+#   --dry-run     resolve routes and print the commands; never launch anything
+#   --reveal      show each path in the OS file manager instead of opening it
+#   --check-apps  check that this computer can find every app the routes name, through the
+#                 config's `app_check_cmd`; launches nothing. Exit 0 all found, 1 any not found,
+#                 3 the config has no `app_check_cmd`, so nothing was checked
 #
 # Config (first hit wins; none = feature off: exit 0, empty stdout, one stderr line):
 #   1. <project>/.claude/config/viewer.local.yaml                  you, this repo   (gitignored)
@@ -23,18 +27,20 @@
 # reason a ticket stops moving.
 set -uo pipefail
 
-dry=0; reveal=0; paths=()
+dry=0; reveal=0; check_apps=0; paths=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) dry=1; shift ;;
     --reveal)  reveal=1; shift ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --check-apps) check_apps=1; shift ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; while [ $# -gt 0 ]; do paths+=("$1"); shift; done ;;
     -*) echo "handoff: unrecognized option: $1" >&2; exit 2 ;;
     *)  paths+=("$1"); shift ;;
   esac
 done
-[ ${#paths[@]} -gt 0 ] || { echo "usage: $0 [--dry-run] [--reveal] PATH [PATH ...]" >&2; exit 2; }
+[ ${#paths[@]} -gt 0 ] || [ $check_apps -eq 1 ] \
+  || { echo "usage: $0 [--dry-run] [--reveal] PATH [PATH ...] | --check-apps" >&2; exit 2; }
 
 note() { echo "handoff: $*" >&2; }
 
@@ -99,6 +105,40 @@ fi
 # `enabled: false` is "configured to stay quiet"; never prompts again. Still says, on stderr, that
 # nothing opened, for the same reason as above.
 [ "$(field enabled)" = "True" ] || { note "viewer turned off (enabled: false); nothing opened"; exit 0; }
+
+# ---- --check-apps: can this computer find each app a route names? ----------------------------
+# Setup runs this right after writing the file, so a typed name the computer does not know
+# ("Excel" for "Microsoft Excel") shows up while the person is still answering, not as a file that
+# fails to open at their first review. The check is read-only by contract: it launches nothing and
+# reveals nothing, so it runs in CI and headless sessions too.
+if [ $check_apps -eq 1 ]; then
+  check_cmd="$(field app_check_cmd)"
+  python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+seen = []
+for r in d.get("routes") or []:
+    a = isinstance(r, dict) and r.get("app")
+    if a and a not in seen:
+        seen.append(a)
+sys.stdout.write("".join(a + "\n" for a in seen))' "$PLAN" > "$TMPD/apps" 2>/dev/null || true
+  if [ ! -s "$TMPD/apps" ]; then
+    note "no route names an app; every file opens with the computer's usual app"; exit 0
+  fi
+  if [ -z "$check_cmd" ]; then
+    sed 's/^/  not checked: /' "$TMPD/apps"
+    note "app names were not checked: this viewer config has no app_check_cmd"; exit 3
+  fi
+  rc=0
+  while IFS= read -r app; do
+    cmd="${check_cmd//\{app\}/$(printf '%q' "$app")}"
+    if bash -c "$cmd" >/dev/null 2>&1; then echo "  found: $app"; else echo "  NOT FOUND: $app"; rc=1; fi
+  done < "$TMPD/apps"
+  exit "$rc"
+fi
 
 open_cmd="$(field open_cmd)"; default_cmd="$(field default_cmd)"; reveal_cmd="$(field reveal_cmd)"
 [ -n "$default_cmd" ] || default_cmd="$open_cmd"
