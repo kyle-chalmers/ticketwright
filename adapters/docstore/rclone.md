@@ -75,9 +75,12 @@ entirely; each name ends in `/`, which is the folder marker, not part of the nam
 object store the top level lists buckets. Setup's folder question calls this verb and nothing else.
 
 ## verb: backup
-**In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).
+**In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention), and the
+routed `destination` from `bin/delivery_plan.py`. With per-person folders on (the default) that is
+`{base_path}/<person folder>`, the shipper's own folder inside the team's; with `per_person: false`
+it is `{base_path}` itself. Never rebuild it by hand: the routed value is the one the person approved.
 ```bash
-dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
+dest="{destination}/<TICKET-ID> <Full Ticket Title>"
 rclone copy --dry-run --exclude "/comms/**" "<local ticket dir>" "$dest"   # SHOW this output before anything moves
 rclone copy           --exclude "/comms/**" "<local ticket dir>" "$dest"
 rclone lsl "$dest"                                   # verify
@@ -105,10 +108,15 @@ intended policy: re-running a backup after editing a deliverable **should** upda
 never happen is losing destination-only content, and `copy` cannot do that.
 
 Note `copy` transfers the **contents** of the source directory, not the directory itself — which is
-why `dest` names the ticket folder explicitly.
+why `dest` names the ticket folder explicitly. It also creates any missing parent on the way, so the
+person folder (`{destination}` with per-person folders on) appears on the person's first backup with no
+extra command. A remote cannot be checked for it ahead of time, so routing reports
+`person_folder_new: null`; the dry run's output is where a new folder shows.
 
 **Stale prior backups.** If an earlier backup used a different title, list with
-`rclone lsd "{base_path}"` and remove **that one exact path**. Never a prefix glob — it
+`rclone lsd "{destination}"` and remove **that one exact path** (a backup from before per-person
+folders sits in `{base_path}` itself and stays there unless the person asks). The person folder itself
+is never purged. Never a prefix glob — it
 would also match `<ID>0`, `<ID>1234`. `rclone purge` is recursive and, per its docs, "does not obey
 include/exclude filters - everything will be removed", so it gets its **own** `--dry-run` and its own
 approval, separate from the backup's.
@@ -128,7 +136,7 @@ exists" — there is no read-only form of this command.
 neither may be offered as a guaranteed mitigation for a link that is already public.
 
 ```bash
-rclone link "{base_path}/<TICKET-ID> <Full Ticket Title>/<file>"
+rclone link "{destination}/<TICKET-ID> <Full Ticket Title>/<file>"
 ```
 
 Link support is backend-dependent. Where the backend cannot mint one, or org policy forbids public

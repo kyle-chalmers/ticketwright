@@ -140,7 +140,7 @@ always produces a *default the human confirms*, never an automatic selection.
 ### `docstore` — durable backup, shareable links, folder picking
 | Verb | Inputs | Returns |
 |---|---|---|
-| `backup` | local ticket dir, dest name | files copied to the store |
+| `backup` | local ticket dir, dest name, the routed destination | files copied to `<destination>/<dest name>`; with per-person folders on (the default) the routed destination already ends in the shipper's own folder, created on their first backup |
 | `link_for` | a backed-up file | a shareable URL (for tracker/chat smart links) |
 | `list_folders` | a parent folder (empty for the top of the drive or remote) | folder names only, never file names (read-only; setup's folder question) |
 
@@ -410,7 +410,7 @@ The schema:
                                        # or `chat: {none: true, reason: "..."}` to record why
     docstore:
       target: archive                  # chosen docstore target (null when single)
-      destination: "Shared drives/Tickets/TEST-1234 example-analysis"
+      destination: "Shared drives/Tickets/Ada Lovelace/TEST-1234 example-analysis"
       sharing_scope: team              # declared scope of the destination: team | org | external
     deliverables:                      # OPTIONAL: per-file classification, when one ticket holds
       - file: final_deliverables/summary.pdf     # both an internal working file and a client-facing
@@ -438,6 +438,14 @@ Rules (these are the contract, not commentary):
 - **Audience and classification are declarations, not inferences.** When more than one target is
   configured and no declaration exists, routing HALTS — the never-fall-back rule above, applied at
   the initial resolution, because the fall-through target may be the external one.
+- **Each person's backups land in their own folder.** By default a docstore routing ends the
+  destination in `<team folder>/<person folder>`, where the person folder is the shipper's display
+  name (`--self`, from `whoami.py`) with `; | & $ < > ( ) \` and the backtick removed, plus `/` and
+  `"`; whitespace collapses to single spaces and leading or trailing spaces and dots are trimmed.
+  No `--self` is a halt (9), never the team folder by default. The folder is part of the destination,
+  so it is inside the fingerprint; whether it exists yet is reported as `person_folder_new` (`null`
+  for a remote, which cannot be checked ahead of time) and is not pinned. `per_person: false` on the
+  slot or a target backs up into the team folder itself. It is team config, never tier 3.
 - **`sharing_scope` is declarative.** The kit verifies a docstore's mount (`test -d`), never a
   destination's real sharing ACL — correct target *selection* is not proof the folder's actual
   permissions match the declared classification. That is unmanaged infrastructure; a reader must

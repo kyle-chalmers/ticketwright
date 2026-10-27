@@ -7,6 +7,18 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Each person's backups go into their own folder.** `/ship` now backs a ticket up into
+  `<team folder>/<your name>/<TICKET-ID> <Full Title>` (for example `Tickets/Ada Lovelace/TEST-14
+  Example analysis`) instead of straight into the team folder. Your folder is created on your first
+  backup, and both the delivery plan ("New folder: this backup creates `Tickets/Ada Lovelace/`
+  (first backup for you).") and the output say so. The name is your display name from setup, with
+  `; | & $ < > ( ) \`, the backtick, `/` and `"` removed, spaces kept. The team folder setting
+  (`drive_folder`, or `remote_path` for rclone) is unchanged and still team-wide. All three
+  documents tools (Google Drive, SharePoint, rclone) work this way. A team that wants everything in
+  one folder sets `per_person: false` on the documents tool slot; setup asks no new question.
+  **Backups made before this release stay where they are**: nothing is moved, and the next backup of
+  an old ticket goes to your folder. Selftest section 83 covers the nested destination, the first
+  backup creating the folder, the name rule, and the opt-out (LABS-127).
 - **Install with one line to any coding agent.** The README Quick start now says: *"Read the install
   prompt in github.com/kyle-chalmers/ticketwright and follow it."* The new "Install with your
   coding agent" section holds that prompt: a project-scoped plugin install on Claude Code, the PyPI

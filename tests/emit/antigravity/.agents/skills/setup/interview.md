@@ -331,6 +331,11 @@ sent without you seeing it first."
       with a plain `ls`, which shows file names too. Offer "Create a new folder: <name>" as an option they type. Folder names can't contain any of
       `;` `|` `&` `$` `<` `>` `(` `)`, a backslash or a backtick, check a typed name now and offer a clean spelling ("Sales and Ops
       Tickets") rather than finding out after the files are written.
+    - **Say where each person's files land, and ask nothing more.** Tell them, in one line:
+      "Each person's backups go into a folder with their name inside this one, created on their
+      first `/ship`." That is the default (`per_person`, absent from `stack.yaml`, means on). Write
+      `per_person: false` only when they say on their own that everything should sit directly in
+      the team folder; never ask a question for it.
     - If Phase 1 found a mount root, display it and route it to the machine file, never to
       `stack.yaml`. A team that cannot run a desktop sync agent is not stuck:
       the `rclone` adapter fills this slot with no mount at all (`remote_path` tier 1, the remote NAME tier 3). Mount
