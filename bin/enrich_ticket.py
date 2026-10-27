@@ -9,7 +9,8 @@ upserts that into `tickets/index_data.json`, and re-renders — turning `▱` in
 
 It runs a model headlessly, and WHICH model command it runs is resolved per runtime rather than
 hardcoded — this script lives in bin/, the layer the architecture calls harness-neutral, so a hard
-`claude -p` dependency here was a lie about that boundary. Resolution order:
+`claude -p` dependency here was a lie about that boundary. The resolution lives in model_call.py,
+shared with every other script that runs a model, and its order is:
 
   1. `--model-cmd '<template>'`
   2. the detected runtime's `model_cmd:` frontmatter in `adapters/runtime/<name>.md`
@@ -42,28 +43,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 from build_ticket_index import discover, repo_root, load_config, key_regex
-
-# The historical command, kept as the floor so a runtime this script cannot identify behaves exactly
-# as it always has.
-DEFAULT_MODEL_CMD = "claude -p --model {model} {prompt}"
-DEFAULT_MODEL = "sonnet"
-# A model command is built as ARGV and never handed to a shell. The prompt carries up to 24KB of a
-# ticket README, which on most installs was fetched from a tracker — i.e. text someone outside this
-# repo wrote. Interpolating that into a shell string would make a README with backticks or $(…) into
-# executable code during an unattended /ship. These characters are refused in a template so nobody
-# can reintroduce that by writing an adapter that looks shell-shaped.
-SHELL_METACHARS = set(";|&<>$`\n")
-# Only these may be argv[0] of a model command resolved FROM AN ADAPTER. Adapters live inside the repo
-# on a vendored install, so without this an adapters/runtime/x.md added by a pull request runs any
-# command during /ship — verified reproducible before this existed. --model-cmd is deliberately exempt:
-# that is a human typing at their own terminal, not repo content.
-ALLOWED_MODEL_BINARIES = frozenset({"claude", "codex", "agy", "devin", "opencode", "gemini"})
+# Which model command runs, how it is built as argv, and how it is run live in model_call.py, shared
+# with every other script that runs a model. The names this script used to define stay importable here.
+from model_call import (  # noqa: F401  (the re-exported names are part of this script's old surface)
+    ALLOWED_MODEL_BINARIES, DEFAULT_MODEL, DEFAULT_MODEL_CMD, SHELL_METACHARS,
+    ModelCallError, build_model_argv, resolve_model, run_model,
+)
 
 INGEST_RECIPE = """No headless model command is available for this runtime.
 
@@ -76,103 +66,6 @@ Use the agent-neutral path instead — the host agent writes the record and pipe
 Or pass a command explicitly:  --model-cmd '<tool> --flag {{prompt}}'
 See adapters/runtime/*.md for what each runtime documents."""
 
-
-def _kit_runtime_model_cmd() -> tuple[str | None, str | None, str]:
-    """(model_cmd, model_default, source) from the detected runtime's adapter.
-
-    Imported lazily and defensively ON PURPOSE. This script is copied on its own into fixture repos
-    and into vendored installs where kit_paths.py and adapters/ may not sit beside it, and a
-    top-level import would turn that into a crash. A miss returns (None, None, ...) so the caller
-    falls back to the historical default rather than failing.
-
-    TRUST MODEL — read this before loosening anything. `ticketwright init` copies adapters/ INTO the
-    target repo, so on a vendored install the project root IS a valid kit and adapters/runtime/*.md is
-    project-controlled. "Resolve from the kit only" therefore does NOT isolate this from repo content,
-    and an earlier version of this docstring wrongly claimed it did.
-
-    What actually contains the risk is ALLOWED_MODEL_BINARIES. A markdown file reads as inert in code
-    review, so a `model_cmd:` line is a uniquely easy place to hide an executable payload — a reviewer
-    skims a .md diff far less carefully than a .py one. The allowlist means the worst a crafted adapter
-    can do is pick a different MODEL CLI, not run `curl` or `rm`.
-    """
-    try:
-        # Look beside this script first, then under an explicit $TICKETWRIGHT_KIT — otherwise the
-        # override is inert exactly when it matters, i.e. when this script was copied somewhere on its
-        # own and the kit lives elsewhere.
-        import os
-        for cand in (Path(__file__).resolve().parent,
-                     Path(os.environ.get("TICKETWRIGHT_KIT", "/nonexistent")).expanduser() / "bin"):
-            if (cand / "kit_paths.py").is_file():
-                sys.path.insert(0, str(cand))
-                break
-        import kit_paths
-        kit, _ = kit_paths.resolve_kit()
-        if not kit:
-            return None, None, "no kit"
-        runtime, _ = kit_paths.detect_runtime(kit)
-        entry = kit_paths.runtime_adapters(kit).get(runtime)
-        if not entry:
-            return None, None, f"runtime {runtime} has no adapter"
-        fm = entry[1]
-        cmd = fm.get("model_cmd", "")
-        if cmd.strip():
-            try:
-                argv0 = shlex.split(cmd)[0]
-            except (ValueError, IndexError):
-                argv0 = ""
-            if Path(argv0).name not in ALLOWED_MODEL_BINARIES:
-                print(f"enrich_ticket: refusing model_cmd from adapters/runtime/{runtime}.md — "
-                      f"'{argv0}' is not a known model CLI. Adapters ship inside the repo on a "
-                      f"vendored install, so this allowlist is what stops a markdown file from "
-                      f"running an arbitrary command. Use --model-cmd if you meant to run it.",
-                      file=sys.stderr)
-                return "", None, f"adapters/runtime/{runtime}.md (refused)"
-        return cmd, fm.get("model_default") or None, f"adapters/runtime/{runtime}.md"
-    except Exception:
-        return None, None, "kit_paths unavailable"
-
-
-def build_model_argv(template: str, model: str | None, prompt: str) -> tuple[list[str], bool]:
-    """Turn a command template into argv. Returns (argv, prompt_goes_on_stdin).
-
-    Substitution is per-element and literal — never str.format, because adapter frontmatter may
-    legitimately contain other braces, and never a re-split after substituting, because that is how
-    a prompt's own spaces would become argument boundaries.
-
-    `{model}` resolves to --model, else the adapter's model_default. With neither, the element is
-    dropped along with an immediately preceding flag, so `--model {model}` disappears cleanly and the
-    tool applies its own default.
-    """
-    if model and model.startswith("-"):
-        raise ValueError(f"model name may not start with '-' (got {model!r}) — it would read as a flag")
-    bad = SHELL_METACHARS & set(template)
-    if bad:
-        raise ValueError(
-            "model command may not contain shell metacharacters (%s) — it is run as argv, not via a "
-            "shell. Rewrite it as a plain command with {prompt}/{model} tokens."
-            % "".join(sorted(bad)))
-    parts = shlex.split(template)
-    out: list[str] = []
-    for part in parts:
-        if part == "{model}":
-            if model:
-                out.append(model)
-            elif out and out[-1].startswith("-"):
-                out.pop()          # drop the orphaned flag too
-            continue
-        if "{model}" in part:
-            if not model:
-                continue
-            part = part.replace("{model}", model)
-        if part == "{prompt}":
-            out.append(prompt)
-            continue
-        if "{prompt}" in part:
-            part = part.replace("{prompt}", prompt)
-        out.append(part)
-    if not out:
-        raise ValueError("model command is empty after substitution — nothing to run")
-    return out, "{prompt}" not in template
 
 PROMPT = """You are writing one catalog record for a single ticket in this repo. The ticket's \
 README is below.
@@ -210,21 +103,13 @@ def enrich_one(loc: dict, template: str, model: str | None) -> dict | None:
     body = readme.read_text(errors="replace")[:24000]
     prompt = PROMPT.format(tid=tid, readme=body)
     argv, prompt_on_stdin = build_model_argv(template, model, prompt)
-    tool = argv[0] if argv else "?"
     try:
-        out = subprocess.run(
-            argv,
-            input=prompt if prompt_on_stdin else None,
-            capture_output=True, text=True, timeout=240,
-        )
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:
-        print(f"  {owner}/{tid}: {tool} failed ({e}).", file=sys.stderr)
-        return None
-    if out.returncode != 0:
-        print(f"  {owner}/{tid}: {tool} exited {out.returncode}: {out.stderr.strip()[:200]}", file=sys.stderr)
+        stdout = run_model(argv, prompt, prompt_on_stdin)
+    except ModelCallError as e:
+        print(f"  {owner}/{tid}: {e}", file=sys.stderr)
         return None
     try:
-        rec = extract_json(out.stdout)
+        rec = extract_json(stdout)
     except (ValueError, json.JSONDecodeError) as e:
         print(f"  {owner}/{tid}: could not parse model output ({e}).", file=sys.stderr)
         return None
@@ -326,16 +211,11 @@ def main() -> int:
 
     # Resolved here — AFTER the "no ticket ids" guard above, so an unresolvable id still reports as an
     # id problem rather than as a model-command problem.
-    if args.model_cmd:
-        template, model_default, src = args.model_cmd, None, "--model-cmd"
-    else:
-        template, model_default, src = _kit_runtime_model_cmd()
-        if template is None:                       # runtime unidentifiable → historical behavior
-            template, model_default, src = DEFAULT_MODEL_CMD, DEFAULT_MODEL, "built-in default"
-        elif not template.strip():                 # runtime known, documents no headless command
-            print(INGEST_RECIPE.format(bindir=bindir), file=sys.stderr)
-            return 4
-    model = args.model or model_default
+    template, runtime_fm, src = resolve_model(args.model_cmd, caller="enrich_ticket")
+    if template is None:                           # runtime known, documents no headless command
+        print(INGEST_RECIPE.format(bindir=bindir), file=sys.stderr)
+        return 4
+    model = args.model or runtime_fm.get("model_default") or None
 
     try:
         preview, _ = build_model_argv(template, model, "<prompt>")
