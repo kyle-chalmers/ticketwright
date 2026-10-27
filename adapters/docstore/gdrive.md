@@ -15,7 +15,8 @@ auth: |
 # Google Drive adapter
 
 Maps the `docstore` verb contract to a mounted Google Drive shared drive. Backups are plain
-filesystem copies; shareable links come from the file's macOS extended attribute.
+filesystem copies; shareable links come from the file's macOS extended attribute; folder listing
+reads directory entries only.
 
 **Under named targets** (`seams.docstore.targets:`), `{base_path}` is the ROUTED target's own
 destination, chosen from the ticket `delivery-plan.yaml`'s `classification:` declaration
@@ -24,6 +25,16 @@ and `link_for` is called against **that same target**, so a link can never be mi
 different store than the copy. The target's `sharing_scope:` is a DECLARATION: this adapter verifies
 that the mount exists (`test -d`) and never inspects the folder's real sharing ACL, so a correctly
 routed file is not evidence that the destination's permissions match the declared scope.
+
+## verb: list_folders
+**In:** a parent folder inside the mount (empty for the top of the drive). **Out:** folder names,
+one per line, never a file name. Read-only, and still asked first: it looks inside someone's drive.
+```bash
+parent="{mount_root}/<folder the person picked, or nothing for the top>"
+find "$parent" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print | sed 's|.*/||' | LC_ALL=C sort
+```
+Never list a drive with a plain `ls`: it prints file names too, and a file name can say more about
+someone's work than they agreed to show. Setup's folder question calls this verb and nothing else.
 
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).
