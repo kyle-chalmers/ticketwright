@@ -12329,7 +12329,7 @@ k66="$(CLAUDE_CONFIG_DIR="$CR66" python3 -c 'import sys; sys.path.insert(0, "bin
   && ok "kit_paths resolves the plugin kit from a worktree through the main checkout's record" \
   || bad "kit_paths found no kit from a worktree of an installed repo" "$k66"
 
-hdr "65 · picking a drive folder shows folders only (docstore list_folders)"
+hdr "69 · picking a drive folder shows folders only (docstore list_folders)"
 # Setup promises "folder names only" when it looks inside someone's drive. A plain `ls` broke that
 # promise in a real first run, so the verb is RUN here on a tree holding files, folders and a dot
 # folder, and the output is compared with the folders alone. Prose saying "names only" proves nothing.
