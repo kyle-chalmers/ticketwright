@@ -57,6 +57,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 import shutil
 import subprocess
@@ -73,6 +74,7 @@ try:
         _load_json as _un_load_json,
         _resolve_root as _un_resolve_root,
         catalog_version,
+        folder_sharing,
         install_pair_command,
         is_newer,
         repo_install_matches,
@@ -89,7 +91,7 @@ except ImportError:                        # pragma: no cover - exercised by sel
     _HAVE_UN = False
     PAIR_SEP = "@"
     _un_config_root = _un_load_json = _un_resolve_root = None
-    catalog_version = install_pair_command = is_newer = None
+    catalog_version = folder_sharing = install_pair_command = is_newer = None
     install_rows = repo_install_matches = select_repo_install = settings_pairs = None
 
 SCHEMA = 1
@@ -131,6 +133,8 @@ CHECK_IDS = [
     "install_payload",
     "user_install",
     "catalog_current",
+    "install_commit",
+    "stale_cache",
     "yq_present",
     "git_identity",
     "restart",
@@ -138,7 +142,7 @@ CHECK_IDS = [
 
 # "Restart" was read as "new chat" on three machines in a row, and a new chat inside the running app
 # loads nothing. Said once, here, so every surface quotes the same words — and
-# docs/getting-started.md's check 15 carries this string VERBATIM, pinned by selftest 55, so the tool
+# docs/getting-started.md's check 17 carries this string VERBATIM, pinned by selftest 55, so the tool
 # and the page cannot drift apart.
 RESTART_ADVISORY = (
     "Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit "
@@ -163,6 +167,18 @@ UPDATE_UNKNOWN = ["claude update  (native installer)",
                   "`claude doctor` shows install health and conflicting installs"]
 
 SYMBOL = {"ok": "✓", "warn": "!", "fail": "✗", "unknown": "?"}
+
+# A cache folder name the doctor will PRINT: a version string, nothing else. Anything else in that
+# folder is counted, never echoed.
+VERSION_DIR = re.compile(r"[0-9][0-9A-Za-z.+-]{0,63}")
+
+
+def _safe_resolve(p: Path) -> Path:
+    """resolve() that never raises: an install record may name a deleted folder."""
+    try:
+        return p.resolve()
+    except (OSError, RuntimeError):
+        return p
 
 
 # ── small local helpers ───────────────────────────────────────────────────────────────────────────
@@ -675,6 +691,73 @@ class Doctor:
         return "ok", f"this repo runs {installed}; the catalog offers {catalog}", []
 
     # -- 13 --
+    def c_install_commit(self) -> tuple:
+        # One cache folder per version: a later install of the same version by another repo, at
+        # another commit, rewrites this repo's files (update_notice.folder_sharing says how it
+        # judges that). PRIVACY: only short commit ids and counts leave this check.
+        if not self.ref:
+            return self._no_names()
+        if not self._reusable() or folder_sharing is None:
+            return "unknown", "update_notice.py is not importable beside this script", []
+        if len(self._matches) != 1:
+            return "unknown", "no single install record to check a commit for", []
+        mine = self._matches[0]
+        sha = mine.get("gitCommitSha")
+        if not (isinstance(sha, str) and sha and isinstance(mine.get("installPath"), str)):
+            return "unknown", "the install record carries no installPath or commit", []
+        count, on_disk = folder_sharing(self._rows, mine)
+        if on_disk is None:
+            if not count:
+                return ("ok", f"no other install shares this repo's plugin folder (commit "
+                              f"{sha[:7]})", [])
+            return ("ok", f"{count} other install(s) share this plugin folder, and its files came "
+                          f"from this repo's commit {sha[:7]}", [])
+        scope = mine.get("scope") or "project"
+        return ("warn",
+                f"another repo installed the same version ({mine.get('version')}) later, at "
+                f"commit {on_disk[:7]}, into the same plugin folder, so the files that load here "
+                f"are from that commit, not this repo's {sha[:7]}. Both repos share one folder per "
+                "version, so the most recent install decides what both run",
+                [install_pair_command(self.ref, scope)])
+
+    # -- 14 --
+    def c_stale_cache(self) -> tuple:
+        # Old version folders pile up in the cache and are never loaded, but a person reading the
+        # cache cannot tell which one runs. This NAMES the unused ones and prints the removal
+        # command; it never deletes anything (a destructive write stays the person's call).
+        if not self.ref:
+            return self._no_names()
+        if not self._reusable():
+            return "unknown", "update_notice.py is not importable beside this script", []
+        base = self.config_root / "plugins" / "cache" / self.marketplace / self.plugin
+        if not base.is_dir():
+            return "ok", "no cached versions of this plugin on this machine", []
+        used = {_safe_resolve(Path(r["installPath"])) for r in self._rows
+                if isinstance(r, dict) and isinstance(r.get("installPath"), str)
+                and r["installPath"]}
+        unused, odd = [], 0
+        for entry in sorted(base.iterdir(), key=lambda e: e.name):
+            if not entry.is_dir() or entry.is_symlink() or _safe_resolve(entry) in used:
+                continue
+            if VERSION_DIR.fullmatch(entry.name):
+                unused.append(entry.name)
+            else:
+                odd += 1                     # counted, never printed: not a name we wrote
+        if not unused and not odd:
+            return "ok", "every cached version of this plugin is one an install uses", []
+        shown = ", ".join(unused) if unused else "none with a version-shaped name"
+        default = Path.home() / ".claude"
+        prefix = "~/.claude" if self.config_root == default else str(self.config_root)
+        fix = [f"rm -rf {prefix}/plugins/cache/{self.marketplace}/{self.plugin}/{v}"
+               for v in unused]
+        if fix:
+            fix.append("close every Claude Code session first; nothing above is removed for you")
+        return ("warn",
+                f"{len(unused) + odd} cached version(s) of {self.plugin} are not used by any "
+                f"install ({shown}). They never load, but they make it harder to tell which "
+                "version runs", fix)
+
+    # -- 15 --
     def c_yq_present(self) -> tuple:
         if shutil.which("yq"):
             return "ok", "yq is on PATH", []
@@ -683,7 +766,7 @@ class Doctor:
                 "it that test reports many unrelated failures from this one cause",
                 [yq_install_command()])
 
-    # -- 14 --
+    # -- 16 --
     def c_git_identity(self) -> tuple:
         missing = []
         for key in ("user.name", "user.email"):
@@ -698,7 +781,7 @@ class Doctor:
                 ["git config --global user.name \"Your Name\"",
                  "git config --global user.email \"you@example.com\""])
 
-    # -- 15 --
+    # -- 17 --
     def c_restart(self) -> tuple:
         # THE one carrier of RESTART_ADVISORY. Every check whose remedy changes what is installed
         # used to append the advisory to its own fix list, so a single broken install printed the
@@ -706,7 +789,7 @@ class Doctor:
         # said once, by this check, which watches every state whose fix ends in a reload.
         watched = {r["id"]: r["status"] for r in self.results
                    if r["id"] in ("repo_install", "install_payload", "user_install",
-                                  "catalog_current")}
+                                  "catalog_current", "install_commit")}
         if watched and any(s != "ok" for s in watched.values()):
             return ("warn",
                     "the install state above changes only after Claude Code reloads",
@@ -745,6 +828,8 @@ LABELS = {
     "install_payload": "The plugin's files are complete",
     "user_install": "Not also installed machine-wide",
     "catalog_current": "This repo runs the newest version offered",
+    "install_commit": "The plugin files on disk are the ones this repo installed",
+    "stale_cache": "No unused plugin versions left in the cache",
     "yq_present": "yq is installed",
     "git_identity": "Your git name and email are set",
     "restart": "Reload after install changes",

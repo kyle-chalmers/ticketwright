@@ -120,7 +120,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 8;; warehouse) echo 3;; chat) echo 4;; docstore) echo 2;; vcs) echo 4;;
+    tracker) echo 8;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 4;;
     viewer) echo 2;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -7485,7 +7485,7 @@ rc_fm="$(cat "$TMP/hd6327.out")"
 # --- (B) both docstore verbs BY NAME, across every docstore adapter ------------------------------
 # Section 2 proves each adapter has the right NUMBER of verb headings, not the right ONES — two
 # typo'd verbs count two and pass. (the chat-seam precedent, section 46A)
-for v in backup link_for; do
+for v in backup link_for list_folders; do
   dvmiss=""
   for f in adapters/docstore/*.md; do
     grep -qE "^## verb: $v( |$)" "$f" || dvmiss="$dvmiss $(basename "$f")"
@@ -13603,6 +13603,185 @@ CLAUDE_PROJECT_DIR="$G65" python3 bin/build_ticket_index.py --check >/dev/null 2
 grep -q '"TEST-1"' "$TMP/s65r.out" && grep -q '"TEST-12"' "$TMP/s65r.out" \
   && ok "recall by the bare table name still finds both tickets" \
   || bad "recall by the bare table name broke" "$(head -c 400 "$TMP/s65r.out")"
+
+hdr "67 · a tool chosen before it was connected is finished later, not forgotten"
+# A real first run chose Slack before it was connected: setup wrote `mcp: TODO`, and nothing ever
+# said so again, so the person hand-edited stack.yaml. `TODO` now marks a pending slot that the
+# resolver reports, verify_stack names with the finishing command, and the banner repeats.
+P67="$TMP/pending67"; mkdir -p "$P67/.claude/config"
+cat > "$P67/.claude/config/stack.yaml" <<'YAML'
+schema_version: 1
+project:
+  key_prefix: TEST
+seams:
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: TODO   # connect Slack, reload, then /setup tool chat
+YAML
+python3 bin/effective_config.py --root "$P67" --verify-plan --quiet > "$TMP/s67plan.out" 2>&1
+python3 - "$TMP/s67plan.out" <<'PY' >"$TMP/s67p.out"
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip().startswith("{")]
+chat = [r for r in rows if r.get("seam") == "chat" or r.get("label") == "chat"]
+r = chat[0] if chat else {}
+print("pending=" + ",".join(r.get("pending") or []))
+print("missing=" + ",".join(r.get("missing_required") or []))
+PY
+{ grep -q '^pending=mcp$' "$TMP/s67p.out" && grep -q '^missing=$' "$TMP/s67p.out"; } \
+  && ok "the resolver reports \`mcp: TODO\` as pending, apart from keys never written" \
+  || bad "the resolver treats \`mcp: TODO\` as a set value" "$(cat "$TMP/s67p.out")"
+o67="$(safe_verify_stack "$P67/.claude/config/stack.yaml" --dry-run 2>&1)"; rc67=$?
+{ [ "$rc67" -eq 0 ] && grep -q 'chosen but not connected yet (mcp still TODO)' <<<"$o67" \
+  && grep -q '/reload-plugins' <<<"$o67" && grep -q '`/setup tool chat`' <<<"$o67" \
+  && grep -q '1 unverified (chat)' <<<"$o67"; } \
+  && ok "verify_stack warns (never fails) on a pending slot and names reload, then /setup tool chat" \
+  || bad "verify_stack does not name a pending slot and how to finish it" "rc=$rc67 $(tail -4 <<<"$o67")"
+grep -q 'Permission posture' <<<"$o67" \
+  && bad "verify_stack asks for a permission check on a connector that is not connected yet" \
+  || ok "…and asks for no permission check on a connector that is not there yet"
+b67="$(echo '{}' | CLAUDE_PROJECT_DIR="$P67" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'Not connected yet: chat (slack).*`/setup tool chat`' <<<"$b67" \
+  && ok "the session banner names the pending slot and the command that finishes it" \
+  || bad "the session banner says nothing about a pending slot" "$b67"
+sed -i.bak 's/mcp: TODO.*/mcp: slack/' "$P67/.claude/config/stack.yaml"
+b67b="$(echo '{}' | CLAUDE_PROJECT_DIR="$P67" python3 .claude/hooks/session_context.py 2>&1)"
+grep -q 'Not connected yet' <<<"$b67b" \
+  && bad "the banner still says not connected after the slot was finished" \
+  || ok "…and drops the line once \`mcp:\` holds a real prefix"
+{ grep -q 'reaches this session only after `/reload-plugins` or a new session' .claude/skills/setup/interview.md \
+  && grep -q 'only after `/reload-plugins` or a new session' .claude/skills/setup/SKILL.md \
+  && grep -q 'Finishing a slot chosen before it was connected' .claude/skills/setup/SKILL.md \
+  && grep -q 'adapter_surface.py --adapter <path> --probe' .claude/skills/setup/SKILL.md \
+  && grep -q 'posture.local.yaml' <<<"$(sed -n '/Finishing a slot chosen before it was connected/,/^## /p' .claude/skills/setup/SKILL.md)"; } \
+  && ok "setup says a new connector needs a reload, and /setup tool finishes a pending slot: prefix, probe, posture, skipped questions" \
+  || bad "setup's reload hint or finish-a-pending-slot steps are missing"
+{ grep -q 'One person per answer, never one free-text list' .claude/skills/setup/interview.md \
+  && grep -q "That's everyone" .claude/skills/setup/interview.md; } \
+  && ok "the roster question takes one person per answer, with a That's everyone choice" \
+  || bad "the roster question still takes a free-text list"
+
+hdr "66 · version skew: one folder per version, worktrees, and unused cache folders"
+# A real first run loaded skills from another repo's later install: Claude Code keeps ONE cache
+# folder per version, so two repos installing 4.4.0 at different commits share it and the last one
+# wins while both records keep their own commit. The version string agrees everywhere, so only the
+# recorded commits can show it. Built on fixtures under $TMP; no real config is read.
+V66="$TMP/skew66"; CR66="$V66/config"; KIT66="$CR66/plugins/cache/mk/ticketwright"
+mkdir -p "$KIT66/1.0.0/.claude-plugin" "$KIT66/0.9.0" "$KIT66/notes" \
+  "$CR66/plugins/marketplaces/mk/.claude-plugin"
+for m in bin/kit_paths.py bin/tw adapters templates .claude-plugin/plugin.json; do
+  case "$m" in */*.*|bin/tw) mkdir -p "$KIT66/1.0.0/$(dirname "$m")"; : > "$KIT66/1.0.0/$m";;
+               *) mkdir -p "$KIT66/1.0.0/$m";; esac
+done
+printf '{"name":"ticketwright","version":"1.0.0"}' > "$CR66/plugins/marketplaces/mk/.claude-plugin/plugin.json"
+for r in older newer; do
+  mkdir -p "$V66/$r/.claude"
+  ( cd "$V66/$r" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init ) 2>/dev/null
+  printf '{"extraKnownMarketplaces":{"mk":{"autoUpdate":true}},"enabledPlugins":{"ticketwright@mk":true}}' \
+    > "$V66/$r/.claude/settings.json"
+  ( cd "$V66/$r" && git add .claude/settings.json && git -c user.email=t@t -c user.name=t commit -q -m settings ) 2>/dev/null
+done
+OLD66="$(cd "$V66/older" && pwd -P)"; NEW66="$(cd "$V66/newer" && pwd -P)"; INST66="$(cd "$KIT66/1.0.0" && pwd -P)"
+printf '{"version":2,"plugins":{"ticketwright@mk":[{"scope":"project","projectPath":"%s","installPath":"%s","version":"1.0.0","gitCommitSha":"aaaaaaa1111","lastUpdated":"2026-10-26T21:16:00Z"},{"scope":"project","projectPath":"%s","installPath":"%s","version":"1.0.0","gitCommitSha":"bbbbbbb2222","lastUpdated":"2026-10-26T21:52:00Z"}]}}' \
+  "$OLD66" "$INST66" "$NEW66" "$INST66" > "$CR66/plugins/installed_plugins.json"
+
+n66o="$(python3 bin/update_notice.py --root "$OLD66" --config-root "$CR66" 2>&1)"
+n66n="$(python3 bin/update_notice.py --root "$NEW66" --config-root "$CR66" 2>&1)"
+{ grep -q 'commit bbbbbbb, not this repo.s aaaaaaa' <<<"$n66o" && grep -q 'claude plugin uninstall ticketwright@mk --scope project' <<<"$n66o" \
+  && [ "$(printf '%s' "$n66o" | wc -l | tr -d ' ')" = "0" ]; } \
+  && ok "the banner says, in one line, that an older install's files were rewritten by a later one at another commit" \
+  || bad "the update notice misses a same-version, different-commit overwrite" "$n66o"
+[ -z "$n66n" ] \
+  && ok "…and stays silent for the repo whose install is the one on disk" \
+  || bad "the update notice nags the repo whose files are the ones on disk" "$n66n"
+
+python3 bin/plugin_doctor.py --root "$OLD66" --config-root "$CR66" --plugin ticketwright --marketplace mk \
+  --no-probe --json > "$TMP/s66d.json" 2>&1
+python3 - "$TMP/s66d.json" "$NEW66" "$INST66" <<'PY' >"$TMP/s66d.out"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+res = {r["id"]: r for r in doc["checks"]} if isinstance(doc, dict) and "checks" in doc else {r["id"]: r for r in doc}
+ic, sc = res["install_commit"], res["stale_cache"]
+raw = open(sys.argv[1]).read()
+print("ic=" + ic["status"] + ("+sha" if "bbbbbbb" in ic["detail"] and "aaaaaaa" in ic["detail"] else ""))
+print("sc=" + sc["status"] + ("+090" if "0.9.0" in sc["detail"] else "") + ("+notes" if "notes" in sc["detail"] else ""))
+print("fix=" + str(sum("0.9.0" in f for f in sc["fix"])))
+print("leak=" + str(sys.argv[2] in raw or sys.argv[3] in raw))
+PY
+grep -q '^ic=warn+sha$' "$TMP/s66d.out" \
+  && ok "plugin_doctor install_commit warns and names both commits" \
+  || bad "plugin_doctor install_commit missed the overwrite" "$(cat "$TMP/s66d.out")"
+{ grep -q '^sc=warn+090$' "$TMP/s66d.out" && grep -q '^fix=1$' "$TMP/s66d.out"; } \
+  && ok "stale_cache lists the unused version folder with its removal line, and counts an odd-named folder without printing it" \
+  || bad "stale_cache did not list unused versions correctly" "$(cat "$TMP/s66d.out")"
+grep -q '^leak=False$' "$TMP/s66d.out" \
+  && ok "…and no other repo's path or the install folder's path appears in the output" \
+  || bad "plugin_doctor printed a path read from installed_plugins.json"
+[ -d "$KIT66/0.9.0" ] && [ -d "$KIT66/notes" ] \
+  && ok "…and nothing was deleted: the doctor names cache folders, the person removes them" \
+  || bad "plugin_doctor removed a cache folder"
+
+( cd "$OLD66" && git worktree add -q "$V66/wt" -b wt66 ) 2>/dev/null
+WT66="$(cd "$V66/wt" 2>/dev/null && pwd -P)"
+n66w="$(python3 bin/update_notice.py --root "$WT66" --config-root "$CR66" 2>&1)"
+[ -n "$WT66" ] && [ "$n66w" = "$n66o" ] \
+  && ok "a linked worktree reads its main checkout's install record (the banner matches the main checkout's)" \
+  || bad "a worktree of an installed repo reads as not installed" "$n66w"
+k66="$(CLAUDE_CONFIG_DIR="$CR66" python3 -c 'import sys; sys.path.insert(0, "bin"); import kit_paths; from pathlib import Path; print(kit_paths._plugin_kit(Path(sys.argv[1])) or "")' "$WT66" 2>&1)"
+[ "$k66" = "$INST66" ] \
+  && ok "kit_paths resolves the plugin kit from a worktree through the main checkout's record" \
+  || bad "kit_paths found no kit from a worktree of an installed repo" "$k66"
+
+hdr "69 · picking a drive folder shows folders only (docstore list_folders)"
+# Setup promises "folder names only" when it looks inside someone's drive. A plain `ls` broke that
+# promise in a real first run, so the verb is RUN here on a tree holding files, folders and a dot
+# folder, and the output is compared with the folders alone. Prose saying "names only" proves nothing.
+L65="$TMP/list65"; mkdir -p "$L65/My Drive/Sales Tickets" "$L65/My Drive/Ops" "$L65/My Drive/.hidden"
+printf x > "$L65/My Drive/salary-review.xlsx"; printf x > "$L65/My Drive/Sales Tickets/inner.csv"
+python3 - "$L65" <<'PY' >"$TMP/s65a.out"
+import re, subprocess, sys
+root = sys.argv[1]
+for f in ("gdrive", "sharepoint"):
+    t = open(f"adapters/docstore/{f}.md", encoding="utf-8").read()
+    body = re.split(r"^## ", t.split("## verb: list_folders", 1)[1], flags=re.M)[0]
+    fence = body.split("```", 2)[1].split("\n", 1)[1]
+    lines = [l for l in fence.splitlines() if l.strip() and not l.lstrip().startswith("#")][:2]
+    script = "\n".join(lines).replace("{mount_root}", root)
+    script = re.sub(r"<[^>]*>", "My Drive", script)
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True).stdout
+    print(f"{f}={out.strip().replace(chr(10), '|')}")
+PY
+for f in gdrive sharepoint; do
+  got="$(sed -n "s/^$f=//p" "$TMP/s65a.out")"
+  [ "$got" = "Ops|Sales Tickets" ] \
+    && ok "$f list_folders prints the folders and nothing else (no file name, no dot folder, no nested file)" \
+    || bad "$f list_folders printed something besides the top-level folders" "got: $got"
+done
+python3 - <<'PY' >"$TMP/s65b.out"
+import re, shlex
+t = open("adapters/docstore/rclone.md", encoding="utf-8").read()
+body = re.split(r"^## ", t.split("## verb: list_folders", 1)[1], flags=re.M)[0]
+cmds = [l.strip() for l in body.split("```", 2)[1].split("\n", 1)[1].splitlines() if l.strip()]
+bad = []
+for c in cmds:
+    toks = shlex.split(c)
+    rest = [x for x in toks[1:] if not x.startswith("-")]
+    if toks[0] != "rclone" or not rest or rest[0] != "lsf": bad.append("not lsf: " + c)
+    if "--dirs-only" not in toks: bad.append("no --dirs-only: " + c)
+    if "{base_path}" in c: bad.append("reads {base_path} before one exists: " + c)
+print("\n".join(bad))
+PY
+! grep -q . "$TMP/s65b.out" \
+  && ok "rclone list_folders runs only \`rclone lsf --dirs-only\` on the person's own remote" \
+  || bad "rclone list_folders can print files or reads a destination that is not chosen yet" "$(cat "$TMP/s65b.out")"
+iv65="$(sed -n '/Where should finished files be kept/,/If Phase 1 found a mount root/p' .claude/skills/setup/interview.md)"
+{ grep -q 'list_folders' <<<"$iv65" && grep -q 'Never list a drive' <<<"$iv65"; } \
+  && ok "setup's folder question lists through list_folders and rules out a plain ls" \
+  || bad "setup's folder question does not name the folders-only verb"
+grep -q '^| `list_folders` |' adapters/README.md \
+  && ok "the docstore contract table names list_folders" \
+  || bad "adapters/README.md docstore table is missing list_folders"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

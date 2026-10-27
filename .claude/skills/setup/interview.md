@@ -46,7 +46,10 @@ names from it. **Read it from your own tool list; never ask the person to type i
 connector's display name, not its prefix, and a friendly name that matches no connected server
 makes every rendered tool name point at nothing, with no error until a skill tries to call one.
 When the connector is not connected yet, write `mcp: TODO` with a comment saying to connect it and
-re-run `/setup tool <slot>`, and list it as a thing to finish.
+re-run `/setup tool <slot>`, and list it as a thing to finish. Say right then that a connector
+added in the app reaches this session only after `/reload-plugins` or a new session, so they know
+the order: connect, reload, then `/setup tool <slot>`. A slot left at `TODO` is named again by the
+session banner and by `verify_stack.sh` until it is finished, so it is never forgotten.
 Before writing it, check the adapter with
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path>`.
 When it says this agent uses its own tool names, the adapter already names this agent's server
@@ -101,6 +104,14 @@ below has to land **before** anyone types a colleague's work email.
    nothing to seed from. Both write the same shape: one **identity-free tier-2 placeholder per
    person named** — `people/<id>.yaml` holding `display_name:` and nothing more, per the scope
    invariant in [SKILL.md](SKILL.md).
+   - **One person per answer, never one free-text list.** A pasted list ("Sam, Jo and the two
+     Alexes") leaves you guessing where one name ends and how to spell an id. Ask for one name at a
+     time, as a choice question whose options are **"Add a teammate"** (they type the name) and
+     **"That's everyone"** (first on the very first ask, so a solo analyst is one click), and repeat
+     until they pick "That's everyone". After each name, show the id you will use (lowercase, the
+     id rule in [SKILL.md](SKILL.md): letters, digits, dot, dash, underscore) and the display name,
+     and let them correct either before the file is written. Two people who would get the same id
+     are asked to tell them apart; never add a number on your own.
    - **Placeholders are FILES, never folders.** Do not create empty `tickets/<name>/` directories:
      git cannot track an empty directory, so they silently vanish on clone, and the index renderer
      never prunes them. The person's ticket folder appears with their first ticket.
@@ -296,8 +307,9 @@ sent without you seeing it first."
     and goes in `stack.yaml`; the **mount root** (where that drive sits on this machine) is tier 3.
     - **Offer folders that exist.** A new folder in a shared drive is visible to everyone the
       drive is shared with: say so on that option. Ask once before looking inside someone's drive ("Can I list the
-      folders at the top of your drive to pick from?"), then list **folder names only**, never file
-      names; offer "Create a new folder: <name>" as an option they type. Folder names can't contain any of
+      folders at the top of your drive to pick from?"), then list them with the docstore adapter's
+      `list_folders` verb, which prints **folder names only**, never file names. Never list a drive
+      with a plain `ls`, which shows file names too. Offer "Create a new folder: <name>" as an option they type. Folder names can't contain any of
       `;` `|` `&` `$` `<` `>` `(` `)`, a backslash or a backtick, check a typed name now and offer a clean spelling ("Sales and Ops
       Tickets") rather than finding out after the files are written.
     - If Phase 1 found a mount root, display it and route it to the machine file, never to

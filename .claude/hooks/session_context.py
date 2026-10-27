@@ -183,6 +183,10 @@ def scan_stack_resolved(root: Path) -> dict | None:
         elif isinstance(plural, str):
             prefix = plural
     out["key_prefix"] = str(prefix) if prefix else None
+    try:
+        out["pending"] = res.pending()
+    except Exception:  # noqa: BLE001 — an older resolver without pending(): say nothing about it
+        out["pending"] = []
     for seam in ("tracker", "warehouse", "chat", "docstore", "vcs", "meetings"):
         node = res.seams.get(seam)
         if not isinstance(node, dict):
@@ -391,6 +395,27 @@ def policy_advisory_lines(s: dict, mode: str) -> list[str]:
     return lines
 
 
+def pending_lines(pending: list) -> list[str]:
+    """One line per tool someone chose before it was connected (a value still `TODO`).
+
+    Setup can't finish a slot whose connector isn't in the session yet, and nothing used to say so
+    again afterwards. A hook can't see the session's tools, so this only NAMES the slot and the
+    command that finishes it; `/setup tool <seam>` reads the tool list and does the rest.
+    """
+    out = []
+    seen = set()
+    for p in pending:
+        seam = p.get("seam") if isinstance(p, dict) else None
+        if not isinstance(seam, str) or seam in seen:
+            continue
+        seen.add(seam)
+        tool = p.get("tool") or "the tool"
+        out.append(f"Not connected yet: {seam} ({tool}). Once it is connected in your agent and "
+                   f"reloaded (`/reload-plugins` or a new session), run `/setup tool {seam}` to "
+                   "finish setting it up.")
+    return out
+
+
 def main() -> int:
     root = project_root()
     stack = root / ".claude/config/stack.yaml"
@@ -423,6 +448,7 @@ def main() -> int:
         "Lifecycle: /ticket (opens + primes context, writes the plan) → /build (builds, then reviews) → /review → /ship.",
     ]
     lines[2:2] = whoami_lines(root)
+    lines.extend(pending_lines(s.get("pending") or []))
     if skills:
         lines.append("Skills: " + ", ".join(skills) + ".")
     if commands:

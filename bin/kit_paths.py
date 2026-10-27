@@ -107,6 +107,20 @@ def _safe_resolve(p: Path) -> Path:
         return p
 
 
+def _main_checkout(project: Path) -> Path | None:
+    """The main checkout when `project` is a linked git worktree, else None (one git call, and only
+    after the direct manifest lookup missed, so the launcher's common path pays nothing)."""
+    try:
+        out = subprocess.run(["git", "-C", str(project), "rev-parse", "--path-format=absolute",
+                              "--git-common-dir"], capture_output=True, text=True).stdout.strip()
+    except OSError:
+        return None
+    if not out or Path(out).name != ".git":
+        return None
+    main = _safe_resolve(Path(out).parent)
+    return main if main != project else None
+
+
 def _plugin_kit(project: Path | None) -> Path | None:
     """The Claude plugin cache, read from installed_plugins.json — never globbed.
 
@@ -139,6 +153,16 @@ def _plugin_kit(project: Path | None) -> Path | None:
             if len(exact) == 1 and is_kit(Path(exact[0].get("installPath", ""))):
                 return Path(exact[0]["installPath"])
             return None
+        main = _main_checkout(project)
+        if main is not None:
+            # A linked worktree (`.claude/worktrees/<name>`) has its own top folder, but the install
+            # record names the main checkout. Same exact-or-nothing rule, one level up.
+            exact = [r for r in rows if r.get("projectPath")
+                     and _safe_resolve(Path(r["projectPath"])) == main]
+            if exact:
+                if len(exact) == 1 and is_kit(Path(exact[0].get("installPath", ""))):
+                    return Path(exact[0]["installPath"])
+                return None
     user = [r for r in rows if r.get("scope") == "user"]
     if len(user) == 1 and is_kit(Path(user[0].get("installPath", ""))):
         return Path(user[0]["installPath"])

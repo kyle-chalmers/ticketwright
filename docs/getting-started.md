@@ -214,14 +214,24 @@ The checks, in the order the doctor runs them:
 12. **The installed version matches the marketplace catalog.** <!-- doctor-check: catalog_current -->
     Behind means a tagged release has not been picked up; the fix is the uninstall-and-install pair
     the session banner names, at the scope the install record carries.
-13. **`yq` is installed.** <!-- doctor-check: yq_present -->
+13. **The plugin files on disk are the ones this repo installed.** <!-- doctor-check: install_commit -->
+    Claude Code keeps one plugin folder per version. If another repo on this machine installed the
+    same version later, at a different commit, that install rewrote the shared folder, so this repo
+    runs that commit's skills while its own record names another. The session banner says so in one
+    line. Fix: the uninstall-and-install pair, at the recorded scope.
+14. **No unused plugin versions in the cache.** <!-- doctor-check: stale_cache -->
+    Version folders under `~/.claude/plugins/cache/ticketwright/ticketwright/` that no install
+    record uses. They never load, but they make it harder to tell which version runs. The doctor
+    lists them and prints the `rm -rf` line for each; it never deletes anything itself. Close every
+    Claude Code session before removing one.
+15. **`yq` is installed.** <!-- doctor-check: yq_present -->
     `command -v yq`. Needed only by `bin/selftest.sh`, where its absence fails a dozen-plus checks
     from one cause. macOS: `brew install yq`. Linux: your distribution's package. Windows:
     `winget install MikeFarah.yq`.
-14. **Git identity is set.** <!-- doctor-check: git_identity -->
+16. **Git identity is set.** <!-- doctor-check: git_identity -->
     `git config --get user.name` and `git config --get user.email`. Unset, the first commit fails:
     `git config user.name "…"` and `git config user.email "…"`.
-15. **Restart the right way.** <!-- doctor-check: restart -->
+17. **Restart the right way.** <!-- doctor-check: restart -->
     Printed whenever an install check above is not clean. Run `/reload-plugins` or start a new
     session. If the skills still do not appear, fully quit the Claude app (Cmd+Q on macOS,
     File → Exit on Windows/Linux) and relaunch. A new chat inside the running app is not a restart.

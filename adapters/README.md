@@ -107,11 +107,12 @@ always produces a *default the human confirms*, never an automatic selection.
 | `lookup_user` | name/email | user ID for mentions |
 | `lookup_channel` | name | channel ID |
 
-### `docstore` — durable backup + shareable links
+### `docstore` — durable backup, shareable links, folder picking
 | Verb | Inputs | Returns |
 |---|---|---|
 | `backup` | local ticket dir, dest name | files copied to the store |
 | `link_for` | a backed-up file | a shareable URL (for tracker/chat smart links) |
+| `list_folders` | a parent folder (empty for the top of the drive or remote) | folder names only, never file names (read-only; setup's folder question) |
 
 ### `vcs` — version control + PRs
 | Verb | Inputs | Returns |
