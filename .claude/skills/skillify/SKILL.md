@@ -10,8 +10,17 @@ allowed-tools: [Read, Write, Edit, Bash, Glob]
 The meta-skill (`skillify_everything`). When a task recurs (quarterly sale, monthly report,
 periodic reconciliation), this stamps out a new **folder skill** with the generated-skill skeleton:
 a phased pipeline with hard halts, parameterized SQL/steps, a QC checkpoint, a golden-replay
-regression test, and a hard halt before any external post. `/refresh index` + the `--recurring`
-flag of `bin/build_ticket_index.py` surface candidates ("this object shows up in 7 tickets").
+regression test, and a hard halt before any external post. Candidates come from two places: the
+repeat check in [repeats.md](repeats.md) (`recall.py --repeats`: this ticket reads the same tables
+as an earlier one), which `/ticket`, `/ship`'s retro and a session's closing message run at the
+second instance, and the `--recurring` flag of `bin/build_ticket_index.py` ("this object shows up
+in 7 tickets").
+
+**Where it came from.** When the run starts from a repeat suggestion, it arrives with the tickets
+the pattern came from. Use them as the golden fixture's known-good run (Phase 1) and write them,
+always as `<owner>/<id>`, into the new skill's `built_from:`, with the tables they read in
+`read_objects:`. That is how the next repeat check finds this skill instead of suggesting a second
+one. A bare id that more than one owner has is not written: ask which ticket it meant.
 
 ## How this skill asks the person something
 <!-- ticketwright:ask-rule:begin -->
@@ -62,7 +71,8 @@ name, its path (`.claude/skills/<name>/`), and the file list about to be written
 1. `KIT="$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)"`, then copy
    `"$KIT"/templates/generated-skill/` → `.claude/skills/<name>/` (SKILL.md + `sql/ templates/
    bin/ golden/`).
-2. Render `SKILL.md.tmpl` with the interview answers into the canonical phase shape:
+2. Render `SKILL.md.tmpl` with the interview answers (`built_from` and `read_objects` are
+   comma-separated, and empty when the run did not start from a repeat) into the canonical phase shape:
    **Phase 0** pre-flight (validate params + `verify_stack` for touched seams + an object drift
    check → halt-on-fail) → **render & run** parameterized steps → **QC** atomic checkpoint
    (hard-halt tiers) → **export** (deterministic `ORDER BY`) → **render docs** (README +

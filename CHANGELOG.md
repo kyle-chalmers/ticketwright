@@ -28,6 +28,21 @@ has two more checks (`install_commit`, `stale_cache`).
 - **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
   with a diagram, which link each post needs from an earlier step, and each moment it waits for
   you. (LABS-106)
+- **Ticketwright suggests `/skillify` the second time a team runs the same analysis.** A new
+  `recall.py --repeats` finds earlier tickets that read exactly the same tables (from the SQL's
+  `from`/`join`, not counting output tables or QC queries), with owner-qualified ids, the instance
+  count, and any project skill that may already do the work. One shared check,
+  `.claude/skills/skillify/repeats.md`, has the agent confirm the deliverable shape and look at
+  those skills before it says anything. `/ticket`'s plan notes "the 2nd instance of …" and suggests
+  `/skillify` after ship; `/ship`'s retro asks "This repeats … Skillify it?"; and the `AGENTS.md`
+  rules ask any session that worked a ticket to mention it when it wraps up. Nothing is ever turned
+  into a skill without a yes, and `skillify_everything: false` turns the suggestion off. Generated
+  skills now record `built_from:` and `read_objects:`, so the next repeat points at the skill
+  instead of suggesting a second one. (LABS-116)
+- **`bin/gdrive_item_id.py` waits for a Google Drive link.** Right after a backup, Drive for desktop
+  has not yet given the file its id. The gdrive adapter's `link_for` now polls for it with a
+  timeout, then prints the share link, instead of leaving each agent to sleep and retry. A timeout
+  says the link is not ready and never guesses one. (LABS-116)
 
 ### Changed
 - **`/ship` runs in the order its links need.** It now commits and opens the pull request first,
@@ -109,6 +124,9 @@ has two more checks (`install_commit`, `stale_cache`).
   down, skipping dot folders, and rclone runs `rclone lsf --dirs-only` on the person's own remote.
   Setup's folder question now calls it, and selftest runs it on a tree of files and folders to show
   no file name gets through.
+- **The BigQuery adapter passes a `.sql` file on stdin.** `bq query "$(cat file.sql)"` failed on
+  every kit-written file, because line 1 is the `-- warehouse-target:` header and `bq` read it as a
+  flag. The query verb now says to use `bq query ... < file.sql`. (LABS-116)
 
 ## [4.4.1] - 2026-10-26
 
