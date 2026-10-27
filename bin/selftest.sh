@@ -1462,6 +1462,45 @@ PYPROMPT
   && ok "both paste-able install prompts are present, short, and identical across getting-started and the AGENTS template" \
   || bad "an install prompt drifted, grew, or lost the rule no tool enforces" "$(cat "$TMP/s21b-prompts.out")"
 
+# (h) the README's agent-neutral install prompt. The Quick start tells a person to say one line to any
+# coding agent, and that line only works if the README still holds the prompt it names. The prompt
+# carries what no tool enforces: project scope on both install commands, never --global, the
+# interview kept with the person, and a runtime list that matches adapters/runtime/.
+python3 - README.md adapters/runtime >"$TMP/s21b-readme-prompt.out" 2>&1 <<'PYRP'
+import os, re, sys
+t = open(sys.argv[1], encoding="utf-8").read()
+bad = []
+if "Read the install prompt in github.com/kyle-chalmers/ticketwright and follow it." not in t:
+    bad.append("the README Quick start lost its one-line install prompt")
+if "## Install with your coding agent" not in t:
+    bad.append("the README has no 'Install with your coding agent' section for the Quick start to point at")
+blocks = re.findall(r'(?ms)^```text\n(.*?)^```', t)
+p = [b for b in blocks if b.startswith("Install Ticketwright (https://github.com/kyle-chalmers/ticketwright)")]
+if len(p) != 1:
+    bad.append("the README has %d install prompt blocks, want 1" % len(p))
+else:
+    b = re.sub(r'\s+', ' ', p[0])
+    for need, why in (
+        ("claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project", "project-scoped marketplace add"),
+        ("claude plugin install ticketwright@ticketwright --scope project", "project-scoped plugin install"),
+        ("never answer one for me", "the interview kept with the person"),
+        ("--global", "the warning against a user-level install"),
+        ("pip install ticketwright", "the other-agent path"),
+        ("plugin_doctor.py", "the doctor fallback"),
+    ):
+        if need not in b:
+            bad.append("the install prompt lost %s" % why)
+    m = re.search(r'install --runtime <name>`, where <name> is (.*?)\.', b)
+    named = set(re.split(r',\s*|\s+or\s+', m.group(1))) if m else set()
+    have = {f[:-3] for f in os.listdir(sys.argv[2]) if f.endswith(".md")} - {"claude-code"}
+    if named != have:
+        bad.append("the install prompt's runtime list %s does not match adapters/runtime %s" % (sorted(named), sorted(have)))
+print(" | ".join(bad))
+PYRP
+[ -z "$(cat "$TMP/s21b-readme-prompt.out")" ] \
+  && ok "the README Quick start names the install prompt, and the prompt keeps project scope, the interview and the runtime list" \
+  || bad "the README install prompt drifted" "$(cat "$TMP/s21b-readme-prompt.out")"
+
 hdr "22 · Obsidian graph config (.obsidian/graph.json)"
 GC="$TMP/graphcfg"; mkdir -p "$GC/.claude/config" "$GC/tickets/a/ENG-1" "$GC/tickets/a/ENG-2"
 printf 'project:\n  key_prefix: ENG\n' > "$GC/.claude/config/stack.yaml"

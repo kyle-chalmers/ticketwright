@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Install with one line to any coding agent.** The README Quick start now says: *"Read the install
+  prompt in github.com/kyle-chalmers/ticketwright and follow it."* The new "Install with your
+  coding agent" section holds that prompt: a project-scoped plugin install on Claude Code, the PyPI
+  path on Codex, Cursor, OpenCode, Cline, Devin and Antigravity, and every setup question asked of
+  you rather than answered for you. Selftest 21b(h) keeps the line, the scope and the runtime list
+  in step (LABS-120).
+
 ## [4.6.0] - 2026-10-27
 
 Setup now checks each app name you type for your review files, so a name the computer does not know
