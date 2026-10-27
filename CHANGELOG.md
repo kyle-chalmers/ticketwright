@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **The self-test can run one section at a time (contributors).** `bash bin/selftest.sh 6 6b`
+  runs only those sections (most take under three seconds alone; the full run takes about four
+  minutes), and
+  `bash bin/selftest.sh --list` prints every section. Every section now passes on its own: the
+  helpers and fixtures several sections share moved into one setup block, the docs' check-count
+  floor runs after the last section, and the viewer section that also used id 25 is now 82
+  (LABS-125).
+
 ## [4.5.1] - 2026-10-27
 
 Jira runs on the Atlassian connector alone, with `acli` optional (#116); `/ship` names the exact
