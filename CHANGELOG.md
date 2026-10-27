@@ -8,9 +8,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [4.5.0] - 2026-10-26
 
-`/ship` now merges the pull request after asking and runs in the order its links need (LABS-106,
-LABS-107), plus fixes from a first-run setup test (LABS-104). Nothing to migrate: existing
-configs keep working.
+`/ticket` can search a team's older tracker tickets when recall is weak (LABS-90), `/ship` merges
+the pull request after asking and runs in the order its links need (LABS-106, LABS-107), the kit
+suggests `/skillify` when an analysis repeats (LABS-116), and fixes from a first-run setup test
+(LABS-104). Existing configs keep working. **One contract change:** a custom tracker adapter must
+add the new `search_history` verb (see Changed).
 Two things a teammate may notice after updating: a slot still holding `mcp: TODO` now shows as a
 warning in `verify_stack.sh` and the session banner until it is finished, and the plugin doctor
 has two more checks (`install_commit`, `stale_cache`).
