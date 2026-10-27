@@ -26,6 +26,9 @@ adapter: adapters/viewer/macos-open.md
 open_cmd: 'open -a {app} {path}'
 default_cmd: 'open {path}'               # when no route below matches → OS default association
 reveal_cmd: 'open -R {path}'             # used by --reveal
+# Read-only "can this computer find {app}?" (exit 0 = found). Setup runs it through
+# `handoff.sh --check-apps` right after writing this file. It never launches or reveals anything.
+app_check_cmd: 'a={app}; a="${a%.app}.app"; for d in /Applications /Applications/Utilities /System/Applications /System/Applications/Utilities "$HOME/Applications"; do [ -d "$d/$a" ] && exit 0; done; mdfind -name "$a" 2>/dev/null | grep -qF "/$a"'
 
 # First matching glob wins. Match is on the FILENAME, not the full path.
 routes:
@@ -44,6 +47,7 @@ verify: "command -v open"                # read-only reachability check
 # open_cmd: 'gtk-launch {app} {path}'    # {app} is a .desktop id
 # default_cmd: 'xdg-open {path}'
 # reveal_cmd: 'xdg-open {path}'
+# app_check_cmd: 'a={app}; for d in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" /usr/local/share/applications /usr/share/applications /var/lib/flatpak/exports/share/applications; do [ -e "$d/$a" ] && exit 0; done; exit 1'
 # routes:
 #   - glob: "*.sql"
 #     app: datagrip.desktop
@@ -57,4 +61,5 @@ verify: "command -v open"                # read-only reachability check
 # open_cmd: 'cmd.exe /c start "" {app} {path}'
 # default_cmd: 'cmd.exe /c start "" {path}'
 # reveal_cmd: 'explorer.exe /select,{path}'
+# (no app_check_cmd: Windows has no read-only check, so setup says the app names were not checked)
 # verify: "command -v cmd.exe"

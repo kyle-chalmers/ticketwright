@@ -196,6 +196,7 @@ guidance, and the adapters say so rather than implying parity.
 |---|---|---|
 | `open` | one or more paths | each path handed to the application its glob route names |
 | `reveal` | a path | the containing folder shown in the OS file manager |
+| `check_app` | an app name a route names | found or not found, launching and revealing nothing; an adapter with no read-only check says so, and `handoff.sh --check-apps` then reports the names as not checked |
 
 The gate where a person actually *looks* at a deliverable — generated SQL into their IDE, result
 CSVs into their spreadsheet app — instead of the model declaring it correct on their behalf. Driven

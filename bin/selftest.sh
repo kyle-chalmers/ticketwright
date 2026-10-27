@@ -121,7 +121,7 @@ hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
     tracker) echo 9;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 5;;
-    viewer) echo 2;; meetings) echo 3;; *) echo 0;;
+    viewer) echo 3;; meetings) echo 3;; *) echo 0;;
   esac
 }
 for f in adapters/*/*.md; do
@@ -14843,7 +14843,7 @@ vw81=".claude/skills/setup/viewer.md"; sk81=".claude/skills/setup/SKILL.md"
 iv81=".claude/skills/setup/interview.md"; tm81=".claude/skills/setup/teammate.md"; rv81=".claude/skills/review/SKILL.md"
 tr '\n' ' ' < "$vw81" | tr -s ' ' > "$TMP/vw81.flat"
 # (a) one plain sentence on what the review stage is for, inside a checked say-this block
-{ [ "$(grep -c 'ticketwright:user-facing:begin' "$vw81")" -eq 1 ] \
+{ [ "$(grep -c 'ticketwright:user-facing:begin' "$vw81")" -eq 2 ] \
   && grep -q 'so you can check the numbers are right before anything is shared' "$vw81" \
   && python3 "$PL59" --marked "$vw81" >"$TMP/pl81.out" 2>&1; } \
   && ok "the viewer interview opens with one plain sentence on what review is for (plain-language checked)" \
@@ -14926,6 +14926,86 @@ o81="$(hoff "$VP81" --dry-run "$VP81/tickets/one.csv" "$VP81/tickets/q.sql")"
   && ! grep -q "open -a .*q.sql" <<<"$o81"; } \
   && ok "a kind with an app opens in it, and a kind left on the usual app opens with the computer's default" \
   || bad "the viewer interview's written shape does not route as it promises" "$o81"
+
+
+hdr "82 · setup checks each typed app name before review needs it (handoff --check-apps, LABS-119)"
+# A typed name the computer does not know ("Excel" for "Microsoft Excel") used to surface only as a
+# file that failed to open at the first review. handoff.sh --check-apps runs the config's
+# app_check_cmd per routed app, launching nothing; the setup interview runs it right after writing.
+# (a) found / not found / exit codes, with a sandboxed check that touches no real app
+vproj s82 <<'YAML' >"$TMP/vp82.out"
+enabled: true
+tool: macos-open
+open_cmd: 'open -a {app} {path}'
+app_check_cmd: '[ {app} = "Known App" ]'
+routes:
+  - glob: "*.sql"
+    app: Known App
+  - glob: "*.csv"
+    app: Typo
+  - glob: "*.tsv"
+    app: Typo
+YAML
+VP82="$(cat "$TMP/vp82.out")"
+o82="$(hoff "$VP82" --check-apps)"; rc82=$?
+{ [ "$rc82" -eq 1 ] && grep -q '^  found: Known App$' <<<"$o82" && grep -q '^  NOT FOUND: Typo$' <<<"$o82" \
+  && [ "$(grep -c 'Typo' <<<"$o82")" -eq 1 ]; } \
+  && ok "--check-apps reports each routed app once, found or NOT FOUND, and exits 1 when one is missing" \
+  || bad "--check-apps misreported the routed apps" "rc=$rc82 $o82"
+sed -i.bak 's/app: Typo/app: Known App/' "$VP82/.claude/config/viewer.local.yaml"
+o82="$(hoff "$VP82" --check-apps)"; rc82=$?
+{ [ "$rc82" -eq 0 ] && ! grep -q 'NOT FOUND' <<<"$o82"; } \
+  && ok "--check-apps exits 0 when every app is found" || bad "--check-apps failed with every app present" "rc=$rc82 $o82"
+# (b) a name is one shell-quoted word: it cannot run as a command
+cat > "$VP82/.claude/config/viewer.local.yaml" <<YAML
+enabled: true
+open_cmd: 'open -a {app} {path}'
+app_check_cmd: 'test -n {app}'
+routes:
+  - glob: "*.sql"
+    app: x; touch $TMP/pwn82
+YAML
+hoff "$VP82" --check-apps >/dev/null
+[ ! -e "$TMP/pwn82" ] && ok "an app name reaches the check as data, never as a command" \
+  || bad "an app name ran as a shell command inside --check-apps"
+# (c) no app_check_cmd (Windows) says the names were not checked, with its own exit code
+printf 'enabled: true\nopen_cmd: x {app} {path}\nroutes:\n  - glob: "*.sql"\n    app: Some App\n' \
+  > "$VP82/.claude/config/viewer.local.yaml"
+o82="$(hoff "$VP82" --check-apps)"; rc82=$?
+{ [ "$rc82" -eq 3 ] && grep -q '^  not checked: Some App$' <<<"$o82"; } \
+  && ok "a viewer with no app check lists the names as not checked (exit 3), never as found" \
+  || bad "--check-apps implied a check it cannot make" "rc=$rc82 $o82"
+# (d) the shipped commands are valid shell once a name is substituted, and the composed
+# people + connections source passes app_check_cmd through like the other commands
+bad82=""
+for f82 in .claude/config/viewer.example.yaml adapters/viewer/macos-open.md adapters/viewer/xdg-open.md; do
+  grep -o "app_check_cmd: '.*'" "$f82" | head -1 | sed "s/^app_check_cmd: '//; s/'\$//" > "$TMP/acc82"
+  sed -i.bak 's/{app}/Some\\ App/g' "$TMP/acc82"
+  { [ -s "$TMP/acc82" ] && bash -n "$TMP/acc82" 2>/dev/null; } || bad82="$bad82 $f82"
+done
+grep -q '^#* *app_check_cmd:' adapters/viewer/windows-start.md && bad82="$bad82 windows-start.md(sets one)"
+grep -q 'open -Ra' .claude/config/viewer.example.yaml adapters/viewer/*.md && grep -q "app_check_cmd: '.*open -R" .claude/config/viewer.example.yaml \
+  && bad82="$bad82 (uses open -R, which opens Finder)"
+[ -z "$bad82" ] && ok "the macOS and Linux app checks parse as shell, and Windows sets none" \
+  || bad "a shipped app_check_cmd is not valid shell or misplaced:$bad82"
+VC82="$TMP/vc82"; mkdir -p "$VC82/.claude/config" "$VC82/people"; : > "$VC82/.git"
+printf 'project:\n  key_prefix: ENG\n' > "$VC82/.claude/config/stack.yaml"
+printf 'display_name: A\nviewer:\n  categories:\n    - glob: "*.sql"\n      category: sql-editor\n' > "$VC82/people/alice.yaml"
+printf "person: alice\nviewer:\n  tool: macos-open\n  open_cmd: 'open -a {app} {path}'\n  app_check_cmd: 'test -n {app}'\n  apps:\n    sql-editor: DataGrip\n" \
+  > "$VC82/.claude/config/connections.local.yaml"
+XDG_CONFIG_HOME="$TMP/noxdg" python3 bin/effective_config.py --root "$VC82" --person alice --viewer-plan --quiet 2>/dev/null \
+  | grep -q '"app_check_cmd": "test -n {app}"' \
+  && ok "the composed people + connections viewer carries app_check_cmd" \
+  || bad "the composed viewer dropped app_check_cmd"
+# (e) setup runs it after writing, offers the three answers, and says plainly when nothing was checked
+vw82=".claude/skills/setup/viewer.md"; tr '\n' ' ' < "$vw82" | tr -s ' ' > "$TMP/vw82.flat"
+{ grep -q 'handoff.sh --check-apps' "$vw82" && grep -q "can't find an app called" "$vw82" \
+  && grep -q 'type the name again, use the computer.s usual app for that kind (remove its route), or keep the name as typed' "$TMP/vw82.flat" \
+  && grep -q 'Exit 3: this computer has no way to check app names' "$TMP/vw82.flat" \
+  && ! grep -q 'A typed name is not checked here' "$vw82" \
+  && grep -q 'check_app' adapters/README.md; } \
+  && ok "setup checks typed app names after writing and offers a fix; the verb is in the viewer contract" \
+  || bad "the viewer interview does not run the app check, or hides an unchecked name"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
