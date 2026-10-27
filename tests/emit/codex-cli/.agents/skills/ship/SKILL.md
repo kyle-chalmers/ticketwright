@@ -154,7 +154,9 @@ typed.
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam chat`
    (add `--override <name>` when the user passed `--chat <target>` — that flag is **chat only**, and
    the CLI says so on the plan line when it contradicts the ticket; add `--self "<shipper>"` so an
-   `include_self` target adds them). Same call with `--seam docstore`. Exit **7** = that slot isn't
+   `include_self` target adds them). Same call with `--seam docstore`, always with `--self "<shipper>"`:
+   each person's backups go into a folder named for them inside the team's folder, so the docstore
+   routing needs to know whose it is, and halts (exit 9) without it. Exit **7** = that slot isn't
    configured → skip its artifact and name `/setup tool chat` / `/setup tool docstore` as the
    enabler, exactly as before. Exit **0** → use the returned `target`, `destination`, `recipients`,
    `mode` and `sharing_scope` verbatim; they are the plan Phase B prints and executes. A chat exit
@@ -273,7 +275,9 @@ half by hand is how they drift apart. Every line names its resolved **target** (
 a single mapping — stating it is the point). The plan must show exactly what steps 5–10 will
 execute — nothing the steps don't do may appear in it:
    - **docstore** — tool, target, the declared `classification` that selected it, the exact
-     destination it will back up into, and the target's declared `sharing_scope`. Say plainly that
+     destination it will back up into (with per-person folders on, the routed `destination` already
+     ends in the shipper's own folder), whether that folder is created by this backup (the routed
+     `person_folder_new`), and the target's declared `sharing_scope`. Say plainly that
      the scope is **declared, not verified**: the kit checks that the destination exists, never its
      real sharing permissions (`adapters/README.md` § The delivery plan). Print it as
      `Sharing settings: <declared scope> (declared, not checked)`. On a single mapping the line is
@@ -301,6 +305,8 @@ execute — nothing the steps don't do may appear in it:
    > Delivery plan for `<owner>/<id>`. Nothing has been sent yet.
    > Documents: `<tool>`, target `<target>`, chosen by the classification `<classification>`, backed up to `<destination>`.
    > Sharing settings: <declared scope> (declared, not checked) | not checked (one destination).
+   > New folder: this backup creates `<person folder>` (first backup for you).
+   > Your folder: `<person folder>` is created on this backup if it is not there yet.
    > Ticket: `<tool>`, target `<target>`, comment on `<owner>/<id>`.
    > Chat: `<tool>`, target `<target>`, chosen by the audience `<audience>`, in `<channel>`, to `<recipients>`, sent as `<sender>`, as a draft | sent.
    > Chat: none, declared on the ticket (<reason>).
@@ -316,6 +322,11 @@ execute — nothing the steps don't do may appear in it:
    > 6. Move `<id>` to `<status>` once the pull request is merged.
    > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
+   Print the "New folder" line only when the routed docstore JSON says `person_folder_new: true`,
+   and the "Your folder" line only when it says `null` (a remote store that cannot be checked
+   ahead of time); print neither when it is `false` or when per-person folders are off. Fill
+   `<person folder>` with the routed `person_folder_label` verbatim (for example
+   `Tickets/Ada Lovelace/`).
    Leave out the "picked for this run" line unless the chat target came from `--chat <target>`, and
    leave out the sender when the routed JSON carries none. When the routed chat JSON carries
    `overrides_declared_none: true`, also print the "declares no chat message" line under it, so the
@@ -412,9 +423,15 @@ execute — nothing the steps don't do may appear in it:
    same command; this call is what makes the halt visible on runtimes whose hooks are not wired.
    Neither reads MEANING — a curated summary quoting confidential material passes both.) Then
    **docstore.backup** the ticket folder (full-title dest name) **into the routed target's
-   destination from step 4(a)** — never another target's, and never a slot-level path. Then record
+   destination from step 4(a)** — never another target's, never a slot-level path, and never the
+   team folder when the routed destination names a person folder. When the plan said the person
+   folder is new, the backup creates it; say so in the output, on its own line:
+   <!-- ticketwright:user-facing:begin -->
+   > Created your folder `<person folder>` (first backup for you).
+   <!-- ticketwright:user-facing:end -->
+   Then record
    each delivered file against the target it actually went to:
-   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <name from the resolution> --expect-fingerprint <full fingerprint from the resolution>`
+   `… delivery_plan.py --plan <ticket-dir>/delivery-plan.yaml --seam docstore --self "<shipper>" --record-delivered <path relative to the ticket> --url <shareable URL> --expect-target <name from the resolution> --expect-fingerprint <full fingerprint from the resolution>`
    and call `docstore.link_for` **against that same recorded target**. The recorded row is what
    makes a link provably come from the store the copy went into, rather than from whichever store
    was resolved a step later. Skip when the docstore seam isn't configured.

@@ -6222,7 +6222,7 @@ route --seam chat
   && [ "$(rget "d['destination']")" = "C0XXXXXXXXX" ] && [ "$(rget "d['destination_key']")" = "default_channel" ]; } \
   && ok "the other audience routes to the other target — different tool, different key, different list" \
   || bad "second audience routed wrong" "target=$(rget "d.get('target')") to=$(rget "d.get('recipients')")"
-route --seam docstore
+route --seam docstore --self "Pat Doe"
 { [ "$(rget "d['target']")" = "archive" ] && [ "$(rget "d['sharing_scope']")" = "team" ]; } \
   && ok "a declared classification routes the docstore and reports its declared sharing scope" \
   || bad "docstore classification routing wrong" "target=$(rget "d.get('target')")"
@@ -6270,7 +6270,7 @@ D45M="$TMP/route45m"; mkdir -p "$D45M/.claude/config" "$D45M/tk"
 sed 's#drive_folder: "Shared drives/Tickets"#drive_folder: "Shared drives/Tickets \& Reports"#' \
   "$KIT/.claude/config/stack.example.multi-audience.yaml" > "$D45M/.claude/config/stack.yaml"
 printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45M/tk/delivery-plan.yaml"
-MOUT="$(python3 "$DP" --root "$D45M" --plan "$D45M/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; MRC=$?
+MOUT="$(python3 "$DP" --root "$D45M" --plan "$D45M/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null)"; MRC=$?
 { [ "$MRC" -eq 4 ] && printf '%s' "$MOUT" | grep -q "'&'" && printf '%s' "$MOUT" | grep -q "metacharacters"; } \
   && ok "a destination carrying & is refused (exit 4) and the message NAMES the character" \
   || bad "the metachar refusal does not name the offending character" "rc=$MRC out=$MOUT"
@@ -6309,7 +6309,7 @@ D45N="$TMP/route45n"; mkdir -p "$D45N/.claude/config" "$D45N/tk"
 cp "$KIT/.claude/config/stack.example.multi-audience.yaml" "$D45N/.claude/config/stack.yaml"
 printf 'seams:\n  docstore:\n    targets:\n      archive:\n        mount_root: "/mnt/drive&sync"\n' > "$D45N/.claude/config/connections.local.yaml"
 printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45N/tk/delivery-plan.yaml"
-NOUT="$(python3 "$DP" --root "$D45N" --plan "$D45N/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; NRC=$?
+NOUT="$(python3 "$DP" --root "$D45N" --plan "$D45N/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null)"; NRC=$?
 { [ "$NRC" -eq 4 ] && printf '%s' "$NOUT" | grep -q "'&'" && printf '%s' "$NOUT" | grep -q "mount_root" && ! printf '%s' "$NOUT" | grep -q "rename the target folder"; } \
   && ok "a & in the machine-local mount_root blames mount_root, never the team's drive_folder" \
   || bad "composed-path refusal blames the wrong half" "rc=$NRC out=$NOUT"
@@ -6335,7 +6335,7 @@ UOUT="$(python3 "$DP" --root "$D45U" --plan "$D45U/tk/delivery-plan.yaml" --seam
 D45L="$TMP/route45l"; mkdir -p "$D45L/.claude/config" "$D45L/tk"
 printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive:\n        classification: internal_archive\n        sharing_scope: team\n        tool: gdrive\n        adapter: adapters/docstore/gdrive.md\n        transport: cli\n        drive_folder: "Shared drives/Tickets"\n        base_path: "/mnt/shared/Team & Co/Tickets"\n        verify: null\n' > "$D45L/.claude/config/stack.yaml"
 printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\n' > "$D45L/tk/delivery-plan.yaml"
-LOUT="$(python3 "$DP" --root "$D45L" --plan "$D45L/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; LRC=$?
+LOUT="$(python3 "$DP" --root "$D45L" --plan "$D45L/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null)"; LRC=$?
 { [ "$LRC" -eq 4 ] && printf '%s' "$LOUT" | grep -q "'&'" && printf '%s' "$LOUT" | grep -q '`base_path`' && ! printf '%s' "$LOUT" | grep -q "composed path"; } \
   && ok "a literal base_path carrying & is blamed on base_path itself, never reported as composed" \
   || bad "literal base_path refusal misreports its source" "rc=$LRC out=$LOUT"
@@ -6344,13 +6344,13 @@ D45R="$TMP/route45r"; mkdir -p "$D45R/.claude/config" "$D45R/tk"
 printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets & docs"\n    target_sentinel: t\n    verify: null\n' > "$D45R/.claude/config/stack.yaml"
 printf 'seams:\n  docstore:\n    remote: gdrv\n' > "$D45R/.claude/config/connections.local.yaml"
 printf 'schema_version: 1\n' > "$D45R/tk/delivery-plan.yaml"
-ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; RRC2=$?
+ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null)"; RRC2=$?
 { [ "$RRC2" -eq 4 ] && printf '%s' "$ROUT2" | grep -q '`remote` + `remote_path`' && printf '%s' "$ROUT2" | grep -q 'fix `remote_path`'; } \
   && ok "an rclone destination composed from remote + remote_path blames the remote_path half" \
   || bad "rclone composed-path refusal misnames its halves" "rc=$RRC2 out=$ROUT2"
 printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets"\n    target_sentinel: t\n    base_path: "gdrv:tickets & docs"\n    verify: null\n' > "$D45R/.claude/config/stack.yaml"
 rm -f "$D45R/.claude/config/connections.local.yaml"
-ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; RRC2=$?
+ROUT2="$(python3 "$DP" --root "$D45R" --plan "$D45R/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null)"; RRC2=$?
 { [ "$RRC2" -eq 4 ] && printf '%s' "$ROUT2" | grep -q '`base_path`' && ! printf '%s' "$ROUT2" | grep -q "composed path"; } \
   && ok "an rclone literal base_path carrying & is blamed on base_path, never on remote_path" \
   || bad "rclone literal base_path refusal misreports its source" "rc=$RRC2 out=$ROUT2"
@@ -6504,15 +6504,15 @@ R2D="$(python3 -c "import json;print(json.load(open('$TMP/r2.json'))['destinatio
 
 # --- (E3) the gate-2 hardening: chat-only override, an approved plan is binding, per-deliverable -
 printf 'schema_version: 1\naudience: internal\nclassification: internal_archive\ndeliverables:\n  - file: final_deliverables/summary.pdf\n    classification: client_delivery\n' > "$PLAN45"
-route --seam docstore
+route --seam docstore --self "Pat Doe"
 [ "$(rget "d['target']")" = "archive" ] \
   && ok "the plan-level classification routes the ticket's deliverables by default" \
   || bad "plan-level classification routing wrong" "target=$(rget "d.get('target')")"
-route --seam docstore --file final_deliverables/summary.pdf
+route --seam docstore --self "Pat Doe" --file final_deliverables/summary.pdf
 { [ "$(rget "d['target']")" = "client_delivery" ] && [ "$(rget "d['sharing_scope']")" = "external" ]; } \
   && ok "a deliverable declaring its OWN classification routes to its own store (per-deliverable)" \
   || bad "per-deliverable classification ignored" "target=$(rget "d.get('target')")"
-route --seam docstore --override archive
+route --seam docstore --self "Pat Doe" --override archive
 [ "$RRC" -eq 2 ] \
   && ok "--override is refused for docstore — a store is DECLARED per deliverable, never flagged" \
   || bad "a docstore override was accepted" "rc=$RRC"
@@ -6594,7 +6594,7 @@ LGD="$(printf '%s' "$LGJ" | python3 -c "import json,sys;d=json.load(sys.stdin);p
 # routed the file to the client store with rc=0. Every shape now halts (exit 4), no target emitted.
 row_case() {  # row_case <label> <deliverables block yaml> <--file arg>
   printf 'schema_version: 1\nclassification: client_delivery\n%s' "$2" > "$PLAN45"
-  python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file "$3" --quiet > "$TMP/e4.json" 2>/dev/null
+  python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --file "$3" --quiet > "$TMP/e4.json" 2>/dev/null
   E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
   { [ "$E4RC" -eq 4 ] && [ "$E4T" = "None" ]; } \
     && ok "a deliverables row with $1 is exit 4 with no target — never a fallthrough to plan level" \
@@ -6607,30 +6607,30 @@ row_case "the chat key audience: (mix-up)" 'deliverables:\n  - file: a.csv\n    
 row_case "a misspelled key" 'deliverables:\n  - file: a.csv\n    clasification: internal_archive\n' a.csv
 row_case "a non-mapping row" 'deliverables:\n  - just a string\n' a.csv
 printf 'schema_version: 1\nclassification: client_delivery\ndeliverables: not a list\n' > "$PLAN45"
-python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --quiet > "$TMP/e4.json" 2>/dev/null
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --quiet > "$TMP/e4.json" 2>/dev/null
 E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
 { [ "$E4RC" -eq 4 ] && [ "$E4T" = "None" ]; } \
   && ok "a deliverables: block that is not a list of rows is exit 4 with no target" \
   || bad "a malformed deliverables block was silently iterated into nothing" "rc=$E4RC target=$E4T"
 # The mix-up error must TEACH: it names the right key.
 printf 'schema_version: 1\nclassification: client_delivery\ndeliverables:\n  - file: a.csv\n    audience: internal\n' > "$PLAN45"
-E4MSG="$(python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file a.csv 2>&1)" || true
+E4MSG="$(python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --file a.csv 2>&1)" || true
 grep -q 'did you mean' <<<"$E4MSG" \
   && ok "the audience-key mix-up error names classification: as the fix" \
   || bad "the mix-up error does not say what was meant"
 # Path normalization: a ./-prefixed row must MATCH its bare --file (the same fallthrough in a wig).
 printf 'schema_version: 1\nclassification: client_delivery\ndeliverables:\n  - file: ./qc_queries/scratch.sql\n    classification: internal_archive\n' > "$PLAN45"
-python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file qc_queries/scratch.sql --quiet > "$TMP/e4.json" 2>/dev/null
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --file qc_queries/scratch.sql --quiet > "$TMP/e4.json" 2>/dev/null
 { [ "$?" -eq 0 ] && [ "$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])")" = "archive" ]; } \
   && ok "a ./-prefixed row path matches its bare --file (normalized) and keeps the file internal" \
   || bad "a ./-prefixed row silently missed its file and fell through to the client store"
-python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file qc_queries//scratch.sql --quiet > "$TMP/e4.json" 2>/dev/null
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --file qc_queries//scratch.sql --quiet > "$TMP/e4.json" 2>/dev/null
 { [ "$?" -eq 0 ] && [ "$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])")" = "archive" ]; } \
   && ok "a doubled-slash --file matches the row too (both sides normalized)" \
   || bad "a doubled slash in the path degraded to the plan-level fallthrough"
 # Two rows naming one file (after normalization) is ambiguity, and ambiguity never picks.
 printf 'schema_version: 1\nclassification: internal_archive\ndeliverables:\n  - file: a.csv\n    classification: internal_archive\n  - file: ./a.csv\n    classification: client_delivery\n' > "$PLAN45"
-python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --file a.csv --quiet >/dev/null 2>&1
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --file a.csv --quiet >/dev/null 2>&1
 [ "$?" -eq 4 ] && ok "duplicate rows for one file are exit 4 — first-match-wins never silently routes" \
   || bad "duplicate deliverables rows were resolved by picking one"
 
@@ -6669,7 +6669,7 @@ FPB="$(python3 "$DP" --stack "$TMP/e4-selfed.yaml" --plan "$PLAN45" --seam chat 
 NS="$TMP/e4-noscope"; mkdir -p "$NS/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive: {classification: internal_archive, tool: gdrive, adapter: adapters/docstore/gdrive.md, drive_folder: "A", verify: null}\n      client_delivery: {classification: client_delivery, sharing_scope: external, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null}\n' > "$NS/.claude/config/stack.yaml"
 printf 'schema_version: 1\nclassification: internal_archive\n' > "$NS/dp.yaml"
-python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam docstore --quiet > "$TMP/e4.json" 2>/dev/null
+python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam docstore --self "Pat Doe" --quiet > "$TMP/e4.json" 2>/dev/null
 E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['target'])" 2>/dev/null)"
 { [ "$E4RC" -eq 4 ] && [ "$E4T" = "None" ]; } \
   && ok "a routed docstore target with no sharing_scope refuses at route time (exit 4, parity with the audit)" \
@@ -6677,17 +6677,17 @@ E4RC=$?; E4T="$(python3 -c "import json;print(json.load(open('$TMP/e4.json'))['t
 # A junk-typed base_path may never REPLACE the type-checked drive_folder as the destination.
 printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    default: archive\n    targets:\n      archive: {classification: internal_archive, sharing_scope: team, tool: gdrive, adapter: adapters/docstore/gdrive.md, drive_folder: "A", base_path: {x: 1}, verify: null}\n      client_delivery: {classification: client_delivery, sharing_scope: external, tool: sharepoint, adapter: adapters/docstore/sharepoint.md, drive_folder: "B", verify: null}\n' > "$NS/.claude/config/stack.yaml"
 printf 'schema_version: 1\nclassification: internal_archive\n' > "$NS/dp.yaml"
-E4D="$(python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam docstore --quiet 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["destination"])' 2>/dev/null)"
-[ "$E4D" = "A" ] && ok "a junk-typed base_path cannot replace the checked destination (the string stays)" \
+E4D="$(python3 "$DP" --root "$NS" --plan "$NS/dp.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["destination"])' 2>/dev/null)"
+[ "$E4D" = "A/Pat Doe" ] && ok "a junk-typed base_path cannot replace the checked destination (the string stays)" \
   || bad "an unchecked base_path was emitted as the destination" "dest=$E4D"
 # A plan that EXISTS but is malformed reports on a SINGLE-mapping slot too; only an ABSENT plan is excused.
 SM="$TMP/e4-single"; mkdir -p "$SM/.claude/config"
 printf 'project:\n  key_prefix: ENG\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    drive_folder: "A"\n    verify: null\n' > "$SM/.claude/config/stack.yaml"
 printf 'schema_version: 1\ndeliverables: junk\n' > "$SM/dp.yaml"
-python3 "$DP" --root "$SM" --plan "$SM/dp.yaml" --seam docstore --quiet >/dev/null 2>&1
+python3 "$DP" --root "$SM" --plan "$SM/dp.yaml" --seam docstore --self "Pat Doe" --quiet >/dev/null 2>&1
 [ "$?" -eq 4 ] && ok "a malformed plan reports exit 4 even on a single-mapping slot (broken record, not excused)" \
   || bad "a malformed plan exited 0 on a single-mapping slot"
-python3 "$DP" --root "$SM" --plan "$SM/absent.yaml" --seam docstore --quiet >/dev/null 2>&1
+python3 "$DP" --root "$SM" --plan "$SM/absent.yaml" --seam docstore --self "Pat Doe" --quiet >/dev/null 2>&1
 [ "$?" -eq 0 ] && ok "an ABSENT plan on a single-mapping slot still routes (the regression guard holds)" \
   || bad "the malformed-plan tightening broke plan-less single-mapping repos"
 
@@ -6726,9 +6726,9 @@ CLAUDE_PLUGIN_ROOT= bash "$NK/bin/verify_stack.sh" "$KIT/.claude/config/stack.ya
 
 # --- (F) the delivered row binds link_for to the store backup actually used ----------------------
 printf 'schema_version: 1\naudience: client\nclassification: client_delivery\n' > "$PLAN45"
-route --seam docstore
+route --seam docstore --self "Pat Doe"
 BACKUP_T="$(rget "d['target']")"
-python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --quiet \
+python3 "$DP" --root "$D45" --plan "$PLAN45" --seam docstore --self "Pat Doe" --quiet \
   --record-delivered "final_deliverables/out_12rows.csv" --url "https://example.invalid/d/x1" >/dev/null 2>&1
 python3 - "$PLAN45" "$KIT/bin" <<'PY' >"$TMP/hd5570.out"
 import sys, pathlib
@@ -7675,7 +7675,8 @@ for verb in ("backup", "link_for"):
                     rep["delete_flags"].append(f"{verb}: {tok}")
             if "{remote}:{remote_path}" in line:
                 rep["handbuilt"].append(f"{verb}: {line}")
-    if "{base_path}" not in " ".join(mine):
+    # `{destination}` is the routed value: `{base_path}`, plus the person folder when that is on.
+    if "{base_path}" not in " ".join(mine) and "{destination}" not in " ".join(mine):
         rep["dest_missing"].append(verb)
 print(json.dumps(rep))
 PYC
@@ -7696,7 +7697,7 @@ grep -q 'dry-run' <<<"$rc_verbs" \
 # EVERY destination-bearing verb reads the composed value: that identity is what keeps the executed
 # target equal to the fingerprinted one, including when a team pins base_path literally.
 [ "$(rcq dest_missing)" = "[]" ] \
-  && ok "both backup and link_for take their destination from {base_path}" \
+  && ok "both backup and link_for take their destination from {base_path} or the routed {destination}" \
   || bad "a verb builds its own destination instead of the composed {base_path}" "$(rcq dest_missing)"
 [ "$(rcq handbuilt)" = "[]" ] \
   && ok "…and no runnable command hand-builds {remote}:{remote_path}, which would bypass the fingerprint" \
@@ -7768,7 +7769,7 @@ grep -q 'refusing to run' <<<"$o" \
 
 # --- (E) …and the same value cannot reach a ROUTED backup ---------------------------------------
 DP50="$KIT/bin/delivery_plan.py"
-r50="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null)"; rc50=$?
+r50="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null)"; rc50=$?
 { [ "$rc50" -eq 4 ] \
   && printf '%s' "$r50" | python3 -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("resolution_fingerprint") is None and d.get("destination") is None and d.get("unsafe") else 1)'; } \
   && ok "a poisoned remote is unroutable too: exit 4, no destination, no fingerprint" \
@@ -7779,7 +7780,7 @@ r50="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --s
 # silent redirect UNLESS the resolved destination (which carries the remote) is fingerprinted.
 fp50() {
   rc_local "$1"
-  python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null \
+  python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("resolution_fingerprint"),d.get("destination"))'
 }
 f_team="$(fp50 teamdrive)"; f_other="$(fp50 attacker-drive)"
@@ -7791,10 +7792,10 @@ grep -q 'teamdrive:eng-archive' <<<"$f_team" \
   && ok "the routed destination is the composed \`{remote}:{remote_path}\`, not the bare path" \
   || bad "the routed rclone destination does not carry the remote" "$f_team"
 rc_local teamdrive
-approved="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null \
+approved="$(python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null \
              | python3 -c 'import json,sys; print(json.load(sys.stdin)["resolution_fingerprint"])')"
 rc_local attacker-drive
-python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore \
+python3 "$DP50" --root "$RCP50" --plan "$RCP50/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" \
         --expect-fingerprint "$approved" --quiet >/dev/null 2>&1
 [ "$?" -eq 8 ] && ok "--expect-fingerprint REFUSES after the remote is re-pointed (exit 8)" \
   || bad "--expect-fingerprint accepted a redirected remote"
@@ -7812,13 +7813,13 @@ cp "$RCP50/tk/delivery-plan.yaml" "$LITP/tk/delivery-plan.yaml"
 litfp() {
   printf 'person: alice\nseams:\n  docstore:\n    targets:\n      archive:\n        remote: %s\n' "$1" \
     > "$LITP/.claude/config/connections.local.yaml"
-  python3 "$DP50" --root "$LITP" --plan "$LITP/tk/delivery-plan.yaml" --seam docstore --quiet 2>/dev/null \
+  python3 "$DP50" --root "$LITP" --plan "$LITP/tk/delivery-plan.yaml" --seam docstore --self "Pat Doe" --quiet 2>/dev/null \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("destination"))'
 }
 # A team-committed base_path is a TEAM decision and reviewable in git, so it legitimately wins the
 # destination. What must hold is that the adapter cannot then execute somewhere else: every runnable
 # command reads {base_path}, so the executed target and the fingerprinted one are the same string.
-[ "$(litfp teamdrive)" = "pinned:by-team" ] && [ "$(litfp attacker-drive)" = "pinned:by-team" ] \
+[ "$(litfp teamdrive)" = "pinned:by-team/Pat Doe" ] && [ "$(litfp attacker-drive)" = "pinned:by-team/Pat Doe" ] \
   && ok "a team-pinned base_path is the destination for BOTH aliases — and the commands execute it, not the alias" \
   || bad "a literal base_path and the executed destination disagree" "$(litfp teamdrive) / $(litfp attacker-drive)"
 # …and the tier split is not silently lost: the lint says so (block J2 proves the message).
@@ -11629,14 +11630,14 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
 # Exact block count per file: a file that loses a block must fail, not hide behind the total.
 c59=""
-for want59 in ".claude/skills/ship/SKILL.md:5" ".claude/skills/review/SKILL.md:3" ".claude/agents/qc-reviewer.md:1"; do
+for want59 in ".claude/skills/ship/SKILL.md:6" ".claude/skills/review/SKILL.md:3" ".claude/agents/qc-reviewer.md:1"; do
   f59="${want59%%:*}"; w59="${want59##*:}"
   g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
   { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
 done
 [ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
      --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
-  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (5 + 3 + 1 blocks)" \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (6 + 3 + 1 blocks)" \
   || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
 # --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
@@ -15045,6 +15046,121 @@ vw82=".claude/skills/setup/viewer.md"; tr '\n' ' ' < "$vw82" | tr -s ' ' > "$TMP
   && grep -q 'check_app' adapters/README.md; } \
   && ok "setup checks typed app names after writing and offers a fix; the verb is in the viewer contract" \
   || bad "the viewer interview does not run the app check, or hides an unchecked name"
+
+hdr "83 · each person's backups go in their own folder inside the team's (per_person, LABS-127)"
+# The team folder stays one team-wide key; routing nests the shipper's own folder under it. The folder
+# is part of the destination (so inside the fingerprint), its existence is reported but never pinned
+# (the backup creates it between approval and the record), and a missing --self halts.
+DP83="$KIT/bin/delivery_plan.py"; PP="$TMP/pp83"; mkdir -p "$PP/.claude/config" "$PP/tk" "$PP/mnt"
+pp_stack() {  # pp_stack [extra yaml line under docstore]
+  printf 'project:\n  key_prefix: TEST\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    drive_folder: "Tickets"\n%s    verify: null\n' "${1:-}" \
+    > "$PP/.claude/config/stack.yaml"
+}
+pp_stack
+printf 'seams:\n  docstore:\n    mount_root: "%s"\n' "$PP/mnt" > "$PP/.claude/config/connections.local.yaml"
+pp() { python3 "$DP83" --root "$PP" --plan "$PP/tk/delivery-plan.yaml" --seam docstore --quiet "$@" > "$TMP/pp83.json" 2>/dev/null; PPRC=$?; }
+ppget() { python3 -c "import json,sys; d=json.load(open('$TMP/pp83.json')); print($1)" 2>/dev/null; }
+# (a) nested destination, and the first ship's folder reported as new
+pp --self "Ada Lovelace"
+{ [ "$PPRC" -eq 0 ] && [ "$(ppget "d['destination']")" = "$PP/mnt/Tickets/Ada Lovelace" ] \
+  && [ "$(ppget "d['person_folder_label']")" = "Tickets/Ada Lovelace/" ] \
+  && [ "$(ppget "d['person_folder_new']")" = "True" ] && [ "$(ppget "d['per_person']")" = "True" ]; } \
+  && ok "the docstore routes to <team folder>/<person> by default, and a first backup's folder is reported new" \
+  || bad "per-person nesting wrong" "rc=$PPRC $(cat "$TMP/pp83.json")"
+FP83="$(ppget "d['resolution_fingerprint']")"
+# (b) the first backup creates it (the adapter's mkdir -p), and the approval still holds afterwards
+mkdir -p "$PP/tk/src" && printf 'x\n' > "$PP/tk/src/a.csv" && mkdir -p "$PP/tk/src/comms" && printf 'd\n' > "$PP/tk/src/comms/draft.md"
+dest83="$(ppget "d['destination']")/TEST-14 Example analysis"
+# The adapter's own steps, minus rsync (not a selftest dependency): mkdir -p, then the copy.
+rm -rf "$dest83" && mkdir -p "$dest83" && cp "$PP/tk/src/a.csv" "$dest83/"
+pp --self "Ada Lovelace" --expect-fingerprint "$FP83" --expect-target single
+{ [ "$PPRC" -eq 0 ] && [ -f "$dest83/a.csv" ] && [ ! -e "$dest83/comms" ] \
+  && [ "$(ppget "d['person_folder_new']")" = "False" ] && [ "$(ppget "d['resolution_fingerprint']")" = "$FP83" ]; } \
+  && ok "the first backup creates the person folder, and the approved plan still matches once it exists" \
+  || bad "person-folder creation moved the fingerprint or left the folder new" "rc=$PPRC $(cat "$TMP/pp83.json")"
+# (c) whose folder must be said: no --self halts with no destination; another shipper is another plan
+pp
+{ [ "$PPRC" -eq 9 ] && [ "$(ppget "d['destination']")" = "None" ] && grep -q 'does not say whose' "$TMP/pp83.json"; } \
+  && ok "routing without --self halts (exit 9, no destination), never falling back to the team folder" \
+  || bad "a docstore routing without --self still produced a destination" "rc=$PPRC"
+pp --self "Grace Hopper" --expect-fingerprint "$FP83"
+[ "$PPRC" -eq 8 ] && ok "a different shipper than the approved one refuses the approved plan (exit 8)" \
+  || bad "the fingerprint did not pin whose folder the backup goes to" "rc=$PPRC"
+# (d) the folder-name rule: forbidden characters dropped, spaces kept, nothing that walks out of the folder
+pp --self ' Zoë  (Data) & Co; $x/y "q" `z` '
+[ "$(ppget "d['person_folder']")" = "Zoë Data Co xy q z" ] \
+  && ok "the folder name drops ; | & \$ < > ( ) \\ backtick / and quote, keeps accents, collapses spaces" \
+  || bad "person folder name not sanitized as documented" "$(ppget "d.get('person_folder')")"
+pp --self ' .. '
+{ [ "$PPRC" -eq 9 ] && [ "$(ppget "d['destination']")" = "None" ]; } \
+  && ok "a name that sanitizes to nothing (or to ..) halts rather than backing up to the team folder" \
+  || bad "an empty person folder name routed" "rc=$PPRC"
+# (e) the opt-out, its validation, and that it is team config only
+pp_stack "    per_person: false
+"
+pp --self "Ada Lovelace"
+{ [ "$PPRC" -eq 0 ] && [ "$(ppget "d['destination']")" = "$PP/mnt/Tickets" ] && [ "$(ppget "d['person_folder']")" = "None" ]; } \
+  && ok "per_person: false backs up into the team folder itself" \
+  || bad "the per_person opt-out did not route to the team folder" "rc=$PPRC $(ppget "d.get('destination')")"
+pp_stack "    per_person: maybe
+"
+pp --self "Ada Lovelace"
+AU83="$(python3 "$DP83" --stack "$PP/.claude/config/stack.yaml" --audit --quiet 2>/dev/null)"
+{ [ "$PPRC" -eq 4 ] && [ "$(ppget "d['destination']")" = "None" ] && grep -q 'per_person' <<<"$AU83"; } \
+  && ok "an unreadable per_person value halts routing (exit 4) and the audit names it" \
+  || bad "a junk per_person value routed or passed the audit" "rc=$PPRC audit=$AU83"
+pp_stack
+printf 'seams:\n  docstore:\n    mount_root: "%s"\n    per_person: false\n' "$PP/mnt" > "$PP/.claude/config/connections.local.yaml"
+pp --self "Ada Lovelace"
+EC83="$(python3 "$KIT/bin/effective_config.py" --root "$PP" --seam docstore 2>&1)"
+{ [ "$(ppget "d['destination']")" = "$PP/mnt/Tickets/Ada Lovelace" ] && grep -q 'prohibited_override' <<<"$EC83"; } \
+  && ok "per_person in a personal config is refused; only the team can turn per-person folders off" \
+  || bad "a tier-3 per_person moved the destination" "$(ppget "d.get('destination')")"
+# (f) a remote store nests too, and says it cannot tell whether the folder exists yet
+RP83="$TMP/pp83r"; mkdir -p "$RP83/.claude/config" "$RP83/tk"
+printf 'project:\n  key_prefix: TEST\nseams:\n  docstore:\n    tool: rclone\n    adapter: adapters/docstore/rclone.md\n    transport: cli\n    remote_path: "tickets"\n    target_sentinel: t\n    verify: null\n' > "$RP83/.claude/config/stack.yaml"
+printf 'seams:\n  docstore:\n    remote: gdrv\n' > "$RP83/.claude/config/connections.local.yaml"
+python3 "$DP83" --root "$RP83" --plan "$RP83/tk/delivery-plan.yaml" --seam docstore --self "Ada Lovelace" --quiet > "$TMP/pp83.json" 2>/dev/null
+{ [ "$(ppget "d['destination']")" = "gdrv:tickets/Ada Lovelace" ] && [ "$(ppget "d['person_folder_new']")" = "None" ]; } \
+  && ok "an rclone destination nests the person folder and reports its existence as unknown" \
+  || bad "rclone per-person routing wrong" "$(cat "$TMP/pp83.json")"
+# (f2) the join keeps the root it names, and a slot with no team folder is an error, not a crash
+python3 - "$KIT/bin" > "$TMP/pp83j.out" 2>&1 <<'PYJ'
+import sys; sys.path.insert(0, sys.argv[1]); import delivery_plan as d
+got = [d._join_dest(b, "Ada") for b in ("archive:/", "archive:", "/mnt/Tickets:", "/mnt/T/", "gdrv:t")]
+print("OK" if got == ["archive:/Ada", "archive:Ada", "/mnt/Tickets:/Ada", "/mnt/T/Ada", "gdrv:t/Ada"] else got)
+PYJ
+[ "$(cat "$TMP/pp83j.out")" = "OK" ]   && ok "the person folder keeps the configured root (remote: and remote:/ stay different places)"   || bad "joining the person folder rewrote the configured root" "$(cat "$TMP/pp83j.out")"
+NF83="$TMP/pp83nf"; mkdir -p "$NF83/.claude/config"
+printf 'project:
+  key_prefix: TEST
+seams:
+  docstore:
+    tool: gdrive
+    adapter: adapters/docstore/gdrive.md
+    transport: cli
+    verify: null
+' > "$NF83/.claude/config/stack.yaml"
+python3 "$DP83" --root "$NF83" --plan "$NF83/x.yaml" --seam docstore --self "Ada Lovelace" --quiet > "$TMP/pp83.json" 2>/dev/null; PPRC=$?
+{ [ "$PPRC" -eq 4 ] && [ "$(ppget "d['destination']")" = "None" ] && grep -q 'no team folder is set' "$TMP/pp83.json"; } \
+  && ok "a documents slot with no team folder is a plain error (exit 4), not a crash" \
+  || bad "a slot with no team folder crashed or routed" "rc=$PPRC"
+# (g) the adapters back up into the routed destination and never remove the person folder; /ship says it
+bad83=""
+for a in gdrive sharepoint rclone; do
+  grep -q 'dest="{destination}/<TICKET-ID> <Full Ticket Title>"' "adapters/docstore/$a.md" || bad83="$bad83 $a(dest)"
+  grep -qi 'person folder' "adapters/docstore/$a.md" || bad83="$bad83 $a(person folder)"
+done
+grep -q 'never removed, emptied or renamed' adapters/docstore/gdrive.md || bad83="$bad83 gdrive(keep)"
+grep -q 'never purged' adapters/docstore/rclone.md || bad83="$bad83 rclone(keep)"
+sk83=".claude/skills/ship/SKILL.md"
+grep -q 'New folder: this backup creates `<person folder>` (first backup for you).' "$sk83" || bad83="$bad83 ship(plan line)"
+grep -q 'Created your folder `<person folder>` (first backup for you).' "$sk83" || bad83="$bad83 ship(output line)"
+grep -q 'seam docstore --self "<shipper>" --record-delivered' "$sk83" || bad83="$bad83 ship(record --self)"
+grep -q '`per_person`' .claude/config/stack.schema.md || bad83="$bad83 schema"
+grep -q 'per_person' .claude/skills/setup/interview.md || bad83="$bad83 interview"
+[ -z "$bad83" ] && ok "adapters, /ship, the schema and setup all describe the per-person folder the same way" \
+  || bad "per-person folder wording missing:$bad83"
 
 printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

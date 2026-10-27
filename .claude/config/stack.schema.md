@@ -95,6 +95,22 @@ Tokenless verifies are correct and stay silent: they name nothing machine-specif
 composes `base_path` from the two, so adapter verb bodies keep interpolating `{base_path}`
 unchanged. A literal `base_path:` still works and warns.
 
+### Each person's backups go in their own folder
+
+`/ship` backs a ticket up into `{base_path}/<person folder>/<TICKET-ID> <Full Title>`, where the
+person folder is the shipper's display name from their identity (`people/<id>.yaml`, resolved by
+`whoami.py`). The folder is created on that person's first backup, and the delivery plan says so
+before anything is copied. The name keeps spaces, apostrophes, hyphens and accents; it drops
+`; | & $ < > ( ) \`, the backtick, `/` and `"`, collapses whitespace to single spaces, and trims
+leading or trailing spaces and dots. `drive_folder` (or `remote_path`) stays the one team-wide
+folder.
+
+| Field | Slot | Meaning |
+|---|---|---|
+| `per_person` | docstore slot or target | `true` (default when absent) \| `false`. `false` backs up straight into the team folder, the behavior before 4.7.0. Any other value halts routing. Team config: tier 3 may not set it. Setup never asks about it. |
+
+Backups made before 4.7.0 stay where they are; nothing moves them.
+
 ---
 
 ## Top-level shape

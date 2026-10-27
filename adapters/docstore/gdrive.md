@@ -37,15 +37,24 @@ Never list a drive with a plain `ls`: it prints file names too, and a file name 
 someone's work than they agreed to show. Setup's folder question calls this verb and nothing else.
 
 ## verb: backup
-**In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).
+**In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention), and the
+routed `destination` from `bin/delivery_plan.py`. With per-person folders on (the default) that is
+`{base_path}/<person folder>`, the shipper's own folder inside the team's; with `per_person: false`
+it is `{base_path}` itself. Never rebuild it by hand: the routed value is the one the person approved.
 ```bash
-dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
+dest="{destination}/<TICKET-ID> <Full Ticket Title>"
 rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
 mkdir -p "$dest"
 rsync -r --exclude '/comms/' "<local ticket dir>/" "$dest/"   # unsent drafts stay local
 ls -la "$dest"                       # verify; no comms/ folder
 ```
 Requires explicit approval (external side effect) — policy `hard_halt_before_external_posts`.
+
+**The person folder on a first backup.** `mkdir -p "$dest"` creates `{destination}` too when this is
+the person's first backup, and nothing else is created. Routing reports that ahead of time
+(`person_folder_new: true`), so the approved plan already said so; say it again in the output, in
+the words `/ship` gives. The person folder is never removed, emptied or renamed: `rm -rf` only ever
+names the one exact ticket folder in `$dest`.
 
 **`comms/` stays out of the backup.** It holds `/ship`'s unsent tracker and chat drafts, which are
 gitignored so unsent wording never leaves the machine; a folder copy would carry them to a shared
@@ -54,11 +63,13 @@ client never sees it. With no `rsync` on the machine (Git Bash on Windows), use
 `cp -r "<local ticket dir>" "$dest" && rm -rf "$dest/comms"` and say plainly that the sync client
 may upload the drafts for the moment before the delete.
 **Never** `rm -rf "<ID>"*` — a prefix glob also matches `<ID>0`, `<ID>1234`, etc. If a prior backup
-used a different title, `ls "{base_path}"` and remove that one exact path by name.
+used a different title, `ls "{destination}"` and remove that one exact path by name. A backup made
+before per-person folders sits in `{base_path}` itself and stays there: leave it unless the person
+asks, and then remove only that one exact path.
 Note: clean `rm`+`cp` mints **new** Drive item-ids, so any previously shared links go stale — repost.
 
 ## verb: link_for
-**In:** a backed-up file path. **Out:** a shareable Drive URL (for tracker/chat smart links).
+**In:** a backed-up file path, inside `$dest` from `backup` (so under the person folder when that is on). **Out:** a shareable Drive URL (for tracker/chat smart links).
 ```bash
 bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" gdrive_item_id.py "<gdrive file path>" --timeout 300
 # → prints https://drive.google.com/file/d/<ITEM_ID> (a folder gets drive/folders/<ITEM_ID>)
