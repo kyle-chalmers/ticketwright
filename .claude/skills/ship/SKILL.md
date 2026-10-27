@@ -106,9 +106,10 @@ works regardless of the underlying tools.
        lists and ask the user which one this ticket is.
      - *A tool-only chat seam* (the default shape — the stack names the tool, not a standing channel)
        has no `chat.channel:`/`chat.recipients:`. Ask the user (with the runtime's question tool when it has one, otherwise in chat) **where this goes and who
-       it is for**: the destination (channel / DM / address) and the recipient list. This is the
+       it is for**: the destination (channel / DM / group DM / address) and the recipient list. This is the
        per-communication decision the tool-only shape exists for — who a result goes to depends on
        who the analysis is for, so it is asked each ship, never configured once.
+       **Offer suggestions as options, never as answers** (see *Audience suggestions* below).
      - *A per-ticket chat target* (the declared audience selected a target marked
        `destination: per_ticket`, which the CLI's message names) has no `chat.channel:`/
        `chat.recipients:`. Ask the same question as for a tool-only seam, for that target's tool:
@@ -117,11 +118,23 @@ works regardless of the underlying tools.
        twice.
      In each case, write the answer into `<ticket-dir>/delivery-plan.yaml` (schema: `adapters/README.md`
      § The delivery plan) — the `audience:` for a targets slot, the `chat:` block
-     (`channel:` + a non-empty `recipients:`) for a tool-only seam, or both plus `chat.target:` naming
-     the routed target for a per-ticket target — then re-run. **Never infer** the
+     (`channel:`, `kind:` and `recipients:`, which may be empty only for `kind: channel`) for a
+     tool-only seam, or both plus `chat.target:` naming the routed target for a per-ticket target —
+     then re-run. **Never infer** the
      audience, the channel, OR the recipients from the ticket README, channel names, a label, or how
      the work "feels" — an inferred destination is exactly how a result reaches the wrong room.
      "I could not tell, so I picked the first one" is not available.
+     **Audience suggestions.** The question may offer choices drawn from exactly two places, and
+     nowhere else: the `suggested_channels` the routing output returns, and the people in the
+     tracker's own structured fields for this ticket (`reporter`, `assignee`, `watchers` from
+     `tracker.fetch_ticket`). Resolve each person through the chat adapter's `lookup_user` verb
+     (or to an address for email) and label every option with where it came from: "Reported this
+     ticket: Sam (DM)", "Assigned: Jo (DM)", "A channel you post to: #analytics". Rules:
+     nothing is preselected, a suggestion is sent nowhere until the person picks it, an option that
+     could not be resolved is left out rather than guessed, and "Someone else" (typed) is always
+     there. Write the pick with `kind:` (`channel` from `lookup_channel`, `dm` or `group` from
+     `lookup_user`) and `chosen_from:` (`suggested_channels`, `tracker:reporter`,
+     `tracker:assignee`, `tracker:watcher` or `typed`); a suggestion they did not pick is dropped.
    - **8 (declared value matches nothing)** — a typo or a retired target. Show the declared value
      and the configured ones; ask which was meant. Never match it approximately.
    - **3 (no plan file)** — same as 9: ask, write the file, re-run.
