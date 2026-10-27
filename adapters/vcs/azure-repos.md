@@ -52,6 +52,22 @@ az repos pr create --repository {repo} --source-branch <TICKET-ID> --target-bran
 `semantic_pr: true` ⇒ keep the title semantic if branch policies lint it. Honor `word_limits.pr`.
 External action ⇒ requires approval (policy `hard_halt_before_external_posts`).
 
+## verb: merge_pr
+**In:** the PR id from `open_pr`.
+```bash
+az repos pr update --id <PR-ID> --status completed --squash true --delete-source-branch false
+az repos pr show --id <PR-ID> --query status -o tsv   # verify: completed
+```
+Squash is the kit's merge style: one commit per ticket on `{default_branch}`. External action ⇒
+requires approval (policy `hard_halt_before_external_posts`), and `/ship` asks again right before
+this step (policy `ship_merges_pr`). Azure has no head-commit pin on completion, so check
+`az repos pr show --id <PR-ID> --query lastMergeSourceCommit.commitId -o tsv` against the sha
+`/ship` pushed first, and stop if they differ. When branch policies (required reviewers, build
+validation) block completion, the status stays `active`: report which policy is pending and stop.
+Completion is asynchronous, so check the status once more after a few seconds before calling it
+blocked; anything but `completed` on that second check is blocked.
+Never set `--bypass-policy` or `--auto-complete`.
+
 ## gotchas
 - `--work-items` ties the PR to the Azure Boards item (the tracker side) — use the bare integer id.
 - Branch policies (required reviewers, build validation) may gate completion — surface required

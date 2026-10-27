@@ -130,7 +130,7 @@ fully the repo is configured — `/setup` writes config, never skill folders.
 /review [--deep]    the independent QC pass /build runs for you: re-runs queries, walks the validation
                     pyramid → APPROVE / REQUEST-CHANGES; run it directly to re-check or go --deep
                     …and at the top of that pyramid, opens the deliverables in YOUR apps and waits
-/ship [--go]        backup → tracker comment → chat draft → commit + PR — HARD HALT before anything
+/ship [--go]        PR → merge (asks first) → backup → comment → chat draft — HARD HALT before anything
                     external; warns, waits for a typed `ship unreviewed`, and records it when no
                     review verdict is on file
 ```

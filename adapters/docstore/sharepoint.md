@@ -44,13 +44,22 @@ verb and nothing else.
 # Synced transport:
 dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
 rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
-cp -r "<local ticket dir>" "$dest"
-ls -la "$dest"                       # verify
+mkdir -p "$dest"
+rsync -r --exclude '/comms/' "<local ticket dir>/" "$dest/"   # unsent drafts stay local
+ls -la "$dest"                       # verify; no comms/ folder
 
 # Graph transport (per file):
 #   PUT https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/<path>/<file>:/content
 ```
-External side effect ⇒ policy `hard_halt_before_external_posts` (approval first).
+External side effect ⇒ policy `hard_halt_before_external_posts` (approval first). The Graph
+transport uploads per file: skip every path under `comms/`.
+
+**`comms/` stays out of the backup.** It holds `/ship`'s unsent tracker and chat drafts, which are
+gitignored so unsent wording never leaves the machine; a folder copy would carry them to a shared
+drive all the same. `rsync` skips the folder before anything reaches the synced mount, so the sync
+client never sees it. With no `rsync` on the machine (Git Bash on Windows), use
+`cp -r "<local ticket dir>" "$dest" && rm -rf "$dest/comms"` and say plainly that the sync client
+may upload the drafts for the moment before the delete.
 
 ## verb: link_for
 **In:** a backed-up file. **Out:** a shareable URL for tracker/chat smart links.

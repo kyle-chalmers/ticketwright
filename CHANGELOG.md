@@ -7,6 +7,18 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`/ship` merges the pull request, after asking you.** Once you say go ahead and the pull
+  request is open, `/ship` asks once more (**Merge now** or **Leave it open**) and then
+  squash-merges it, pinned to the commit you saw. If branch rules, a required review, a check or a
+  conflict blocks the merge, it stops and tells you why before anything is backed up or posted,
+  and it never uses a bypass option. The new policy `ship_merges_pr` (default `true`, asked in
+  `/setup` round 6) turns it off for teams that merge by hand; the delivery plan always says which
+  way it is set. Every vcs adapter gains a `merge_pr` verb, and the `review_verdict_guard` hook
+  now also asks before an Azure Repos merge (`az repos pr update`) of an unapproved ticket.
+  (LABS-106)
+- **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
+  with a diagram, which link each post needs from an earlier step, and each moment it waits for
+  you. (LABS-106)
 - **Ticketwright suggests `/skillify` the second time a team runs the same analysis.** A new
   `recall.py --repeats` finds earlier tickets that read exactly the same tables (from the SQL's
   `from`/`join`, not counting output tables or QC queries), with owner-qualified ids, the instance
@@ -23,26 +35,12 @@ All notable changes to this project are documented here. Format loosely follows
   timeout, then prints the share link, instead of leaving each agent to sleep and retry. A timeout
   says the link is not ready and never guesses one. (LABS-116)
 
-### Fixed
-- **The BigQuery adapter passes a `.sql` file on stdin.** `bq query "$(cat file.sql)"` failed on
-  every kit-written file, because line 1 is the `-- warehouse-target:` header and `bq` read it as a
-  flag. The query verb now says to use `bq query ... < file.sql`. (LABS-116)
-
-## [4.4.1] - 2026-10-26
-
-### Added
-- **Setup asks where your team already writes things down.** Two optional questions replace the
-  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
-  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
-  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
-  the standards, `/review` checks deliverables against them and reports a broken rule as a
-  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
-  one source of truth. The review record says which docs were opened and which could not be, and
-  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
-  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
-  asks for it. (LABS-103)
-
 ### Changed
+- **`/ship` runs in the order its links need.** It now commits and opens the pull request first,
+  merges, backs up, then posts the tracker comment and drafts the chat message, so both posts
+  carry real links to the pull request and the backed-up files. Before, the chat draft linked a
+  pull request that did not exist yet. A ticket moves to its final status only once its pull
+  request is merged. (LABS-106)
 - **Every skill asks its questions as clickable choices where the agent has a question tool.**
   `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
   without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,
@@ -66,7 +64,34 @@ All notable changes to this project are documented here. Format loosely follows
   REQUEST-CHANGES when you answer. `bin/review_verdict.py` reports it as `awaiting-signoff`
   (exit 7), the push guard treats it as not approved yet, and `/build` asks the pending sign-off
   instead of rebuilding. Before this, the state was not on disk at all, so nothing could tell it
-  from "never reviewed". `/ship`'s handling of it lands in a companion change. (LABS-107)
+  from "never reviewed". `/ship` asks a pending sign-off the same way, and after a sign-off it
+  always waits for a typed `go ahead`, even with `--go`. (LABS-107)
+
+### Fixed
+- **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole
+  ticket folder, including `comms/`, which holds `/ship`'s unsent tracker and chat drafts and is
+  gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
+  `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
+  (LABS-106)
+- **The BigQuery adapter passes a `.sql` file on stdin.** `bq query "$(cat file.sql)"` failed on
+  every kit-written file, because line 1 is the `-- warehouse-target:` header and `bq` read it as a
+  flag. The query verb now says to use `bq query ... < file.sql`. (LABS-116)
+
+## [4.4.1] - 2026-10-26
+
+### Added
+- **Setup asks where your team already writes things down.** Two optional questions replace the
+  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
+  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
+  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
+  the standards, `/review` checks deliverables against them and reports a broken rule as a
+  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
+  one source of truth. The review record says which docs were opened and which could not be, and
+  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
+  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
+  asks for it. (LABS-103)
+
+### Changed
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
   already run for every role. It was also a team setting asked as if it were about you. Every
