@@ -53,6 +53,7 @@ viewer:
   open_cmd: 'open -a {app} {path}'
   default_cmd: 'open {path}'
   reveal_cmd: 'open -R {path}'
+  app_check_cmd: 'a={app}; a="${a%.app}.app"; for d in /Applications /Applications/Utilities /System/Applications /System/Applications/Utilities "$HOME/Applications"; do [ -d "$d/$a" ] && exit 0; done; mdfind -name "$a" 2>/dev/null | grep -qF "/$a"'
   apps:
     sql-editor: DataGrip
     spreadsheet: Microsoft Excel

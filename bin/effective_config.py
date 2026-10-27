@@ -880,7 +880,8 @@ def viewer_plan(res: "Resolution") -> dict:
         routes = _compose_routes(person, machine)
         enabled = not (_disabled(machine) or _disabled(person))
         out = {k: machine.get(k) for k in ("tool", "adapter", "open_cmd", "default_cmd",
-                                           "reveal_cmd", "verify") if machine.get(k)}
+                                           "reveal_cmd", "app_check_cmd", "verify")
+               if machine.get(k)}
         out.update({"source": "people/<id>.yaml + connections.local.yaml", "routes": routes,
                     "enabled": enabled,
                     "usable": enabled and bool(out.get("open_cmd") or out.get("default_cmd"))})

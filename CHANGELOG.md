@@ -14,6 +14,24 @@ All notable changes to this project are documented here. Format loosely follows
   you rather than answered for you. Selftest 21b(h) keeps the line, the scope and the runtime list
   in step (LABS-120).
 
+## [4.6.0] - 2026-10-27
+
+Setup now checks each app name you type for your review files, so a name the computer does not know
+is caught while you are answering instead of at your first review (LABS-119). Minor, not patch: the
+viewer contract gains a `check_app` verb and the viewer config an optional `app_check_cmd` key. An
+existing viewer file keeps working without it; `/setup viewer` adds it.
+
+### Added
+- **Setup checks each app name you type.** Right after writing your review apps, setup asks the
+  computer whether it has each app you named, and launches nothing. A name it cannot find ("Excel"
+  where the computer calls it "Microsoft Excel") is caught then, with three answers: type it again,
+  use the computer's usual app, or keep it. Before, it showed up as a file that failed to open at
+  your first review. On Windows there is no read-only check, so setup says the names were not
+  checked. `bin/handoff.sh --check-apps` runs the check (exit 0 all found, 1 one missing, 3 not
+  checked) through a new `app_check_cmd` key in the viewer config, and the viewer contract gains a
+  `check_app` verb. An existing viewer file without the key keeps working; `/setup viewer` adds it.
+  (LABS-119)
+
 ## [4.5.1] - 2026-10-27
 
 Jira runs on the Atlassian connector alone, with `acli` optional (#116); `/ship` names the exact
