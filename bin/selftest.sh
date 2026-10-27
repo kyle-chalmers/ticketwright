@@ -7,8 +7,50 @@
 set -uo pipefail
 
 # cd to kit root (this script lives in <kit>/bin/)
-cd "$(dirname "$0")/.." || exit 2
+# A filtered run (below) executes a copy of this file from a temp path, so it carries the kit path in.
+# Only that copy may set the two TW_SELFTEST_* values: the real file drops any it inherited, so an
+# exported TW_SELFTEST_ONLY cannot quietly turn a full run into one that skips the footer.
+case "$0" in *selftest.sh) unset TW_SELFTEST_KIT TW_SELFTEST_ONLY ;; esac
+if [ -n "${TW_SELFTEST_KIT:-}" ]; then cd "$TW_SELFTEST_KIT" || exit 2; else cd "$(dirname "$0")/.." || exit 2; fi
 KIT="$(pwd)"
+
+# ── running some sections, not all ────────────────────────────────────────────────────────────────
+#   bash bin/selftest.sh --list      every section's id and title
+#   bash bin/selftest.sh 6 6b        the setup below, then only sections 6 and 6b
+# A section is everything from its `hdr "<id> · …"` line, always at column 0, up to the next one.
+# A filtered run cuts the setup, the chosen sections and the footer out of this file with awk and
+# runs that copy under the same bash. That is only honest because every section passes on its own:
+# whatever a later section reuses lives in the setup block, never in the section that first built
+# it (section 85 tests the runner itself). The two TW_SELFTEST_* lines are written into the copy as
+# plain shell variables, not exported, so a selftest that a section starts runs unfiltered.
+if [ "$#" -gt 0 ]; then
+  if [ "$1" = "--list" ]; then
+    [ "$#" -eq 1 ] || { echo 'selftest: --list takes nothing else. Run it on its own, then pass the ids you want.' >&2; exit 2; }
+    awk '/^hdr "/ { s = $0; sub(/^hdr "/, "", s); sub(/"$/, "", s); print s }' bin/selftest.sh
+    exit 0
+  fi
+  st_all=" $(awk '/^hdr "/ { id = $2; sub(/^"/, "", id); printf "%s ", id }' bin/selftest.sh)"
+  st_want=" "
+  for st_id in "$@"; do
+    case "$st_all" in
+      *" $st_id "*) st_want="$st_want$st_id " ;;
+      *) printf 'selftest: there is no section "%s". Run bash bin/selftest.sh --list to see every section.\n' "$st_id" >&2
+         exit 2 ;;
+    esac
+  done
+  # The template keeps the copy's name from ending in selftest.sh (see the unset above).
+  st_run="$(mktemp "${TMPDIR:-/tmp}/tw-selftest-run.XXXXXX")" || exit 2
+  trap 'rm -f "$st_run"' EXIT
+  { printf 'TW_SELFTEST_KIT=%q\nTW_SELFTEST_ONLY=%q\n' "$KIT" "$st_want"
+    awk -v want="$st_want" '
+      /^# ── selftest footer/ { foot = 1 }
+      /^hdr "/ && !foot { body = 1; id = $2; sub(/^"/, "", id); keep = index(want, " " id " ") > 0 }
+      !body || foot || keep
+    ' bin/selftest.sh
+  } > "$st_run"
+  "$BASH" "$st_run"
+  exit $?
+fi
 PASS=0; FAIL=0; TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -82,6 +124,409 @@ safe_enrich() { PATH="$SAFEBIN" python3 bin/enrich_ticket.py "$@"; }
 # same one-liner shape for the same two reasons as safe_enrich above. section 63 (d) also runs it from
 # a Python harness, with PATH set to $SAFEBIN explicitly; that is the other place it is called.
 safe_summarize() { PATH="$SAFEBIN" python3 bin/summarize_hits.py "$@"; }
+
+# ── fixtures and helpers that more than one section uses ─────────────────────────────────────────
+# Every section has to pass when it runs alone, so anything a later section reuses is set up here,
+# not in the section that first needed it. The comment on each says which sections share it.
+# Cheap things (a variable, a function, one file) are set up right away. Anything that starts
+# processes is a fixture_* builder: it does its work on the first call and nothing after that, so
+# a filtered run pays only for what its sections ask for, and a full run builds each one once, in
+# the section that first needed it.
+
+# Sections 5, 36, 43, 51d and 54: the canonical render variables.
+cat > "$TMP/vars.env" <<'EOF'
+repo_name=demo
+domain=data
+ticket_path=tickets/{assignee}/{id}
+tracker_tool=jira
+tracker_adapter=`adapters/tracker/jira.md`
+warehouse_tool=snowflake
+warehouse_adapter=`adapters/warehouse/snowflake.md`
+chat_tool=slack
+chat_adapter=`adapters/chat/slack.md`
+docstore_tool=gdrive
+docstore_adapter=`adapters/docstore/gdrive.md`
+meetings_tool=zoom
+meetings_adapter=`adapters/meetings/zoom.md`
+vcs_tool=github
+vcs_adapter=`adapters/vcs/github.md`
+key_prefix=ENG
+terminal_status=Done
+wl_tracker_comment=100
+wl_chat=100
+wl_pr=200
+wl_ticket=200
+chat_always_include=Alice
+default_branch=main
+role_focus=**You are a senior engineer** doing ticket-driven work (filled from templates/roles/<role>.md).
+analysis_tools=notebooks, spreadsheets
+team_docs=standards: docs/style.md; context: https://wiki.example.test/team
+EOF
+
+# Sections 6 and 6b: the db_write_guard fixture repo and the payload helpers.
+# The guard is repo-gated: with no project stack.yaml it emits nothing at all. So every
+# case runs against a fixture repo rather than a bare payload, which also lets the policy
+# value vary per assertion. The fixture carries a `vcs.cli: gh` *after* the warehouse seam
+# on purpose — a seam-scoped lookup must not adopt it as the warehouse CLI.
+GREPO="$TMP/guardrepo"; mkdir -p "$GREPO/.claude/config"; : > "$GREPO/.git"
+mkstack() {
+  printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\n  vcs:\n    tool: github\n    cli: gh\npolicies:\n  db_write_requires_approval: %s\n' "$1" > "$GREPO/.claude/config/stack.yaml"
+}
+mkstack_nopolicy() {
+  printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  chat_default_draft: true\n' > "$GREPO/.claude/config/stack.yaml"
+}
+guard() { env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/db_write_guard.py; }
+# Build the payload in python so SQL never has to survive nested shell quoting.
+gcall() {
+  python3 - "$GREPO" "$1" "${2:-}" <<'PY' | guard
+import json, sys
+cwd, cmd, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+payload = {"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": cwd}
+if mode:
+    payload["permission_mode"] = mode
+print(json.dumps(payload))
+PY
+}
+# Collapse the hook's stdout to one token: allow | ask | deny | sysmsg | none
+dec() {
+  python3 -c '
+import sys, json
+raw = sys.stdin.read().strip()
+if not raw:
+    print("none"); raise SystemExit
+d = json.loads(raw)
+h = d.get("hookSpecificOutput") or {}
+print(h.get("permissionDecision") or ("sysmsg" if d.get("systemMessage") else "none"))'
+}
+# expect <want> <label> <command> [permission_mode]
+expect() {
+  got="$(gcall "$3" "${4:-}" | dec)"
+  [ "$got" = "$1" ] && ok "$2" || bad "$2 — got '$got', want '$1'"
+}
+
+# Sections 20 and 31: a stack that lives OUTSIDE the kit.
+VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
+printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
+
+# Sections 84 (viewer seam), 81 and 82: viewer project fixtures and a handoff that never launches.
+vproj() {  # vproj NAME <<'YAML'  → writes a project fixture + viewer.local.yaml, echoes the dir
+  local d="$TMP/v-$1"
+  mkdir -p "$d/.claude/config" "$d/tickets"; : > "$d/.git"
+  cat > "$d/.claude/config/viewer.local.yaml"
+  printf 'SELECT 1;\n'  > "$d/tickets/q.sql"
+  printf 'a,b\n1,2\n'   > "$d/tickets/one.csv"
+  printf 'a,b\n3,4\n'   > "$d/tickets/two.csv"
+  printf 'hi\n'         > "$d/tickets/notes.md"
+  echo "$d"
+}
+hoff() {  # hoff PROJDIR ARGS... — never allowed to actually launch anything
+  local d="$1"; shift
+  CLAUDE_PROJECT_DIR="$d" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/noxdg" \
+    bash bin/handoff.sh "$@" 2>/dev/null
+}
+
+# Sections 39, 41 and 43: the emit runs never see a contributor's own Claude config, and the plugin
+# route's manifest points at this kit.
+EMIT_NOCLAUDE="$TMP/emit-noclaude"; mkdir -p "$EMIT_NOCLAUDE"
+PLUG_HOME="$TMP/plughome"; mkdir -p "$PLUG_HOME/plugins"
+printf '{"plugins": {"ticketwright@ticketwright": [{"scope": "user", "installPath": "%s"}]}}' "$KIT" \
+  > "$PLUG_HOME/plugins/installed_plugins.json"
+# Sections 39 and 41: the codex-cli tree. Section 39 emits it itself and asserts on that run; this
+# builder is how section 41 gets the same tree when it runs alone.
+fixture_emit_codex() {
+  EMIT_P="$TMP/emit-codex"
+  [ -d "$EMIT_P/.agents/skills" ] && return 0
+  mkdir -p "$EMIT_P"
+  env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_KIT -u TICKETWRIGHT_PROJECT \
+    CLAUDE_CONFIG_DIR="$EMIT_NOCLAUDE" python3 bin/emit_runtime.py --runtime codex-cli --root "$EMIT_P" >/dev/null 2>&1
+}
+
+# Sections 38 and 63: the completed-interview stack.
+# (B) rendered config, not prose: the completed-interview shape (mirrors interview.md's worked
+# block). Every adapter-required key is populated — jira site+cli, postgres conn, gdrive
+# drive_folder, slack mcp, github default_branch — because verify_stack exits 0 even while warning
+# about unset required keys, so "it passed" alone would certify a half-configured repo.
+# The heredoc body stays at column 0 so the YAML is byte-for-byte what section 38 always wrote.
+fixture_s38_full() {
+[ -f "$TMP/s38-full/.claude/config/stack.yaml" ] && { IVR="$TMP/s38-full"; return 0; }
+IVR="$TMP/s38-full"; mkdir -p "$IVR/.claude/config"
+cat > "$IVR/.claude/config/stack.yaml" <<'EOF'
+project:
+  key_prefix: ENG
+  assignee_dir: alice
+  ticket_path: "tickets/{assignee}/{id}"
+  terminal_status: Done
+  ticket_url_template: "https://tracker.acme.example/browse/{id}"
+  intake: [tracker, email, meetings]
+  history_search: ask
+  history_before: "2024-03-01"
+  domain: data analysis
+  team_docs:
+    standards: [docs/style.md]
+    context: [https://wiki.example.test/team]
+seams:
+  tracker:
+    tool: jira
+    adapter: adapters/tracker/jira.md
+    transport: cli
+    site: tracker.acme.example
+    cli: acli
+    verify: null
+  warehouse:
+    tool: postgres
+    adapter: adapters/warehouse/postgres.md
+    transport: cli
+    conn: "service=analytics"
+    dev_target: analytics_dev
+    verify: null
+  docstore:
+    tool: gdrive
+    adapter: adapters/docstore/gdrive.md
+    transport: cli
+    drive_folder: "Shared drives/Tickets"
+    verify: null
+  chat:
+    tool: slack
+    adapter: adapters/chat/slack.md
+    transport: mcp
+    mcp: chatserver
+    default_mode: draft
+    verify: null
+  vcs:
+    tool: github
+    adapter: adapters/vcs/github.md
+    transport: cli
+    default_branch: main
+    verify: null
+policies:
+  db_write_requires_approval: high_risk
+  human_review_handoff: review
+EOF
+}
+
+# Sections 49 and 51d: the source-material scanner.
+SCAN="bin/scan_source_materials.py"
+
+# Sections 50 and 53: section 50's offline rclone sandbox.
+# Seed from the shared hermetic PATH rather than rebuilding the allowlist — one list, one place to
+# audit. Re-symlink instead of `cp -R`: BSD cp preserves symlinks but GNU cp -R dereferences them,
+# so a copy would behave differently on the Linux CI runner than on macOS. The rclone stub is then
+# the ONLY thing this sandbox adds, which is what section 53 asserts.
+fixture_rcbin() {
+[ -x "$TMP/rc-bin/rclone" ] && { RCBIN="$TMP/rc-bin"; return 0; }
+RCBIN="$TMP/rc-bin"; mkdir -p "$RCBIN"
+for f in "$SAFEBIN"/*; do ln -sf "$f" "$RCBIN/$(basename "$f")"; done
+cat > "$RCBIN/rclone" <<'STUB'
+#!/bin/sh
+# Fixture stub. Serves ONE purpose: `rclone cat <remote>:<path>/.ticketwright-target` echoes the
+# token recorded for that remote in $RC_STUB_DIR. Offline, read-only, no credentials.
+if [ "$1" = "cat" ]; then
+  remote="${2%%:*}"
+  [ -f "$RC_STUB_DIR/$remote.token" ] && cat "$RC_STUB_DIR/$remote.token"
+  exit 0
+fi
+exit 0
+STUB
+chmod +x "$RCBIN/rclone"
+}
+
+# Sections 51c, 51d, 59 and 77: the advisory-adjacency check and the session banner.
+p51adj() {  # in file $1, the line immediately after the one containing $2 must contain $3
+  awk -v t="$2" -v n="$3" 'p { if (index($0, n)) ok=1; p=0 } index($0, t) { p=1 } END { exit ok?0:1 }' "$1"
+}
+b51() {  # $1 = project dir → the SessionStart banner
+  echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$1" \
+    CLAUDE_CONFIG_DIR="$TMP/no-config" python3 .claude/hooks/session_context.py 2>&1
+}
+
+# Sections 55 and 59: the plugin doctor's sandbox (a fake `claude`, never the real CLI). The body
+# keeps its column-0 heredocs, so it is not indented. Section 55 asserts that the shims behave.
+PD_READY=""   # reset, so a value inherited from the environment cannot skip the build
+fixture_doctor() {
+[ -n "${PD_READY:-}" ] && return 0
+PD_READY=1
+PD="$TMP/doctor"; mkdir -p "$PD"
+PD_DOC="$KIT/bin/plugin_doctor.py"
+# The privacy fixture, same technique as section 51: a FOREIGN repo's paths live in every manifest
+# this section writes, and may never reach the output. TWO distinct values, sharing no substring, so
+# "no projectPath leaked" and "no installPath leaked" are separate findings rather than one grep
+# standing in for both — the earlier fixture derived the install path from the project path, and a
+# doctor that printed installPath only would still have looked clean.
+PD_FOREIGN="/Users/someone-else/Development/private-repo"
+PD_FOREIGN_INSTALL="/Volumes/Backup/claude-plugin-cache/quarantine-9f2c"
+
+# --- the fake `claude` on PATH -------------------------------------------------------------------
+# A shim, never the real CLI. The TRIPWIRE is the load-bearing part: `plugin install` WITHOUT
+# `--help` touches a file, so an accidental real install shows up as a failed assertion instead of
+# as a plugin quietly appearing on the contributor's machine.
+PD_TRIP="$PD/tripwire-installed"
+pd_shim() {   # pd_shim <dir> <help-options-line>
+  mkdir -p "$1"
+  cat > "$PD/shim.tmpl" <<'PDSHIM'
+#!/bin/sh
+# fake `claude` — selftest section 55. Read-only; installs nothing, ever.
+for a in "$@"; do
+  [ "$a" = "--version" ] && { echo '2.1.258 (Claude Code)'; exit 0; }
+done
+if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then
+  for a in "$@"; do
+    if [ "$a" = "--help" ]; then
+      printf '%s\n' 'Usage: claude plugin install <plugin>' 'Options:' '@@HELP@@'
+      exit 0
+    fi
+  done
+  : > '@@TRIP@@'          # an install was attempted — the tripwire the suite asserts on
+  exit 90
+fi
+if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then
+  printf '%s\n' '@@LIST@@'
+  exit 0
+fi
+exit 0
+PDSHIM
+  sed -e "s|@@HELP@@|$2|" -e "s|@@TRIP@@|$PD_TRIP|" -e "s|@@LIST@@|$3|" \
+      "$PD/shim.tmpl" > "$1/claude"
+  chmod +x "$1/claude"
+}
+PD_MODERN="$PD/bin-modern"; PD_OLD="$PD/bin-old"; PD_NONE="$PD/bin-none"
+pd_shim "$PD_MODERN" '  -s, --scope <scope>   install scope' 'acme@acmehub'
+pd_shim "$PD_OLD"    '  -h, --help            display help'  "error: unknown command 'list'"
+mkdir -p "$PD_NONE"
+
+# --- fixture builders ----------------------------------------------------------------------------
+# A real plugin payload the install records can legitimately point at.
+PD_PAYLOAD="$PD/payload"; mkdir -p "$PD_PAYLOAD/.claude-plugin"
+printf '{"name":"acme","version":"3.5.0"}' > "$PD_PAYLOAD/.claude-plugin/plugin.json"
+# A healthy payload is a COMPLETE one: install_payload also checks the files setup opens.
+python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p; print("\n".join(p.REQUIRED_PAYLOAD))' \
+  > "$TMP/pd-required.txt" 2>/dev/null
+while IFS= read -r rel; do
+  [ -n "$rel" ] || continue
+  mkdir -p "$PD_PAYLOAD/$(dirname "$rel")" && : > "$PD_PAYLOAD/$rel"
+done < "$TMP/pd-required.txt"
+
+# pd_repo <dir> <git|gitfile|nogit> <git-source|github-source|two|none>
+pd_repo() {
+  rm -rf "$1"; mkdir -p "$1/.claude"
+  case "$3" in
+    git-source)
+      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"},"autoUpdate":true}},"enabledPlugins":{"acme@acmehub":true}}' \
+        > "$1/.claude/settings.json" ;;
+    github-source)
+      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"github","repo":"acme-org/acme-kit"}}},"enabledPlugins":{"acme@acmehub":true}}' \
+        > "$1/.claude/settings.json" ;;
+    two)
+      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"}},"bhub":{"source":{"source":"git","url":"https://b.example/b.git"}}},"enabledPlugins":{"acme@acmehub":true,"bee@bhub":true}}' \
+        > "$1/.claude/settings.json" ;;
+    none) rm -f "$1/.claude/settings.json" ;;
+  esac
+  case "$2" in
+    git)     mkdir -p "$1/.git" ;;
+    gitfile) printf 'gitdir: /elsewhere/worktrees/x\n' > "$1/.git" ;;   # a worktree's .git is a FILE
+  esac
+}
+
+# pd_cfg <config-root> <repo> <state>
+# States are the install shapes seen in the wild: nothing for this repo, one project row, one local
+# row (the desktop app writes these), two rows, a user-scope row, a row whose payload was never
+# written (Claude Code 2.0.22), and a row already at the catalog version.
+pd_cfg() {
+  local d="$1" repo="$2" state="$3"
+  rm -rf "$d"; mkdir -p "$d/plugins/marketplaces/acmehub/.claude-plugin"
+  printf '{"name":"acme","version":"3.6.1"}' \
+    > "$d/plugins/marketplaces/acmehub/.claude-plugin/plugin.json"
+  printf '{"acmehub":{"installLocation":"%s"}}' "$d/plugins/marketplaces/acmehub" \
+    > "$d/plugins/known_marketplaces.json"
+  [ "$state" = "unregistered" ] && printf '{}' > "$d/plugins/known_marketplaces.json"
+  case "$state" in
+    none|unregistered)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$PD_FOREIGN","installPath":"$PD_FOREIGN_INSTALL","version":"9.9.9"}]}}
+JSON
+      ;;
+    project)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$PD_FOREIGN","installPath":"$PD_FOREIGN_INSTALL","version":"9.9.9"},
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
+JSON
+      ;;
+    local)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"local","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
+JSON
+      ;;
+    ambiguous)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"},
+  {"scope":"local","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.6.0"}]}}
+JSON
+      ;;
+    user)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"user","installPath":"$PD_PAYLOAD","version":"3.5.0"},
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
+JSON
+      ;;
+    nopayload)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$repo","installPath":"$d/plugins/cache/acme/4.0.1","version":"3.5.0"}]}}
+JSON
+      ;;
+    current)
+      cat > "$d/plugins/installed_plugins.json" <<JSON
+{"version":1,"plugins":{"acme@acmehub":[
+  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.6.1"}]}}
+JSON
+      ;;
+  esac
+}
+
+# pd_run <shim-dir> <args…> — sets PD_OUT/PD_ERR/PD_RC IN THE CALLING SHELL (never wrap in $( ),
+# for the same subshell reason section 51 documents at length).
+PD_OUT=""; PD_ERR=""; PD_RC=0
+pd_run() {
+  local shim="$1"; shift
+  PATH="$shim:$SAFEBIN" python3 "$PD_DOC" "$@" >"$TMP/pd.out" 2>"$TMP/pd.err"
+  PD_RC=$?
+  PD_OUT="$(cat "$TMP/pd.out")"; PD_ERR="$(cat "$TMP/pd.err")"
+}
+# Flatten the last --json run into `<id> <status>` lines so a status assertion is one grep.
+pd_table() {
+  python3 - "$TMP/pd.out" <<'PDPY' > "$TMP/pd.tbl"
+import json, sys
+try:
+    doc = json.load(open(sys.argv[1]))
+except Exception as exc:                      # a malformed report must fail LOUDLY, not silently
+    print("PARSE_ERROR", type(exc).__name__)
+    raise SystemExit(0)
+for check in doc.get("checks", []):
+    print(check.get("id"), check.get("status"))
+PDPY
+}
+pd_is() { grep -qx "$1 $2" "$TMP/pd.tbl"; }   # pd_is <id> <status>
+# pd_case <label> <shim> <args…> — run, flatten, and assert the report parsed and stderr is clean.
+pd_case() {
+  local label="$1"; shift
+  local shim="$1"; shift
+  pd_run "$shim" "$@"
+  pd_table
+  { [ -z "$PD_ERR" ] && ! grep -q PARSE_ERROR "$TMP/pd.tbl"; } && return 0
+  bad "$label: the report did not parse or wrote to stderr" "rc=$PD_RC err=$PD_ERR"
+  return 1
+}
+
+PDR="$PD/repo"; PDC="$PD/cfg"
+pd_repo "$PDR" git git-source
+}
+
+# Sections 59 and 81: the plain-language checker.
+PL59="tests/plain_language/check.py"
 
 hdr "0 · tooling"
 command -v yq  >/dev/null 2>&1 && ok "yq present" || bad "yq missing (brew install yq)"
@@ -204,34 +649,6 @@ for f in .claude/skills/*/SKILL.md .claude/agents/*.md; do
 done
 
 hdr "5 · render.sh round-trip (AGENTS.md.tmpl → no unresolved tokens)"
-cat > "$TMP/vars.env" <<'EOF'
-repo_name=demo
-domain=data
-ticket_path=tickets/{assignee}/{id}
-tracker_tool=jira
-tracker_adapter=`adapters/tracker/jira.md`
-warehouse_tool=snowflake
-warehouse_adapter=`adapters/warehouse/snowflake.md`
-chat_tool=slack
-chat_adapter=`adapters/chat/slack.md`
-docstore_tool=gdrive
-docstore_adapter=`adapters/docstore/gdrive.md`
-meetings_tool=zoom
-meetings_adapter=`adapters/meetings/zoom.md`
-vcs_tool=github
-vcs_adapter=`adapters/vcs/github.md`
-key_prefix=ENG
-terminal_status=Done
-wl_tracker_comment=100
-wl_chat=100
-wl_pr=200
-wl_ticket=200
-chat_always_include=Alice
-default_branch=main
-role_focus=**You are a senior engineer** doing ticket-driven work (filled from templates/roles/<role>.md).
-analysis_tools=notebooks, spreadsheets
-team_docs=standards: docs/style.md; context: https://wiki.example.test/team
-EOF
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
 # zero KEY=VALUE pairs must not crash (bash 3.2 empty-array under set -u)
@@ -239,45 +656,6 @@ bash bin/render.sh templates/spec.md.tmpl >/dev/null 2>"$TMP/rz.err"; rc=$?
 [ "$rc" -eq 0 ] && ok "render.sh with no vars doesn't crash (bash 3.2 empty array)" || bad "render.sh crashes with zero pairs" "$(cat "$TMP/rz.err")"
 
 hdr "6 · db_write_guard hook (PreToolUse policy enforcement)"
-# The guard is repo-gated: with no project stack.yaml it emits nothing at all. So every
-# case runs against a fixture repo rather than a bare payload, which also lets the policy
-# value vary per assertion. The fixture carries a `vcs.cli: gh` *after* the warehouse seam
-# on purpose — a seam-scoped lookup must not adopt it as the warehouse CLI.
-GREPO="$TMP/guardrepo"; mkdir -p "$GREPO/.claude/config"; : > "$GREPO/.git"
-mkstack() {
-  printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\n  vcs:\n    tool: github\n    cli: gh\npolicies:\n  db_write_requires_approval: %s\n' "$1" > "$GREPO/.claude/config/stack.yaml"
-}
-mkstack_nopolicy() {
-  printf 'seams:\n  warehouse:\n    tool: snowflake\n    cli: snow\npolicies:\n  chat_default_draft: true\n' > "$GREPO/.claude/config/stack.yaml"
-}
-guard() { env -u CLAUDE_PROJECT_DIR python3 .claude/hooks/db_write_guard.py; }
-# Build the payload in python so SQL never has to survive nested shell quoting.
-gcall() {
-  python3 - "$GREPO" "$1" "${2:-}" <<'PY' | guard
-import json, sys
-cwd, cmd, mode = sys.argv[1], sys.argv[2], sys.argv[3]
-payload = {"tool_name": "Bash", "tool_input": {"command": cmd}, "cwd": cwd}
-if mode:
-    payload["permission_mode"] = mode
-print(json.dumps(payload))
-PY
-}
-# Collapse the hook's stdout to one token: allow | ask | deny | sysmsg | none
-dec() {
-  python3 -c '
-import sys, json
-raw = sys.stdin.read().strip()
-if not raw:
-    print("none"); raise SystemExit
-d = json.loads(raw)
-h = d.get("hookSpecificOutput") or {}
-print(h.get("permissionDecision") or ("sysmsg" if d.get("systemMessage") else "none"))'
-}
-# expect <want> <label> <command> [permission_mode]
-expect() {
-  got="$(gcall "$3" "${4:-}" | dec)"
-  [ "$got" = "$1" ] && ok "$2" || bad "$2 — got '$got', want '$1'"
-}
 
 mkstack high_risk
 expect allow "SELECT → allow (read-only fast-path)"        'snow sql -q "SELECT * FROM t LIMIT 5"'
@@ -1097,8 +1475,6 @@ done
 [ -z "$hook_bad" ] && ok "index hooks import the renderer from the kit (CLAUDE_PLUGIN_ROOT/__file__)" \
   || bad "hook inserts project-root/bin on sys.path (renderer won't import on a plugin install):$hook_bad"
 # E3 — verify_stack resolves adapters against the kit even when the stack lives OUTSIDE the kit.
-VS="$TMP/vsext"; mkdir -p "$VS/.claude/config"
-printf 'project:\n  key_prefix: ENG\nseams:\n  tracker:\n    tool: jira\n    adapter: adapters/tracker/jira.md\n    transport: cli\n    verify: null\n' > "$VS/.claude/config/stack.yaml"
 vout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$VS/.claude/config/stack.yaml" --dry-run 2>&1)"
 # Require positive success (a healthy dry-run summary: "All tools resolve (dry run, nothing contacted)." or "N OK, M unverified"), not just the absence of "adapter missing", else a
 # fixture that failed to create would falsely pass (the seam here has verify:null, so success prints).
@@ -2306,35 +2682,13 @@ grep -qi 'wiki-link' docs/ticket-index.md && grep -qi 'wiki-link' .claude/config
   && ok "the slug cross-reference rule (wiki-links only) is documented in both places" \
   || bad "the wiki-links-only rule is not documented where adopters will look"
 
-# A stated check count goes stale on every added test, so the docs state a FLOOR. Assert it against
-# the live counter — a static scan can't work, since loop-driven call sites each yield many checks.
-# NOTE: this is no longer the last assertion (sections now run after it), so checks added later are
-# not in PASS here — which only makes the floor comparison more conservative, never less. The floor
-# is a floor: adding checks anywhere is safe and needs no bump.
-floor="$(grep -oE '[0-9]+\+-check' docs/troubleshooting.md | head -1 | grep -oE '^[0-9]+')"
-{ [ -n "$floor" ] && [ "$((PASS + 1))" -ge "$floor" ]; } \
-  && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
-  || bad "the docs claim more checks than the suite runs" "floor=${floor:-unset} actual=$PASS"
+# The docs' stated check floor is asserted in the footer, after the last section: it needs the
+# whole suite's count, which no single section can see.
 
-hdr "25 · viewer seam + human review handoff (bin/handoff.sh)"
+hdr "84 · viewer seam + human review handoff (bin/handoff.sh)"
 # This seam launches DESKTOP APPS, so the assertions below are as much about what it must NOT do as
 # what it must. Everything runs --dry-run or with TICKETWRIGHT_NO_OPEN=1: selftest must never open a
 # window on a contributor's machine, and CI has no desktop to open into.
-vproj() {  # vproj NAME <<'YAML'  → writes a project fixture + viewer.local.yaml, echoes the dir
-  local d="$TMP/v-$1"
-  mkdir -p "$d/.claude/config" "$d/tickets"; : > "$d/.git"
-  cat > "$d/.claude/config/viewer.local.yaml"
-  printf 'SELECT 1;\n'  > "$d/tickets/q.sql"
-  printf 'a,b\n1,2\n'   > "$d/tickets/one.csv"
-  printf 'a,b\n3,4\n'   > "$d/tickets/two.csv"
-  printf 'hi\n'         > "$d/tickets/notes.md"
-  echo "$d"
-}
-hoff() {  # hoff PROJDIR ARGS... — never allowed to actually launch anything
-  local d="$1"; shift
-  CLAUDE_PROJECT_DIR="$d" TICKETWRIGHT_NO_OPEN=1 XDG_CONFIG_HOME="$TMP/noxdg" \
-    bash bin/handoff.sh "$@" 2>/dev/null
-}
 
 vproj basic <<'YAML' >"$TMP/hd1862.out"
 tool: macos-open
@@ -4605,63 +4959,9 @@ done
 grep -q '≤5' .claude/skills/setup/voice.md \
   && ok "voice.md's own ≤5 cap is KEPT (a deliberate scope limit on a style interview)" \
   || bad "voice.md's deliberate ≤5 scope limit went missing (4b keeps it)"
-# (B) rendered config, not prose: the completed-interview shape (mirrors interview.md's worked
-# block). Every adapter-required key is populated — jira site+cli, postgres conn, gdrive
-# drive_folder, slack mcp, github default_branch — because verify_stack exits 0 even while warning
-# about unset required keys, so "it passed" alone would certify a half-configured repo.
-IVR="$TMP/s38-full"; mkdir -p "$IVR/.claude/config"
-cat > "$IVR/.claude/config/stack.yaml" <<'EOF'
-project:
-  key_prefix: ENG
-  assignee_dir: alice
-  ticket_path: "tickets/{assignee}/{id}"
-  terminal_status: Done
-  ticket_url_template: "https://tracker.acme.example/browse/{id}"
-  intake: [tracker, email, meetings]
-  history_search: ask
-  history_before: "2024-03-01"
-  domain: data analysis
-  team_docs:
-    standards: [docs/style.md]
-    context: [https://wiki.example.test/team]
-seams:
-  tracker:
-    tool: jira
-    adapter: adapters/tracker/jira.md
-    transport: cli
-    site: tracker.acme.example
-    cli: acli
-    verify: null
-  warehouse:
-    tool: postgres
-    adapter: adapters/warehouse/postgres.md
-    transport: cli
-    conn: "service=analytics"
-    dev_target: analytics_dev
-    verify: null
-  docstore:
-    tool: gdrive
-    adapter: adapters/docstore/gdrive.md
-    transport: cli
-    drive_folder: "Shared drives/Tickets"
-    verify: null
-  chat:
-    tool: slack
-    adapter: adapters/chat/slack.md
-    transport: mcp
-    mcp: chatserver
-    default_mode: draft
-    verify: null
-  vcs:
-    tool: github
-    adapter: adapters/vcs/github.md
-    transport: cli
-    default_branch: main
-    verify: null
-policies:
-  db_write_requires_approval: high_risk
-  human_review_handoff: review
-EOF
+# (B) rendered config, not prose: the completed-interview shape, built by fixture_s38_full
+# (the setup block says why it lives there; section 63 reads the same stack).
+fixture_s38_full
 IVY="$IVR/.claude/config/stack.yaml"
 ivout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVY" --dry-run 2>&1)"
 grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$ivout" \
@@ -4830,7 +5130,6 @@ hdr "39 · runtime installer skeleton (emit_runtime.py — verify-only vs transl
 # project with the Claude env vars scrubbed (standing constraint: no Claude variable required), and
 # CLAUDE_CONFIG_DIR pinned to an empty dir so the contributor's own plugin manifest can never
 # satisfy — or fail — a verify.
-EMIT_NOCLAUDE="$TMP/emit-noclaude"; mkdir -p "$EMIT_NOCLAUDE"
 
 # --- codex-cli emit: byte-for-byte against the golden fixture tree --------------------------------
 EMIT_P="$TMP/emit-codex"; mkdir -p "$EMIT_P"
@@ -4967,9 +5266,6 @@ env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$EMIT_NOCLAUD
   && bad "verify-only blessed a foreign .claude/skills/ project as a ticketwright install" \
   || ok "verify-only rejects a foreign .claude/skills/ project (kit markers required)"
 # The plugin route: a manifest entry for this kit satisfies the verify with no vendored files at all.
-PLUG_HOME="$TMP/plughome"; mkdir -p "$PLUG_HOME/plugins"
-printf '{"plugins": {"ticketwright@ticketwright": [{"scope": "user", "installPath": "%s"}]}}' "$KIT" \
-  > "$PLUG_HOME/plugins/installed_plugins.json"
 PLUG_P="$TMP/verify-plugin"; mkdir -p "$PLUG_P"
 env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR CLAUDE_CONFIG_DIR="$PLUG_HOME" \
   python3 bin/emit_runtime.py --runtime claude-code --root "$PLUG_P" >/dev/null 2>&1; pl_rc=$?
@@ -5307,6 +5603,7 @@ agdiff="$(diff -r "$AG_P/.agents" tests/emit/antigravity/.agents 2>&1)" && [ "$a
 # user-invocable-only warning block on either emit runtime — its presence would mean a skill is
 # secretly not model-invocable. This is the visible half of the byte-for-byte golden diffs above.
 warn_bad=""
+fixture_emit_codex   # the codex tree section 39 emits, built here when this section runs alone
 for tree in "$EMIT_P" "$AG_P"; do
   hits="$(grep -rl 'User-invocable only' "$tree/.agents/skills" 2>/dev/null | tr '\n' ' ')"
   [ -z "$hits" ] || warn_bad="$warn_bad $hits"
@@ -7278,7 +7575,6 @@ hdr "49 · meetings intake + the source-material guard (PROMPT: meetings-intake)
 # what its mechanism is worth. Cases A-E are behavioral; F-H are labeled structural pins and are
 # not dressed up as more than that.
 S48="$TMP/s48"; mkdir -p "$S48"
-SCAN="bin/scan_source_materials.py"
 FIX="tests/source_materials/fixtures"
 
 # --- (A) the gitignore policy, executed by git itself ------------------------------------------
@@ -7840,24 +8136,7 @@ grep -qi 'lsd' "$RC" && grep -qiE 'not identity|exits 0|different account' "$RC"
   && ok "…and rclone.md says plainly that lsd/about prove reachability, not identity" \
   || bad "rclone.md presents a reachability probe as identity proof"
 # Prove the check with a stubbed rclone: right token passes, wrong token fails. No network, no creds.
-# Seed from the shared hermetic PATH rather than rebuilding the allowlist — one list, one place to
-# audit. Re-symlink instead of `cp -R`: BSD cp preserves symlinks but GNU cp -R dereferences them,
-# so a copy would behave differently on the Linux CI runner than on macOS. The rclone stub is then
-# the ONLY thing this sandbox adds, which is what section 53 asserts.
-RCBIN="$TMP/rc-bin"; mkdir -p "$RCBIN"
-for f in "$SAFEBIN"/*; do ln -sf "$f" "$RCBIN/$(basename "$f")"; done
-cat > "$RCBIN/rclone" <<'STUB'
-#!/bin/sh
-# Fixture stub. Serves ONE purpose: `rclone cat <remote>:<path>/.ticketwright-target` echoes the
-# token recorded for that remote in $RC_STUB_DIR. Offline, read-only, no credentials.
-if [ "$1" = "cat" ]; then
-  remote="${2%%:*}"
-  [ -f "$RC_STUB_DIR/$remote.token" ] && cat "$RC_STUB_DIR/$remote.token"
-  exit 0
-fi
-exit 0
-STUB
-chmod +x "$RCBIN/rclone"
+fixture_rcbin
 if ! ( PATH="$RCBIN"; command -v rclone >/dev/null 2>&1 ) \
    || [ "$( PATH="$RCBIN"; command -v rclone )" != "$RCBIN/rclone" ]; then
   bad "rclone stub setup is broken: the stub does not resolve on PATH, so this branch never ran"
@@ -8935,9 +9214,6 @@ hdr "51c · the posture advisory is BEHAVIORAL — verify_stack terminal states 
 # printf, so an early echo would splice into it), and never touches a counter or an exit code.
 # ADJACENCY is the contract, not co-presence: the advisory must be the very next line after its
 # row's terminal status — two independent greps would pass even if flush spliced into an open row.
-p51adj() {  # in file $1, the line immediately after the one containing $2 must contain $3
-  awk -v t="$2" -v n="$3" 'p { if (index($0, n)) ok=1; p=0 } index($0, t) { p=1 } END { exit ok?0:1 }' "$1"
-}
 
 # --- (A) dry-run over a both/mcp/cli mix: prod yes, tracker yes, chat yes, lake NO ----------------
 mw51="$(bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml --dry-run 2>&1)"
@@ -9052,10 +9328,6 @@ az51="$(bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-r
   || bad "per-target advisory wrong on the azure stack" "$az51"
 
 # --- (F) the session banner: five cases, keyed by resolved warehouse transport + policy mode ------
-b51() {  # $1 = project dir → the SessionStart banner
-  echo '{"hook_event_name":"SessionStart"}' | CLAUDE_PROJECT_DIR="$1" \
-    CLAUDE_CONFIG_DIR="$TMP/no-config" python3 .claude/hooks/session_context.py 2>&1
-}
 # (i) the kit's own stack: warehouse transport both + high_risk ⇒ the MCP wording.
 bi51="$(b51 "$KIT")"
 grep -qF "Database writes (high_risk): commands in the terminal need your approval first. Writes through the warehouse's MCP connector rely on that tool's own permissions, set up during /setup." <<<"$bi51" \
@@ -9732,6 +10004,7 @@ sb53="$(ls "$SAFEBIN" | grep -xE 'snow|snowsql|acli|jira|gh|glab|databricks|dbsq
 # BOTH directions: -23 catches an added binary, -13 a dropped one. Extras-only would let RCBIN
 # silently LOSE an allowlist entry while still reporting "the hermetic PATH plus exactly one stub" —
 # a claim of equality checked in one direction. (Codex review caught this.)
+fixture_rcbin   # section 50's sandbox, built here when this section runs alone
 ls "$RCBIN"   | sort > "$TMP/rc53.a"
 ls "$SAFEBIN" | sort > "$TMP/rc53.b"
 rc53add="$(comm -23 "$TMP/rc53.a" "$TMP/rc53.b" | tr '\n' ' ')"
@@ -10054,53 +10327,7 @@ hdr "55 · plugin doctor: every install state is NAMED, and no probe touches a r
 # broken states all look identical from the outside ("the skills aren't there"). Everything below
 # asserts that each state gets its OWN name and its OWN fix — and that finding out never costs a
 # real install, a real network call, or a real `claude` binary.
-PD="$TMP/doctor"; mkdir -p "$PD"
-PD_DOC="$KIT/bin/plugin_doctor.py"
-# The privacy fixture, same technique as section 51: a FOREIGN repo's paths live in every manifest
-# this section writes, and may never reach the output. TWO distinct values, sharing no substring, so
-# "no projectPath leaked" and "no installPath leaked" are separate findings rather than one grep
-# standing in for both — the earlier fixture derived the install path from the project path, and a
-# doctor that printed installPath only would still have looked clean.
-PD_FOREIGN="/Users/someone-else/Development/private-repo"
-PD_FOREIGN_INSTALL="/Volumes/Backup/claude-plugin-cache/quarantine-9f2c"
-
-# --- the fake `claude` on PATH -------------------------------------------------------------------
-# A shim, never the real CLI. The TRIPWIRE is the load-bearing part: `plugin install` WITHOUT
-# `--help` touches a file, so an accidental real install shows up as a failed assertion instead of
-# as a plugin quietly appearing on the contributor's machine.
-PD_TRIP="$PD/tripwire-installed"
-pd_shim() {   # pd_shim <dir> <help-options-line>
-  mkdir -p "$1"
-  cat > "$PD/shim.tmpl" <<'PDSHIM'
-#!/bin/sh
-# fake `claude` — selftest section 55. Read-only; installs nothing, ever.
-for a in "$@"; do
-  [ "$a" = "--version" ] && { echo '2.1.258 (Claude Code)'; exit 0; }
-done
-if [ "$1" = "plugin" ] && [ "$2" = "install" ]; then
-  for a in "$@"; do
-    if [ "$a" = "--help" ]; then
-      printf '%s\n' 'Usage: claude plugin install <plugin>' 'Options:' '@@HELP@@'
-      exit 0
-    fi
-  done
-  : > '@@TRIP@@'          # an install was attempted — the tripwire the suite asserts on
-  exit 90
-fi
-if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then
-  printf '%s\n' '@@LIST@@'
-  exit 0
-fi
-exit 0
-PDSHIM
-  sed -e "s|@@HELP@@|$2|" -e "s|@@TRIP@@|$PD_TRIP|" -e "s|@@LIST@@|$3|" \
-      "$PD/shim.tmpl" > "$1/claude"
-  chmod +x "$1/claude"
-}
-PD_MODERN="$PD/bin-modern"; PD_OLD="$PD/bin-old"; PD_NONE="$PD/bin-none"
-pd_shim "$PD_MODERN" '  -s, --scope <scope>   install scope' 'acme@acmehub'
-pd_shim "$PD_OLD"    '  -h, --help            display help'  "error: unknown command 'list'"
-mkdir -p "$PD_NONE"
+fixture_doctor
 # Prove the shims themselves behave, or every probe assertion below measures the wrong thing.
 PATH="$PD_MODERN:$SAFEBIN" claude plugin install --help 2>&1 | grep -q -- '--scope' \
   && ok "the modern claude shim advertises --scope (the probe has something true to find)" \
@@ -10112,136 +10339,6 @@ PATH="$PD_OLD:$SAFEBIN" claude plugin install --help 2>&1 | grep -q -- '--scope'
   && ok "no install was attempted while probing the shims" \
   || bad "the tripwire fired: something ran a real claude plugin install"
 
-# --- fixture builders ----------------------------------------------------------------------------
-# A real plugin payload the install records can legitimately point at.
-PD_PAYLOAD="$PD/payload"; mkdir -p "$PD_PAYLOAD/.claude-plugin"
-printf '{"name":"acme","version":"3.5.0"}' > "$PD_PAYLOAD/.claude-plugin/plugin.json"
-# A healthy payload is a COMPLETE one: install_payload also checks the files setup opens.
-python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p; print("\n".join(p.REQUIRED_PAYLOAD))' \
-  > "$TMP/pd-required.txt" 2>/dev/null
-while IFS= read -r rel; do
-  [ -n "$rel" ] || continue
-  mkdir -p "$PD_PAYLOAD/$(dirname "$rel")" && : > "$PD_PAYLOAD/$rel"
-done < "$TMP/pd-required.txt"
-
-# pd_repo <dir> <git|gitfile|nogit> <git-source|github-source|two|none>
-pd_repo() {
-  rm -rf "$1"; mkdir -p "$1/.claude"
-  case "$3" in
-    git-source)
-      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"},"autoUpdate":true}},"enabledPlugins":{"acme@acmehub":true}}' \
-        > "$1/.claude/settings.json" ;;
-    github-source)
-      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"github","repo":"acme-org/acme-kit"}}},"enabledPlugins":{"acme@acmehub":true}}' \
-        > "$1/.claude/settings.json" ;;
-    two)
-      printf '%s' '{"extraKnownMarketplaces":{"acmehub":{"source":{"source":"git","url":"https://acme.example/acme.git"}},"bhub":{"source":{"source":"git","url":"https://b.example/b.git"}}},"enabledPlugins":{"acme@acmehub":true,"bee@bhub":true}}' \
-        > "$1/.claude/settings.json" ;;
-    none) rm -f "$1/.claude/settings.json" ;;
-  esac
-  case "$2" in
-    git)     mkdir -p "$1/.git" ;;
-    gitfile) printf 'gitdir: /elsewhere/worktrees/x\n' > "$1/.git" ;;   # a worktree's .git is a FILE
-  esac
-}
-
-# pd_cfg <config-root> <repo> <state>
-# States are the install shapes seen in the wild: nothing for this repo, one project row, one local
-# row (the desktop app writes these), two rows, a user-scope row, a row whose payload was never
-# written (Claude Code 2.0.22), and a row already at the catalog version.
-pd_cfg() {
-  local d="$1" repo="$2" state="$3"
-  rm -rf "$d"; mkdir -p "$d/plugins/marketplaces/acmehub/.claude-plugin"
-  printf '{"name":"acme","version":"3.6.1"}' \
-    > "$d/plugins/marketplaces/acmehub/.claude-plugin/plugin.json"
-  printf '{"acmehub":{"installLocation":"%s"}}' "$d/plugins/marketplaces/acmehub" \
-    > "$d/plugins/known_marketplaces.json"
-  [ "$state" = "unregistered" ] && printf '{}' > "$d/plugins/known_marketplaces.json"
-  case "$state" in
-    none|unregistered)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"project","projectPath":"$PD_FOREIGN","installPath":"$PD_FOREIGN_INSTALL","version":"9.9.9"}]}}
-JSON
-      ;;
-    project)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"project","projectPath":"$PD_FOREIGN","installPath":"$PD_FOREIGN_INSTALL","version":"9.9.9"},
-  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
-JSON
-      ;;
-    local)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"local","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
-JSON
-      ;;
-    ambiguous)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"},
-  {"scope":"local","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.6.0"}]}}
-JSON
-      ;;
-    user)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"user","installPath":"$PD_PAYLOAD","version":"3.5.0"},
-  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.5.0"}]}}
-JSON
-      ;;
-    nopayload)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"project","projectPath":"$repo","installPath":"$d/plugins/cache/acme/4.0.1","version":"3.5.0"}]}}
-JSON
-      ;;
-    current)
-      cat > "$d/plugins/installed_plugins.json" <<JSON
-{"version":1,"plugins":{"acme@acmehub":[
-  {"scope":"project","projectPath":"$repo","installPath":"$PD_PAYLOAD","version":"3.6.1"}]}}
-JSON
-      ;;
-  esac
-}
-
-# pd_run <shim-dir> <args…> — sets PD_OUT/PD_ERR/PD_RC IN THE CALLING SHELL (never wrap in $( ),
-# for the same subshell reason section 51 documents at length).
-PD_OUT=""; PD_ERR=""; PD_RC=0
-pd_run() {
-  local shim="$1"; shift
-  PATH="$shim:$SAFEBIN" python3 "$PD_DOC" "$@" >"$TMP/pd.out" 2>"$TMP/pd.err"
-  PD_RC=$?
-  PD_OUT="$(cat "$TMP/pd.out")"; PD_ERR="$(cat "$TMP/pd.err")"
-}
-# Flatten the last --json run into `<id> <status>` lines so a status assertion is one grep.
-pd_table() {
-  python3 - "$TMP/pd.out" <<'PDPY' > "$TMP/pd.tbl"
-import json, sys
-try:
-    doc = json.load(open(sys.argv[1]))
-except Exception as exc:                      # a malformed report must fail LOUDLY, not silently
-    print("PARSE_ERROR", type(exc).__name__)
-    raise SystemExit(0)
-for check in doc.get("checks", []):
-    print(check.get("id"), check.get("status"))
-PDPY
-}
-pd_is() { grep -qx "$1 $2" "$TMP/pd.tbl"; }   # pd_is <id> <status>
-# pd_case <label> <shim> <args…> — run, flatten, and assert the report parsed and stderr is clean.
-pd_case() {
-  local label="$1"; shift
-  local shim="$1"; shift
-  pd_run "$shim" "$@"
-  pd_table
-  { [ -z "$PD_ERR" ] && ! grep -q PARSE_ERROR "$TMP/pd.tbl"; } && return 0
-  bad "$label: the report did not parse or wrote to stderr" "rc=$PD_RC err=$PD_ERR"
-  return 1
-}
-
-PDR="$PD/repo"; PDC="$PD/cfg"
-pd_repo "$PDR" git git-source
 
 # --- (a) the JSON report: schema, and the PINNED check order -------------------------------------
 python3 - "$PD_DOC" <<'PDPY' > "$TMP/pd.ids"
@@ -11248,7 +11345,6 @@ hdr "59 · what the person sees is plain language (tests/plain_language/check.py
 # Every message a person reads leads with what happened and what to do, in plain words; technical
 # detail goes after " Details:". The checker lints REAL output (golden corpora, captured hook and
 # script runs, marked skill templates), not source text, so a docstring never trips it.
-PL59="tests/plain_language/check.py"
 printf 'This command changes data. Approve it. Details: seam adapter fingerprint\n' > "$TMP/pl59-ok.txt"
 printf 'The seam is down. Run /setup.\n' > "$TMP/pl59-bad.txt"
 printf 'Details: everything is technical here\n' > "$TMP/pl59-empty.txt"
@@ -11581,6 +11677,7 @@ grep -q '"All tools reachable."' bin/verify_stack.sh && grep -qF '"All tools res
   && ! grep -q 'All seams OK' bin/verify_stack.sh \
   && ok "verify_stack's all-clear says tools, not seams (real run and dry run)" || bad "verify_stack still prints 'All seams OK', or lost a summary line"
 # The doctor's plain-text report, in section 55's sandbox (fake claude on PATH, no probe, no real CLI).
+fixture_doctor
 : > "$TMP/pl59-doctor.txt"
 for pdst59 in none project; do
   pd_cfg "$PDC" "$PDR" "$pdst59"
@@ -13316,6 +13413,7 @@ fi
 # step that reads the keys is checked with that step, in a later section, not here.
 X="$TMP/s63e"
 mkdir -p "$X/team/.claude/config"
+fixture_s38_full   # section 38's completed-interview stack, built here when this section runs alone
 X63E="$X" FX63E="$TMP/s38-full/.claude/config/stack.yaml" python3 - <<'PY63E' >"$TMP/s63e.out" 2>&1
 import datetime, os, re, subprocess, sys
 
@@ -14967,7 +15065,6 @@ o81="$(hoff "$VP81" --dry-run "$VP81/tickets/one.csv" "$VP81/tickets/q.sql")"
   && ok "a kind with an app opens in it, and a kind left on the usual app opens with the computer's default" \
   || bad "the viewer interview's written shape does not route as it promises" "$o81"
 
-
 hdr "82 · setup checks each typed app name before review needs it (handoff --check-apps, LABS-119)"
 # A typed name the computer does not know ("Excel" for "Microsoft Excel") used to surface only as a
 # file that failed to open at the first review. handoff.sh --check-apps runs the config's
@@ -15162,5 +15259,65 @@ grep -q 'per_person' .claude/skills/setup/interview.md || bad83="$bad83 intervie
 [ -z "$bad83" ] && ok "adapters, /ship, the schema and setup all describe the per-person folder the same way" \
   || bad "per-person folder wording missing:$bad83"
 
-printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
+hdr "85 · running some sections, not all (bash bin/selftest.sh <id>..., --list)"
+# A filtered run is worth exactly as much as the claim that every section stands alone, so these
+# check the runner's own contract. The nested runs use "$BASH" so CI's bash 3.2 job tests 3.2.
+# Sections 2 and 4 are the probe because they are fast and touch nothing outside the kit.
+"$BASH" bin/selftest.sh --list > "$TMP/s85.list" 2>&1; rc85=$?
+{ [ "$rc85" -eq 0 ] && grep -qx '0 · tooling' "$TMP/s85.list" && grep -q '^85 · ' "$TMP/s85.list"; } \
+  && ok "--list runs and prints the sections, from 0 to this one" \
+  || bad "--list failed or left out a section" "rc=$rc85 $(head -3 "$TMP/s85.list")"
+# The id is the first word of a header, so every header has to be `<number>[letter] · <title>`.
+# One that is not (a word id, a missing " · ") would list an id nobody can type back in.
+shape85="$(grep -vE '^[0-9]+[a-z]? · .' "$TMP/s85.list" | head -3)"
+[ -z "$shape85" ] && ok "every section header has the <id> · <title> shape the runner reads" \
+  || bad "a section header does not start with a number and ' · ', so its id cannot be run" "$shape85"
+"$BASH" bin/selftest.sh --list 4 > /dev/null 2> "$TMP/s85.err"; rc85=$?
+{ [ "$rc85" -ne 0 ] && grep -q -- '--list takes nothing else' "$TMP/s85.err"; } \
+  && ok "--list with ids after it fails and says why" \
+  || bad "--list with extra arguments did not fail plainly" "rc=$rc85 $(cat "$TMP/s85.err")"
+dup85="$(awk -F' · ' '{print $1}' "$TMP/s85.list" | sort | uniq -d | tr '\n' ' ')"
+[ -z "$dup85" ] && ok "every section id is unique, so a bare id names one section" \
+  || bad "two sections share an id, so running one by its id would run both" "$dup85"
+"$BASH" bin/selftest.sh 4 2 > "$TMP/s85.run" 2>&1; rc85=$?
+{ [ "$rc85" -eq 0 ] && grep -q '^.*2 · adapter verb coverage' "$TMP/s85.run" \
+  && grep -q '4 · frontmatter valid' "$TMP/s85.run" && ! grep -q '5 · render.sh' "$TMP/s85.run" \
+  && grep -qE '[1-9][0-9]* passed, 0 failed \(sections: 4 2\)' "$TMP/s85.run" \
+  && ! grep -q 'whole-suite checks' "$TMP/s85.run"; } \
+  && ok "selftest.sh 4 2 runs only those two sections, says so, and skips the whole-suite checks" \
+  || bad "a filtered run ran the wrong sections or reported the wrong summary" "rc=$rc85 $(tail -3 "$TMP/s85.run")"
+# The real file drops an inherited TW_SELFTEST_KIT: if it honored this one, the cd would fail.
+TW_SELFTEST_KIT="$TMP/no-such-kit" TW_SELFTEST_ONLY=" 4 " "$BASH" bin/selftest.sh 4 > "$TMP/s85.env" 2>&1; rc85=$?
+{ [ "$rc85" -eq 0 ] && grep -q 'passed, 0 failed (sections: 4)' "$TMP/s85.env"; } \
+  && ok "TW_SELFTEST_* values inherited from the environment are ignored by the real file" \
+  || bad "an exported TW_SELFTEST_* value changed what a run does" "rc=$rc85 $(tail -2 "$TMP/s85.env")"
+"$BASH" bin/selftest.sh 999 > "$TMP/s85.out" 2> "$TMP/s85.err"; rc85=$?
+{ [ "$rc85" -ne 0 ] && grep -q '"999"' "$TMP/s85.err" && [ ! -s "$TMP/s85.out" ]; } \
+  && ok "an unknown id fails and names the id, instead of passing with zero checks" \
+  || bad "an unknown section id did not fail plainly" "rc=$rc85 $(cat "$TMP/s85.err")"
+# Structural pin, labeled as one: the docs' check floor sits after the footer marker, inside the
+# branch that runs only when nothing was filtered. A full run is the only place it can be checked.
+awk '/^# ── selftest footer/ { f = 1 }
+     f && /^if \[ -z "\$\{TW_SELFTEST_ONLY:-\}" \]; then$/ { g = 1 }
+     g && /^else$/ { g = 0 }
+     g && /docs claim more checks/ { ok = 1 } END { exit !ok }' bin/selftest.sh \
+  && ok "pinned: the docs' check floor runs in the footer, and only on a full run" \
+  || bad "the docs' check floor moved out of the footer's full-run branch"
+
+# ── selftest footer: whole-suite checks ─────────────────────────────────────────────────────────
+# Kept after every section and outside them, because they need the WHOLE suite's count. A filtered
+# run skips them: a handful of sections can never meet a floor written for all of them.
+if [ -z "${TW_SELFTEST_ONLY:-}" ]; then
+  hdr "end · whole-suite checks (from section 28)"
+  # A stated check count goes stale on every added test, so the docs state a FLOOR. Assert it against
+  # the live counter — a static scan can't work, since loop-driven call sites each yield many checks.
+  # The floor is a floor: adding checks anywhere is safe and needs no bump.
+  floor="$(grep -oE '[0-9]+\+-check' docs/troubleshooting.md | head -1 | grep -oE '^[0-9]+')"
+  { [ -n "$floor" ] && [ "$((PASS + 1))" -ge "$floor" ]; } \
+    && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
+    || bad "the docs claim more checks than the suite runs" "floor=${floor:-unset} actual=$PASS"
+  printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
+else
+  printf "\n\033[1mselftest: %d passed, %d failed (sections:%s)\033[0m\n" "$PASS" "$FAIL" "${TW_SELFTEST_ONLY% }"
+fi
 [ "$FAIL" -eq 0 ] || exit 1

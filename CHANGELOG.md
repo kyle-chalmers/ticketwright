@@ -33,6 +33,15 @@ already passes. Backups made before this release stay where they are.
   you rather than answered for you. Selftest 21b(h) keeps the line, the scope and the runtime list
   in step (LABS-120).
 
+### Changed
+- **The self-test can run one section at a time (contributors).** `bash bin/selftest.sh 6 6b`
+  runs only those sections (most take under three seconds alone; the full run takes about four
+  minutes), and `bash bin/selftest.sh --list` prints every section. Every section now passes on its
+  own: the
+  helpers and fixtures several sections share moved into one setup block, the docs' check-count
+  floor runs after the last section, and the viewer section that also used id 25 is now 84
+  (LABS-125).
+
 ## [4.6.0] - 2026-10-27
 
 Setup now checks each app name you type for your review files, so a name the computer does not know

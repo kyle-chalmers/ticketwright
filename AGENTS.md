@@ -46,6 +46,8 @@ These are not decoration. Cite them in review. When a change to this kit is ambi
 
 ```bash
 bash bin/selftest.sh                       # THE gate — kit integrity + hook/engine unit tests. Run before and after any change.
+bash bin/selftest.sh 6 6b                  # only those sections (most take under 3s alone) while you work; the full run still gates
+bash bin/selftest.sh --list                # every section's id and title
 python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
 bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
 claude plugin validate .claude-plugin/marketplace.json --strict   # marketplace schema ONLY
@@ -87,10 +89,19 @@ prefix, an `sh` prefix, and the executable in bare command position — `verify_
 that last one needs no interpreter), but it matches TEXT, so indirection through a variable or `eval`
 slips past it; 53 also pins that the allowlist grows no tracker/warehouse
 CLI (`git` is listed deliberately — `kit_paths` shells out to `rev-parse`).
-`selftest.sh` needs `yq` and `python3` only. It is organized into 69 numbered sections, plus lettered sub-sections such as 21b (config resolution, adapter
+`selftest.sh` needs `yq` and `python3` only. It is organized into numbered sections, plus lettered sub-sections such as 21b (config resolution, adapter
 verb coverage, tool-name isolation, every hook, the index/recall engines, the render gate, the Obsidian
-graph layer, version sync, …). **When you change behavior, add or update the matching numbered section** —
+graph layer, version sync, …); `--list` prints them. **When you change behavior, add or update the matching numbered section** —
 a green selftest is the contract this kit ships on. It must print `0 failed`.
+
+**Every section must pass on its own** (`bash bin/selftest.sh <id>`), because that is how a filtered
+run works: it runs the setup block plus the chosen sections, cut out of the file by their
+`hdr "<id> · …"` lines. So a new section's `hdr` line sits at column 0 with an id no other section
+uses, and anything a second section needs (a helper, a variable, a fixture in `$TMP`) goes in the
+setup block near the top ("fixtures and helpers that more than one section uses"), never in the
+section that first built it. Anything that starts processes is a `fixture_*` builder that does its
+work on the first call. Checks that need the whole suite's count live in the footer and run only
+on a full run.
 
 There is no separate lint/format step; correctness is enforced by selftest assertions.
 
