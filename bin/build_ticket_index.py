@@ -751,7 +751,35 @@ def build_rows(root: Path) -> list[dict]:
             "link": link, "enriched": enriched, "stale": stale, "has_readme": bool(readme),
         })
     rows.sort(key=lambda r: ((r["date"] or "0000-00-00"), ticket_number(r["id"], key_re), r["id"], r["owner"]), reverse=True)
+    canon = canonical_objects(o for r in rows for o in r["objects"])
+    for r in rows:
+        r["objects"] = sorted({canon[o.lower()] for o in r["objects"]}, key=str.lower)
     return rows
+
+
+def canonical_objects(names) -> dict[str, str]:
+    """lower(name) -> the one name every catalog, graph node and recall score uses for that table.
+
+    A curated record may write `schema.table` where the ticket's SQL wrote `db.schema.table`, and a
+    case-insensitive dedup alone keeps both, so one table drew two graph nodes. A shorter name folds
+    into the longer qualified name it is the tail of, but only when every longer candidate is the same
+    table (each is a tail of the longest). Two databases holding `schema.table` leave the short name
+    as written: a guess would merge two tables. Display case is the first form seen."""
+    forms: dict[str, str] = {}
+    for o in names:
+        forms.setdefault(o.lower(), o)
+    by_leaf: dict[str, list[str]] = {}  # only names sharing the last part can be one table
+    for low in forms:
+        by_leaf.setdefault(low.rsplit(".", 1)[-1], []).append(low)
+    out: dict[str, str] = {}
+    for low, form in forms.items():
+        longer = [m for m in by_leaf[low.rsplit(".", 1)[-1]] if m.endswith("." + low)]
+        if longer:
+            top = max(longer, key=lambda m: (m.count("."), m))
+            if all(m == top or top.endswith("." + m) for m in longer):
+                form = forms[top]
+        out[low] = form
+    return out
 
 
 def md_escape(s) -> str:
@@ -891,45 +919,66 @@ def node_filename(owner: str, tid: str) -> str:
     return re.sub(r"[:\\/]", ".", f"{owner}.{tid}") + ".md"
 
 
-def graph_stub(row: dict, owners_by_id: dict, pairs: set, canon: dict,
-               key_re: re.Pattern | None = None) -> str:
-    """One Obsidian graph node per (owner, id) — see node_filename().
+def _resolve_ref(x: str, owner: str, owners_by_id: dict, pairs: set, self_label: str):
+    """(owner, id) a cross-ref links, or (None, id) when it is dangling or ambiguous.
 
-    "Builds on" links resolve each cross-ref by the ticket locator: a qualified `owner/id` ref links
-    that exact node; a bare ref links the CURRENT owner's ticket first, then the single other owner
-    that has it; a bare ref two owners could claim is left as plain text with a stderr warning naming
-    them — an ambiguous reference is an error to fix, never a guess. A ref that resolves to this node
-    itself (a curated record echoing its own id) is dropped.
+    A qualified `owner/id` ref names that exact node; a bare ref resolves to the CURRENT owner's
+    ticket first, then the single other owner that has it; a bare ref two owners could claim stays
+    unresolved with a stderr warning naming them: an ambiguous reference is an error to fix, never a
+    guess."""
+    ro, ri = split_ref(x)
+    if ro is None:
+        if (owner, ri) in pairs:
+            ro = owner
+        else:
+            elig = owners_by_id.get(ri, [])
+            if len(elig) == 1:
+                ro = elig[0]
+            elif len(elig) > 1:
+                print(f"build_ticket_index: {self_label}: cross-ref '{ri}' matches multiple "
+                      f"owners ({', '.join(elig)}); linking none — qualify it as one of "
+                      + ", ".join(f"{e}/{ri}" for e in elig), file=sys.stderr)
+    return ro, ri
+
+
+def _is_newer(src: dict, tid: str, target: dict | None, key_re: re.Pattern | None) -> bool:
+    """True when the referenced ticket came AFTER the one citing it, so the citation is a
+    back-reference ("TEST-12 reuses this") rather than prior work this ticket built on.
+
+    The later completion date decides first; on the same or a missing date, the higher tracker number
+    under the same prefix. With neither signal the direction is unknown and the ref stays "Builds on",
+    as it always rendered."""
+    sd, td = src.get("date"), (target or {}).get("date")
+    if sd and td and sd != td:
+        return td > sd
+    sn, tn = ticket_number(src["id"], key_re), ticket_number(tid, key_re)
+    if sn and tn and src["id"].rsplit("-", 1)[0] == tid.rsplit("-", 1)[0]:
+        return tn > sn
+    return False
+
+
+def graph_stub(row: dict, canon: dict, builds: list, built_on_by: list, related: list) -> str:
+    """One Obsidian graph node per (owner, id), see node_filename().
+
+    Edges arrive resolved by render_graph_layer, as (label, (owner, id) or None) pairs:
+      - "Builds on": refs to work that came before this ticket;
+      - "Built on by": later tickets whose own "Builds on" names this one;
+      - "Related": refs to later tickets that do not cite this one back.
+    A cross-reference carries no direction of its own, so a prose mention of a newer ticket used to
+    read as this ticket building on it. An unresolved ref is plain text, never a broken or guessed link.
     """
     owner, tid = row["owner"], row["id"]
     objects = sorted({canon.get(o.lower(), o) for o in row["objects"]}, key=str.lower)
-    refs = sorted(set(row["cross_refs"]), key=lambda i: _ref_sort_key(i, key_re))
     obj_cells = ", ".join(f"[`{o}`](../objects/{object_filename(o)})" for o in objects) or "(none)"
     out = [f"# {tid}: {md_escape(row['title'])}", "",
            f"`{owner}` · {row['status']} · {row['date'] or '—'}", "",
            f"- **Objects:** {obj_cells}"]
-    cells = []
-    for x in refs:
-        ro, ri = split_ref(x)
-        if ro is None:  # bare ref: this owner first, then the one other owner that has it
-            if (owner, ri) in pairs:
-                ro = owner
-            else:
-                elig = owners_by_id.get(ri, [])
-                if len(elig) == 1:
-                    ro = elig[0]
-                elif len(elig) > 1:
-                    print(f"build_ticket_index: {owner}/{tid}: cross-ref '{ri}' matches multiple "
-                          f"owners ({', '.join(elig)}); linking none — qualify it as one of "
-                          + ", ".join(f"{e}/{ri}" for e in elig), file=sys.stderr)
-        if (ro, ri) == (owner, tid):
-            continue  # a record's ref to its own ticket is not an edge
-        if ro is not None and (ro, ri) in pairs:
-            cells.append(f"[{x}]({node_filename(ro, ri)})")
-        else:
-            cells.append(x)  # dangling or ambiguous: plain text, never a broken/guessed link
-    if cells:
-        out.append("- **Builds on:** " + ", ".join(cells))
+
+    def cells(edges):
+        return ", ".join(f"[{x}]({node_filename(*p)})" if p else x for x, p in edges)
+    for heading, edges in (("Builds on", builds), ("Built on by", built_on_by), ("Related", related)):
+        if edges:
+            out.append(f"- **{heading}:** {cells(edges)}")
     if row["has_readme"]:
         out.append(f"- **Full ticket →** [README](../{row['link']})")
     if row.get("enriched") and row.get("summary") and row["summary"] != "—":
@@ -976,6 +1025,28 @@ def render_graph_layer(rows: list, root: Path, key_re: re.Pattern | None = None)
             slot = objmap.setdefault(o.lower(), {"label": o, "tids": {}})
             slot["tids"].setdefault((r["owner"], r["id"]), (r["owner"], r["id"], r["title"], r["date"]))
     canon = {k: v["label"] for k, v in objmap.items()}  # lower(obj) -> canonical display label
+    if key_re is None:  # the hook passes none; the CLI's own pattern keeps both renders identical
+        key_re = id_key_regex(load_config(root))
+    by_pair = {(r["owner"], r["id"]): r for r in rows}
+    builds: dict = {p: [] for p in pairs}
+    newer: dict = {p: [] for p in pairs}
+    built_on_by: dict = {p: [] for p in pairs}
+    for r in rows:
+        me = (r["owner"], r["id"])
+        for x in sorted(set(r["cross_refs"]), key=lambda i: _ref_sort_key(i, key_re)):
+            ro, ri = _resolve_ref(x, r["owner"], owners_by_id, pairs, f"{me[0]}/{me[1]}")
+            if (ro, ri) == me:
+                continue  # a record's ref to its own ticket is not an edge
+            target = (ro, ri) if ro is not None and (ro, ri) in pairs else None
+            if _is_newer(r, ri, by_pair.get(target), key_re):
+                newer[me].append((x, target))
+            else:
+                builds[me].append((x, target))
+                if target:
+                    label = f"{me[0]}/{me[1]}" if len(owners_by_id.get(me[1], [])) > 1 else me[1]
+                    built_on_by[target].append((label, me))
+    for p in pairs:
+        built_on_by[p].sort(key=lambda e: _ref_sort_key(e[0], key_re))
     fresh: dict = {}
     seen_files: dict = {}  # lower(filename) -> (owner, id); dot-flattening is not injective
     for r in rows:
@@ -985,7 +1056,10 @@ def render_graph_layer(rows: list, root: Path, key_re: re.Pattern | None = None)
             print(f"build_ticket_index: graph node filename collision: {prior[0]}/{prior[1]} and "
                   f"{r['owner']}/{r['id']} both map to {fn}; using the latter", file=sys.stderr)
         seen_files[fn.lower()] = (r["owner"], r["id"])
-        fresh[gdir / fn] = graph_stub(r, owners_by_id, pairs, canon, key_re)
+        me = (r["owner"], r["id"])
+        back = {p for _, p in built_on_by[me]}
+        fresh[gdir / fn] = graph_stub(r, canon, builds[me], built_on_by[me],
+                                      [e for e in newer[me] if e[1] is None or e[1] not in back])
     for slot in objmap.values():
         fresh[odir / object_filename(slot["label"])] = graph_object_note(
             slot["label"], list(slot["tids"].values()), owners_by_id, key_re)

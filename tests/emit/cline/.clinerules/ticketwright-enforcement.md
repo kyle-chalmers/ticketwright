@@ -1,4 +1,4 @@
-<!-- emitted by ticketwright install v4.4.0 — do not hand-edit; re-run `ticketwright install --runtime cline` to update. -->
+<!-- emitted by ticketwright install v4.4.1 — do not hand-edit; re-run `ticketwright install --runtime cline` to update. -->
 
 # Ticketwright enforcement — what is mechanical here
 
@@ -47,7 +47,7 @@ reading the file.
 the ticket from the command's paths, its cwd, or the checked-out branch, and asks when that ticket
 has files in `final_deliverables/` and the verdict on file (read by `bin/review_verdict.py`, the
 highest-numbered `qc_queries/<n>_review_verdict.md`) is anything but APPROVE: none, SKIPPED,
-REQUEST-CHANGES, or unreadable. It never denies, and `hard_halt_before_external_posts: false`
+REQUEST-CHANGES, AWAITING-SIGNOFF (the reviewer approved, your sign-off is pending), or unreadable. It never denies, and `hard_halt_before_external_posts: false`
 silences it. A push from a git client, an IDE button, or a browser never reaches it, and it reads
 the record, not the work.
 

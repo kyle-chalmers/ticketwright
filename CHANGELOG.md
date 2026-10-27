@@ -7,16 +7,6 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
-- **Setup asks where your team already writes things down.** Two optional questions replace the
-  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
-  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
-  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
-  the standards, `/review` checks deliverables against them and reports a broken rule as a
-  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
-  one source of truth. The review record says which docs were opened and which could not be, and
-  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
-  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
-  asks for it. (LABS-103)
 - **`/ship` merges the pull request, after asking you.** Once you say go ahead and the pull
   request is open, `/ship` asks once more (**Merge now** or **Leave it open**) and then
   squash-merges it, pinned to the commit you saw. If branch rules, a required review, a check or a
@@ -36,6 +26,53 @@ All notable changes to this project are documented here. Format loosely follows
   carry real links to the pull request and the backed-up files. Before, the chat draft linked a
   pull request that did not exist yet. A ticket moves to its final status only once its pull
   request is merged. (LABS-106)
+- **Every skill asks its questions as clickable choices where the agent has a question tool.**
+  `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
+  without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,
+  "Ship now?", the replan offer), `/setup` and `/skillify` now share one question rule, copied
+  word for word into each skill: ask with the runtime's own question tool on agents that have one
+  (Claude Code today), and as numbered questions everywhere else. What the plan assumed or what was
+  detected is the first, recommended choice; options are never invented. Replies the kit checks
+  word for word stay typed (`ship unreviewed`, `go ahead`, the `yes` before destructive SQL), so an
+  unreviewed ship, an external send or an irreversible write is never one click. The skills read
+  the tool from the runtime adapter's `question_tool` and `question_limits` keys and never name a
+  tool themselves. (LABS-107)
+- **Reply `ship` at the review's sign-off to approve and deliver.** When the independent review
+  approved and only your sign-off is left, `/review` ends with "Reply `ship` to approve and
+  deliver, or tell me what to change." (with a question tool, "Approve and ship" is the first
+  choice). `ship` records the APPROVE with your sign-off and starts `/ship`, which still shows you
+  everything it would send and waits for your go-ahead. When the review found a problem, `ship`
+  approves nothing. `/build` no longer asks "Ship now?" after you have already said `ship`.
+  (LABS-107)
+- **A new verdict, `AWAITING-SIGNOFF`, records "the reviewer approved, waiting on you".**
+  `/review` saves it before handing you the files and rewrites the same record to APPROVE or
+  REQUEST-CHANGES when you answer. `bin/review_verdict.py` reports it as `awaiting-signoff`
+  (exit 7), the push guard treats it as not approved yet, and `/build` asks the pending sign-off
+  instead of rebuilding. Before this, the state was not on disk at all, so nothing could tell it
+  from "never reviewed". `/ship` asks for the pending sign-off too. (LABS-107)
+
+### Fixed
+- **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole
+  ticket folder, including `comms/`, which holds `/ship`'s unsent tracker and chat drafts and is
+  gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
+  `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
+  (LABS-106)
+
+## [4.4.1] - 2026-10-26
+
+### Added
+- **Setup asks where your team already writes things down.** Two optional questions replace the
+  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
+  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
+  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
+  the standards, `/review` checks deliverables against them and reports a broken rule as a
+  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
+  one source of truth. The review record says which docs were opened and which could not be, and
+  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
+  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
+  asks for it. (LABS-103)
+
+### Changed
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
   already run for every role. It was also a team setting asked as if it were about you. Every
@@ -44,11 +81,20 @@ All notable changes to this project are documented here. Format loosely follows
   have. (LABS-102)
 
 ### Fixed
-- **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole
-  ticket folder, including `comms/`, which holds `/ship`'s unsent tracker and chat drafts and is
-  gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
-  `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
-  (LABS-106)
+- **The Obsidian graph shows one node per table.** A ticket's curated index record could name a
+  table `schema.table` while its SQL named it `db.schema.table`, and the graph drew two nodes for
+  the one table, with the short one linked only to that ticket. A shorter name now folds into the
+  longer qualified name it ends with, so `INDEX.md`, `OBJECTS.md`, the graph and recall all use one
+  name. When two databases hold the same `schema.table`, the short name stays as written rather
+  than guessing which one it meant. (LABS-57)
+- **"Builds on" in the graph points from newer work to older work.** A cross-reference has no
+  direction, so a ticket that mentioned a later ticket ("TEST-12 reuses this definition") read as
+  building on it. Each ticket node now has up to three lines: **Builds on** for the earlier tickets it
+  cites, **Built on by** for later tickets that cite it, and **Related** for a later ticket it
+  mentions that does not cite it back. The earlier completion date decides which ticket came first,
+  then the lower ticket number. With neither, the link stays under Builds on as before. Only the
+  graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
+  (LABS-57)
 - **A link inside a one-line list in `stack.yaml` is read as one value.** The kit's YAML reader
   split `[https://wiki.example/x]` at the colon into a key and a value, unlike `yq`. A colon now
   starts a key only when a space, a separator or the end follows it. A one-line mapping as a list

@@ -191,7 +191,7 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
 - **`review_verdict_guard.py`** (PreToolUse/Bash) — the review-before-ship gate at the command
   layer. `bin/review_verdict.py` is the classifier (the highest-numbered
   `qc_queries/<n>_review_verdict.md`, its lowercase `verdict:` line → `approve` / `request-changes`
-  / `skipped` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
+  / `skipped` / `awaiting-signoff` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
   `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create|update`, locating the ticket from the
   command's paths, its cwd, or the checked-out branch, and asks when a ticket with deliverables has
   anything but an approved review result on file. Silenced by `hard_halt_before_external_posts: false`. The three

@@ -3,7 +3,7 @@ name: ship
 description: Finalize and deliver a reviewed ticket — commit + PR, merge (after asking), backup, tracker comment, chat draft — with a hard halt before any external post. Run after /review approves.
 ---
 
-<!-- emitted by ticketwright install v4.4.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.4.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /ship
 

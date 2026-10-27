@@ -585,6 +585,14 @@ gate_ask_tier:  gate_fail_mode:  subagent_isolation:  reads_foreign_skills:  glo
 hook_wiring:  hook_protocol:  hook_wiring_caveat:  # + rules_root: on runtimes that don't read AGENTS.md
 ```
 
+`structured_questions`, `question_tool` and `question_limits` decide how a skill asks the person
+something. Every skill that asks carries the same question rule, copied verbatim between
+`<!-- ticketwright:ask-rule:begin -->` and `<!-- ticketwright:ask-rule:end -->` (a runtime injects
+only a skill's own body, so it cannot live in one shared file): ask with `question_tool` within
+`question_limits` when the runtime has one, as a numbered list in chat when it does not. No skill
+names a tool. Edit the block in one skill, copy it to the others, and regenerate `tests/emit/`;
+selftest 61c fails on a copy that drifts.
+
 `tool_gate` is the load-bearing one — it records whether that harness can intercept a command before
 it runs, which is what decides whether `db_write_requires_approval` is mechanically enforced or is
 guidance the model can forget. A value of `unknown` is a real answer and is treated as the floor: no

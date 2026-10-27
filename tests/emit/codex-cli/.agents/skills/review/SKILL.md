@@ -3,7 +3,7 @@ name: review
 description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
 ---
 
-<!-- emitted by ticketwright install v4.4.0 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
+<!-- emitted by ticketwright install v4.4.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
 
 # /review
 
@@ -18,12 +18,43 @@ Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
 Independence is probed, never assumed: the **capability probe** below decides whether the second
 pass gets its own context, and the verdict records which review the ticket actually got.
 
+## How this skill asks the person something
+<!-- ticketwright:ask-rule:begin -->
+The kit's one question rule, the same in every skill that asks:
+- Read `capabilities` from this skill's `kit_paths.py --json` probe the first time a question
+  comes up, and keep the result.
+- `capabilities.structured_questions` is `yes` and `capabilities.question_tool` is not `none` →
+  **ask with that tool**, within `capabilities.question_limits` (when that says `unknown`: one
+  question per call, at most four options). Group up to the limit only questions that do not
+  depend on each other's answers; ask a dependent question after the one it depends on.
+- Otherwise (`no` / `unknown`, or the probe failed) → ask in chat as a short numbered list, one
+  question at a time unless this skill says a set goes in one round, and wait for an explicit
+  answer.
+- The question content is the same either way; only how it is shown changes. No skill names a
+  runtime's tool: the runtime's own adapter (`adapters/runtime/<name>.md`) does. A question tool
+  is not available inside a subagent, so the main session asks.
+- **Never invent an option.** Options come from what this run found or the fixed choices a step
+  names. A recommended option goes first, marked recommended, with where it came from; the person
+  still picks. Each option says what choosing it changes, and free text is always possible (the
+  tool's own "Other", or "or tell me something else" in prose).
+- Whatever the person needs to answer is already in chat before the question, so a picker never
+  hides it.
+- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
+  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
+  never one click.
+<!-- ticketwright:ask-rule:end -->
+
+In this skill the questions are step 0's owner choice, the one-time viewer setup in step ⑤.2, and
+the sign-off in step ⑤.4. Its probe is the capability probe's `kit_paths.py --json` (the second
+pass section); run it early when step 0 has to ask.
+
 ## Phase 0 — Setup
 0. Resolve the **ticket locator**: run
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
    (show the "Working as …" line), then resolve `owner/id` exactly, or a bare `<id>` against the
    resolved person's `tickets/<owner>/` first and other owners second — **two or more foreign owners
-   sharing a bare id is a hard stop listing the `owner/id` choices, never a pick**. Reviewing
+   sharing a bare id is a hard stop that asks which one, with the `owner/id` choices as the options,
+   never a pick**. Reviewing
    another person's ticket is normal; say whose work is under review.
 1. Read the merged config (`bin/effective_config.py --json`), not raw `stack.yaml`. Resolve every
    warehouse **target** this ticket touches and verify each one
@@ -88,14 +119,15 @@ canonical order resolves next — the ticket's declared target before the seam d
 - README completeness (assumptions enumerated, QC results, business context).
 - **Hand the deliverables to the human, then stop** (policy `human_review_handoff`; skip this whole
   bullet when it is `off`). Layers ①–④ prove the query is *internally* consistent; only a person can
-  say the numbers are the right numbers. Do not emit a verdict before this:
+  say the numbers are the right numbers. Do not record an APPROVE before this:
   1. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <final_deliverables + qc_queries paths>`
      routes each file to the app that user chose. **Say a file was opened only when handoff
      printed an `opened:` line for it.** With no `opened:` line (no viewer config, `enabled: false`,
      or `would run:` in a session with no desktop), nothing was opened: say so plainly and **once**
      (for example "No viewer is configured, so nothing was opened"), list the paths so the person
      can open them, and continue. Never block. Its stderr names which case it was.
-  2. If it opened nothing and no **usable** config exists, offer the one-time setup: which app
+  2. If it opened nothing and no **usable** config exists, offer the one-time setup (as questions;
+     they do not depend on each other): which app
      for `.sql`, which for `.csv`, this repo only or all their repos. Their answers are written to
      `.claude/config/viewer.local.yaml` (gitignored, per-user) or the user-level path — see
      `.claude/config/viewer.example.yaml`. "None / don't ask again" writes `enabled: false`.
@@ -108,9 +140,34 @@ canonical order resolves next — the ticket's declared target before the seam d
      gate that never opens anything and never offers to fix itself.
   3. Print a short **what to look at** list — row counts, the grain key, and anything the counts or reconciliation checks flagged —
      so they know where to aim, not just that files opened.
-  4. **Wait for explicit sign-off.** Under `all`, note what they already approved earlier in the
-     build and focus this pass on what changed since; never skip the gate silently just because an
-     earlier one fired.
+  4. **Ask for the sign-off, then wait.** `ship` counts as a sign-off **only when the second pass
+     returned APPROVE** (no hard-halt finding and, under `--deep`, no uncertain Critical / count /
+     reconcile finding), so the person's sign-off is the only thing outstanding. In that case:
+     - First save the record as `verdict: AWAITING-SIGNOFF` (Phase N says how), so the record itself
+       says "the reviewer approved, waiting on you" instead of looking never reviewed.
+     - End the hand-off with this line, and ask it as one question whose options are "Approve and
+       ship" (first), "Approve, don't ship yet" and "Change something":
+       <!-- ticketwright:user-facing:begin -->
+       > Reply `ship` to approve and deliver, or tell me what to change. Replying `ship` means you checked the numbers and they are right. `/ship` still shows you everything it would send, and waits for your go-ahead before anything leaves the repo.
+       <!-- ticketwright:user-facing:end -->
+     - `ship`, or "Approve and ship" → update the record to `verdict: APPROVE` with the sign-off,
+       then route as Phase N says, which starts `/ship`. It counts as the person invoking `/ship`
+       (they asked for it), so `/ship`'s confirm gate for a run the model started does not apply,
+       and its hard halt before anything is sent still does.
+     - An approval without `ship` ("signed off", "approve", "Approve, don't ship yet") → update
+       the record to `verdict: APPROVE` with the sign-off and route as Phase N says, without
+       shipping.
+     - Anything else (what to change, a question) → answer or record it; a change request updates
+       the record to `verdict: REQUEST-CHANGES` with the person's points as findings.
+     When the second pass found a hard-halt finding, the verdict is REQUEST-CHANGES whatever the
+     person replies: still hand the files over so they can see the problem, but do not offer
+     `ship`, and if they reply `ship` anyway, say the review found problems, so `ship` cannot
+     approve this ticket. Under `--deep`, an **uncertain** Critical / count / reconcile finding is
+     not an APPROVE either: no AWAITING-SIGNOFF, no `ship`, no one-click approval. The person may
+     still sign off on it by naming the finding in their own words; that, and only that, writes
+     `verdict: APPROVE` with a `human_signoff:` line quoting them. Under `all`, note what they already approved earlier in the build and
+     focus this pass on what changed since; never skip the gate silently just because an earlier
+     one fired.
 
 ## Tiers & halting
 - **Hard-halt** findings (Critical, count mismatch, dup gap, reconciliation break) → verdict
@@ -196,13 +253,22 @@ An inline-degraded APPROVE must never read identically to an independent-subagen
 **Save the report as `qc_queries/<n>_review_verdict.md`** (`<n>` = the next number in that folder)
 with the lowercase `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first line after the
 title, then `review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship`
-reads. Add a `team_docs:` line after them: `team_docs: <location> opened; <location> unreadable`
+reads. **When the sign-off gate runs** (policy `human_review_handoff` is not `off`) and the second
+pass approved, save the file first with `verdict: AWAITING-SIGNOFF`, before the hand-off, and
+update **that same file** when the person answers: `verdict: APPROVE` plus a `human_signoff:` line
+(the date, the person from whoami, and their reply verbatim), or `verdict: REQUEST-CHANGES` with
+their points as findings. `AWAITING-SIGNOFF` never counts as approval: `/ship` and the push guard
+treat it as not approved yet, and a session that ends before the answer leaves it on file for the
+next one to ask. Add a `team_docs:` line after them: `team_docs: <location> opened; <location> unreadable`
 for each doc from Phase 0 step 3, or `team_docs: none configured`. **The current verdict is the file with the highest `<n>`, compared numerically** — `10_` is
 newer than `9_`; a lexical sort or a file mtime is not the rule — so a later review supersedes an
 earlier one, including a `SKIPPED` record `/ship` wrote for an unreviewed ship. **Confirm the record
 parses before routing:**
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
-and compare its `status` field (`approve` or `request-changes`) to the verdict you just wrote. A
+and compare its `status` field (`approve`, `request-changes`, or `awaiting-signoff` before the
+answer) to the verdict you just wrote. **With `AWAITING-SIGNOFF` on file, stop here and wait for
+step ⑤.4's answer;** the result line and the routing below come after the record is rewritten, so
+the result is never printed as APPROVE before the person has signed off. A
 `status` of `unreadable` marks a file `/ship` and the `review_verdict_guard` hook treat as missing.
 Read the `status` field, never the plain-words line the command prints without `--json`, because
 that line is for the person and its wording can change. Then print one plain line for the person,
@@ -216,8 +282,10 @@ ran in the same conversation that did the work, so it is not the independent sec
 process expects."), so an inline result never reads like an independent one.
 Then route:
 **If this review was run from inside `/build` (its Phase 3), return to that build's step 8 for
-either verdict** — it asks before shipping on APPROVE, and on REQUEST-CHANGES it fixes defects or
-replans scope; starting a new `/build` instead would nest a build inside a build. Otherwise:
+either verdict** — on APPROVE it ships when the person replied `ship` and otherwise asks (or stops,
+when they chose not to ship yet), and on REQUEST-CHANGES it fixes defects or replans scope;
+starting a new `/build` instead would nest a build inside a build. Otherwise: APPROVE after a
+`ship` reply ⇒ **follow `/ship <owner>/<id>`'s instructions in full**, in this window. Any other
 APPROVE ⇒ recommend `/ship <owner>/<id>` (the qualified locator, so `/ship` cannot re-resolve a bare
 id to a different owner's ticket). REQUEST-CHANGES ⇒ recommend `/build <owner>/<id>`, which applies
 the remediation (or replans, when a finding is `kind: scope`) and runs this review again.
