@@ -406,6 +406,50 @@ def extract_objects(ticket_dir: Path, cap: int = 40) -> list[str]:
     return sorted(found.values(), key=str.lower)[:cap]
 
 
+# What an analysis READS, for spotting a repeated one (`recall.py --repeats`). Narrower than
+# SQL_OBJECT on purpose: a write target (`into`/`update`/`table`/`view`) names this ticket's own
+# output, which a repeat renames freely, so two runs of the same analysis would never compare equal.
+# A BigQuery project id may carry hyphens (`my-project.ds.tbl`), legal once quoted; quotes are
+# stripped before matching, so the first part allows a hyphen here (and only here).
+SOURCE_NAME = r"[A-Za-z_][\w-]*(?:\.[A-Za-z_]\w*){1,2}"
+READ_OBJECT = re.compile(rf"(?i)\b(?:from|join)\s+({SOURCE_NAME})")
+WRITE_OBJECT = re.compile(rf"(?i)\b(?:into|update|table|view|delete\s+from)\s+(?:if\s+not\s+exists\s+)?({SOURCE_NAME})")
+# `FROM x.y v` / `JOIN x.y AS d`: the alias a file declares. `EXTRACT(HOUR FROM v.published_at)`
+# also follows FROM, so a two-part match whose first part is a declared alias is a column, not a table.
+ALIAS_DECL = re.compile(rf"(?i)\b(?:from|join)\s+{SOURCE_NAME}\s+(?:as\s+)?([A-Za-z_]\w*)")
+NOT_ALIAS = {"where", "on", "using", "join", "left", "right", "inner", "outer", "full", "cross",
+             "natural", "group", "order", "limit", "having", "qualify", "window", "union", "except",
+             "intersect", "for", "tablesample", "lateral", "set", "select", "with", "as", "and", "or"}
+IDENT_QUOTES = str.maketrans("", "", '`"[]')
+QC_DIR = "qc_queries"  # QC SQL re-reads sources and scratch tables; it is not the analysis itself
+
+
+def read_objects(ticket_dir: Path, cap: int = 40) -> list[str]:
+    """The qualified sources a ticket's *.sql/*.py read (`from`/`join`), minus anything the ticket
+    itself writes (a staging table it creates and then reads back is output, not a source).
+    Files under `qc_queries/` are skipped. Empty when the ticket has no code yet."""
+    reads: dict[str, str] = {}
+    writes: set[str] = set()
+    for pat in ("*.sql", "*.py"):
+        for f in sorted(ticket_dir.rglob(pat)):
+            if QC_DIR in f.relative_to(ticket_dir).parts:
+                continue
+            try:
+                txt = f.read_text(errors="replace")
+            except OSError:
+                continue
+            # `p.d.t`, "d"."t" and [d].[t] read as d.t; Python import lines are not data objects.
+            code = "\n".join(ln.translate(IDENT_QUOTES) for ln in txt.splitlines() if not PY_IMPORT.match(ln))
+            aliases = {a.lower() for a in ALIAS_DECL.findall(code)} - NOT_ALIAS
+            for name in READ_OBJECT.findall(code):
+                parts = name.lower().split(".")
+                if len(parts) == 2 and parts[0] in aliases:
+                    continue  # a column of an aliased table, e.g. EXTRACT(... FROM v.published_at)
+                reads.setdefault(name.lower(), name)
+            writes.update(n.lower() for n in WRITE_OBJECT.findall(code))
+    return sorted((v for k, v in reads.items() if k not in writes), key=str.lower)[:cap]
+
+
 def objects_in_text(text: str, known: list[str], cap: int = 40) -> list[str]:
     """Objects a ticket's TEXT names (title, description, attachments), for a ticket with no SQL yet.
 
@@ -808,6 +852,7 @@ def build_rows(root: Path) -> list[dict]:
             "status_source": status_source, "status_read": status_read, "date": date_val,
             "summary": summary, "tags": tags, "cross_refs": cross_refs, "objects": objects, "url": url,
             "link": link, "enriched": enriched, "stale": stale, "has_readme": bool(readme),
+            "rel_dir": rel,
         })
     rows.sort(key=lambda r: ((r["date"] or "0000-00-00"), ticket_number(r["id"], key_re), r["id"], r["owner"]), reverse=True)
     canon = canonical_objects(o for r in rows for o in r["objects"])
