@@ -121,7 +121,8 @@ plainly what is about to happen and why, before it happens.
    - A question about which tool the team uses offers every tool the kit has setup notes for in
      that slot, detected or not. Detected ones come first with what was found; an undetected one
      is labeled "not connected here yet", and choosing it adds a connect-it item to the list of
-     things to finish. Never make the person type the name of a common tool the kit supports.
+     things to finish. Say on that choice that a connector added in the app reaches this session
+     only after `/reload-plugins` or a new session. Never make the person type the name of a common tool the kit supports.
 6. **Talk about the work, not the kit.** Questions use the person's words: tickets, data, results,
    files, the team. "Tool slot", "target", "tier", "seam" and "adapter" do not appear in a question.
    When a kit limit shapes the answer, configure around it and say in one line of the plan what was
@@ -207,6 +208,22 @@ repaired one. The case that forced this: a person on an MCP-only tracker whose `
 they do not have, so `verify_stack` reports a healthy tracker as unreachable. `/setup tool tracker`
 re-runs that slot's questions — transport, `mcp:`, `cli:`, and the read-only `verify` — against the
 existing config, edit-never-overwrite. Same for `vcs`.
+**Finishing a slot chosen before it was connected.** When the slot holds a value still written
+`TODO` (most often `mcp: TODO`; the session banner and `verify_stack.sh` both name these), this
+mode finishes it instead of asking everything again:
+1. Find the connector in your own tool list. Not there yet: say it needs connecting and a reload
+   (`/reload-plugins` or a new session), and stop; the slot stays `TODO`.
+2. Write its exact tool prefix to `mcp:` (read from the tool list, never typed by the person), the
+   same rule as [interview.md](interview.md) § the `mcp:` value.
+3. Run the adapter's read-only probe: print it with
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" adapter_surface.py --adapter <path> --probe`
+   and call it once.
+4. Record the result in `.claude/config/posture.local.yaml`, as [teammate.md](teammate.md)
+   describes for an MCP slot.
+5. Ask only the questions that slot skipped because the tool was not there (a channel, a project,
+   a folder), then verify and re-render as above.
+The same steps apply to every tool slot with an MCP connection: tracker, warehouse, chat, docstore
+and meetings.
 **Deprecated spellings:** the old `/setup chat` / `/setup docstore` / `/setup warehouse` (without
 `tool`) keep working for one release — accept them, print "Note: `/setup chat` is now
 `/setup tool chat`; the old spelling goes away in the next release." (substituting the slot

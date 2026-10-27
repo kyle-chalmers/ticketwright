@@ -43,6 +43,18 @@ All notable changes to this project are documented here. Format loosely follows
   then the lower ticket number. With neither, the link stays under Builds on as before. Only the
   graph changes: the `Refs` column in `INDEX.md` and recall's cross-reference score are the same.
   (LABS-57)
+- **A tool picked before it was connected gets finished later instead of forgotten.** Setup writes
+  `mcp: TODO` for a tool that isn't connected in the session yet, and after that nothing mentioned
+  it again, so finishing it meant editing `stack.yaml` by hand. The resolver now reports a value
+  still written `TODO` as pending. `verify_stack.sh` names it as a warning with the order to fix
+  it (connect, reload with `/reload-plugins` or a new session, then `/setup tool <slot>`), and the
+  session banner repeats it until it is done. `/setup tool <slot>` on a pending slot now finishes
+  it: it writes the tool prefix from the session's own tool list, runs the read-only probe, records
+  the permission check, and asks only the questions that were skipped. Setup also says up front
+  that a newly connected tool needs a reload.
+- **The team roster is asked one person at a time.** A free-text list left names and ids to
+  guesswork. Setup now asks for one teammate per answer, with a "That's everyone" choice, and
+  shows the id and display name before writing each file.
 - **The kit now says when the plugin files on disk are not the ones this repo installed.**
   Claude Code keeps one plugin folder per version, so when two repos install the same version at
   different commits, the later install rewrites the folder for both. The version still matched
