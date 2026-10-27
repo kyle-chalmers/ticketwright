@@ -300,6 +300,7 @@ never case-folded, never fuzzy — against the value each target declares:
 | `audience` | chat target | What a ticket declares to reach this target. Required per target, unique across the slot, never set at slot level (a slot-level scalar would be inherited, and a routing key must never be). |
 | `classification` | docstore target | Same, for deliverables — e.g. `internal_archive` vs `client_delivery`. |
 | `always_include` | chat target | This target's own non-empty stakeholder list, applied **after** routing. Never inherited from the slot or another target. |
+| `suggested_channels` | chat slot or target | Optional list of channels the team posts to often. `/ship` offers them as choices when a ticket picks its own destination; nothing is ever sent to one unless the person picks it. Setup writes it from "Where do results usually go?". |
 | `sharing_scope` | docstore target | `team` \| `org` \| `external` — the **declared** scope of the destination, printed at the `/ship` approval. |
 | *(destination)* | both | The key the adapter names in its `channel_key:` / `destination_key:` frontmatter (Slack `default_channel`, Teams `channel`, the Gmail/Outlook email adapters `to`). Each target must set its own, unless it is a chat target marked `destination: per_ticket`. |
 | `destination` | chat target | Only `per_ticket`: this target has no standing destination; each ticket's delivery plan names where it goes and who it is for (below). Declared on the target itself, never inherited from the slot. |

@@ -61,6 +61,7 @@ record the outcome in gitignored `.claude/config/posture.local.yaml`.
 acli jira workitem view <id>
 ```
 For structured fields: `acli jira workitem view <id> --json`.
+**People, for `/ship`'s audience suggestions:** `reporter` is `fields.reporter` in the `--json` output (display name and, when the site shows it, email). `watchers`: not available (`fields.watches` carries a count only, not the people).
 
 ## verb: create_ticket
 **In:** type, summary, description, assignee (email), optional parent/epic.
@@ -221,6 +222,7 @@ of the default sections hold unchanged here: nothing posts before a human has re
 acli jira workitem view <id>
 ```
 For structured fields: `acli jira workitem view <id> --json`.
+**People, for `/ship`'s audience suggestions:** `reporter` is `fields.reporter` in the `--json` output (display name and, when the site shows it, email). `watchers`: not available (`fields.watches` carries a count only, not the people).
 
 ### verb: create_ticket
 **In:** type, summary, description, assignee (email), optional parent/epic.

@@ -23,9 +23,11 @@ Maps the `tracker` verb contract to GitHub Issues via `gh`.
 **In:** issue number, or `<owner>/<name>#<number>` for an issue in another repo (the form
 `search_history` returns for one). **Out:** title, body (markdown), state, assignees, labels, milestone.
 ```bash
-gh issue view <number> --repo {repo} --json number,title,body,state,assignees,labels,milestone,url
+gh issue view <number> --repo {repo} --json number,title,body,state,assignees,author,labels,milestone,url
 ```
 For `<owner>/<name>#<number>`, pass `<number>` and `--repo <owner>/<name>` in place of `{repo}`.
+
+**People, for `/ship`'s audience suggestions:** `reporter` is `author.login`. `watchers`: not available (`gh` does not list an issue's subscribers).
 
 ## verb: create_ticket
 ```bash

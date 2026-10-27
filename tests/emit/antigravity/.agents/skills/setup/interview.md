@@ -292,6 +292,13 @@ sent without you seeing it first."
       audience, so each result goes out through the tool that ticket chose.
     - **Email alone** → the same single mapping, with `identity:` and `default_mode: draft` set
       explicitly, because an email cannot be unsent.
+    - **Then, for each chat tool picked (not email): "Are there channels you post results to
+      often?"** Options: **"It changes every time"** (first; writes nothing) and **"Yes, I'll name
+      them"**. Look each named channel up with the adapter's `lookup_channel` verb and write the
+      ones found to `suggested_channels:` on that tool's slot (or target), never to
+      `default_channel`. Say what this does: `/ship` offers these as choices next to the people on
+      the ticket, and nothing is sent to one unless they pick it for that result. A channel needs no
+      named person; a direct or group message names who it is for.
     - A team that genuinely wants **fixed, pre-declared audiences** (internal channel vs client
       mailbox, each with its own standing recipient list) adopts the standing-destination form in
       `stack.example.multi-audience.yaml`, an extension, never the interview's default.
