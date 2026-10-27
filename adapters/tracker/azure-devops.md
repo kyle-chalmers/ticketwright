@@ -46,6 +46,22 @@ az boards work-item update --id <id> --state "<State>"      # e.g. {done_state} 
 ```
 States are process-specific (Agile: New/Active/Resolved/Closed; Basic: To Do/Doing/Done) — map
 `project.terminal_status` → `{done_state}`.
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker).
+```bash
+az boards work-item show --id <id> --fields System.State,System.WorkItemType --output json
+az devops invoke --area wit --resource workItemTypeStates \
+  --route-parameters project="{project}" type="<System.WorkItemType>" --output json
+```
+`current` = `System.State`. Every state of the item's type except the current one is a
+transition: `to` and `via` = the state's `name` (what `--state` takes), `category` from its
+`category`: `Proposed` = `todo`, `InProgress` and `Resolved` = `in_progress`, `Completed` = `done`,
+`Removed` = `null`. This lists the type's states, not the process rules: a custom rule that blocks
+one move shows only when `transition` runs, so report that failure as it comes.
 
 ## verb: comment
 ```bash
@@ -58,6 +74,12 @@ Discussion accepts HTML (links render). Honor `word_limits.tracker_comment`; nev
 az boards query --wiql "SELECT [System.Id],[System.Title],[System.State] FROM workitems \
   WHERE [System.TeamProject]='{project}' AND [System.Title] CONTAINS '<text>' \
   ORDER BY [System.ChangedDate] DESC" --output json
+```
+
+**By `ids`** (the index status read): one WIQL query for the whole list.
+```bash
+az boards query --wiql "SELECT [System.Id],[System.Title],[System.State] FROM workitems \
+  WHERE [System.Id] IN (<id>, <id>)" --output json
 ```
 
 ## verb: download_attachments

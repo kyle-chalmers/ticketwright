@@ -3,7 +3,8 @@
 
 The deterministic renderer + PostToolUse hook keep `tickets/INDEX.md` *complete* (a new
 ticket appears immediately as a `▱` row). This script does the LLM half: it reads a
-ticket's README, has a model write the one-line summary / status / date / tags / cross-refs,
+ticket's README, has a model write the one-line summary / date / tags / cross-refs (never the
+status: that is read from the tracker, see ingest_index_records.py --tracker-status),
 upserts that into `tickets/index_data.json`, and re-renders — turning `▱` into a curated row.
 
 It runs a model headlessly, and WHICH model command it runs is resolved per runtime rather than
@@ -68,7 +69,7 @@ INGEST_RECIPE = """No headless model command is available for this runtime.
 
 Use the agent-neutral path instead — the host agent writes the record and pipes it in:
 
-  echo '{{"records":[{{"id":"<ID>","owner":"<OWNER>","status":"...","summary":"...","tags":[]}}]}}' \\
+  echo '{{"records":[{{"id":"<ID>","owner":"<OWNER>","summary":"...","tags":[]}}]}}' \\
     | python3 "{bindir}/ingest_index_records.py" --from-json -
   python3 "{bindir}/build_ticket_index.py"
 
@@ -177,9 +178,6 @@ PROMPT = """You are writing one catalog record for a single ticket in this repo.
 README is below.
 
 Output ONLY a single minified JSON object (no prose, no code fence) with these keys:
-- "status": one of "Completed","Deployed","In Review","In Progress","Blocked","Unknown" \
-(Deployed if it shipped a data object/view/table/job; Completed if a deliverable was handed off; \
-In Review if awaiting PR/stakeholder; In Progress if planned not delivered; Blocked if blocked).
 - "date": best delivered/completed date as "YYYY-MM-DD", or null. Prefer an explicit \
 Completed/Deployed/Filed date, else the most recent Update/Follow-up date. Never invent one.
 - "summary": ONE line, <=180 chars, leading with what was delivered + key number(s)/outcome. \

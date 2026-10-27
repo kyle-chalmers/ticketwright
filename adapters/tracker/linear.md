@@ -63,6 +63,22 @@ Linear auto-mints the identifier from `{team_id}` (your `key_prefix`). Epic → 
 update-issue(id=<id>, stateId={done_state_id})     # move to the workflow state for terminal_status
 ```
 Fetch the team's states once to map `project.terminal_status` → `{done_state_id}`.
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** `id`. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker).
+```
+get-issue(id=<id>)                     # current = the issue's state name
+list-issue-statuses(team={team_id})    # the team's workflow states
+```
+Linear sets no rules on moves: an issue can go to any workflow state of its team, so every state
+except the current one is a transition. `to` = the state's name, `via` = its id (what
+`update-issue(stateId=...)` takes), `category` from its `type`: `backlog` and `unstarted` =
+`todo`, `started` = `in_progress`, `completed` = `done`, `canceled` = `null` (closed, but not
+done). The tool names follow this adapter's other calls; a server that spells them differently is
+checked once in its own tool list.
 
 ## verb: comment
 ```
@@ -75,6 +91,9 @@ Linear comments support full markdown links — `[TEST-123](url)`, file links, P
 ```
 list-issues(team={team_id}, query=<text>, filter={state, label, ...})
 ```
+
+**By `ids`** (the index status read): `get-issue(id=<id>)` once per id, taking `title` and the
+state's name; an id the team does not have is left out.
 
 ## verb: download_attachments
 Read the issue's `attachments{ url }`, `curl -L` each to the dest dir. (Linear attachments are URLs.)

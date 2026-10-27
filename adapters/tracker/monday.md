@@ -68,6 +68,19 @@ change-column-value(item_id=<id>, board_id={board_id}, column_id={status_column_
                     value="{\"label\":\"<status>\"}")
 ```
 `project.terminal_status` maps to `{done_label}`.
+Take the target from a move `list_transitions` returned (its `via` is what this call needs), never a
+status typed from memory: the moves differ per workflow.
+
+## verb: list_transitions
+**In:** item id. **Out:** `{current, transitions: [{to, via, category}], free_form: false}` (shape in
+`adapters/README.md` § tracker).
+```
+get-item(item_id=<id>)                      # current = the {status_column_id} column's text
+get-board-schema(board_id={board_id})       # the status column's labels, in its settings
+```
+monday sets no rules on moves: the status column takes any of its labels. Every label except the
+current one is a move, `to` and `via` = the label text (what `change-column-value` takes), and
+`category: done` for `{done_label}`, `null` for the rest.
 
 ## verb: comment
 ```
@@ -80,6 +93,11 @@ Updates render links inline. Honor `word_limits.tracker_comment`. Never post bef
 ```
 items-page-by-column-values(board_id={board_id}, columns=[…])   # filter by column
 # or a text query across the board's items
+```
+
+**By `ids`** (the index status read): one GraphQL read for the whole list.
+```
+items(ids:[<id>, <id>]){ id name column_values(ids:["{status_column_id}"]){ text } }
 ```
 
 ## verb: download_attachments

@@ -36,10 +36,38 @@ verb in that seam's contract. A verb section gives the command(s), inputs, the e
 | `fetch_ticket` | `id` | title, description, status, type, assignee, links, attachments list; `reporter` and `watchers` where the tracker exposes them, else "not available" (people for `/ship`'s audience suggestions) |
 | `create_ticket` | type, summary, description, assignee, parent/epic | new `id` + URL |
 | `transition` | `id`, `status` | ok/fail |
+| `list_transitions` | `id` | `{current, transitions: [{to, via, category}], free_form}`: the statuses this ticket can move to from where it is now — or `unsupported` / `unavailable` + reason |
 | `comment` | `id`, body, optional smart-link cards | ok/fail (rendered, not plain text) |
-| `search` | query (JQL/equivalent), limit | list of `{id, summary, status}` |
+| `search` | query (JQL/equivalent), limit — or `ids` | list of `{id, summary, status}` |
 | `download_attachments` | `id`, dest dir | files written (silent if none) |
 | `rank_projects_by_activity` | `scope`, `window_days`, `limit` | ranked tracker **containers** (Jira project / Azure Boards project / GitHub repo / Linear team / Asana project / monday board) as `{id, name, activity, last_activity, signal}` — or `unsupported` / `unavailable` + reason |
+
+**Statuses are read from the tracker, never assumed.** Workflows differ per team and per project: one
+board has `In Review`, another goes straight from `In Progress` to `Done`, and a transition to a
+status the workflow lacks fails at the very last step of a delivery. So `list_transitions` returns
+the moves this ticket can make right now, read from the tracker, and `bin/transition_plan.py`
+picks the one that reaches `project.terminal_status` (or reports that none does, so the caller asks
+rather than guesses). The return shape is the same for every tool:
+
+    { "current": "In Progress",                       # the ticket's status now, or null
+      "transitions": [ { "to": "Done",                # the status the move lands in (what is matched)
+                         "via": "31",                 # what `transition` takes to make it: a
+                                                      # transition id, a state id, or the status name
+                         "category": "done" } ],      # todo | in_progress | done | null, when the
+                                                      # tracker groups its statuses
+      "free_form": false }                            # true when any status word is accepted (`local`)
+
+`to` is always the status name the person sees; `via` is whatever the adapter's `transition` verb
+needs, which is the transition's own id on a tracker (Jira) whose transition names and target
+statuses can differ. `unsupported` means the tool has no workflow to read; `unavailable` means it
+has one that this transport cannot list (an `acli`-only Jira install: the CLI has no listing
+command). Both are said to the person, and the plan then names `project.terminal_status` with "not
+checked against the tracker" beside it.
+
+**`search` by `ids`** is how the ticket index reads current statuses (`/refresh index`): given a
+list of ticket ids instead of a query, return exactly those tickets' `{id, summary, status}`, in one
+call where the tool allows it. An id the tracker does not know is left out, never invented. It is
+read-only like every `search`.
 
 `rank_projects_by_activity` is the seam's one **bootstrap** verb, and it breaks two rules the
 others follow — deliberately, because it runs *before* the seam is configured. Its job is to stop
@@ -318,6 +346,12 @@ did. **The same per-ticket shape works one target at a time**: a named chat targ
 `chat.recipients:` once a ticket's `audience:` selects it, and halts (exit 9) without them, so one
 slot can hold Gmail and Slack with recipients that differ per analysis. It never falls back to
 another target, and a `chat.target:` naming a different target than the one routed halts (exit 4).
+**No message is a declaration too.** A ticket whose result needs no chat message writes
+`chat: none` (or a `chat:` block with `none: true` and an optional `reason:`). Routing then exits
+**0** with `skipped: "declared"`, the reason as `skip_reason`, and no target, destination or
+recipients: a decision recorded with the ticket is neither a missing plan (3) nor a missing
+declaration (9), and `/ship` prints it as "Chat: none, declared on the ticket" rather than asking.
+`none: true` beside a destination is malformed (4), since the plan would say two things.
 A chat slot or target may also list `suggested_channels:`, channels the team posts to often. Routing
 returns them on every exit (exit 9 included, which is when `/ship` asks) and **never routes to
 one**: a suggestion becomes a destination only when the person picks it and it is written to
@@ -345,6 +379,8 @@ The schema:
       chosen_from: tracker:reporter    # OPTIONAL, a record only: where the destination came from
                                        # (suggested_channels | tracker:reporter | tracker:assignee |
                                        # tracker:watcher | typed). Never read by routing
+    # chat: none                     # INSTEAD of the block above, when this ticket sends no message;
+                                       # or `chat: {none: true, reason: "..."}` to record why
     docstore:
       target: archive                  # chosen docstore target (null when single)
       destination: "Shared drives/Tickets/TEST-1234 example-analysis"

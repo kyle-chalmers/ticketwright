@@ -52,6 +52,28 @@ COMPLETION_HINT = re.compile(
 EMOJI_STATUS = {"☑️": "Completed", "\U0001f6e0️": "In Progress"}  # ☑️ / 🛠️
 SUMMARY_MAX = 180
 STATUS_ORDER = ["Deployed", "Completed", "In Review", "In Progress", "Blocked", "Unknown"]
+# A ticket's status has ONE source, the tracker, and the index shows the freshest copy of it it has:
+# a status read from the tracker by `/refresh index` (recorded as `tracker_status`), else a curated
+# status (only older kit versions wrote one; the model no longer does), else the README's
+# `- **Status:**` bullet (written from the tracker by /ticket, and by the `local` tracker's
+# transition), else a folder-name emoji, else Unknown. A curated `Unknown` counts as no status, so it
+# never hides the README bullet.
+STATUS_SOURCES = ("tracker", "curated", "readme", "folder", "none")
+README_STATUS = re.compile(r"^\s*[-*]\s+\*\*Status:\*\*\s*(.*?)\s*$")
+STATUS_MAX = 40
+_STATUS_BAD = set("|`<>{}[]\\")
+
+
+def clean_status(value) -> str | None:
+    """A status as it may appear in a table cell, or None. Tracker statuses are free text (`Needs
+    you`, `Ready for QA`), so the check is shape, not vocabulary: one short line, none of the
+    characters that would break the table or read as a template placeholder (`{{status}}`)."""
+    if not isinstance(value, str):
+        return None
+    s = " ".join(value.split())
+    if not s or len(s) > STATUS_MAX or set(s) & _STATUS_BAD:
+        return None
+    return s
 
 # ── Obsidian graph-view auto-config (.obsidian/graph.json) ─────────────────────────────────────
 # The renderer owns exactly two things in graph.json: the `search` filter and its two color groups
@@ -620,7 +642,7 @@ def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Patt
     try:
         text = path.read_text(errors="replace")
     except OSError:
-        return {"title": None, "date": None, "summary": None, "cross_refs": []}
+        return {"title": None, "date": None, "summary": None, "cross_refs": [], "status": None}
     lines = text.splitlines()
 
     title, h1_idx = None, None
@@ -666,8 +688,16 @@ def parse_readme(path: Path, self_id: str, key_re: re.Pattern, title_re: re.Patt
         summary = (s[: SUMMARY_MAX - 1].rstrip() + "…") if len(s) > SUMMARY_MAX else s
         break
 
+    status = None
+    for ln in lines:
+        mm = README_STATUS.match(ln)
+        if mm:
+            status = clean_status(mm.group(1))
+            break
+
     refs = resolve_cross_refs(text, self_id, key_re, id_mode, known_ids, self_owner, known_pairs)
-    return {"title": title, "date": best_date, "summary": summary, "cross_refs": refs}
+    return {"title": title, "date": best_date, "summary": summary, "cross_refs": refs,
+            "status": status}
 
 
 def load_data(root: Path) -> dict[tuple[str, str], dict]:
@@ -710,7 +740,7 @@ def build_rows(root: Path) -> list[dict]:
         owner, tid, d, readme = t["owner"], t["id"], t["dir"], t["readme"]
         entry = data.get((owner, tid))
         parsed = parse_readme(readme, tid, key_re, title_re, cfg["id_mode"], known_ids, owner, known_pairs) \
-            if readme else {"title": None, "date": None, "summary": None, "cross_refs": []}
+            if readme else {"title": None, "date": None, "summary": None, "cross_refs": [], "status": None}
         cur_hash = sha256_file(readme) if readme else None
 
         title = parsed["title"] or (entry or {}).get("title") or tid
@@ -721,14 +751,23 @@ def build_rows(root: Path) -> list[dict]:
         )
         if entry and entry.get("summary"):
             summary = entry["summary"]
-            status = entry.get("status") or t["emoji_status"] or "Unknown"
             date_val = entry.get("date") or parsed["date"]
             tags = entry.get("tags") or []
         else:
             summary = parsed["summary"] or "—"
-            status = t["emoji_status"] or "Unknown"
             date_val = parsed["date"]
             tags = []
+        curated = clean_status(entry.get("status")) if enriched else None
+        status, status_source, status_read = "Unknown", "none", None
+        for cand, src in ((clean_status((entry or {}).get("tracker_status")), "tracker"),
+                          (None if curated == "Unknown" else curated, "curated"),
+                          (parsed.get("status"), "readme"),
+                          (t["emoji_status"], "folder")):
+            if cand:
+                status, status_source = cand, src
+                break
+        if status_source == "tracker":
+            status_read = (entry or {}).get("tracker_status_read")
         if entry and entry.get("cross_refs"):
             cross_refs = entry["cross_refs"]
         elif readme:
@@ -746,7 +785,8 @@ def build_rows(root: Path) -> list[dict]:
         link = quote(readme.relative_to(root / "tickets").as_posix()) if readme else quote(rel) + "/"
 
         rows.append({
-            "owner": owner, "id": tid, "title": title, "status": status, "date": date_val,
+            "owner": owner, "id": tid, "title": title, "status": status,
+            "status_source": status_source, "status_read": status_read, "date": date_val,
             "summary": summary, "tags": tags, "cross_refs": cross_refs, "objects": objects, "url": url,
             "link": link, "enriched": enriched, "stale": stale, "has_readme": bool(readme),
         })
@@ -826,6 +866,13 @@ def render(rows: list[dict]) -> str:
             notes.append(f"{stale} summary may be stale (⚠)")
         out.append("")
         out.append("Coverage: " + " · ".join(notes) + ". Run /refresh index to update.")
+    from_tracker = [r for r in rows if r.get("status_source") == "tracker"]
+    if from_tracker:
+        reads = sorted(r["status_read"] for r in from_tracker if r.get("status_read"))
+        when = f", oldest read {reads[0]}" if reads else ""
+        out.append("")
+        out.append(f"Status: read from the tracker for {len(from_tracker)} of {len(rows)} tickets{when}. "
+                   "The rest show the curated summary's status or the ticket README's.")
     out.append("")
     out.append("> **For the agent:** this is the catalog of all prior ticket work in this repo. Before "
                "starting a ticket, grep here for earlier work on the same object / stakeholder / report — "
@@ -1244,6 +1291,8 @@ def main() -> int:
             print(f"health: {cov:.0f}% enriched · median summary {med} chars · "
                   f"under-enriched (no tags+objects): {under} · objects {one_off} one-off / {shared} shared"
                   + (f" · oldest stale: {min(stale_dates)}" if stale_dates else ""))
+            src = {s: sum(1 for r in rows if r.get("status_source") == s) for s in STATUS_SOURCES}
+            print("status from: " + " · ".join(f"{s} {n}" for s, n in src.items() if n))
         if un:
             print("un-enriched: " + ", ".join(un))
         if no_readme:

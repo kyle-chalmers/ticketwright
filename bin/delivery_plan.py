@@ -67,6 +67,22 @@ when they are missing, and never falls back to another target. Setting a standin
 `destination: per_ticket` is refused (pick one). Its own `always_include:`, when present, is added
 after the plan's recipients.
 
+NO MESSAGE, DECLARED. A ticket whose result needs no chat message says so in its plan:
+
+    chat: none                      # the short form
+    chat:                           # or with the reason, which the plan line shows
+      none: true
+      reason: "The requester reads the tracker comment."
+
+`--seam chat` then exits 0 with `skipped: "declared"` (and `skip_reason`) and no target, no
+destination and no recipients. That is a decision a person recorded with the ticket, so it is
+neither `no_plan` (exit 3) nor "nothing declared" (exit 9), and /ship prints it as "Chat: none,
+declared on the ticket" instead of asking. `none: true` beside a `channel:`, `kind:`,
+`recipients:`, `target:` or `chosen_from:` is malformed (exit 4: the plan says both), and so is any
+`chat:` scalar other than `none`. `--override` still routes (an explicit human choice), with a
+warning that it contradicts the declaration; `--check-draft` refuses, as there is no draft to check.
+An unconfigured chat slot is still exit 7: the declaration does not configure anything.
+
 ON EVERY NON-ZERO EXIT, `target` AND `destination` ARE NULL. A caller cannot pick a usable
 destination out of a failed routing, whether or not it checks the exit code.
 
@@ -545,6 +561,47 @@ def audit(res: "ec.Resolution") -> list[tuple[str, str]]:
     return out
 
 
+# ── a declared "no message" ────────────────────────────────────────────────────────────────────
+CHAT_NONE = "none"
+# Keys that describe a message; any of them beside `none: true` means the plan says two things.
+CHAT_MESSAGE_KEYS = ("channel", "kind", "recipients", "target", "chosen_from")
+
+
+def chat_declared_none(plan: dict) -> tuple[bool, str | None, dict | None]:
+    """(declared_none, reason, error) for the plan's `chat:` value. Read verbatim, like a routing
+    key: `None` or `nope` is not the declaration, it is a malformed plan that halts and asks."""
+    raw = plan.get("chat")
+    if raw is None or isinstance(raw, dict) and "none" not in raw and "reason" not in raw:
+        return False, None, None
+    if isinstance(raw, str):
+        if raw.strip() == CHAT_NONE:
+            return True, None, None
+        return False, None, _err("malformed", f"`chat: {raw}` is not something the delivery plan "
+                                              f"reads. Write `chat: none` for no message, or a "
+                                              f"`chat:` block with `channel:` and `recipients:`.")
+    if not isinstance(raw, dict):
+        return False, None, _err("malformed", "`chat:` must be a block (channel, kind, recipients) "
+                                              "or the word `none`")
+    flag = raw.get("none")
+    if flag is False:
+        return False, None, None      # `none: false` is no declaration: the block routes as usual
+    if flag is not True:
+        what = "`chat.reason:` explains `chat.none: true`" if flag is None else \
+               f"`chat.none:` must be `true`, got {flag!r}"
+        return False, None, _err("malformed", f"{what}. Write `none: true` for no message, or remove "
+                                              f"it. Details: the delivery plan's `chat:` block.")
+    both = [k for k in CHAT_MESSAGE_KEYS if raw.get(k) not in (None, [], "")]
+    if both:
+        return False, None, _err("malformed",
+                                 "The delivery plan says there is no chat message and also says where "
+                                 "it goes. Keep one. Details: `chat.none: true` beside "
+                                 + ", ".join(f"`chat.{k}:`" for k in both) + ".")
+    reason = raw.get("reason")
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        return False, None, _err("malformed", "`chat.reason:` must be a sentence, or left out")
+    return True, (reason.strip() if isinstance(reason, str) else None), None
+
+
 # ── routing ────────────────────────────────────────────────────────────────────────────────────
 def _blank(seam_name: str, declared: str | None) -> dict:
     """The shape every caller gets, with no target and no destination in it."""
@@ -945,6 +1002,9 @@ def _fingerprint(out: dict) -> str:
     basis = {k: out.get(k) for k in ("seam", "target", "tool", "adapter", "destination",
                                      "destination_key", "recipients", "include_self",
                                      "sender", "sender_key", "sharing_scope", "mode", "kind")}
+    if out.get("skipped"):
+        # Only when set, so every routed fingerprint already approved stays byte-identical.
+        basis["skipped"] = out["skipped"]
     return hashlib.sha256(json.dumps(basis, sort_keys=True, default=str)
                           .encode("utf-8")).hexdigest()[:12]
 
@@ -1125,7 +1185,38 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(plan_chat, dict):
         plan_chat = None
 
+    none_warning = None
+    if args.seam == "chat":
+        is_none, reason, nerr = chat_declared_none(plan or {})
+        if nerr:
+            out = _blank(args.seam, declared)
+            out["error"] = nerr
+            return _emit(out, EXIT_MALFORMED, args.quiet)
+        if is_none and args.override is None:
+            out = _blank(args.seam, declared)
+            out.update({"skipped": "declared", "skip_reason": reason, "selected_by": "declared_none"})
+            out["resolution_fingerprint"] = _fingerprint(out)
+            if args.check_draft:
+                out, err = _fail(out, _err("malformed", "This ticket declares no chat message, so "
+                                                        "there is no draft to check. Details: "
+                                                        "`chat: none` in the delivery plan."))
+                return _emit(out, EXIT_MALFORMED, args.quiet)
+            if args.expect_target is not None and args.expect_target.strip() != CHAT_NONE:
+                out, err = _fail(out, _err("target_changed",
+                                           f"The delivery plan changed after you approved it: it now "
+                                           f"declares no chat message. Review and approve the plan "
+                                           f"again before shipping. Details: approved target "
+                                           f"`{args.expect_target}`, plan says `chat: none`."))
+                return _emit(out, EXIT_NO_TARGET, args.quiet)
+            return _emit(out, EXIT_OK, args.quiet)
+        if is_none:
+            none_warning = (f"--override `{args.override}` CONTRADICTS the ticket's declared "
+                            f"`chat: none` — sending a message the ticket says it does not need")
+            plan_chat = None
+
     out, err = route(res, args.seam, declared, args.override, args.self_name, plan_chat)
+    if none_warning and not err:
+        out["warnings"] = (out.get("warnings") or []) + [none_warning]
     # `single` is the sentinel /ship already renders for a single mapping's null target (#38's
     # convention), so passing that plan line back must MATCH rather than look like a changed target.
     actual_target = out.get("target") or "single"
