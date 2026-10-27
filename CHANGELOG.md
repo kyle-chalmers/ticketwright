@@ -6,6 +6,62 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- `/ticket` can search your tracker's older tickets. When the repo's own tickets give a weak match
+  (recall says `weak` or `no prior art found`), it offers to search the tickets your team tracked
+  before the repo existed: "Search them", "Skip", or "Look somewhere specific" (a project, label,
+  epic or person). The search only reads, returns up to 20 tickets, and stays inside the saved
+  project and cutoff date. Results are scored by the same rules as recall (a label counts as a tag,
+  the text as keywords, a ticket key the README names as a link), the top 3 get a one-line summary
+  from a separate model with every tool withheld (Claude Code's cheaper model) or, on every other
+  runtime, from your session writing them from the titles, and the best one or two are read in full.
+  Codex CLI is one of those others: its read-only sandbox can still read files, so the summary
+  command refuses it. The tool limits cover that command only; your session reads the search
+  results and the top tickets with its usual tools and permission prompts. The reuse
+  brief marks each as "From the tracker (no ticket folder or QC record here)". A person's own
+  request for the search works at any time. Details: [docs/ticket-index.md](docs/ticket-index.md#older-tickets-in-your-tracker).
+- `/setup` asks once (question 4a) whether your team tracked work in your tracker before this repo
+  started, and saves `history_search`, `history_scope` and `history_before` in `stack.yaml`. It
+  recommends the day ticket work in the repo began as the cutoff and writes it only on your yes.
+  Setting `history_search` to `never` turns off the automatic offer and nothing else.
+- Under the hood: the tracker contract gains the `search_history` verb, `recall.py` gains
+  `--external` for scoring tracker rows, `bin/summarize_hits.py` writes the summaries, and
+  `bin/model_call.py` is now the one place `enrich_ticket.py` and the summaries run a model. Runtime
+  adapters gain `model_fast` (the cheaper model, `haiku` on Claude Code only) and `model_default`.
+- The README's Data and network section and PRIVACY.md now disclose the older-ticket search and the
+  summaries it sends to the model command, and selftest section 60 fails if the README drops it.
+- A diagram of how recall finds prior work, in the README and docs/ticket-index.md: each ticket
+  folder becomes a card, plain code scores the new ticket against every card, the model reads the
+  best few, and a weak match offers your tracker's older tickets. Its scores come from running
+  `recall.py` on a fixture recorded in `scripts/readme_media/README.md`.
+- **`/ship` merges the pull request, after asking you.** Once you say go ahead and the pull
+  request is open, `/ship` asks once more (**Merge now** or **Leave it open**) and then
+  squash-merges it, pinned to the commit you saw. If branch rules, a required review, a check or a
+  conflict blocks the merge, it stops and tells you why before anything is backed up or posted,
+  and it never uses a bypass option. The new policy `ship_merges_pr` (default `true`, asked in
+  `/setup` round 6) turns it off for teams that merge by hand; the delivery plan always says which
+  way it is set. Every vcs adapter gains a `merge_pr` verb, and the `review_verdict_guard` hook
+  now also asks before an Azure Repos merge (`az repos pr update`) of an unapproved ticket.
+  (LABS-106)
+- **A step-by-step page for `/ship`.** [docs/ship.md](docs/ship.md) shows every step in order
+  with a diagram, which link each post needs from an earlier step, and each moment it waits for
+  you. (LABS-106)
+- **Ticketwright suggests `/skillify` the second time a team runs the same analysis.** A new
+  `recall.py --repeats` finds earlier tickets that read exactly the same tables (from the SQL's
+  `from`/`join`, not counting output tables or QC queries), with owner-qualified ids, the instance
+  count, and any project skill that may already do the work. One shared check,
+  `.claude/skills/skillify/repeats.md`, has the agent confirm the deliverable shape and look at
+  those skills before it says anything. `/ticket`'s plan notes "the 2nd instance of …" and suggests
+  `/skillify` after ship; `/ship`'s retro asks "This repeats … Skillify it?"; and the `AGENTS.md`
+  rules ask any session that worked a ticket to mention it when it wraps up. Nothing is ever turned
+  into a skill without a yes, and `skillify_everything: false` turns the suggestion off. Generated
+  skills now record `built_from:` and `read_objects:`, so the next repeat points at the skill
+  instead of suggesting a second one. (LABS-116)
+- **`bin/gdrive_item_id.py` waits for a Google Drive link.** Right after a backup, Drive for desktop
+  has not yet given the file its id. The gdrive adapter's `link_for` now polls for it with a
+  timeout, then prints the share link, instead of leaving each agent to sleep and retry. A timeout
+  says the link is not ready and never guesses one. (LABS-116)
+
 ### Changed
 - **`plan.md` is written from the plan you approved, with no template text left in it.** `/ticket`
   now writes the approved plan's sections (goal, scope, builds on, deliverables, approach,
@@ -30,22 +86,22 @@ All notable changes to this project are documented here. Format loosely follows
   with `/setup viewer` as the way to finish it. `/setup viewer`, `/setup --teammate` and `/review`'s
   first hand-off now ask the same questions from one shared file. Choosing "don't open files" is
   remembered: `/review` no longer offers the setup again to someone who opted out. (LABS-118)
-
-## [4.4.1] - 2026-10-26
-
-### Added
-- **Setup asks where your team already writes things down.** Two optional questions replace the
-  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
-  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
-  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
-  the standards, `/review` checks deliverables against them and reports a broken rule as a
-  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
-  one source of truth. The review record says which docs were opened and which could not be, and
-  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
-  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
-  asks for it. (LABS-103)
-
-### Changed
+- **If you wrote your own tracker adapter:** `search_history` is now a required verb, so the tracker
+  contract has 8 verbs and selftest section 2 fails an adapter without it. Copy the closest shipped
+  adapter's section; an adapter whose tracker cannot search returns no rows with one plain sentence,
+  as the `local` adapter does. The inputs and the row shape are in `adapters/README.md`.
+- On Claude Code, `ticketwright enrich` and the older-ticket summaries now run the model with no
+  tools and no MCP servers (`claude -p --model {model} --tools "" --strict-mcp-config`). The old
+  `--disallowedTools Bash,Write,Edit,WebFetch` left Read, Grep, Glob, WebSearch and MCP tools
+  reachable to a model reading text that people outside the team wrote. `--tools ""` was verified
+  live on Claude Code 2.1.310; `--strict-mcp-config` loading no MCP server rests on the CLI's help
+  text. Older builds were not checked, and one that does not know `--tools` may fail the call, so
+  update Claude Code if enrich or the summaries stop working.
+- **`/ship` runs in the order its links need.** It now commits and opens the pull request first,
+  merges, backs up, then posts the tracker comment and drafts the chat message, so both posts
+  carry real links to the pull request and the backed-up files. Before, the chat draft linked a
+  pull request that did not exist yet. A ticket moves to its final status only once its pull
+  request is merged. (LABS-106)
 - **Every skill asks its questions as clickable choices where the agent has a question tool.**
   `/ticket` (plan questions, plan approval, which person or owner's ticket you mean, carrying on
   without the tracker), `/review` (which ticket, viewer setup, your sign-off), `/build` (sign-offs,
@@ -69,7 +125,38 @@ All notable changes to this project are documented here. Format loosely follows
   REQUEST-CHANGES when you answer. `bin/review_verdict.py` reports it as `awaiting-signoff`
   (exit 7), the push guard treats it as not approved yet, and `/build` asks the pending sign-off
   instead of rebuilding. Before this, the state was not on disk at all, so nothing could tell it
-  from "never reviewed". `/ship`'s handling of it lands in a companion change. (LABS-107)
+  from "never reviewed". `/ship` asks a pending sign-off the same way, and after a sign-off it
+  always waits for a typed `go ahead`, even with `--go`. (LABS-107)
+
+### Fixed
+- **A comment after a parent key in `stack.yaml` no longer breaks the config reader.** A line such
+  as `team_docs:   # both lists optional` with keys indented under it was read as a value, and
+  the keys below it were refused as bad indentation, though `yq` reads it fine. Setup's own worked
+  example writes that line. A comment there now leaves the block open, for a key and for a list item.
+- **Backups no longer copy the unsent drafts.** The documents backup used to copy the whole
+  ticket folder, including `comms/`, which holds `/ship`'s unsent tracker and chat drafts and is
+  gitignored for exactly that reason. The Google Drive and SharePoint adapters now copy with
+  `rsync --exclude`, which the source-material guard still sees, and rclone with `--exclude`.
+  (LABS-106)
+- **The BigQuery adapter passes a `.sql` file on stdin.** `bq query "$(cat file.sql)"` failed on
+  every kit-written file, because line 1 is the `-- warehouse-target:` header and `bq` read it as a
+  flag. The query verb now says to use `bq query ... < file.sql`. (LABS-116)
+
+## [4.4.1] - 2026-10-26
+
+### Added
+- **Setup asks where your team already writes things down.** Two optional questions replace the
+  analysis-tools question: where the team keeps its analysis standards (a style guide, a review
+  checklist), and any other docs about the team or its data (a wiki, onboarding notes, a data
+  dictionary, metric definitions). The answers are saved as `project.team_docs`. `/build` follows
+  the standards, `/review` checks deliverables against them and reports a broken rule as a
+  finding, and `/ticket` reads the context docs while planning. Links are read live, so there is
+  one source of truth. The review record says which docs were opened and which could not be, and
+  an unreadable standards doc is never reported as checked. `bin/team_docs.py` lists the docs for
+  any agent. `project.analysis_tools` still renders for repos that have it, but setup no longer
+  asks for it. (LABS-103)
+
+### Changed
 - **Setup no longer asks whether you are an analyst, engineer, scientist or generalist.** That
   answer only chose a short persona paragraph in `AGENTS.md`, and the review checks it mentioned
   already run for every role. It was also a team setting asked as if it were about you. Every

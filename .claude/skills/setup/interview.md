@@ -15,10 +15,11 @@ kit's config is this file's job, never the person's:
 |---|---|
 | Who are you, and who else is on the team? (round 1) | `people/<id>.yaml`, the machine pin |
 | How does work reach you? (round 2) | the tracker, `project.intake` |
+| Did your team track work in your tracker before this repo started? (round 2) | whether older tickets can be searched: `project.history_search`, `project.history_scope`, `project.history_before` |
 | Where does your data live? (round 3) | the warehouse, its default, the dev target |
 | How do you share results, and where are finished files kept? (round 4) | chat, docstore, VCS |
 | What do you work on, and what has the team written down about it? (round 5) | `domain`, `team_docs` |
-| When should I ask before acting? (round 6) | the two policies |
+| When should I ask before acting? (round 6) | three policies |
 
 When an answer needs something the kit configures in a particular way (one meeting provider that
 fetches notes automatically, say), set it up and say what was done in one plain line of the plan.
@@ -165,6 +166,63 @@ check when a new one starts."
    can list** before writing it. A key that is not in the tracker yet gets: "I don't see <KEY> on
    <site>. Create it first and I'll check again, or pick one that exists?" Write it only if they
    say it will exist, with a `# TODO` and an item in the Phase-4 list.
+4a. **"Did your team track work in your tracker before this repo started?"** Asked once, here, right
+   after question 4 and never in the same call as it, because the answer depends on the project
+   question 4 settled. It is asked because a missing answer falls back quietly to `ask` with no
+   cutoff: `/ticket` would offer to search question 4's project back to its very first ticket, and
+   would look elsewhere only when the person names a place. Skip it, and write nothing, when the tracker is the `local` one or there is
+   none, since those tickets are this repo's own. One choice only; recommend
+   "Yes, in the same project" when question 4 picked a project from the tracker's own list.
+   - **The date.** The **recommended** cutoff is the day ticket work in this repo began, never the
+     answer: show it in each "Yes" option with where it came from, and write it only on the
+     person's yes. Take the first of these that prints a date written `YYYY-MM-DD` (an old git
+     prints a literal `%as` instead of a date, and that does not count):
+     1. `git log --reverse --format=%as -- tickets | head -1`, the first commit that touched the
+        ticket folders (use the folder `project.ticket_path` starts with if it is not `tickets`).
+        Say it is the day ticket work in this repo began. An existing repo (see `adopt.md`) can have
+        a first commit years before its first ticket folder, and that date would silently drop
+        everything the tracker holds from the years between.
+     2. Otherwise `git log --reverse --format=%as | head -1`, the first commit. Say it is the day
+        this repo's first commit was made.
+     3. Neither prints a date (a repo with no commit yet): leave the date out and say "all of your
+        older tickets" in each "Yes" option. No `history_before` is written, which means no cutoff.
+     The person can type a different date instead. In the question below, `<older tickets>` is
+     `tickets created before <date>, <where that date comes from>`, or `all of your older tickets`
+     when there is no date, so the option never reads "created before" with nothing after it.
+
+   <!-- ticketwright:user-facing:begin -->
+   Did your team track work in your tracker before this repo started? If you did, I can search those older tickets when this repo has no match yet.
+   - Yes, in the same project: when a new ticket has no good match here, I can offer to search <project> for <older tickets>.
+   - Yes, somewhere else: I'll ask where. Then, when a new ticket has no good match here, I can offer to search there for <older tickets>.
+   - We don't have one: I won't offer the search, but you can still ask me for it on any ticket. You can turn the offer on later by setting `history_search` to `ask` in your team settings.
+   <!-- ticketwright:user-facing:end -->
+
+   What each answer writes, all of it team config in `stack.yaml` (a personal or machine file cannot
+   hold these keys, so never route them there):
+   - **Yes, in the same project** → `history_search: ask` and `history_before: "<date>"`.
+     `history_scope` stays unset, because its default is the project question 4 chose.
+   - **Yes, somewhere else** → ask the follow-up below, then `history_search: ask`,
+     `history_scope: <the chosen id>` (the same shape the adapter's `container_key:` takes in
+     question 4) and the same `history_before`.
+   - **We don't have one** → `history_search: never`, and nothing else.
+
+   The follow-up for "somewhere else":
+
+   <!-- ticketwright:user-facing:begin -->
+   Where did those older tickets live? I'll search only there, so the results stay on topic.
+   <!-- ticketwright:user-facing:end -->
+
+   List the tracker's own projects, teams, repos or boards the way question 4 did: reuse the list
+   question 4 already fetched through the tracker adapter's `rank_projects_by_activity` verb (with
+   the person's yes from § Suggestions from past usage, otherwise its listing step alone) without
+   calling it again, leave out the one question 4 picked, and put "Show more" past the limit. Free
+   text is allowed, and a typed value is checked against what the tracker can list before it is
+   written. Never invent one. Where the verb reports `unsupported` or `unavailable`, ask plainly
+   the way question 4 does.
+   - **A typed date is checked before it is written.** It must be a real date written
+     `YYYY-MM-DD`; otherwise ask again. Never write a value that does not read as one.
+   - Say what was set in one line of the plan, in the person's words: "Older tickets: searched in
+     <where>, created before <date>" (or "with no date limit"), or "Older tickets: not searched".
 5. **`ticket_url_template`** — how every `tickets/INDEX.md` row links back to the tracker. A dead
    index link is the textbook silent-wrong failure: the catalog renders confidently either way.
    Derive it where the adapter's shape allows (an issues-style tracker needs the repo and the
@@ -331,14 +389,16 @@ which asks question 13a and then re-runs this round.
 
 ## Round 6 — House rules (skippable)
 
-**Offer the skip at this header, labeled with its cost:** "Skip this and both policies keep their
-shipped defaults — destructive warehouse SQL prompts only for high-risk statements, and
-deliverables open for human sign-off at `/review` only."
+**Offer the skip at this header, labeled with its cost:** "Skip this and all three policies keep their
+shipped defaults — destructive warehouse SQL prompts only for high-risk statements,
+deliverables open for human sign-off at `/review` only, and `/ship` asks before it merges the pull
+request, then merges it."
 
-16. **`db_write_requires_approval`** (`off` | `high_risk` | `all`) and
-    **`human_review_handoff`** (`off` | `review` | `all`) — the two policies whose default is
+16. **`db_write_requires_approval`** (`off` | `high_risk` | `all`),
+    **`human_review_handoff`** (`off` | `review` | `all`) and **`ship_merges_pr`** (`true` |
+    `false`) — the three policies whose default is
     plausibly wrong for a given team. The other eight policies stay commented defaults with their
-    "when to change this" notes; asking all ten is the wall the old question cap existed to
+    "when to change this" notes; asking all eleven is the wall the old question cap existed to
     prevent. Ask them in plain words, with the options already explained, so the person never has to
     ask what one means:
     - "When should I ask you before changing data in your warehouse? Reading data never asks."
@@ -356,6 +416,12 @@ deliverables open for human sign-off at `/review` only."
       - **Every time** (`all`): also while building (each query before its first run, each
         export after it's written).
       - **Never** (`off`): you open files yourself.
+    - "When a delivery is approved, should I merge its pull request too?"
+      - **Yes, after asking me** (recommended, `true`): once you say go ahead and the pull request
+        is open, I ask once more, then squash-merge it into the main branch before backing up and
+        announcing. If your branch rules or required checks block the merge, I stop and tell you why.
+      - **No, we merge by hand** (`false`): I open the pull request and leave it for your team to
+        review and merge. The ticket stays out of its final status until then.
 
 ## After round 6: your review apps (person, this machine; skippable)
 
@@ -396,6 +462,9 @@ project:
   terminal_status: Done
   ticket_url_template: "https://tracker.acme.example/browse/{id}"
   intake: [tracker, email, meetings]  # round 2: email + meeting notes also carry work in
+  history_search: ask                 # round 2, question 4a: /ticket may offer to search older tracker tickets
+  history_before: "2024-03-01"        # question 4a: the day ticket work began, written only on a yes
+  # history_scope: OPS                # question 4a, "somewhere else" only; unset = the project above
   domain: data analysis               # round 5 (role is not asked; generalist unless /setup role)
   team_docs:                          # round 5, both lists optional
     standards:
@@ -446,6 +515,7 @@ seams:
 policies:
   db_write_requires_approval: high_risk   # round 6 (or its # TODO(setup) line when skipped)
   human_review_handoff: review
+  ship_merges_pr: true
 ```
 
 Everything not shown stays exactly as the default-mode Phase 3 writes it today: optional blocks

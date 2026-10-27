@@ -41,10 +41,18 @@ someone's work than they agreed to show. Setup's folder question calls this verb
 ```bash
 dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
 rm -rf "$dest"                       # remove ONLY this exact destination (never a wildcard like <ID>*)
-cp -r "<local ticket dir>" "$dest"
-ls -la "$dest"                       # verify
+mkdir -p "$dest"
+rsync -r --exclude '/comms/' "<local ticket dir>/" "$dest/"   # unsent drafts stay local
+ls -la "$dest"                       # verify; no comms/ folder
 ```
 Requires explicit approval (external side effect) — policy `hard_halt_before_external_posts`.
+
+**`comms/` stays out of the backup.** It holds `/ship`'s unsent tracker and chat drafts, which are
+gitignored so unsent wording never leaves the machine; a folder copy would carry them to a shared
+drive all the same. `rsync` skips the folder before anything reaches the synced mount, so the sync
+client never sees it. With no `rsync` on the machine (Git Bash on Windows), use
+`cp -r "<local ticket dir>" "$dest" && rm -rf "$dest/comms"` and say plainly that the sync client
+may upload the drafts for the moment before the delete.
 **Never** `rm -rf "<ID>"*` — a prefix glob also matches `<ID>0`, `<ID>1234`, etc. If a prior backup
 used a different title, `ls "{base_path}"` and remove that one exact path by name.
 Note: clean `rm`+`cp` mints **new** Drive item-ids, so any previously shared links go stale — repost.
@@ -52,10 +60,13 @@ Note: clean `rm`+`cp` mints **new** Drive item-ids, so any previously shared lin
 ## verb: link_for
 **In:** a backed-up file path. **Out:** a shareable Drive URL (for tracker/chat smart links).
 ```bash
-xattr -l "<gdrive file path>" | grep item-id          # NOT xattr -p (zsh eats the #S suffix)
-# → build: https://drive.google.com/file/d/<ITEM_ID>
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" gdrive_item_id.py "<gdrive file path>" --timeout 300
+# → prints https://drive.google.com/file/d/<ITEM_ID> (a folder gets drive/folders/<ITEM_ID>)
 ```
-Item-id is blank for a few minutes after an in-place copy — wait, or use the clean rm+cp path.
+The item-id is blank for a few minutes after a copy; the helper polls `xattr -l` (never
+`xattr -p`, whose `#S` suffix zsh eats) until it appears. Exit 1 means it timed out: say the link
+is not ready yet and leave a placeholder, never a guessed URL. Exit 2 means no such path, or not a
+Mac with Drive for desktop.
 
 ## gotchas
 - Deliverables (incl. export CSVs) commit with the ticket by default — this docstore is for durable external sharing / smart links. Keep PII exports out of git via a `*.private.csv` name or a `final_deliverables/**/private/` subfolder, and back those up here instead.

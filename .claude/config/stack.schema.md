@@ -22,7 +22,7 @@ Config is therefore three files, merged by one resolver.
 
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
-| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 10 policies, ticket conventions |
+| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 11 policies, ticket conventions |
 | 2 PERSON, portable | `people/<id>.yaml` | yes | display name, tracker handle, identities, comms voice, file-type preferences |
 | 3 PERSON, machine | `.claude/config/connections.local.yaml` | **no** (gitignored) | named profiles/connections, local mount roots, the `person:` key |
 
@@ -121,6 +121,9 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
 | `intake` | list | `[tracker, email]` | Where work arrives; any of `tracker`, `email`, `chat`, `meetings`. Optional; **defaults to `[tracker]`** — the example shows email intake *added* (a "email carries work in" answer in the setup interview), not the default. Consumer: when `email`/`chat`/`meetings` is listed, `/ticket`'s priming step reads `source_materials/` for material a human dropped in — intake beyond the tracker arrives as files, not API calls. **`meetings`** names the AI-notetaker channel: export the notes or a curated transcript excerpt as `source_materials/YYYY-MM-DD-<slug>-meeting.md`. That name is the **committed, curated form** — trimmed to decisions and action items. Raw full transcripts stay out of git by default (`templates/gitignore.tmpl`) and are gated before any commit or docstore copy by `source_material_guard`, whose classifier (`bin/scan_source_materials.py`) matches filenames and document shape, **never meaning** — a curated summary quoting confidential material verbatim passes, so this is a gate against the bulk artifact, not a confidentiality review. |
+| `history_search` | enum | `ask` | Whether `/ticket` may offer to search the tracker's older tickets when the repo's own tickets give no strong match. `ask` offers the search each time (read-only, and the person can skip it); `never` turns off that automatic offer, and the tracker is searched only when someone asks for it. Optional; **defaults to `ask`** when the tracker is any tool but `local`, and to `never` when it is `local` or absent, because those tickets are the repo's own. Team-only: a personal or machine file cannot set it. Written by the setup interview's question 4a. Consumer: `ticket/priming.md` § 2b. |
+| `history_scope` | string | `OPS` | Which project, team, repo or board of the tracker holds the older tickets, written the way that tracker's own project value is (the `id` that `rank_projects_by_activity` returns, the same shape as the adapter's `container_key`). Optional; **defaults to the project the tracker is already set up with**. Set only when the older tickets lived somewhere else (setup question 4a, "Yes, somewhere else"). Team-only. Consumer: `ticket/priming.md` § 2b. |
+| `history_before` | ISO date | `"2024-03-01"` | Only tracker tickets created **before** this date are searched. The date setup offers is when ticket work in this repo began, on the idea that work from then on is in the repo's own ticket folders; set it earlier or later to match how the team worked. Write it in quotes as `YYYY-MM-DD`. Optional; **unset means no cutoff**, so every older ticket in the scope is searched. The setup interview recommends the date of the first commit that touched the ticket folders (`git log --reverse --format=%as -- tickets \| head -1`), otherwise the repo's first commit (`git log --reverse --format=%as \| head -1`), and writes it only on the person's yes. A value that is not a real date is reported in plain words and the tracker is not contacted. Team-only. Consumer: `ticket/priming.md` § 2b. |
 | `word_limits` | map | `{tracker_comment: 100, chat: 100, pr: 200, ticket: 200}` | Hard caps the comms skills enforce. |
 | `role` | enum | `generalist` | Persona for the rendered `AGENTS.md` role-focus snippet: `generalist`, `analyst`, `engineer`, or `scientist` (see `templates/roles/`). Optional; defaults to `generalist`. The setup interview never asks it; set it with `/setup role`. |
 | `domain` | string | `data analysis` | Short phrase naming the team's kind of work; fills the `{{domain}}` token in the rendered `AGENTS.md` ("Ticket-driven *{{domain}}* work"). Optional; defaults to `data analysis`. |
@@ -453,7 +456,7 @@ Two consequences worth knowing before you adopt it:
 
 ---
 
-## `policies` (the 10 kit policies — see kit README "AI-layer" section)
+## `policies` (the 11 kit policies — see kit README "AI-layer" section)
 
 | Policy | Type | Default | Enforced by |
 |---|---|---|---|
@@ -461,6 +464,7 @@ Two consequences worth knowing before you adopt it:
 | `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
 | `source_material_guard` | `on` \| `off` | `on` | Ask before a raw meeting transcript is staged for commit or copied into a docstore backup. Optional; **defaults to `on`**, and a missing or unparseable value resolves to `on` — unparseable config must never quietly widen what leaves the repo. Enforced by `.claude/hooks/source_material_guard.py` over `bin/scan_source_materials.py`; `/ship` calls the same classifier so the halt is visible where hooks are not wired. Matches filenames and document shape, **never meaning**. |
 | `chat_default_draft` | bool | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
+| `ship_merges_pr` | bool | `true` | `ship` — after the go-ahead and the PR, ask once more (an interactive choice where the runtime has one) and then squash-merge the PR into `default_branch` via `vcs.merge_pr`, before the backup, so what is shared is the merged work. A blocked merge (protection, checks, conflict) stops the ship with the reason; it is never bypassed. `false` = the team merges by hand: the delivery plan says so and the ticket is not moved to its final status. A missing value resolves to `true`; an unparseable one resolves to `false` (merge by hand), since unparseable config must never add a write. |
 | `hyperlink_everything` | bool | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
 | `skillify_everything` | bool | `true` | recurring work → a `/skillify` skill the agent can invoke, not a one-off. |
 | `reduce_assumptions` | bool | `true` | ask before building; still document every assumption in the ticket README. |
@@ -469,7 +473,7 @@ Two consequences worth knowing before you adopt it:
 | `deterministic_outputs` | bool | `true` | data exports use explicit `ORDER BY`; generated skills ship golden-replay diffs. |
 | `human_review_handoff` | enum | `review` | `review` layer ⑤ (and `build` under `all`) — open deliverables in the user's own apps and wait for sign-off. See below. |
 
-All are booleans except `db_write_requires_approval` and `human_review_handoff`.
+All are booleans except `db_write_requires_approval`, `human_review_handoff` and `source_material_guard` (`on` | `off`).
 
 ### `db_write_requires_approval` — the one enum
 

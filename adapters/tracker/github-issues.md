@@ -20,10 +20,13 @@ note: |
 Maps the `tracker` verb contract to GitHub Issues via `gh`.
 
 ## verb: fetch_ticket
-**In:** issue number. **Out:** title, body (markdown), state, assignees, labels, milestone.
+**In:** issue number, or `<owner>/<name>#<number>` for an issue in another repo (the form
+`search_history` returns for one). **Out:** title, body (markdown), state, assignees, labels, milestone.
 ```bash
 gh issue view <number> --repo {repo} --json number,title,body,state,assignees,author,labels,milestone,url
 ```
+For `<owner>/<name>#<number>`, pass `<number>` and `--repo <owner>/<name>` in place of `{repo}`.
+
 **People, for `/ship`'s audience suggestions:** `reporter` is `author.login`. `watchers`: not available (`gh` does not list an issue's subscribers).
 
 ## verb: create_ticket
@@ -51,6 +54,41 @@ gh issue list --repo {repo} --search "<query>" --state all --limit <n> \
   --json number,title,state
 ```
 `--search` takes GitHub's issue search syntax (`is:open label:bug ...`).
+
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes GitHub's own search syntax: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the repo as
+`owner/name`, default `{repo}`), `<limit>` (default 20), `<filter>` (optional, exactly one of
+`project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title,
+description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```bash
+gh issue list --repo <scope> --search "<text> created:<<before>" --state all --limit <limit> \
+  --json number,title,body,labels,createdAt,url,state
+```
+`created:<<before>` is `created:<` followed by the date, so a `<before>` of 2024-01-31 reads
+`created:<2024-01-31`. An empty `<before>` means no date clause: drop `created:<<before>` from the search
+string. Keep `<text>` to plain words: remove anything shaped like `word:`, which GitHub would read as a
+search qualifier. `--state all` matters, since `gh issue list` shows open issues only by default.
+
+Filters: `project:<x>` replaces `<scope>` (`--repo <x>`, an `owner/name`); `label:<x>` adds `--label "<x>"`;
+`parent:<x>` adds `--milestone "<x>"`, with `<x>` a milestone title (the epic stand-in here: a tracking
+issue's sub-issues cannot be searched this way, so a parent is always a milestone); `person:<x>` adds
+`involves:<x>` to the search string (`<x>` is a GitHub login).
+
+If `gh` is not signed in, the repo cannot be reached, or the tracker rejects the search, say so in one
+plain sentence and return `[]`.
+
+Output mapping: `key` is `{key_prefix}-<number>` (the branch and folder convention in the note above, `TEST-130`) and
+`fetch_id` is the bare issue `number` (`130`), which is what `fetch_ticket` takes; `title` is `title`;
+`description` is `body`; `labels` is the `name` of each entry in `labels`; `created` is `createdAt` cut to
+`YYYY-MM-DD`; `url` is `url`; `status` is `state`. When `{key_prefix}` is unset, `key` is the bare number,
+the same as `fetch_id`, so duplicate suppression still compares like with like. Issue numbers repeat
+from repo to repo, so when the search ran in a repo other than `{repo}` (a `project:` filter, or a
+`<scope>` naming another repo), `key` and `fetch_id` are both `<owner>/<name>#<number>`
+(`acme/legacy#130`): no ticket folder carries that name, so an old issue is never dropped as a copy of
+this repo's `TEST-130`, and `fetch_ticket` reads it from the repo it came from.
 
 ## verb: download_attachments
 GitHub stores issue attachments as URLs embedded in the body/comments. Parse them

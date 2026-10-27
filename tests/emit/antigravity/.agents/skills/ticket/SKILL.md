@@ -132,6 +132,7 @@ this before?", "which tickets touched VW_X?").
 7. Follow [priming.md](priming.md), in order:
    - **Ticket slice** — the ticket body + folder + related prior tickets;
    - **Recall** — rank prior art (`bin/recall.py`), read the top 2–4, note what to **reuse**;
+     it also offers the tracker's older tickets when recall is weak (priming §2b);
    - **Domain slice** — glossary/rules for the ticket's topic (from `documentation/`);
    - **Warehouse slice** — schemas/samples/lineage for the specific objects in play (skip cleanly
      if no warehouse is configured).
@@ -179,7 +180,9 @@ context brief (including the reuse brief) first, then:
      assumes it did).
    - **Builds on**: each prior ticket from the reuse brief as `<owner>/<id>`, why it matched (a
      shared object, named by its name, a shared tag, a cross-reference, or keyword overlap only),
-     and what is reused. "None found" is a valid answer.
+     and what is reused. "None found" is a valid answer. When the repeat check in
+     [repeats.md](../skillify/repeats.md) ends in a suggestion, also "This is the Nth instance of
+     <pattern> (after <owner>/<id>)".
    - **Deliverables expected**: numbered in review order; each names its grain and carries its
      record count in the filename.
    - **Approach**: ordered steps, with build-and-check loops kept small (one object or change at a
@@ -194,7 +197,10 @@ context brief (including the reuse brief) first, then:
    - **Risks**: what could make the result wrong or late, and how the plan watches for it.
    Every block has real content: no `…` placeholder lines, no template hints, nothing empty. Header
    facts are not blocks: the ticket id, title, Confidence (1 to 10; below 7, a spec is required),
-   owner and the **`spec:` value**, which is exactly one of `not required` (the plan is the build's
+   owner, `after_ship` and the **`spec:` value**. `after_ship` is empty unless the repeat check
+   ends in a suggestion; then it is that one Next step line ("- After /ship: `/skillify <pattern>` (a
+   suggestion, not part of this plan)", or the existing skill to run), never a step of this plan.
+   The `spec:` value is exactly one of `not required` (the plan is the build's
    blueprint), the spec's path spelled from the repo root as `<ticket-dir>/specs/<id>-<slug>.md`, or
    `after-root-cause`. Inputs: the priming brief + the reuse brief. A spec is required when the work
    creates or alters a persisted object others depend on (a warehouse object, a model, a published
@@ -227,9 +233,10 @@ context brief (including the reuse brief) first, then:
     **Only after the human says go** do the artifacts
     touch the ticket. Write the approved `## <Section>` blocks, exactly as approved (with step 11's
     answers folded in), to a scratch file outside the repo, then render the plan from them with
-    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$kit_root/templates/plan.md.tmpl" ticket_id=… title=… confidence=… spec_required=… owner=… --sections <scratch file> --strict`
+    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$kit_root/templates/plan.md.tmpl" ticket_id=… title=… confidence=… spec_required=… owner=… after_ship='…' --sections <scratch file> --strict`
     into a scratch output file, and move it to `<ticket-dir>/plan.md` only when the render exits 0.
-    The five header tokens go on the command line; every section comes from the file, so multi-line
+    The six header tokens go on the command line (`after_ship=''` when there is no suggestion;
+    single-quote a filled one, since it carries backticks); every section comes from the file, so multi-line
     Markdown never passes through shell quoting, and section text is inserted as written (a `{{ }}`
     inside it stays text). `--strict` makes each of these an error that prints nothing: a missing
     section or token, a heading the template has no place for, an empty section, a leftover `…`

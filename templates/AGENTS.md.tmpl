@@ -241,7 +241,7 @@ against the bulk artifact, not a confidentiality review, and nothing in it repla
 reading the file.
 
 `review_verdict_guard` is the review-before-ship gate at the command layer: it sees **Bash** —
-`git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` — finds
+`git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` / `update` — finds
 the ticket from the command's paths, its cwd, or the checked-out branch, and asks when that ticket
 has files in `final_deliverables/` and the verdict on file (read by `bin/review_verdict.py`, the
 highest-numbered `qc_queries/<n>_review_verdict.md`) is anything but APPROVE: none, SKIPPED,
@@ -342,12 +342,17 @@ connector grants cannot be introspected in-session, so those cells never read st
 is true.
 <!-- ticketwright:posture:end -->
 
-## The 10 policies (inherited by every skill, from stack.yaml)
+## The 11 policies (inherited by every skill, from stack.yaml)
 1. **hard_halt_before_external_posts** — pause for human go before any tracker/chat/docstore write; the `review_verdict_guard` hook also asks before a push/PR of a ticket with deliverables that has no approved review result.
 2. **db_write_requires_approval** — `off` | `high_risk` (default) | `all`; show SQL, explain, wait.
 3. **chat_default_draft** — draft, don't send, unless told "send it".
 4. **hyperlink_everything** — every ticket id / file / PR is a smart link.
 5. **skillify_everything** — when work recurs it becomes its own skill (`/skillify`), not another copy-paste.
+   **Before you end a session that worked a ticket** and did not reach `/ship`'s retro, run the
+   repeat check in `.claude/skills/skillify/repeats.md` (on a plugin install, under the kit:
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit`) and follow its four
+   steps. Put the outcome in your closing message as one line: the `/skillify` suggestion, the skill
+   that already does this, or nothing. Never run `/skillify` unasked.
 6. **reduce_assumptions** — ask before building; still document every assumption in the ticket README.
 7. **commit_plan_before_implement** — `/ticket` commits the plan (and the spec) before `/build` runs (blame-free retry).
 8. **system_evolution** — a failure fixes the AI layer (rule/context/command/adapter), not just the ticket.
@@ -358,6 +363,9 @@ is true.
     `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" handoff.sh <paths>`. Every other
     pause guards something leaving the machine — this one makes sure a person actually saw the
     output. If no viewer config exists, say so once and carry on; never block on it.
+11. **ship_merges_pr** — `true` (default): after the go-ahead, `/ship` asks once more and then
+    squash-merges the pull request, stopping with the reason if protection or checks block it.
+    `false`: the team merges by hand, and the ticket is not moved to its final status by `/ship`.
 
 ## Ticket folder
 ```

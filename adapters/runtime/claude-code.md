@@ -21,9 +21,10 @@ global_skills_root: ~/.claude/skills
 agents_root: .claude/agents/<name>.md   # native — this IS the canonical copy; the installer emits nothing
 hook_wiring: native            # the plugin manifest / .claude/settings.json already wire all four hooks; the installer emits nothing
 hook_protocol: claude-json     # PreToolUse permissionDecision deny|allow|ask — the native hooks speak it themselves; hook_shim refuses this runtime
-model_cmd: "claude -p --model {model} --disallowedTools Bash,Write,Edit,WebFetch"
-model_sandbox: tools-withheld   # verified against `claude --help`: --disallowedTools is honored
+model_cmd: 'claude -p --model {model} --tools "" --strict-mcp-config'
+model_sandbox: tools-withheld   # --tools "" verified live on Claude Code 2.1.310 (a one-word reply, no tool use, a planted file token not leaked); --strict-mcp-config loading no MCP server rests on claude --help only
 model_default: sonnet
+model_fast: haiku   # the cheaper model for a one-line job; only this model_cmd has a {model} slot to fill
 auth: |
   None beyond an authenticated Claude Code install.
   Verify: `command -v claude`.
@@ -59,14 +60,22 @@ capabilities and carry no `## verb:` sections — see `adapters/README.md` § Ru
 
 ## Gotchas
 
-- **The enrichment command withholds the mutating and network tools on purpose.** Writing a one-line
-  catalog summary needs no tools at all, and the prompt carries a ticket README — tracker-sourced text
-  on most installs. Argv construction stops shell injection; withholding the tools is what stops that
-  text from talking an agent into using them.
+- **The headless model command runs with no tools at all, on purpose.** Writing a one-line catalog
+  summary needs no tools, and the prompt carries a ticket README or an older tracker ticket, which is
+  text someone outside the repo wrote. Argv construction stops shell injection; withholding every tool is
+  what stops that text from talking an agent into reading files, searching the web or calling a
+  configured MCP server. `--tools ""` disables every built-in tool (a deny list such as
+  `--disallowedTools Bash,Write,Edit,WebFetch` left Read, Grep, Glob and WebSearch available), and
+  `--strict-mcp-config` with no `--mcp-config` should load no MCP server. What was checked, on Claude
+  Code 2.1.310: `--tools ""` live (a one-word reply, no tool use, and a planted file's token not
+  leaked, where the old deny list let it be read). `--strict-mcp-config` rests on what `claude --help`
+  says (it uses only the servers named by `--mcp-config`) and has not been run against a live MCP
+  server. The `""` is one empty argument, and the template reader passes it through as one empty argv
+  element.
 - **`model_cmd` deliberately has NO `{prompt}` token, so the prompt goes on stdin.**
-  `--disallowedTools` is variadic (`<tools...>`), so a trailing prompt argument is swallowed as more
-  deny-rule values — which fails the call outright and turns README words into permission rules. Do
-  not "fix" this by appending `{prompt}`.
+  `--tools` is variadic (`<tools...>`), so a trailing prompt argument could be swallowed as more tool
+  names, which fails the call outright and turns README words into tool names. Do not "fix" this by
+  appending `{prompt}`.
 - Hooks are the one Claude-Code-specific layer in the kit. They fail open by design — a hook error
   never blocks a session, and a guard only ever *adds* a confirmation.
 - `${CLAUDE_PLUGIN_ROOT}` is set for plugin-provided hooks and commands, not universally in every

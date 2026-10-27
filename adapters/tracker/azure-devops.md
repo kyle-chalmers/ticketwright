@@ -60,6 +60,42 @@ az boards query --wiql "SELECT [System.Id],[System.Title],[System.State] FROM wo
   ORDER BY [System.ChangedDate] DESC" --output json
 ```
 
+## verb: search_history
+Older tickets that look like some text, in one fixed shape. This is the tool-neutral twin of `search`,
+which takes raw WIQL: the caller never writes a query. Read-only.
+**In:** `<text>` (plain words), `<before>` (an ISO date, or empty for no cutoff), `<scope>` (the Azure
+Boards project, default `{project}`), `<limit>` (default 20), `<filter>` (optional, exactly one of
+`project:<x>`, `label:<x>`, `parent:<x>`, `person:<x>`). **Out:** a JSON list of `{key, fetch_id, title,
+description, labels, created, url, status}`, at most `<limit>` rows, `[]` when nothing matches.
+`description` is cut to 600 characters, `labels` is a list of strings, `created` is an ISO date or `null`.
+```bash
+az boards query --org "https://dev.azure.com/{org}" --project "<scope>" --output json \
+  --wiql "SELECT [System.Id],[System.Title],[System.Description],[System.Tags],[System.CreatedDate],[System.State] FROM workitems \
+  WHERE [System.TeamProject]='<scope>' AND ([System.Title] CONTAINS '<text>' OR [System.Description] CONTAINS WORDS '<text>') \
+  AND [System.CreatedDate] < '<before>' ORDER BY [System.CreatedDate] DESC"
+```
+There is no limit flag, so the cap is applied client-side: keep the first `<limit>` rows of the result.
+Double every single quote in `<text>` (`'` becomes `''`). On the title, `CONTAINS` matches `<text>` as one
+phrase. The description is a long-text field, which WIQL's reference lists with `CONTAINS WORDS` (whole
+words) rather than `CONTAINS`. An empty `<before>` means no date clause: drop the line
+`AND [System.CreatedDate] < '<before>'`.
+
+Filters: `project:<x>` replaces `<scope>` (`--project "<x>"` and `[System.TeamProject]='<x>'`); `label:<x>` adds
+`AND [System.Tags] CONTAINS '<x>'`; `parent:<x>` adds `AND [System.Parent] = <x>` (the bare number of the
+parent Feature or Epic); `person:<x>` adds `AND ([System.AssignedTo] = '<x>' OR [System.CreatedBy] = '<x>')`
+(`<x>` is the person's email).
+
+If `az` is not signed in, the organization cannot be reached, or the tracker rejects the search, say so in
+one plain sentence and return `[]`.
+
+Output mapping: `key` is `{key_prefix}-<id>` (the folder convention in the note above, `TEST-130`) and
+`fetch_id` is the bare work-item `id` (`130`), which is what `fetch_ticket` takes; `title` is
+`fields."System.Title"`; `description` is `fields."System.Description"` with its HTML tags stripped;
+`labels` is `fields."System.Tags"` split on `;` and trimmed; `created` is `fields."System.CreatedDate"` cut
+to `YYYY-MM-DD`; `url` is `https://dev.azure.com/{org}/<scope>/_workitems/edit/<id>`; `status` is
+`fields."System.State"`. When `{key_prefix}` is unset, `key` is the bare id, the same as `fetch_id`, so
+duplicate suppression still compares like with like.
+
 ## verb: download_attachments
 `az boards work-item show --id <id>` → `relations[?rel=='AttachedFile']`. Each has a `url`;
 `curl -L -u :$AZURE_DEVOPS_EXT_PAT "<url>" -o <dest>/<name>` (silent if none).

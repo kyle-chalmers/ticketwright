@@ -68,7 +68,7 @@ or more than one **named target** — routed end to end today for `warehouse`, `
 which is how a repo with no tracker runs unchanged. The wiring is hybrid — config names the tools,
 verification proves them:
 
-1. **`.claude/config/stack.yaml`** names which tool fills each slot + project facts + the 10
+1. **`.claude/config/stack.yaml`** names which tool fills each slot + project facts + the 11
    policies. Schema: [.claude/config/stack.schema.md](../.claude/config/stack.schema.md).
 2. **`adapters/<seam>/<tool>.md`** maps the abstract **verb contract** (`fetch_ticket`, `query`,
    `draft`, `backup`, `commit`, …) to that tool's concrete commands. Contract:
@@ -141,7 +141,7 @@ teammate one person's machine. Config is therefore three files:
 
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
-| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 10 policies |
+| 1 team | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 11 policies |
 | 2 person, portable | `people/<id>.yaml` | yes | display name, identities, comms voice, file-type preferences |
 | 3 person, machine | `.claude/config/connections.local.yaml` | no | named profiles/connections, local mount roots |
 
@@ -195,7 +195,7 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   layer. `bin/review_verdict.py` is the classifier (the highest-numbered
   `qc_queries/<n>_review_verdict.md`, its lowercase `verdict:` line → `approve` / `request-changes`
   / `skipped` / `awaiting-signoff` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
-  `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create`, locating the ticket from the
+  `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create|update`, locating the ticket from the
   command's paths, its cwd, or the checked-out branch, and asks when a ticket with deliverables has
   anything but an approved review result on file. Silenced by `hard_halt_before_external_posts: false`. The three
   lifecycle skills call the same classifier, so the read is one implementation, not three readings.
@@ -280,7 +280,9 @@ before it is paid.
   surface picker (`adapter_surface.py`: which tool names an MCP adapter's verbs use on the agent
   running now, see [adapters/README.md](../adapters/README.md) § Runtime surfaces), and the
   index/recall engines (`build_ticket_index.py`, `ingest_index_records.py`, `enrich_ticket.py`,
-  `recall.py`) — all stdlib-only.
+  `recall.py`, `summarize_hits.py`). Of these only `enrich_ticket.py` and `summarize_hits.py` run a
+  model, and both go through the shared headless model call (`model_call.py`). All of it is
+  stdlib-only.
 - **`ticketwright/`**: the pip package; the wheel bundles the kit under `ticketwright/_kit/` via
   `pyproject.toml` force-includes, so the repo layout is the single source.
 - **`tests/`**: golden fixture trees for the installer (`tests/emit/<runtime>/`), pinned

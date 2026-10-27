@@ -48,6 +48,21 @@ glab mr create --title "<type>: <TICKET-ID> <description>" \
 `semantic_pr: true` ⇒ keep the title semantic if a pipeline lint enforces it. Honor `word_limits.pr`.
 External action ⇒ requires approval (policy `hard_halt_before_external_posts`).
 
+## verb: merge_pr
+**In:** the MR number from `open_pr`, and the commit sha `/ship` pushed.
+```bash
+glab mr merge <MR-NUMBER> --squash --sha <SHA> --auto-merge=false --yes
+glab mr view <MR-NUMBER> --output json   # verify: "state": "merged"
+```
+Squash is the kit's merge style: one commit per ticket on `{default_branch}`. `--sha` refuses the
+merge if anything was pushed after the person confirmed it. `--yes` only skips `glab`'s own prompt,
+because `/ship` already asked right before this step (policy `ship_merges_pr`). External action ⇒
+requires approval (policy `hard_halt_before_external_posts`). When required approvals, a pipeline,
+a merge train or a conflict blocks it, report what `glab` says and stop. `--auto-merge=false` is
+required, not decoration: `glab` turns auto-merge ON by default while a pipeline runs, so without
+it the command can schedule the merge, exit 0 and leave the MR open. If the verify line does not
+say `merged`, the merge did not happen: treat it as blocked.
+
 ## gotchas
 - `glab` needs the host set for self-managed GitLab: `glab auth login --hostname <gitlab.company.com>`.
 - MR approvals/merge-trains may gate the merge — surface required approvals rather than forcing.

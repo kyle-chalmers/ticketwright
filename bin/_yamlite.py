@@ -470,7 +470,9 @@ class _Parser:
                                    self.filename, "block mappings only")
             key, rest = split
             self.i += 1
-            if rest.strip() == "" and not rest.startswith("\x00"):
+            # `key:  # note` is an empty value too: the comment never becomes the value, and a nested
+            # block may follow (yq reads it that way; a worked example in setup writes one).
+            if (rest.strip() == "" or rest.strip().startswith("#")) and not rest.startswith("\x00"):
                 nxt = self.peek()
                 out[key] = self.parse_block(nxt.indent) if (nxt and nxt.indent > indent) else None
             else:
@@ -488,7 +490,7 @@ class _Parser:
             content_indent = indent + 1 + (len(rest) - len(rest.lstrip(" ")))
             rest = rest.strip()
             self.i += 1
-            if rest == "":
+            if rest == "" or rest.startswith("#"):
                 nxt = self.peek()
                 out.append(self.parse_block(nxt.indent) if (nxt and nxt.indent > indent) else None)
                 continue

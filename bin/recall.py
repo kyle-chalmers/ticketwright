@@ -13,13 +13,25 @@ Usage:
   recall.py --object BI.ANALYTICS.VW_ORDERS          # reverse lookup: tickets that touched an object
   recall.py --for bob/TEST-30 --text-file -        # add a fetched ticket's text (stdin) to the query
   recall.py --eval [--sweep]                       # diagnostic: recall quality vs curated cross_refs
+  recall.py --for alice/TEST-12 --external rows.json [--top 5] [--json]
+                                                   # score older tracker tickets (a file of search_history
+                                                   # rows) with the same rules; a key that already has a
+                                                   # ticket folder is dropped so nothing appears twice
+  recall.py --for alice/TEST-14 --repeats [--json] # earlier tickets that read the same tables
+
+`--repeats` lists earlier tickets that read exactly the same set of tables as this one (compared by
+the table's last name part), the instance count, and any project skill that may already do the
+work. It is the mechanical half of the skillify suggestion; `.claude/skills/skillify/repeats.md`
+is the other half (the agent confirms the deliverable shape and checks the skills it names).
 
 Scoring (transparent): object match ×4 (IDF-discounted — a ubiquitous object counts less than a rare
 shared one), tag match ×3, cross-ref link +5, keyword overlap ×1 (capped). Recency is a tiebreak only.
 
 A new ticket has no SQL yet, so its objects come from its TEXT: the seed's README and any
 `--text-file` (the fetched description, attachments) are read by `objects_in_text`, which keeps only
-names some ticket already touched. Stdlib only.
+names some ticket already touched. Tracker rows are scored against that same query: a label is a tag,
+the description is keywords (and, through `objects_in_text`, any of the repo's known objects it
+names), and a ticket key the seed's README names is the cross-ref link. Stdlib only.
 """
 from __future__ import annotations
 
@@ -33,7 +45,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from build_ticket_index import (repo_root, build_rows, ticket_number, id_key_regex, load_config, split_ref,
-                                objects_in_text)
+                                objects_in_text, read_objects)
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "for", "of", "to", "in", "on", "by", "with", "from", "into",
@@ -176,6 +188,97 @@ def verdict_line(top) -> str:
     return f"verdict: {v}. (You may skip reading candidates when weak/none.)"
 
 
+EXTERNAL_DESC_CAP = 600  # the most a tracker description may contribute (the search verb already cuts to this)
+
+
+class ExternalFileError(ValueError):
+    """The --external file is not a list of tickets. The message is written for a person."""
+
+
+def norm_tag(s: str) -> str:
+    """A tracker label in the kit's tag style, so `Data Quality` and `data_quality` both become
+    `data-quality`. Same rule as ingest_index_records._clean_tags (a run of anything that is not a
+    letter or digit becomes one `-`), because that is how the repo's own tags were written."""
+    return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
+
+
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def one_line(s) -> str:
+    """Tracker text as one printable line: control characters (a newline, the escape that starts a
+    terminal color code) and runs of whitespace become single spaces. Text mode prints tracker titles
+    this way, so a title cannot forge a `verdict:` line of its own or send escapes to the terminal."""
+    return " ".join(_CONTROL.sub(" ", str(s)).split())
+
+
+def known_objects(rows) -> list[str]:
+    """Every object some repo ticket touched: the only names `objects_in_text` may return, for a ticket's
+    own text and for a tracker description alike (outsider prose never widens the set)."""
+    return sorted({o for r in rows for o in (r.get("objects") or [])}, key=str.lower)
+
+
+def _external_error(path, why) -> ExternalFileError:
+    return ExternalFileError("recall: run the older-ticket search again and pass recall the file it writes, "
+                             f"because the file given could not be read as a list of tickets. Details: {path}: {why}.")
+
+
+def external_rows(path, repo_ids, known=()) -> list[dict]:
+    """Older tracker tickets from a file of `search_history` rows, shaped like the repo's own rows so
+    score_candidate can score them: key -> id (fetch_id kept for fetch_ticket), labels -> tags (via
+    norm_tag), description -> summary (at most EXTERNAL_DESC_CAP characters), objects from
+    `objects_in_text` over the description (only names in `known`, the repo's own objects),
+    created -> date, url -> link, owner "tracker".
+
+    A key that already has a ticket folder (`repo_ids`, any case) is dropped, and so is a key the file
+    repeats, so a ticket appears once. A row with no key cannot be compared or fetched: it is left out
+    with a note on stderr. A blank file counts as no rows; anything that is not a JSON list of objects
+    raises ExternalFileError."""
+    try:
+        with open(path, encoding="utf-8-sig") as fh:  # -sig: a byte-order mark some tools write is not content
+            text = fh.read()
+        data = json.loads(text) if text.strip() else []
+    except (OSError, ValueError, RecursionError) as e:  # ValueError covers a bad encoding and bad JSON
+        raise _external_error(path, getattr(e, "strerror", None) or e)
+    if not isinstance(data, list):
+        raise _external_error(path, f"expected a list of tickets, found {type(data).__name__}")
+    seen = {str(i).lower() for i in repo_ids}
+    known = list(known)
+    out, no_key = [], 0
+    for n, d in enumerate(data):
+        if not isinstance(d, dict):
+            raise _external_error(path, f"item {n} is not a ticket")
+        key = str(d.get("key") or "").strip()
+        if not key:
+            no_key += 1
+            continue
+        if key.lower() in seen:
+            continue
+        seen.add(key.lower())
+        labels = d.get("labels")
+        labels = [labels] if isinstance(labels, str) else (labels if isinstance(labels, list) else [])
+        tags = []
+        for label in labels:
+            if not isinstance(label, str):
+                continue  # a null or structured label is not a tag (str(None) would become the tag "none")
+            t = norm_tag(label)
+            if t and t not in tags:
+                tags.append(t)
+        desc = str(d.get("description") or "")[:EXTERNAL_DESC_CAP]
+        created, url = d.get("created"), d.get("url")
+        url = url if isinstance(url, str) and url else None
+        out.append({
+            "id": key, "fetch_id": str(d.get("fetch_id") or key), "owner": "tracker", "source": "tracker",
+            "title": str(d.get("title") or key), "summary": desc, "tags": tags,
+            "objects": objects_in_text(desc, known) if desc and known else [],
+            "date": created[:10] if isinstance(created, str) and re.match(r"\d{4}-\d{2}-\d{2}", created) else None,
+            "link": url, "url": url,
+        })
+    if no_key:
+        print(f"recall: left out {no_key} tracker row{'s' if no_key != 1 else ''} with no ticket key.", file=sys.stderr)
+    return out
+
+
 def read_text_files(paths) -> str:
     """The text of each `--text-file` (`-` is stdin). A file that looks binary (a NUL byte early on)
     is skipped, since an attachment such as a PDF or a spreadsheet carries no readable names."""
@@ -190,12 +293,18 @@ def read_text_files(paths) -> str:
     return "\n".join(parts)
 
 
-def run_query(args, rows, df_map, n_docs, key_re=None, root=None) -> int:
+def build_query(args, rows, root=None):
+    """The query for these arguments: (q_tokens, q_tags, q_objects, seed, text_objects). `seed` is the chosen
+    seed row, or None when there is no --for. A `--for owner/id` locator is resolved into args.seed /
+    args.owner here, and a seed that is missing or ambiguous exits with a message. `text_objects` are the
+    known objects the ticket's text names (any `--text-file`, plus the seed's README when `root` is given),
+    already folded into q_objects. Built once, so the repo's tickets and the tracker's are scored against
+    the same query."""
     q_tokens, q_tags, q_objects = tokenize(args.query), ci(args.tags.split(",")), ci([args.object] if args.object else [])
     ticket_text = read_text_files(args.text_files)
     if ticket_text:
         q_tokens |= tokenize(ticket_text)
-    seed_id, seed_owner, seed_refs = None, None, set()
+    seed = None
     if args.seed and "/" in args.seed:  # --for owner/id, the qualified ticket locator
         so, si = split_ref(args.seed)
         if args.owner and args.owner.lower() != so.lower():
@@ -210,8 +319,6 @@ def run_query(args, rows, df_map, n_docs, key_re=None, root=None) -> int:
             owners = ", ".join(sorted(r["owner"] for r in seed_matches))
             sys.exit(f"recall: {args.seed} exists under multiple owners ({owners}); pass --owner to pick one.")
         seed = seed_matches[0]
-        seed_id, seed_owner = seed["id"], seed["owner"]
-        seed_refs = ci(seed.get("cross_refs"))
         q_tokens |= tokenize(f"{seed['title']} {seed['summary']}")
         q_tags |= ci(seed.get("tags"))
         q_objects |= ci(seed.get("objects"))
@@ -221,20 +328,37 @@ def run_query(args, rows, df_map, n_docs, key_re=None, root=None) -> int:
             except OSError:
                 pass
     # Objects the ticket's text names: the only object evidence a ticket with no SQL yet can offer.
-    known = sorted({o for r in rows for o in (r.get("objects") or [])}, key=str.lower)
-    text_objects = objects_in_text(ticket_text, known) if ticket_text else []
+    text_objects = objects_in_text(ticket_text, known_objects(rows)) if ticket_text else []
     q_objects |= ci(text_objects)
+    return q_tokens, q_tags, q_objects, seed, text_objects
+
+
+def run_query(args, rows, df_map, n_docs, key_re=None, *, root=None, external=None) -> int:
+    """Score the repo's own tickets, or, when `external` is a list from external_rows(), those tracker
+    tickets against the same query. The repo's rows still supply the seed and the object statistics.
+    `root` and `external` are keyword-only: both were once the sixth positional argument, and a list of
+    tracker rows landing in `root` fails silently."""
+    q_tokens, q_tags, q_objects, seed, text_objects = build_query(args, rows, root)
+    seed_id, seed_owner = (seed["id"], seed["owner"]) if seed else (None, None)
+    seed_refs = ci(seed.get("cross_refs")) if seed else set()
+    ext = external is not None
+    # A tracker ticket has no folder, so a README link to it is just its key. score_candidate runs with
+    # allow_ref=False for these rows (it resolves refs between folders) and the +5 is added below,
+    # before the evidence the verdict reads is built.
+    link_keys = {split_ref(x)[1] for x in seed_refs} if ext else set()
 
     reverse_only = bool(args.object) and not (args.seed or args.query or args.tags or args.text_files)
     omap = owners_index(rows)
 
     scored = []
-    for r in rows:
-        if seed_id and r["id"] == seed_id and r["owner"] == seed_owner:
+    for r in (external if ext else rows):
+        if not ext and seed_id and r["id"] == seed_id and r["owner"] == seed_owner:
             continue  # exclude only the chosen seed row (same id under another owner is a real candidate)
         score, obj_hits, tag_hits, kw_hits, ref_link = score_candidate(
-            q_tokens, q_tags, q_objects, seed_id, seed_refs, r, DEFAULT_WEIGHTS, allow_ref=True,
+            q_tokens, q_tags, q_objects, seed_id, seed_refs, r, DEFAULT_WEIGHTS, allow_ref=not ext,
             df_map=df_map, n_docs=n_docs, seed_owner=seed_owner, owners_by_id=omap)
+        if ext and r["id"].lower() in link_keys:
+            ref_link, score = True, score + DEFAULT_WEIGHTS["ref"]
         if reverse_only:
             if not obj_hits:
                 continue
@@ -259,10 +383,25 @@ def run_query(args, rows, df_map, n_docs, key_re=None, root=None) -> int:
 
     if args.json:
         print(json.dumps([
-            {"id": r["id"], "owner": r["owner"], "score": round(s, 2), "why": why, "title": r["title"],
-             "summary": r["summary"], "date": r["date"], "tags": r.get("tags"), "objects": r.get("objects"),
-             "readme": r["link"], "url": r["url"]}
+            {"id": r["id"], "owner": None if ext else r["owner"], "score": round(s, 2), "why": why,
+             "title": r["title"], "summary": r["summary"], "date": r["date"], "tags": r.get("tags"),
+             "objects": r.get("objects"), "readme": None if ext else r["link"], "url": r["url"],
+             **({"fetch_id": r["fetch_id"], "source": r["source"]} if ext else {})}
             for s, r, why, _ev in top], ensure_ascii=False, indent=2))
+        return 0
+
+    if ext:
+        who = f" for {seed_owner}/{seed_id}" if seed_id else ""
+        print(f"Older tickets from the tracker{who}: top {len(top)} of {len(scored)}")
+        if not top:
+            print("  (no matches)")
+        for s, r, why, _ev in top:
+            print(f"  {one_line(r['id']):<10} score {s:>5.1f} [{' '.join(why)}]  {r['date'] or 'undated'}  "
+                  f"{one_line(r['title'])[:60]}")
+            if r["url"]:
+                print(f"             {one_line(r['url'])}")
+        if not reverse_only:
+            print(verdict_line(top))
         return 0
 
     # A shared id is displayed as its owner/id locator — a bare label naming two tickets is exactly
@@ -290,6 +429,181 @@ def run_query(args, rows, df_map, n_docs, key_re=None, root=None) -> int:
         print(verdict_line(top))
         print("\nRead these READMEs and write a reuse brief: what to copy (which SQL/QC artifact + path),"
               " known gotchas, and what's different this time.")
+    return 0
+
+
+def ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def leaf_set(objects) -> set[str]:
+    return {leaf(o) for o in ci(objects)}
+
+
+def skillify_policy(root: Path) -> bool:
+    """`policies.skillify_everything` through the resolver. Default true (the schema's default), and
+    true when config cannot be read: a suggestion is advisory, so failing open costs one sentence."""
+    try:
+        from effective_config import resolve  # noqa: PLC0415
+        val = resolve(root).get("policies.skillify_everything", True)
+    except Exception:  # noqa: BLE001
+        return True
+    return val is not False and str(val).strip().lower() not in ("false", "no", "off", "0")
+
+
+def skill_candidates(root: Path, repeat_pairs: set[str], target_leaves: set[str], omap: dict,
+                     notes: list[str]) -> list[dict]:
+    """Project skills that MAY already do this work: one whose `built_from:` names a ticket in the
+    repeat set (`provenance`), or whose `read_objects:` reads the same tables (`same_tables`).
+    Candidates only: two skills can read the same tables and produce different things, so whether
+    one fits is the agent's call (repeats.md step 3), never this function's."""
+    try:
+        from _yamlite import parse_frontmatter  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    repeat_ids = {p.split("/", 1)[-1] for p in repeat_pairs}
+    for path in sorted((root / ".claude" / "skills").glob("*/SKILL.md")):
+        try:
+            fm, _body = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"), str(path))
+        except Exception:  # noqa: BLE001 — one malformed skill must not hide the others
+            continue
+        name = str(fm.get("name") or path.parent.name)
+        built = fm.get("built_from") or []
+        built = [built] if isinstance(built, str) else [str(b) for b in built if str(b).strip()]
+        pairs = []
+        for ref in built:
+            owner, tid = split_ref(ref.strip())
+            if owner is not None:
+                pairs.append(f"{owner}/{tid}")
+                continue
+            owners = omap.get(tid.lower(), [])
+            if len(owners) == 1:
+                pairs.append(f"{owners[0]}/{tid}")
+            elif tid.lower() in repeat_ids:  # only worth saying when it could hide a real match
+                notes.append(f"skill {name}: built_from entry {ref!r} names no single ticket "
+                             f"({'several owners have it' if owners else 'no ticket has it'}); "
+                             f"write it as <owner>/<id>.")
+        reads = fm.get("read_objects") or []
+        reads = [reads] if isinstance(reads, str) else reads
+        if repeat_pairs & {p.lower() for p in pairs}:
+            match = "provenance"
+        elif target_leaves and leaf_set(reads) == target_leaves:
+            match = "same_tables"
+        else:
+            continue
+        out.append({"skill": name, "match": match, "built_from": pairs,
+                    "description": str(fm.get("description") or "")})
+    return out
+
+
+def run_repeats(args, rows, root: Path, key_re=None) -> int:
+    """Earlier tickets that read exactly this ticket's tables. See the module docstring."""
+    notes: list[str] = []
+    omap = owners_index(rows)
+    seed = None
+    if args.seed:
+        so, si = split_ref(args.seed) if "/" in args.seed else (args.owner, args.seed)
+        if "/" in args.seed and args.owner and args.owner.lower() != so.lower():
+            sys.exit(f"recall: --for {args.seed} names owner '{so}' but --owner says '{args.owner}'; drop one.")
+        matches = [r for r in rows if r["id"].lower() == si.lower()
+                   and (not so or r["owner"].lower() == so.lower())]
+        if len(matches) > 1:
+            owners = ", ".join(sorted(r["owner"] for r in matches))
+            sys.exit(f"recall: {args.seed} exists under multiple owners ({owners}); use <owner>/<id>.")
+        if matches:
+            seed = matches[0]
+        elif not args.text_files:
+            sys.exit(f"recall: ticket {args.seed} not found. Pass its text with --text-file.")
+        else:
+            notes.append(f"{args.seed} is not in the index yet; its text alone was read.")
+
+    cache: dict = {}
+
+    def reads_of(r) -> list:
+        key = r["rel_dir"]
+        if key not in cache:
+            cache[key] = read_objects(root / "tickets" / key)
+        return cache[key]
+
+    target = f"{seed['owner']}/{seed['id']}" if seed else None
+    target_reads = reads_of(seed) if seed else []
+    strength = "confirmed"
+    if not target_reads:
+        # No code yet (a ticket being scoped): its text is the only evidence, so the answer is provisional.
+        strength = "provisional"
+        text = read_text_files(args.text_files)
+        if seed and seed.get("has_readme"):
+            try:
+                text += "\n" + (root / "tickets" / unquote(seed["link"])).read_text(errors="replace")
+            except OSError:
+                pass
+        known = sorted({o for r in rows for o in (r.get("objects") or []) + reads_of(r)}, key=str.lower)
+        target_reads = objects_in_text(text, known) if text else []
+    target_leaves = leaf_set(target_reads)
+
+    def later_than_seed(r) -> bool:
+        """Only EARLIER work counts as a previous instance: re-checking the original ticket must not
+        cite the copy made after it. Undated tickets are kept (nothing to order them by), and two
+        tickets on the same date order by ticket number."""
+        if not seed or not seed.get("date") or not r.get("date"):
+            return False
+        if r["date"] != seed["date"]:
+            return r["date"] > seed["date"]
+        return ticket_number(r["id"], key_re) > ticket_number(seed["id"], key_re)
+
+    repeats = []
+    if target_leaves:
+        for r in rows:
+            if seed and r["id"] == seed["id"] and r["owner"] == seed["owner"]:
+                continue
+            if later_than_seed(r):
+                continue
+            reads, source = reads_of(r), "sql"
+            if not reads:
+                reads, source = r.get("objects") or [], "index"
+            if leaf_set(reads) == target_leaves:
+                repeats.append({"ticket": f"{r['owner']}/{r['id']}", "title": r["title"],
+                                "date": r["date"], "read_objects": sorted(reads, key=str.lower),
+                                "source": source, "readme": r["link"]})
+    repeats.sort(key=lambda x: (x["date"] or "0000-00-00", x["ticket"]))
+    if any(x["source"] != "sql" for x in repeats):
+        strength = "provisional"
+
+    policy = skillify_policy(root)
+    pairs = {x["ticket"].lower() for x in repeats}
+    # Policy off: the repeat stays visible, but nothing is suggested, not even an existing skill.
+    candidates = skill_candidates(root, pairs, target_leaves, omap, notes) if repeats and policy else []
+    result = {"target": target, "strength": strength, "read_objects": sorted(target_reads, key=str.lower),
+              "repeats": repeats, "instance": len(repeats) + 1 if repeats else 1,
+              "policy_skillify_everything": policy, "suggest": bool(repeats) and policy,
+              "skill_candidates": candidates, "notes": notes}
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    who = target or "This ticket"
+    if not target_leaves:
+        print(f"No repeat check for {who}: no tables were found in its code or its text.")
+    elif not repeats:
+        print(f"{who} is the first ticket to read exactly these tables: {', '.join(sorted(target_leaves))}.")
+    else:
+        after = ", ".join(x["ticket"] for x in repeats)
+        how = "confirmed from the SQL" if strength == "confirmed" else "provisional: read from ticket text or the index"
+        print(f"{who} reads the same tables as {after} ({ordinal(len(repeats) + 1)} instance, {how}).")
+        for x in repeats:
+            print(f"  {x['ticket']:<14} {x['date'] or '—'}  {x['title'][:60]}")
+            print(f"                 {x['readme']}")
+        for c in candidates:
+            print(f"  A skill may already do this: /{c['skill']} ({'built from these tickets' if c['match'] == 'provenance' else 'reads the same tables'}).")
+        if not policy:
+            print("Not suggesting /skillify: this team turned the suggestion off. "
+                  "Details: policies.skillify_everything is false.")
+        else:
+            print("Next: confirm the deliverable shape as the skillify skill's repeats.md describes, "
+                  "before suggesting anything.")
+    for n in notes:
+        print(f"note: {n}")
     return 0
 
 
@@ -351,10 +665,21 @@ def main() -> int:
     ap.add_argument("--min-score", dest="min_score", type=float, default=0.0,
                     help="hide candidates scoring below this (manual filter; not a default cutoff)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--external", metavar="FILE",
+                    help="score older tracker tickets from this JSON file (rows from the tracker's search_history "
+                         "action) instead of the repo's own tickets; a key that already has a folder is dropped")
     ap.add_argument("--eval", action="store_true",
                     help="diagnostic: measure recall quality against curated cross_refs (read-only, never tunes)")
     ap.add_argument("--sweep", action="store_true", help="with --eval: print MRR under several weight settings")
+    ap.add_argument("--repeats", action="store_true",
+                    help="list earlier tickets that read the same tables (with --for and/or --text-file)")
     args = ap.parse_args()
+    if args.eval and args.external is not None:
+        print("recall: --external cannot be combined with --eval. Run them separately.", file=sys.stderr)
+        return 2
+    if args.repeats and args.external is not None:
+        print("recall: --external cannot be combined with --repeats. Run them separately.", file=sys.stderr)
+        return 2
 
     root = repo_root()
     rows = build_rows(root)
@@ -377,7 +702,18 @@ def main() -> int:
                 print(f"  ({w['obj']},{w['tag']},{w['ref']},{w['kw']}) -> MRR {m['mrr']:.3f}")
         return 0
 
-    return run_query(args, rows, df_map, n_docs, key_re, root)
+    if args.repeats:
+        if not (args.seed or args.text_files):
+            sys.exit("recall: --repeats needs --for <owner>/<id> or --text-file.")
+        return run_repeats(args, rows, root, key_re)
+    external = None
+    if args.external is not None:
+        try:
+            external = external_rows(args.external, {r["id"] for r in rows}, known_objects(rows))
+        except ExternalFileError as e:
+            print(e, file=sys.stderr)
+            return 2
+    return run_query(args, rows, df_map, n_docs, key_re, root=root, external=external)
 
 
 if __name__ == "__main__":
