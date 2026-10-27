@@ -78,8 +78,8 @@ object store the top level lists buckets. Setup's folder question calls this ver
 **In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention).
 ```bash
 dest="{base_path}/<TICKET-ID> <Full Ticket Title>"
-rclone copy --dry-run "<local ticket dir>" "$dest"   # SHOW this output before anything moves
-rclone copy           "<local ticket dir>" "$dest"
+rclone copy --dry-run --exclude "/comms/**" "<local ticket dir>" "$dest"   # SHOW this output before anything moves
+rclone copy           --exclude "/comms/**" "<local ticket dir>" "$dest"
 rclone lsl "$dest"                                   # verify
 ```
 Requires explicit approval (external side effect) — policy `hard_halt_before_external_posts`. The
@@ -90,6 +90,10 @@ mounted adapters' `cp -r`: a folder-wide backup carries everything in the ticket
 raw source material (a full meeting transcript) is sitting in `source_materials/`, the guard asks
 before the upload. `.gitignore` has no bearing on a copy, so moving such a file to
 `source_materials/private/` protects git and does **not** protect this path.
+
+**`comms/` stays out of the backup** (`--exclude "/comms/**"`, on the dry run too, so what it shows
+is what moves). It holds `/ship`'s unsent tracker and chat drafts, which are gitignored so unsent
+wording never leaves the machine.
 
 **Never `rclone sync`.** Per rclone's own docs, `copy` "Doesn't delete files from the destination",
 whereas `sync` deletes destination files absent from the source to make it match. A folder-backup

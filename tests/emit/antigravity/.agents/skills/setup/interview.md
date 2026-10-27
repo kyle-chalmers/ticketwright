@@ -19,7 +19,7 @@ kit's config is this file's job, never the person's:
 | Where does your data live? (round 3) | the warehouse, its default, the dev target |
 | How do you share results, and where are finished files kept? (round 4) | chat, docstore, VCS |
 | What do you work on, and what has the team written down about it? (round 5) | `domain`, `team_docs` |
-| When should I ask before acting? (round 6) | the two policies |
+| When should I ask before acting? (round 6) | three policies |
 
 When an answer needs something the kit configures in a particular way (one meeting provider that
 fetches notes automatically, say), set it up and say what was done in one plain line of the plan.
@@ -389,14 +389,16 @@ which asks question 13a and then re-runs this round.
 
 ## Round 6 — House rules (skippable)
 
-**Offer the skip at this header, labeled with its cost:** "Skip this and both policies keep their
-shipped defaults — destructive warehouse SQL prompts only for high-risk statements, and
-deliverables open for human sign-off at `/review` only."
+**Offer the skip at this header, labeled with its cost:** "Skip this and all three policies keep their
+shipped defaults — destructive warehouse SQL prompts only for high-risk statements,
+deliverables open for human sign-off at `/review` only, and `/ship` asks before it merges the pull
+request, then merges it."
 
-16. **`db_write_requires_approval`** (`off` | `high_risk` | `all`) and
-    **`human_review_handoff`** (`off` | `review` | `all`) — the two policies whose default is
+16. **`db_write_requires_approval`** (`off` | `high_risk` | `all`),
+    **`human_review_handoff`** (`off` | `review` | `all`) and **`ship_merges_pr`** (`true` |
+    `false`) — the three policies whose default is
     plausibly wrong for a given team. The other eight policies stay commented defaults with their
-    "when to change this" notes; asking all ten is the wall the old question cap existed to
+    "when to change this" notes; asking all eleven is the wall the old question cap existed to
     prevent. Ask them in plain words, with the options already explained, so the person never has to
     ask what one means:
     - "When should I ask you before changing data in your warehouse? Reading data never asks."
@@ -414,6 +416,12 @@ deliverables open for human sign-off at `/review` only."
       - **Every time** (`all`): also while building (each query before its first run, each
         export after it's written).
       - **Never** (`off`): you open files yourself.
+    - "When a delivery is approved, should I merge its pull request too?"
+      - **Yes, after asking me** (recommended, `true`): once you say go ahead and the pull request
+        is open, I ask once more, then squash-merge it into the main branch before backing up and
+        announcing. If your branch rules or required checks block the merge, I stop and tell you why.
+      - **No, we merge by hand** (`false`): I open the pull request and leave it for your team to
+        review and merge. The ticket stays out of its final status until then.
 
 ## Skipping a round
 
@@ -494,6 +502,7 @@ seams:
 policies:
   db_write_requires_approval: high_risk   # round 6 (or its # TODO(setup) line when skipped)
   human_review_handoff: review
+  ship_merges_pr: true
 ```
 
 Everything not shown stays exactly as the default-mode Phase 3 writes it today: optional blocks

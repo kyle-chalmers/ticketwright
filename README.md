@@ -98,7 +98,7 @@ What did we learn last time someone measured late orders by region?
 /review [--deep]    the independent QC pass /build runs for you: re-runs queries, walks the validation
                     pyramid → APPROVE / REQUEST-CHANGES; run it directly to re-check or go --deep
                     …and at the top of that pyramid, opens the deliverables in YOUR apps and waits
-/ship [--go]        backup → tracker comment → chat draft → commit + PR, a HARD HALT before anything
+/ship [--go]        PR → merge (asks first) → backup → comment → chat draft, a HARD HALT before anything
                     external; warns, waits for a typed `ship unreviewed`, and records it when no
                     review verdict is on file
 /setup              configure once, or onboard a teammate
@@ -195,10 +195,10 @@ under your own sign-in.
 - **Your coding agent.** What the skills read (ticket text, query results, notes, team docs you link) goes to your
   agent's model provider under your account's terms, as does the ticket text
   `ticketwright enrich` sends to the model command you configure, and up to three older tracker
-  tickets that command summarizes.
-- **Your tools, named in `stack.yaml`.** `/ticket` reads the ticket and, if you say yes, searches
-  your tracker's older tickets. `/build` and `/review` query the warehouse, and `/ship` backs up,
-  comments, drafts the chat message (sent only on "send it") and opens a pull request.
+  tickets it summarizes.
+- **Your tools, named in `stack.yaml`.** `/ticket` reads the ticket and, on your yes, searches
+  your tracker's older tickets. `/build` and `/review` query the warehouse; `/ship` backs up,
+  comments, drafts the chat message (sent only on "send it") and opens and merges a pull request.
 - **Local reads.** Hooks read the repo, any `-f` SQL file a command names, your viewer and people
   config, and Claude Code's `installed_plugins.json`. They write nothing outside the repo.
 - **Committed by default:** ticket folders, deliverable CSVs and voice profiles. Raw transcripts

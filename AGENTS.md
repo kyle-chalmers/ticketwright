@@ -103,7 +103,7 @@ user-facing name**: all user-facing prose (README, setup questions, rendered doc
 while `seam` stays the internal word (the `seams:` config key, adapter frontmatter, selftest, and
 contributor docs like this one). A seam is one of: `tracker`, `warehouse`, `chat`,
 `docstore`, `meetings`, `vcs`. Three layers wire it:
-1. `.claude/config/stack.yaml` — names which tool fills each seam, plus project facts and the 10
+1. `.claude/config/stack.yaml` — names which tool fills each seam, plus project facts and the 11
    `policies`. Schema in `.claude/config/stack.schema.md`; seven worked examples ship
    (`stack.yaml` + `stack.example.*.yaml`) and selftest runs skills against all of them.
 2. `adapters/<seam>/<tool>.md` — maps the abstract **verbs** (`fetch_ticket`, `query`, `draft`,

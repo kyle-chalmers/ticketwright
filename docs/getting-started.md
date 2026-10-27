@@ -374,8 +374,8 @@ when you ship it; the drive folder; the code host, confirmed from `origin`). Two
 individually skippable, each skip labeled with its cost: **how you work** (your domain, plus two optional questions: where the team's
 written analysis standards live, which `/build` follows and `/review` checks, and any other docs about
 the team or its data, which `/ticket` reads while planning; links are read live, never copied. It
-never asks for a role, which stays `generalist` unless you run `/setup role`) and **house rules** (the two policies whose defaults most often differ by team, with each
-option explained). A skipped round becomes a `# TODO` in the config plus a punch-list entry naming
+never asks for a role, which stays `generalist` unless you run `/setup role`) and **house rules** (the three policies whose defaults most often differ by team, including whether
+`/ship` merges the pull request after asking, with each option explained). A skipped round becomes a `# TODO` in the config plus a punch-list entry naming
 the command that finishes it later (`/setup role`, `/setup policies`). The other eight policies
 ship as commented defaults you can edit any time. Setup can rank options by what you've used
 recently, only if you say yes, and only by counting: it never reads messages, notes or file

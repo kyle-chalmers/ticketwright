@@ -55,7 +55,8 @@ capabilities and carry no `## verb:` sections — see `adapters/README.md` § Ru
 - **Subagents** — `.claude/agents/*.md`, each with its own context window. This is what makes
   `/review --deep`'s `qc-reviewer` a genuinely independent second pass.
 - **Structured questions** — the `AskUserQuestion` tool. Note it is unavailable inside subagents, so
-  an interview must never be authored inside one.
+  an interview must never be authored inside one. `/setup`, `/ticket` (owner choice, plan assumptions, plan approval) and
+  `/skillify` ask with it, reading its name from this file's `question_tool` key.
 
 ## Gotchas
 

@@ -22,7 +22,7 @@ Config is therefore three files, merged by one resolver.
 
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
-| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 10 policies, ticket conventions |
+| 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 11 policies, ticket conventions |
 | 2 PERSON, portable | `people/<id>.yaml` | yes | display name, tracker handle, identities, comms voice, file-type preferences |
 | 3 PERSON, machine | `.claude/config/connections.local.yaml` | **no** (gitignored) | named profiles/connections, local mount roots, the `person:` key |
 
@@ -456,7 +456,7 @@ Two consequences worth knowing before you adopt it:
 
 ---
 
-## `policies` (the 10 kit policies — see kit README "AI-layer" section)
+## `policies` (the 11 kit policies — see kit README "AI-layer" section)
 
 | Policy | Type | Default | Enforced by |
 |---|---|---|---|
@@ -464,6 +464,7 @@ Two consequences worth knowing before you adopt it:
 | `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
 | `source_material_guard` | `on` \| `off` | `on` | Ask before a raw meeting transcript is staged for commit or copied into a docstore backup. Optional; **defaults to `on`**, and a missing or unparseable value resolves to `on` — unparseable config must never quietly widen what leaves the repo. Enforced by `.claude/hooks/source_material_guard.py` over `bin/scan_source_materials.py`; `/ship` calls the same classifier so the halt is visible where hooks are not wired. Matches filenames and document shape, **never meaning**. |
 | `chat_default_draft` | bool | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
+| `ship_merges_pr` | bool | `true` | `ship` — after the go-ahead and the PR, ask once more (an interactive choice where the runtime has one) and then squash-merge the PR into `default_branch` via `vcs.merge_pr`, before the backup, so what is shared is the merged work. A blocked merge (protection, checks, conflict) stops the ship with the reason; it is never bypassed. `false` = the team merges by hand: the delivery plan says so and the ticket is not moved to its final status. A missing value resolves to `true`; an unparseable one resolves to `false` (merge by hand), since unparseable config must never add a write. |
 | `hyperlink_everything` | bool | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
 | `skillify_everything` | bool | `true` | recurring work → a `/skillify` skill the agent can invoke, not a one-off. |
 | `reduce_assumptions` | bool | `true` | ask before building; still document every assumption in the ticket README. |
@@ -472,7 +473,7 @@ Two consequences worth knowing before you adopt it:
 | `deterministic_outputs` | bool | `true` | data exports use explicit `ORDER BY`; generated skills ship golden-replay diffs. |
 | `human_review_handoff` | enum | `review` | `review` layer ⑤ (and `build` under `all`) — open deliverables in the user's own apps and wait for sign-off. See below. |
 
-All are booleans except `db_write_requires_approval` and `human_review_handoff`.
+All are booleans except `db_write_requires_approval`, `human_review_handoff` and `source_material_guard` (`on` | `off`).
 
 ### `db_write_requires_approval` — the one enum
 
