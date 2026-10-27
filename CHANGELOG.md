@@ -49,6 +49,13 @@ All notable changes to this project are documented here. Format loosely follows
   item (`- {location: …, note: …}`) also parses now; it used to be read as a key named
   `{location`. One side effect: a flow mapping with no space after its colons (`{a:b}`) now fails
   with a clear error instead of being read as `{a: b}`. No shipped file uses that form.
+- **Picking a drive folder in setup shows folders only.** Setup promised folder names only when it
+  looked inside someone's drive, but no adapter had a way to list folders, so a first run fell back
+  to a plain `ls` that printed file names too. The docstore contract gains a read-only
+  `list_folders` verb: the Google Drive and SharePoint adapters list directory entries one level
+  down, skipping dot folders, and rclone runs `rclone lsf --dirs-only` on the person's own remote.
+  Setup's folder question now calls it, and selftest runs it on a tree of files and folders to show
+  no file name gets through.
 - **The Outlook adapter works on Codex.** Its new `## Runtime surface: codex-cli` section names
   the ChatGPT Outlook Email app's tools as Codex lists them (`microsoft_outlook_email_draft_email`,
   `microsoft_outlook_email_send_email`, `microsoft_outlook_email_search_people`). That app has
