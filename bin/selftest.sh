@@ -10841,7 +10841,11 @@ printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/12_review_verd
 rc="$(rv57)"; grep -q '"status": "skipped"' "$TMP/rv57.out" && [ "$rc" = 6 ] \
   && ok "classifier: SKIPPED is its own status (exit 6) — an unreviewed ship is on record, not approval" \
   || bad "classifier misreads SKIPPED" "rc=$rc $(cat "$TMP/rv57.out")"
-rm "$T57/qc_queries/12_review_verdict.md" "$T57/qc_queries/11_review_verdict.md" "$T57/qc_queries/10_review_verdict.md"
+printf 'verdict: AWAITING-SIGNOFF\nreview_mode: independent-subagent\n' > "$T57/qc_queries/13_review_verdict.md"
+rc="$(rv57)"; grep -q '"status": "awaiting-signoff"' "$TMP/rv57.out" && [ "$rc" = 7 ] \
+  && ok "classifier: AWAITING-SIGNOFF is its own status (exit 7): the reviewer approved, the person's sign-off is pending" \
+  || bad "classifier misreads AWAITING-SIGNOFF (it would read as never reviewed, or as approved)" "rc=$rc $(cat "$TMP/rv57.out")"
+rm "$T57/qc_queries/13_review_verdict.md" "$T57/qc_queries/12_review_verdict.md" "$T57/qc_queries/11_review_verdict.md" "$T57/qc_queries/10_review_verdict.md"
 rc="$(rv57)"; grep -q '"status": "request-changes"' "$TMP/rv57.out" && [ "$rc" = 5 ] \
   && ok "classifier: REQUEST-CHANGES → exit 5" || bad "classifier misreads REQUEST-CHANGES" "rc=$rc"
 rm "$T57/qc_queries/9_review_verdict.md"
@@ -10876,7 +10880,11 @@ printf 'verdict: SKIPPED\nreview_mode: none\n' > "$T57/qc_queries/5_review_verdi
 # that happens to appear elsewhere in the text.
 o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'shipped unreviewed before, which is not an approval (5_review_verdict.md)' <<<"$o" \
   && ok "hook re-fires on a SKIPPED record — an unreviewed ship on record is not approval" || bad "SKIPPED passes the hook" "$o"
-rm "$T57/qc_queries/5_review_verdict.md" "$T57/qc_queries/4_review_verdict.md"
+printf 'verdict: AWAITING-SIGNOFF\nreview_mode: independent-subagent\n' > "$T57/qc_queries/6_review_verdict.md"
+o="$(g57 "$(pay57 'git push')")"; grep -q '"permissionDecision": "ask"' <<<"$o" && grep -q 'your sign-off is still needed' <<<"$o" \
+  && ok "hook asks on AWAITING-SIGNOFF: a reviewer's APPROVE without the person's sign-off is not approval" \
+  || bad "AWAITING-SIGNOFF passes the hook, or its message does not say the sign-off is pending" "$o"
+rm "$T57/qc_queries/6_review_verdict.md" "$T57/qc_queries/5_review_verdict.md" "$T57/qc_queries/4_review_verdict.md"
 rm "$T57/final_deliverables/1_rows_2.csv"
 o="$(g57 "$(pay57 'git push')")"; [ -z "$o" ] && ok "hook is silent for a ticket with no deliverables yet (a WIP push costs no prompt)" \
   || bad "hook prompts on an empty scaffold" "$o"
@@ -11431,14 +11439,14 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
 # Exact block count per file: a file that loses a block must fail, not hide behind the total.
 c59=""
-for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:2" ".claude/agents/qc-reviewer.md:1"; do
+for want59 in ".claude/skills/ship/SKILL.md:3" ".claude/skills/review/SKILL.md:3" ".claude/agents/qc-reviewer.md:1"; do
   f59="${want59%%:*}"; w59="${want59##*:}"
   g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
   { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
 done
 [ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
      --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
-  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 2 + 1 blocks)" \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (3 + 3 + 1 blocks)" \
   || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
 # --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
@@ -11615,6 +11623,144 @@ python3 -c 'import sys; sys.path.insert(0, "bin"); import plugin_doctor as p, pa
 # (h) the suite's own git config is hermetic (the leak a per-user GIT_CONFIG_GLOBAL exposed).
 case "$GIT_CONFIG_GLOBAL" in "$TMP"/*) ok "the suite reads an empty, suite-owned git config (no contributor identity leaks in)" ;;
   *) bad "GIT_CONFIG_GLOBAL is not suite-owned" "$GIT_CONFIG_GLOBAL" ;; esac
+
+hdr "61b · /ticket asks with the runtime's question tool, numbered prose elsewhere"
+# A clean-profile /ticket run (DATA-12, LABS-107) asked its three plan assumptions and the approval
+# as text the person had to type out, on a runtime whose adapter declares a question tool. /ticket
+# now reads the same capability keys /setup does (section 61) and never names the tool itself.
+SK61b=".claude/skills/ticket/SKILL.md"; tf61b="$TMP/tk61b.flat"; tr -s '[:space:]' ' ' < "$SK61b" > "$tf61b"
+# (a) the gate: the tool comes from kit_paths' capabilities, with a prose fallback.
+{ grep -q 'capabilities.structured_questions' "$SK61b" && grep -q 'capabilities.question_tool' "$SK61b" \
+  && grep -q 'capabilities.question_limits' "$SK61b" && grep -q 'kit_paths.py --json' "$SK61b" \
+  && grep -q 'numbered list' "$tf61b" && grep -q 'one question at a time' "$tf61b"; } \
+  && ok "/ticket asks with capabilities.question_tool when there is one, numbered prose otherwise" \
+  || bad "/ticket's question rule lost its capability gate or its prose fallback"
+# (b) the rule is stated before the first question it governs (Phase 0's ambiguous person).
+r61b="$(grep -n '^## How this skill asks the person something' "$SK61b" | head -1 | cut -d: -f1)"
+a61b="$(grep -n '`ambiguous` — ask which person' "$SK61b" | head -1 | cut -d: -f1)"
+{ [ -n "$r61b" ] && [ -n "$a61b" ] && [ "$r61b" -lt "$a61b" ]; } \
+  && ok "the question rule comes before Phase 0's first question" \
+  || bad "/ticket's question rule is missing or placed after a question it governs" "rule=${r61b:-none} first-ask=${a61b:-none}"
+# (c) every ask point is wired to it, with options that come from the run, never invented.
+m61b=""
+grep -q "whoami's \`candidates\` as the" "$tf61b" || m61b="$m61b ambiguous-person"
+grep -q 'ask whether to continue \*\*local-only\*\*' "$tf61b" || m61b="$m61b local-only"
+grep -q 'ask which one, with the `owner/id` choices as the options' "$tf61b" || m61b="$m61b owner-choice"
+grep -q 'what the plan assumed is the first, recommended option' "$tf61b" || m61b="$m61b assumptions"
+grep -q 'revise the plan and say what changed before' "$tf61b" || m61b="$m61b assumption-changes-plan"
+{ grep -q '"Approve and build", "Approve, don.t build yet" and "Change the' "$tf61b" \
+  && grep -q 'never in the same call' "$tf61b" && grep -q 'none is marked recommended' "$tf61b"; } \
+  || m61b="$m61b approval"
+grep -q 'Never invent an option' "$tf61b" || m61b="$m61b no-invented-options"
+grep -q '"Never pick one" still holds' "$tf61b" || m61b="$m61b never-pick"
+[ -z "$m61b" ] && ok "each /ticket ask point uses the rule (person, local-only, owner, assumptions, approval)" \
+  || bad "a /ticket ask point is not wired to the question rule" "$m61b"
+# (d) no runtime's question tool is named in /ticket, its references, or its emitted copies.
+n61b=""
+for t in $(grep -h '^question_tool:' adapters/runtime/*.md | awk '{print $2}' | sort -u); do
+  case "$t" in none) continue ;; *[[:upper:]_]*) ;; *) continue ;; esac
+  grep -rqw "$t" .claude/skills/ticket tests/emit/*/.agents/skills/ticket 2>/dev/null && n61b="$n61b $t"
+done
+[ -z "$n61b" ] && ok "/ticket and its emitted copies never name a runtime's question tool" \
+  || bad "/ticket hard-codes a question tool name" "$n61b"
+e61b=""
+for f in tests/emit/*/.agents/skills/ticket/SKILL.md; do
+  grep -q 'capabilities.question_tool' "$f" || e61b="$e61b $f"
+done
+[ -z "$e61b" ] && ok "the emitted /ticket copies carry the same question rule" \
+  || bad "an emitted /ticket copy lacks the question rule (regenerate tests/emit)" "$e61b"
+# (e) the capability is the adapter's: kit_paths reports each runtime's declared question_tool, so a
+# runtime with none (the prose branch) and one with a tool (the picker branch) both resolve.
+q61b=""
+for f in adapters/runtime/*.md; do
+  rt="$(basename "$f" .md)"; [ "$rt" = "README" ] && continue
+  want="$(grep -m1 '^question_tool:' "$f" | awk '{print $2}')"
+  got="$(env -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PROJECT_DIR TICKETWRIGHT_RUNTIME="$rt" python3 bin/kit_paths.py --json 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["capabilities"].get("question_tool"))' 2>/dev/null)"
+  [ -n "$want" ] && [ "$got" = "$want" ] || q61b="$q61b $rt(want=$want got=$got)"
+done
+[ -z "$q61b" ] && ok "kit_paths reports every runtime adapter's declared question tool (the value /ticket branches on)" \
+  || bad "kit_paths and a runtime adapter disagree on the question tool" "$q61b"
+
+hdr "61c · one question rule in every skill that asks, and /review's 'ship' sign-off"
+# Kyle: interactive questions should be standard across the skills (LABS-107). The rule is one
+# block, copied verbatim between ask-rule markers into each skill that asks the person anything,
+# because a runtime injects only a skill's own body. /refresh asks nothing, so it carries none;
+# /ship is listed once it carries the block (an identical copy is checked wherever one appears).
+AR61c="setup ticket build review skillify"
+python3 - $AR61c <<'PY' >"$TMP/ar61c.out" 2>&1
+import sys, pathlib, re
+B, E = "<!-- ticketwright:ask-rule:begin -->", "<!-- ticketwright:ask-rule:end -->"
+H = "## How this skill asks the person something"
+need, bad, blocks = sys.argv[1:], [], {}
+files = sorted(pathlib.Path(".claude/skills").glob("*/SKILL.md")) + \
+        sorted(pathlib.Path("tests/emit").glob("*/.agents/skills/*/SKILL.md"))
+for f in files:
+    s = f.read_text()
+    n = s.count(B)
+    name = f.parent.name
+    if n == 0:
+        if name in need:
+            bad.append(f"{f}: no ask-rule block")
+        continue
+    if n != 1 or s.count(E) != 1:
+        bad.append(f"{f}: {n} ask-rule blocks (want exactly 1)")
+        continue
+    blk = s[s.index(B):s.index(E) + len(E)]
+    blocks.setdefault(blk, []).append(str(f))
+    h = s.find(H)
+    if h < 0 or h > s.index(B):
+        bad.append(f"{f}: the block is not under '{H}'")
+    if "In this skill the questions are" not in s[s.index(E):s.index(E) + 400]:
+        bad.append(f"{f}: no 'In this skill the questions are' line right after the block")
+if len(blocks) > 1:
+    bad.append("the ask-rule blocks differ: " + " | ".join(v[0] for v in blocks.values()))
+if blocks:
+    blk = re.sub(r"\s+", " ", next(iter(blocks)))
+    for want in ("capabilities.structured_questions", "capabilities.question_tool",
+                 "capabilities.question_limits", "kit_paths.py --json", "numbered list",
+                 "one question at a time", "Never invent an option", "`ship unreviewed`",
+                 "`go ahead`", "never one click", "inside a subagent"):
+        if want not in blk:
+            bad.append(f"the ask-rule block lost: {want}")
+print("\n".join(bad))
+PY
+[ -z "$(tr -d '[:space:]' < "$TMP/ar61c.out")" ] \
+  && ok "every skill that asks carries the one question rule, identical everywhere (emitted copies too)" \
+  || bad "the shared question rule is missing, duplicated or drifted" "$(cat "$TMP/ar61c.out")"
+# (b) /review: `ship` signs off only after the second pass approved; it never merges /ship's halt.
+RV61c="$TMP/rv61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/review/SKILL.md > "$RV61c"
+m61c=""
+grep -q '`ship` counts as a sign-off \*\*only when the second pass returned APPROVE\*\*' "$RV61c" || m61c="$m61c only-after-approve"
+grep -q 'First save the record as `verdict: AWAITING-SIGNOFF`' "$RV61c" || m61c="$m61c awaiting-before-handoff"
+grep -q '"Approve and ship" (first)' "$RV61c" || m61c="$m61c approve-and-ship-first"
+grep -q 'so `ship` cannot approve this ticket' "$RV61c" || m61c="$m61c hard-halt-holds"
+grep -q 'its hard halt before anything is sent still does' "$RV61c" || m61c="$m61c ship-halt-kept"
+grep -q 'update \*\*that same file\*\* when the person answers' "$RV61c" || m61c="$m61c same-file"
+grep -q "stop here and wait for step ⑤.4's answer" "$RV61c" || m61c="$m61c routing-waits-for-signoff"
+grep -q 'APPROVE after a `ship` reply ⇒ \*\*follow `/ship <owner>/<id>`' "$RV61c" || m61c="$m61c phase-n-ships-on-ship"
+[ -z "$m61c" ] && ok "/review: 'ship' signs off only on a reviewer APPROVE, records AWAITING-SIGNOFF first, keeps /ship's halt" \
+  || bad "/review's ship sign-off lost a condition" "$m61c"
+python3 - <<'PY' >"$TMP/sh61c.out" 2>&1
+import re
+s = open(".claude/skills/review/SKILL.md").read()
+blocks = re.findall(r"<!-- ticketwright:user-facing:begin -->(.*?)<!-- ticketwright:user-facing:end -->", s, re.S)
+hit = [b for b in blocks if "Reply `ship` to approve and deliver, or tell me what to change." in b]
+print("ok" if hit and "checked the numbers" in hit[0] and "go-ahead" in hit[0] else "missing")
+PY
+[ "$(cat "$TMP/sh61c.out")" = "ok" ] \
+  && ok "the 'Reply ship to approve and deliver' line is marked say-this text, saying what ship means and that /ship still halts" \
+  || bad "the ship sign-off line is missing, unmarked, or drops what ship means" "$(cat "$TMP/sh61c.out")"
+# (c) /build stays consistent: no second ship question after a `ship` sign-off, and a pending
+# sign-off is asked again, never read as approval.
+BD61c="$TMP/bd61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/build/SKILL.md > "$BD61c"
+{ grep -q "already answered \`/review\`'s sign-off with \`ship\`" "$BD61c" && grep -q 'do not ask again' "$BD61c" \
+  && grep -q '\*\*AWAITING-SIGNOFF\*\* → the reviewer approved' "$BD61c" \
+  && grep -q 'Never treat this status as an approval' "$BD61c" \
+  && grep -q "step ⑤.4 instructions for this ticket" "$BD61c" && grep -q 'never writes a verdict itself' "$BD61c" \
+  && grep -q "When it is \`awaiting-signoff\`" "$BD61c" && grep -q "go straight to step 8's AWAITING-SIGNOFF branch" "$BD61c"; } \
+  && ok "/build: a 'ship' sign-off is not asked twice, and AWAITING-SIGNOFF is asked again, never approved" \
+  || bad "/build's ship question and /review's sign-off disagree"
 
 hdr "60 · the plugin directory listing: icon, listing links, disclosure, example prompts"
 # The Claude plugin directory reads plugin.json's listing fields and shows README.md as the listing
