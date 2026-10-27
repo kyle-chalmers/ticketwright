@@ -34,6 +34,10 @@ KIT_MARKERS = ("adapters", "templates", "bin/kit_paths.py")
 CAPABILITY_KEYS = (
     "skills_root", "skills_format", "session_start", "tool_gate",
     "subagents", "structured_questions", "model_cmd", "model_sandbox", "detect_env",
+    # The model a runtime's `model_cmd` runs when none is named, and the cheaper one a one-line job
+    # (the summaries of older tracker tickets) can ask for instead. `model_fast` is declared only by
+    # a runtime whose template has a `{model}` slot to fill, so empty is the common, honest value.
+    "model_default", "model_fast",
     # The 3b safety axes and the installer-driving keys (PROMPT 7 / U5). gate_ask_tier and
     # gate_fail_mode are DELIBERATELY separate: Antigravity has the richest gate and no session
     # hook, Devin has a session hook and a gate that fails open by documented design — nothing may
@@ -59,6 +63,7 @@ CAPABILITY_KEYS = (
 # unknown gate is not a gate; an unknown isolation is not isolation).
 _FLOOR = {
     "skills_root": "", "skills_format": "", "model_cmd": "", "detect_env": "",
+    "model_default": "", "model_fast": "",
     "session_start": "no", "tool_gate": "no", "subagents": "no", "structured_questions": "no",
     "model_sandbox": "unknown",
     "gate_ask_tier": "unknown", "gate_fail_mode": "unknown",

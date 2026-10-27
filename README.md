@@ -43,6 +43,8 @@ deliverables. An auto-maintained catalog (`tickets/INDEX.md`) and object map (`t
 make that history searchable by people and agents, so `/ticket` opens new work with the closest
 prior work already ranked. Details: [docs/how-it-works.md](docs/how-it-works.md).
 
+![How /ticket finds prior work. Each past ticket folder becomes a card: the model writes the summary, tags and links, and a scan finds the tables in the SQL. Plain code scores the new ticket, TEST-130, against every card: a shared table scores 4 (rarer tables count more), a shared tag 3, a link between the two tickets 5, and each shared word 1, up to 6. Recency only breaks ties. Here bob's TEST-118 ranks first at 9.0 (a shared table, a shared tag and 2 words), ahead of alice's TEST-127 at 4.0 and bob's TEST-94 at 1.0, so the verdict is strong. The model reads the top 2 to 4 and writes the reuse brief, and you approve the plan. When the match is weak or missing, you choose whether to search older tickets in your tracker; they are scored the same way and labeled as having no folder or QC record here. That branch is drawn as if asked for, since a strong match like this one never offers it. Once shipped, TEST-130 becomes a card too.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/recall.png)
+
 ## The lifecycle is the map
 
 ![The Ticketwright lifecycle. The team brain (tickets/, INDEX.md, OBJECTS.md) feeds the closest prior work into five phases: 1 Open the work (/ticket), 2 Do the work (/build), 3 Quality-check (/review), 4 Deliver (/ship) and 5 Announce (/ship). You approve the plan, sign off the numbers, and say go ahead before anything is sent. Each shipped ticket is filed back into the brain with its assumptions and QC verdict. Hooks ask first before destructive warehouse SQL, a push with no approving review, or a raw transcript being committed or backed up.](https://raw.githubusercontent.com/kyle-chalmers/ticketwright/main/docs/images/lifecycle.png)
@@ -62,12 +64,12 @@ config line and one adapter file:
 | Meetings | Zoom, Fireflies, Granola, Teams, Notion (optional) |
 | Git | GitHub, GitLab, Azure Repos |
 
-These adapters ship today; another tool is [one more adapter file](adapters/README.md).
+Another tool is [one more adapter file](adapters/README.md).
 Desktop-sync backup needs one local step: [docs/drive-mount.md](docs/drive-mount.md).
 
 ## Try it
 
-Plain requests work too. A few to start with:
+Plain requests work too:
 
 ```text
 /ticketwright:ticket TEST-130
@@ -108,7 +110,7 @@ On a plugin install, prefix each one: `/ticketwright:ticket`.
 
 ## What a working repo looks like
 
-`/setup` writes the top half once; the `tickets/` half grows as the team works.
+`/setup` writes the top half; the `tickets/` half grows as the team works.
 
 ```
 your-repo/
@@ -141,8 +143,7 @@ your-repo/
             └── delivery-plan.yaml     /ship     who received it, and where
 ```
 
-Nobody maintains the catalog by hand. Because Alice's TEST-130 cites Bob's TEST-118, her reviewer
-can trace the numbers back to his.
+Alice's TEST-130 cites Bob's TEST-118, so her reviewer can trace the numbers back to his.
 
 ## Get started
 
@@ -168,7 +169,7 @@ ticketwright init                         # copy the kit into this repo
 ticketwright install --runtime codex-cli  # write the skills where your agent reads them
 ```
 
-You get the skills and the command-line engines. `/setup` runs in Claude Code, so elsewhere you
+You get the skills and command-line engines. `/setup` runs in Claude Code, so elsewhere you
 write the config yourself, and the guards are proven only in Claude Code. Details:
 [docs/runtimes.md](docs/runtimes.md) and
 [installing without the plugin](docs/getting-started.md#installing-without-the-plugin).
@@ -193,10 +194,11 @@ under your own sign-in.
 
 - **Your coding agent.** What the skills read (ticket text, query results, notes, team docs you link) goes to your
   agent's model provider under your account's terms, as does the ticket text
-  `ticketwright enrich` sends to the model command you configure.
-- **Your tools, named in `stack.yaml`.** `/ticket` reads the ticket, `/build` and `/review` query
-  the warehouse, and `/ship` backs up, comments, drafts the chat message (sent only on "send it")
-  and opens and merges a pull request.
+  `ticketwright enrich` sends to the model command you configure, and up to three older tracker
+  tickets it summarizes.
+- **Your tools, named in `stack.yaml`.** `/ticket` reads the ticket and, on your yes, searches
+  your tracker's older tickets. `/build` and `/review` query the warehouse; `/ship` backs up,
+  comments, drafts the chat message (sent only on "send it") and opens and merges a pull request.
 - **Local reads.** Hooks read the repo, any `-f` SQL file a command names, your viewer and people
   config, and Claude Code's `installed_plugins.json`. They write nothing outside the repo.
 - **Committed by default:** ticket folders, deliverable CSVs and voice profiles. Raw transcripts
