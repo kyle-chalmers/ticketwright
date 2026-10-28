@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-10-28
+
+`/ticket` now offers to assign the ticket to you when the tracker shows it unassigned or on someone
+else, and assigns only when you say yes. It works on every tracker adapter, and `/setup` asks for
+your tracker account. Minor: a new tracker verb and a `whoami.py` option, no breaking changes.
+
 ### Added
 - **`/ticket` offers to assign the ticket to you.** When the tracker shows the ticket unassigned or
   on someone else, `/ticket` asks whether to assign it to the person working it, and writes the
