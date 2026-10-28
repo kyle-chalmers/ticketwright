@@ -724,6 +724,27 @@ done
 hdr "5 · render.sh round-trip (AGENTS.md.tmpl → no unresolved tokens)"
 err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >/dev/null)"
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
+# The rendered AGENTS.md is always loaded into every session, so it stays short: repo-specific rules
+# plus pointers. Plugin internals every repo shares live in templates/agent-reference.md (one copy,
+# read only when needed). A rendered file past 150 lines means internals are creeping back in.
+# Every runtime but Claude Code and Cline loads ONLY this file on its own, so the fallbacks those
+# runtimes depend on (banners, index refresh) and the rules the hooks would enforce stay here.
+bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" > "$TMP/s5-agents.md" 2>/dev/null
+s5len="$(wc -l < "$TMP/s5-agents.md" | tr -d ' ')"
+s5miss=""
+for want in 'templates/agent-reference.md' '/ticketwright:setup --teammate' '.local.yaml' \
+            'set up differently' '--hook session_context' '--hook ticket_index_context' \
+            'build_ticket_index.py' 'every `CREATE OR REPLACE`' 'Raw meeting transcripts'; do
+  grep -qF -- "$want" "$TMP/s5-agents.md" || s5miss="$s5miss [$want]"
+done
+for gone in 'ticketwright:enforcement:begin' 'ticketwright:posture:begin' 'doctor-check:'; do
+  grep -qF -- "$gone" "$TMP/s5-agents.md" && s5miss="$s5miss [still carries $gone]"
+done
+[ -f templates/agent-reference.md ] && grep -q '"templates/agent-reference.md"' bin/plugin_doctor.py \
+  || s5miss="$s5miss [agent-reference.md missing or not in plugin_doctor REQUIRED_PAYLOAD]"
+{ [ "$s5len" -le 150 ] && [ -z "$s5miss" ]; } \
+  && ok "rendered AGENTS.md is short ($s5len lines), names per-person settings and runtime fallbacks, and points at the agent reference" \
+  || bad "rendered AGENTS.md grew or lost its pointers" "lines=$s5len$s5miss"
 # zero KEY=VALUE pairs must not crash (bash 3.2 empty-array under set -u)
 bash bin/render.sh templates/spec.md.tmpl >/dev/null 2>"$TMP/rz.err"; rc=$?
 [ "$rc" -eq 0 ] && ok "render.sh with no vars doesn't crash (bash 3.2 empty array)" || bad "render.sh crashes with zero pairs" "$(cat "$TMP/rz.err")"
@@ -6309,7 +6330,7 @@ for f in sorted(pathlib.Path('adapters/runtime').glob('*.md')):
   || bad "the deny-with-escape set drifted from the 3b axis" "$denyset"
 
 # --- (6) the enforcement table: rendered output, no empty cells, the false sentence gone -----------
-bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" > "$TMP/agents-rendered.md" 2>/dev/null
+cp templates/agent-reference.md "$TMP/agents-rendered.md"   # the table lives in the agent reference (no tokens to render)
 grep -q 'For every other agent it is guidance, not enforcement' "$TMP/agents-rendered.md" \
   && bad "the retired blanket guidance sentence survives in the rendered AGENTS.md (false once U3 landed)" \
   || ok "the false 'every other agent is guidance' sentence is gone from the rendered AGENTS.md"
@@ -6443,7 +6464,7 @@ for sec in "## Recording a result" "promotion protocol" "## The entries" "## Pro
 done
 # The rendered AGENTS.md lands in user repos and docs/ does not ship in the wheel, so the legend
 # must point at the punch list by GitHub URL (same precedent as the obsidian.md pointer).
-grep -q 'github.com/kyle-chalmers/ticketwright/blob/main/docs/live-verification.md' templates/AGENTS.md.tmpl \
+grep -q 'github.com/kyle-chalmers/ticketwright/blob/main/docs/live-verification.md' templates/agent-reference.md \
   && ok "the enforcement-table legend links the punch list by GitHub URL (docs/ does not ship in the wheel)" \
   || bad "the enforcement-table legend lost its punch-list URL"
 grep -q 'docs/live-verification.md' docs/runtimes.md \
@@ -6504,11 +6525,11 @@ if unknown_count == 0:
 
 # (2) every WIRED enforcement cell -> `<tool>.wired.<hook>`; every non-Claude ENFORCEMENT cell
 #     -> a PROMOTED ledger line (a promotion is never a template edit alone)
-tmpl = pathlib.Path('templates/AGENTS.md.tmpl').read_text(encoding='utf-8')
+tmpl = pathlib.Path('templates/agent-reference.md').read_text(encoding='utf-8')
 m = re.search(r'<!-- ticketwright:enforcement:begin -->(.*?)<!-- ticketwright:enforcement:end -->',
               tmpl, re.S)
 if not m:
-    bad.append('no enforcement markers in templates/AGENTS.md.tmpl')
+    bad.append('no enforcement markers in templates/agent-reference.md')
 else:
     NAME2TOOL = {'Claude Code': 'claude-code', 'Codex CLI': 'codex-cli', 'Cursor': 'cursor',
                  'Antigravity': 'antigravity', 'OpenCode': 'opencode', 'Devin': 'devin',
@@ -7923,7 +7944,7 @@ IV48=".claude/skills/setup/interview.md"
 # --- (H) structural pin: the enforcement table carries the new column ---------------------------
 enf48=""
 for r in "Claude Code" "Codex CLI" "Cursor" "Antigravity" "OpenCode" "Devin" "Cline"; do
-  line="$(grep "^| $r |" templates/AGENTS.md.tmpl || true)"
+  line="$(grep "^| $r |" templates/agent-reference.md || true)"
   [ "$(awk -F'|' '{print NF}' <<<"$line")" -eq 10 ] || enf48="$enf48 ${r// /_}"
 done
 [ -z "$enf48" ] \
@@ -7931,14 +7952,14 @@ done
   || bad "a runtime row is missing the new enforcement column" "$enf48"
 # Read the block as one flowed string: the honesty sentence wraps across lines, and a
 # line-oriented grep would pass or fail on where the author happened to break it.
-enf_flat="$(tr '\n' ' ' < templates/AGENTS.md.tmpl)"
+enf_flat="$(tr '\n' ' ' < templates/agent-reference.md)"
 { # A runtime whose wiring must be done BY HAND still has to be told to wire every guard; an
 # instruction naming only db_write_guard leaves source-material staging silent for that user.
-mw48="$(grep -n 'hook_shim.py --runtime .* --hook db_write_guard' templates/AGENTS.md.tmpl || true)"
+mw48="$(grep -n 'hook_shim.py --runtime .* --hook db_write_guard' templates/AGENTS.md.tmpl templates/agent-reference.md || true)"
 [ -z "$mw48" ] \
   && ok "the manual-wiring lines name --hook shell_guards (every shell guard), not just the DB guard" \
   || bad "a manual-wiring instruction wires only db_write_guard" "$mw48"
-grep -q 'source_material_guard' templates/AGENTS.md.tmpl \
+grep -q 'source_material_guard' templates/agent-reference.md \
   && grep -qi 'it sees \*\*Bash\*\*' <<<"$enf_flat" \
   && grep -qi 'document shape, never *\*\*meaning\*\*' <<<"$enf_flat"; } \
   && ok "pin: the table states the guard's jurisdiction limit (Bash; shape, not meaning)" \
@@ -9175,11 +9196,11 @@ done
 # --- (D) the posture table: 3 honest rows, NATIVE only where introspection exists ----------------
 python3 - <<'PY' >"$TMP/p51_table.out"
 import re, pathlib, sys
-t = pathlib.Path('templates/AGENTS.md.tmpl').read_text(encoding='utf-8')
+t = pathlib.Path('templates/agent-reference.md').read_text(encoding='utf-8')
 bad = []
 m = re.search(r'<!-- ticketwright:posture:begin -->(.*?)<!-- ticketwright:posture:end -->', t, re.S)
 if not m:
-    print('no posture markers in templates/AGENTS.md.tmpl'); sys.exit()
+    print('no posture markers in templates/agent-reference.md'); sys.exit()
 rows = []
 for line in m.group(1).splitlines():
     if not line.startswith('| '):
@@ -9219,7 +9240,7 @@ p51_tbl="$(cat "$TMP/p51_table.out")"
   || bad "the posture table breaks its honesty contract" "$p51_tbl"
 
 # --- (E) template pins (§49H style — flowed, so a rewrap can't fake a failure) --------------------
-p51_flat="$(tr '\n' ' ' < templates/AGENTS.md.tmpl)"
+p51_flat="$(tr '\n' ' ' < templates/agent-reference.md)"
 { grep -q 'NATIVE (tool-side)' <<<"$p51_flat" \
   && grep -q 'Permission posture (MCP)' <<<"$p51_flat" \
   && grep -q 'posture.local.yaml' <<<"$p51_flat" \
@@ -10798,8 +10819,8 @@ diff -q "$TMP/pd.tree.before" "$TMP/pd.tree.after" >/dev/null \
   && ok "and still no install was attempted, after every case in this section" \
   || bad "the tripwire fired during the read-only assertions"
 
-# --- (k) the marker list is the SAME list, in all three places ------------------------------------
-# docs/getting-started.md and templates/AGENTS.md.tmpl carry the same checklist a person reads; each line is
+# --- (k) the marker list is the SAME list, in both places ------------------------------------------
+# docs/getting-started.md carries the checklist a person reads; each line is
 # tagged `<!-- doctor-check: <id> -->`. If those drift from CHECK_IDS, the person and the tool are
 # giving different advice — which is worse than either alone.
 pd_markers() {   # pd_markers <file> <heading>
@@ -10826,11 +10847,11 @@ pd_rm="$(cat "$TMP/pd.markers")"
 [ "$pd_rm" = "$pd_ids" ] \
   && ok "getting-started's install checklist tags every doctor check, in the doctor's order" \
   || bad "docs/getting-started.md's doctor-check markers do not match CHECK_IDS" "got: $pd_rm"
-pd_markers templates/AGENTS.md.tmpl '## Installing this plugin (read this if you are the agent helping someone install)'
-pd_tm="$(cat "$TMP/pd.markers")"
-[ "$pd_tm" = "$pd_ids" ] \
-  && ok "the AGENTS template's install section tags every doctor check, in the doctor's order" \
-  || bad "templates/AGENTS.md.tmpl's doctor-check markers do not match CHECK_IDS" "got: $pd_tm"
+# The AGENTS template no longer carries the checklist (it points at getting-started), so a second
+# tagged copy cannot reappear there and drift.
+grep -q 'doctor-check:' templates/AGENTS.md.tmpl \
+  && bad "templates/AGENTS.md.tmpl grew a doctor-check checklist again; it lives once, in getting-started" \
+  || ok "the AGENTS template carries no second copy of the install checklist"
 
 # --- (l) the remediation pair is ONE string, shared with the update notice ------------------------
 # Two surfaces print the same command. If they drift, one of them is telling someone to uninstall a
@@ -11341,7 +11362,7 @@ done
 grep -q 'review_verdict.py --ticket' .claude/skills/ship/SKILL.md && grep -q 'review_verdict.py --ticket' .claude/skills/build/SKILL.md \
   && grep -q 'review_verdict.py --ticket' .claude/skills/review/SKILL.md \
   && ok "/ship, /build and /review all read the verdict through bin/review_verdict.py (one implementation)"
-grep -q '`review_verdict_guard`' templates/AGENTS.md.tmpl && grep -q 'review_verdict_guard' docs/architecture.md \
+grep -q '`review_verdict_guard`' templates/agent-reference.md && grep -q 'review_verdict_guard' docs/architecture.md \
   && grep -q 'review_verdict_guard' docs/how-it-works.md && grep -q 'review_verdict_guard' .claude/config/stack.schema.md \
   && ok "the enforcement table, architecture, how-it-works hooks table and policy row all name the new guard" \
   || bad "a doc surface is missing the review_verdict_guard"
