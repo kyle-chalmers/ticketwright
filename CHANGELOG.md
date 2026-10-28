@@ -11,9 +11,16 @@ All notable changes to this project are documented here. Format loosely follows
   "You're ready for your first ticket" and the one command that starts it. Optional follow-ups
   come after, each saying what it is, why it matters and the command that finishes it, in plain
   words: no round numbers, status words or internal file names. A skipped domain step says to run
-  `/setup role`, an unset warehouse `pii_role` says what a PII role is (the interview now explains
-  it before asking too), and a connector whose permissions setup can't read says to open the
+  `/setup role`, and a connector whose permissions setup can't read says to open the
   connector in the Claude app.
+- **Setup always asks whether your data includes personal or sensitive information.** A required
+  question in the warehouse round, never skippable. On "Yes" it asks which role is approved for
+  reading it (written to `pii_role` where the warehouse uses one), optionally which schemas or
+  tables hold it, and states the handling defaults: such results go in `*.private.csv` or a
+  `private/` folder so git skips them, and stay out of chat and email drafts (a rule, not a check).
+  On "No" or "Not sure" it records the answer and the closing report never raises it. The answer
+  is a new `project.sensitive_data` key (`status`, optional `locations`), documented in
+  `stack.schema.md`.
 - **Writing `.claude/settings.json` is its own announced step.** Claude Code's Auto mode blocks a
   session from writing its own project's settings file, so every Auto-mode installer hit this
   without warning. Setup now says what the file does before the write, never retries or works

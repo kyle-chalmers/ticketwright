@@ -609,10 +609,16 @@ Only on explicit confirmation, execute — **source of truth first, derived file
       - **Skipped review apps:** "You didn't pick which apps open your results for review, so
         Ticketwright will print file paths instead. Run `/ticketwright:setup viewer` to choose."
       - **A key left for later (`# TODO`).** Say what the value is and when a team needs it before
-        naming it, then the step that sets it. For example, an unset warehouse `pii_role`:
+        naming it, then the step that sets it. The sensitive-data question (interview question 7a)
+        is always asked, so the report never asks the person whether they have personal data:
+        when `project.sensitive_data.status` is `none` or `unsure` it raises no PII follow-up at
+        all. Only when the answer was "Yes" and the approved role was left for later:
         <!-- ticketwright:user-facing:begin -->
-        Your data warehouse setup has no PII role yet. A PII role is the database role queries switch to before they run, usually the one your team uses to read personal data like names, emails or account numbers. If your tickets never touch personal data, use the role you normally query with. To set it, edit the `pii_role:` line in `.claude/config/stack.yaml`.
+        You said your data includes personal information, but the role approved for reading it isn't set yet. Queries switch to that role before they run. To set it, edit the `pii_role:` line in `.claude/config/stack.yaml`, or run `/ticketwright:setup tool warehouse`.
         <!-- ticketwright:user-facing:end -->
+        A repo configured before the question existed (no `sensitive_data:` at all) gets one
+        entry instead: "Setup hasn't asked whether your data includes personal information. Run
+        `/ticketwright:setup tool warehouse` to answer it."
       - **Connector permissions setup can't read** (any tool step 7 recorded as not checkable):
         <!-- ticketwright:user-facing:begin -->
         Setup can't see a connector's permission grant from inside a session. To check what your Slack or Jira connector is allowed to do, open the connector in the Claude app.
@@ -636,6 +642,9 @@ Only on explicit confirmation, execute — **source of truth first, derived file
         files still get written; print the guide as its full GitHub URL,
         <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md>, never as a bare
         `docs/obsidian.md` path, because `docs/` does not ship in the PyPI package.
+      - **Personal data, when question 7a was "Yes":** results that hold it go in a
+        `*.private.csv` file or a `private/` folder so git skips them, and messages carry a summary
+        and a link rather than the data.
       - **A new teammate** starts with `/ticketwright:setup --teammate` in their own clone.
    4. **What was set up**, last and short: the tools chosen for each job in the person's words, the
       files written, and which check was which ("the install check confirmed Ticketwright's own
