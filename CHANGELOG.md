@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-10-27
+
+Ticketwright now works in a session that runs in a git worktree, which many coding agents use by
+default (the Claude desktop app included). Patch, not minor: nothing new to configure, and a
+session in the main checkout behaves as before.
+
 ### Fixed
 - **Sessions that run in a git worktree now work like the main checkout.** Agent apps often start
   every session in a worktree (the Claude desktop app does by default). Three things broke there:
