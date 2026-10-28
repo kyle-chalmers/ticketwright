@@ -1,7 +1,7 @@
 ---
 name: ticket
-description: The front door — open or resume a ticket, auto-load its context and prior art, write the plan (and the spec when the plan calls for one), and wait for your approval before anything is built. Start every ticket here.
-argument-hint: <ticket-id | owner/id> [--warehouse <name>] | --create "<summary>" [--type T] [--worktree] | --recall "<topic>" | --recall --object <NAME>
+description: The front door. Open or resume a ticket, load its context and prior art, write the plan (and the spec when the plan calls for one), and wait for your approval before anything is built. Start every ticket here.
+argument-hint: "[ticket-id or owner/id] [--create summary] [--recall topic]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
 

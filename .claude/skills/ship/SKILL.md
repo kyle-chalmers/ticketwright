@@ -1,7 +1,7 @@
 ---
 name: ship
-description: Finalize and deliver a reviewed ticket — commit + PR, merge (after asking), backup, tracker comment, chat draft — with a hard halt before any external post. Run after /review approves.
-argument-hint: <ticket-id | owner/id> [--go] [--chat <target>]   (--go authorizes the external Phase B; --chat overrides the routed chat target)
+description: Finalize and deliver a reviewed ticket. It commits, opens the PR, merges after asking, backs up, comments on the tracker, and drafts the chat message, with a hard stop before any external post. Run it after /review approves.
+argument-hint: "[ticket-id or owner/id] [--go] [--chat target]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
 ---
 

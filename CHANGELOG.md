@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **The slash-command picker shows each skill in plain words.** The picker displays a skill's
+  description and argument hint as written, and the desktop app shows angle brackets as escaped
+  text, so `/setup` showed `&lt;tracker|...&gt;`, pipes, double parentheses and dashes. Every
+  description now says the same things in plain prose, and argument hints use square brackets
+  (`[ticket-id or owner/id]`). Selftest section 14 now rejects angle brackets, pipes, backticks
+  and dashes in a description and angle brackets in a hint.
+
 ## [4.7.1] - 2026-10-27
 
 Ticketwright now works in a session that runs in a git worktree, which many coding agents use by

@@ -1,6 +1,6 @@
 ---
 name: review
-description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
+description: Independent quality review of a ticket's deliverables. It reruns the queries and walks a tiered validation pyramid to an APPROVE or REQUEST-CHANGES verdict. Run it before shipping.
 ---
 
 <!-- emitted by ticketwright install v4.7.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->
