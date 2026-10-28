@@ -15477,6 +15477,12 @@ mv "$R86/.gitignore" "$TMP/gi86"; rm -f "$R86/.claude/config/connections.local.y
 { [ -f "$WT86/.claude/config/connections.local.yaml" ] && [ ! -e "$R86/.claude/config/connections.local.yaml" ]; } \
   && ok "when the main checkout does not ignore machine files yet, the write stays in the worktree" \
   || bad "a machine file landed unignored in the main checkout" "$(ls "$R86/.claude/config" 2>&1 | tr '\n' ' ')"
+# ... including when that unignored file already exists there: the bind still stays in the worktree
+rm -f "$WT86/.claude/config/connections.local.yaml"; printf 'seams: {}\n' > "$R86/.claude/config/connections.local.yaml"
+"$P86" "$KIT/bin/whoami.py" --root "$WT86" --bind ada > /dev/null 2>&1
+{ [ -f "$WT86/.claude/config/connections.local.yaml" ] && ! grep -q 'person:' "$R86/.claude/config/connections.local.yaml"; } \
+  && ok "an existing but unignored machine file in the main checkout is never written to from a worktree" \
+  || bad "a worktree's bind added to an unignored file in the main checkout" "$(cat "$R86/.claude/config/connections.local.yaml")"
 rm -f "$WT86/.claude/config/connections.local.yaml"; mv "$TMP/gi86" "$R86/.gitignore"; mv "$TMP/cl86.yaml" "$R86/.claude/config/connections.local.yaml"
 # (d) the worktree is detected from the .git file alone (hooks call this; no git process needed)
 wj86="$(env PATH=/nonexistent "$P86" -c "import sys; sys.path.insert(0, '$KIT/bin'); import kit_paths as k; from pathlib import Path; print(k.main_checkout(Path('$WT86')), k.main_checkout(Path('$R86')))" 2>&1)"

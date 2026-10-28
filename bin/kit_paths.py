@@ -161,9 +161,9 @@ def machine_local_path(project: Path, rel: str, for_write: bool = False) -> Path
     checkout wins (it was written here on purpose); otherwise, in a linked worktree, the main
     checkout's copy is the machine's copy, so a value set in one session is seen by the next.
 
-    A write goes to the main checkout only when git there already ignores the path. Before the
-    setup commit is merged, the main checkout has no ignore rule, and a file written there would sit
-    untracked, one `git add -A` away from being committed.
+    A write goes to the main checkout only when git there already ignores the path, whether or not
+    the file exists yet. Before the setup commit is merged, the main checkout has no ignore rule, and
+    a file written there would sit untracked, one `git add -A` away from being committed.
     """
     here = project / rel
     if here.exists():
@@ -172,10 +172,8 @@ def machine_local_path(project: Path, rel: str, for_write: bool = False) -> Path
     if main is None:
         return here
     there = main / rel
-    if there.exists():
-        return there
     if for_write and not _ignored(main, rel):
-        return here
+        return here                      # existing or not: never add to an unignored file
     return there
 
 
