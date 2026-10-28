@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo. It finds your tools, asks a few questions, and writes the config. Rerun it to change a tool or add a teammate.
+description: Set up Ticketwright in a repo. It detects your tools, interviews you in rounds (you can skip the last two, and each skip says what it costs), writes the config, and scaffolds folders. Team modes configure the repo as a full setup, one tool slot (tracker, warehouse, chat, docstore, meetings or vcs), roles, the team, or policies. Person modes configure one person as a teammate, their voice, or their viewer. It also adopts existing repos.
 ---
 
 <!-- emitted by ticketwright install v4.7.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->

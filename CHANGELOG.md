@@ -9,11 +9,10 @@ All notable changes to this project are documented here. Format loosely follows
 ### Fixed
 - **The slash-command picker shows each skill in plain words.** The picker displays a skill's
   description and argument hint as written, and the desktop app shows angle brackets as escaped
-  text, so `/setup` read as a long run-on full of argument syntax. Every skill now has a one or two
-  sentence description, and argument hints use square brackets (`[ticket-id or owner/id]`). Full
-  usage stays in each skill's body and in `docs/`. Skills that `/skillify` generates get the same
-  plain ending. Selftest section 14 now checks description length and characters and rejects
-  angle brackets in a hint.
+  text, so `/setup` showed `&lt;tracker|...&gt;`, pipes, double parentheses and dashes. Every
+  description now says the same things in plain prose, and argument hints use square brackets
+  (`[ticket-id or owner/id]`). Selftest section 14 now rejects angle brackets, pipes, backticks
+  and dashes in a description and angle brackets in a hint.
 
 ## [4.7.1] - 2026-10-27
 

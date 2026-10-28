@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Start or resume a ticket. It loads the context and past work, writes the plan, and waits for your approval before anything is built.
+description: The front door. Open or resume a ticket, load its context and prior art, write the plan (and the spec when the plan calls for one), and wait for your approval before anything is built. Start every ticket here.
 argument-hint: "[ticket-id or owner/id] [--create summary] [--recall topic]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---

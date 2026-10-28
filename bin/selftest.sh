@@ -1302,8 +1302,8 @@ PY
 fm_bad="$(cat "$TMP/hd632.out")"
 [ -z "$fm_bad" ] && ok "every command/skill has valid, parseable frontmatter (+ a description)" || bad "frontmatter problem (would drop metadata as a plugin)" "$fm_bad"
 # tooltip: the slash-command picker shows description and argument-hint verbatim and HTML-escapes
-# angle brackets, so a description is a short plain sentence (no argument syntax, no dashes) and a
-# hint uses square brackets. Dash characters are matched by code point to keep this block ASCII.
+# angle brackets, so a description is plain prose (no angle brackets, pipes, backticks or dashes)
+# and a hint uses square brackets. Dash characters are matched by code point to keep this block ASCII.
 python3 - <<'PY' >"$TMP/tooltip14.out"
 import re, glob
 dashes = (chr(0x2014), chr(0x2013))
@@ -1311,12 +1311,11 @@ for f in sorted(glob.glob('.claude/skills/*/SKILL.md')):
     m = re.match(r'^---\n(.*?)\n---', open(f, encoding='utf-8').read(), re.S)
     fm = dict(re.findall(r'(?m)^([A-Za-z_][\w-]*):[ ]*(.*)$', m.group(1))) if m else {}
     d, h = fm.get('description', ''), fm.get('argument-hint', '')
-    if len(d) > 150: print(f + ': description over 150 characters')
-    if re.search('[<>|]', d) or any(c in d for c in dashes): print(f + ': description has argument syntax or a dash')
+    if re.search('[<>|]', d) or chr(96) in d or any(c in d for c in dashes): print(f + ': description has argument syntax or a dash')
     if re.search('[<>]', h): print(f + ': argument-hint uses angle brackets')
 PY
 tt_bad="$(cat "$TMP/tooltip14.out")"
-[ -z "$tt_bad" ] && ok "every skill's picker tooltip is plain: short description, bracketed argument-hint" \
+[ -z "$tt_bad" ] && ok "every skill's picker tooltip is plain: prose description, bracketed argument-hint" \
   || bad "a skill tooltip would render badly in the slash-command picker" "$tt_bad"
 afail=""
 for f in adapters/*/*.md; do

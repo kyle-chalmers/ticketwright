@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Deliver a reviewed ticket. Commits, opens the PR, merges after asking, backs up, and stops for your OK before posting anything outside the repo.
+description: Finalize and deliver a reviewed ticket. It commits, opens the PR, merges after asking, backs up, comments on the tracker, and drafts the chat message, with a hard stop before any external post. Run it after /review approves.
 argument-hint: "[ticket-id or owner/id] [--go] [--chat target]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep]
 ---
