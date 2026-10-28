@@ -33,10 +33,11 @@ session in the main checkout behaves as before.
   [docs/worktrees.md](docs/worktrees.md). Selftest section 86 covers it.
 
 ### Changed
-- **CI finishes sooner (contributors).** The macOS bash 3.2 self-test took about four minutes while
-  every other job took about a minute, so it set how long each push waited. It now runs with
-  `--jobs`, one section per core, and the Linux job runs the suite serially instead, so a serial
-  full run and a parallel full run are both still checked on every push (LABS-131).
+- **CI finishes sooner (contributors).** The macOS bash 3.2 self-test took about four minutes and
+  set how long each push waited. It now runs with `--jobs`, one section per core (about two
+  minutes), and the Linux job runs the suite serially instead (about two and a half), so a serial
+  full run and a parallel full run are both still checked on every push. A push now waits about
+  two and a half minutes instead of four and a half (LABS-131).
 - **The self-test can run its sections in parallel (contributors).** `bash bin/selftest.sh
   --jobs 8` runs every section as its own job, eight at a time, and prints the output in the same
   order and with the same totals as a normal run: about 50 seconds instead of about four minutes on
