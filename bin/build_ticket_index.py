@@ -56,12 +56,14 @@ STATUS_ORDER = ["Deployed", "Completed", "In Review", "In Progress", "Blocked", 
 # the status /ship planned to move the ticket to after its merge (`planned_status`: it rides the
 # shipped pull request, so it lands exactly when the move is due, and is withdrawn when the move is
 # off), else a status read from the tracker by `/refresh index` or `/ticket` (recorded as
-# `tracker_status`; a later read replaces a plan), else a curated
+# `tracker_status`; a later read replaces a plan), with a Ticketwright-side `In review`
+# (`ticketwright_status`, a ship to stakeholders on a tracker that has no review status) between the
+# two, else a curated
 # status (only older kit versions wrote one; the model no longer does), else the README's
 # `- **Status:**` bullet (written from the tracker by /ticket, and by the `local` tracker's
 # transition), else a folder-name emoji, else Unknown. A curated `Unknown` counts as no status, so it
 # never hides the README bullet.
-STATUS_SOURCES = ("planned", "tracker", "curated", "readme", "folder", "none")
+STATUS_SOURCES = ("planned", "review", "tracker", "curated", "readme", "folder", "none")
 README_STATUS = re.compile(r"^\s*[-*]\s+\*\*Status:\*\*\s*(.*?)\s*$")
 STATUS_MAX = 40
 _STATUS_BAD = set("|`<>{}[]\\")
@@ -825,8 +827,15 @@ def build_rows(root: Path) -> list[dict]:
             # it, /ticket rewrites it), so it is the newer copy of the tracker's status.
             tracked = None
         planned = clean_status((entry or {}).get("planned_status"))
+        review = clean_status((entry or {}).get("ticketwright_status"))
+        wrote = (entry or {}).get("readme_status_set")
+        if wrote and parsed.get("status") and parsed["status"] != wrote:
+            # The README's Status line changed after /ship wrote it (a `local` transition, a hand
+            # edit), so the README is newer than the ship's status.
+            planned = review = None
         status, status_source, status_read = "Unknown", "none", None
         for cand, src in ((planned, "planned"),
+                          (review, "review"),
                           (tracked, "tracker"),
                           (None if curated == "Unknown" else curated, "curated"),
                           (parsed.get("status"), "readme"),
@@ -838,6 +847,8 @@ def build_rows(root: Path) -> list[dict]:
             status_read = (entry or {}).get("tracker_status_read")
         elif status_source == "planned":
             status_read = (entry or {}).get("planned_status_on")
+        elif status_source == "review":
+            status_read = (entry or {}).get("ticketwright_status_on")
         if entry and entry.get("cross_refs"):
             cross_refs = entry["cross_refs"]
         elif readme:
@@ -950,6 +961,12 @@ def render(rows: list[dict]) -> str:
         out.append(f"Status set by /ship for {len(from_plan)} of {len(rows)} tickets: the status it moved "
                    "the ticket to when the pull request merged. The next /refresh index reads it back "
                    "from the tracker.")
+    in_review = [r for r in rows if r.get("status_source") == "review"]
+    if in_review:
+        out.append("")
+        out.append(f"In review for {len(in_review)} of {len(rows)} tickets: shipped to stakeholders and "
+                   "awaiting their feedback. The tracker has no review status for these, so it shows "
+                   "another one; run /ticket on the ticket to revise it.")
     out.append("")
     out.append("> **For the agent:** this is the catalog of all prior ticket work in this repo. Before "
                "starting a ticket, grep here for earlier work on the same object / stakeholder / report — "

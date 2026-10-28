@@ -15,7 +15,8 @@ Usage:
   ingest_index_records.py --tracker-status statuses.json --planned
                                                        # record the status /ship is about to move to
   ingest_index_records.py --withdraw-planned <owner>/<id> | <id>   # the move is off: drop the plan
-  ingest_index_records.py --confirm-planned statuses.json          # read-only: does the tracker agree?
+  ingest_index_records.py --confirm-planned statuses.json --for <owner>/<id>   # read-only check
+  ingest_index_records.py --in-review <owner>/<id> [--tracker-now STATUS]      # Ticketwright-side review
 
 Statuses have one source, the tracker. `--tracker-status` takes what `tracker.search` returned for a
 list of ids ({"statuses":[{id, status, owner?}]} or [...]) and records it on every ticket folder with
@@ -35,6 +36,13 @@ was blocked), and the next real read (`--tracker-status` without `--planned`) re
 the move, `--confirm-planned` takes the status read back from the tracker and says whether it is
 the planned one (exit 0), differs (exit 8), or was not read (exit 7). It writes nothing: on main the
 plan is already the truth when the tracker agrees, and a write there would be a change nobody ships.
+`--planned` also rewrites the ticket README's `- **Status:**` line, so the README, the index and the
+graph note agree in the shipped commit; `--withdraw-planned` puts the line back.
+
+`--in-review` is for a ship that hands the work to stakeholders when the tracker has no review status
+(or the team does not track status there): the README line and the index say `In review`, awaiting
+stakeholder feedback, while the tracker stays where it is. The next ship replaces it, and so does a
+tracker read showing the ticket moved since (`--tracker-now` records where it was).
 
 After ingesting, run: python3 bin/build_ticket_index.py
 Stdlib only.
@@ -120,7 +128,16 @@ def load_statuses(spec: str) -> list[dict]:
 
 
 PLANNED_KEYS = ("planned_status", "planned_status_on")
+# A Ticketwright-side status: `In review`, awaiting stakeholder feedback, for a tracker that has no
+# review status. `ticketwright_status_tracker` is the tracker's status when it was set, so a later
+# read showing the tracker moved on (someone closed the ticket by hand) replaces it.
+REVIEW_KEYS = ("ticketwright_status", "ticketwright_status_on", "ticketwright_status_tracker")
+# What /ship wrote into the README's Status line, and what the line said before. If the line changes
+# afterwards (a `local` transition, a hand edit), the README is the newer copy and the plan yields.
+README_KEYS = ("readme_status_set", "readme_status_before")
+TICKETWRIGHT_REVIEW = "In review"
 EXIT_CONFIRMED, EXIT_NOT_READ, EXIT_DIFFERS = 0, 7, 8
+README_STATUS_LINE = re.compile(r"(?m)^(\s*[-*]\s+\*\*Status:\*\*)[ \t]*.*$")
 
 
 def _norm(s: str) -> str:
@@ -140,12 +157,44 @@ def _parse_locator(loc: str) -> tuple[str | None, str]:
     return None, loc
 
 
+def _drop(rec: dict, keys) -> None:
+    for k in keys:
+        rec.pop(k, None)
+
+
+def set_readme_status(readme, status: str) -> bool:
+    """Rewrite the README's `- **Status:**` line(s) to `status`. False when there is no README or no
+    line: the line is never added, because where it belongs is the ticket template's call."""
+    if not readme or not Path(readme).is_file():
+        return False
+    text = Path(readme).read_text(encoding="utf-8")
+    # A replacement FUNCTION: a status is free text, and `\1` in a replacement string would expand.
+    new, n = README_STATUS_LINE.subn(lambda m: f"{m.group(1)} {status}", text)
+    if n and new != text:
+        Path(readme).write_text(new, encoding="utf-8")
+    return bool(n)
+
+
+def _ship_readme(rec: dict, readme, status: str, notes: list, loc: str) -> None:
+    """/ship's README write: set the line, remember what it said, so a withdraw can put it back."""
+    before = readme_status(readme)
+    if set_readme_status(readme, status):
+        rec.setdefault("readme_status_before", before)
+        rec["readme_status_set"] = status
+    else:
+        notes.append(f"{loc}: the README has no Status line, so only the index shows {status}")
+
+
 def record_statuses(store: dict, dirs: dict, rows: list[dict], read_on: str,
-                    planned: bool = False) -> tuple[int, list, list]:
+                    planned: bool = False, set_readme: bool = False,
+                    notes: list | None = None) -> tuple[int, list, list]:
     """Write each tracker status onto every on-disk folder with that id. Returns (recorded, skipped,
     rejected). An id with no folder is skipped, never stored: the index lists folders, not tickets.
-    `planned` records the status /ship is about to move to instead of one read from the tracker;
-    a real read replaces any plan, because it is newer than the plan and came from the tracker."""
+    `planned` records the status /ship is about to move to instead of one read from the tracker, and
+    writes it into the README's Status line too, so the README, the index and the graph agree in the
+    shipped commit. A real read replaces any plan, because it is newer and came from the tracker;
+    `set_readme` makes that read rewrite the README line as well (/ship's fix-up after a failed move)."""
+    notes = notes if notes is not None else []
     recorded, skipped, rejected = 0, [], []
     for r in rows:
         tid, owner = r.get("id"), r.get("owner")
@@ -164,26 +213,58 @@ def record_statuses(store: dict, dirs: dict, rows: list[dict], read_on: str,
             continue
         for k in keys:
             rec = store.get(k) or {"id": k[1], "owner": k[0]}
+            readme = dirs[k].get("readme")
             if planned:
+                _drop(rec, REVIEW_KEYS)
                 rec["planned_status"] = status
                 rec["planned_status_on"] = read_on
+                _ship_readme(rec, readme, status, notes, f"{k[0]}/{k[1]}")
                 store[k] = rec
                 recorded += 1
                 continue
-            for pk in PLANNED_KEYS:
-                rec.pop(pk, None)
+            _drop(rec, PLANNED_KEYS)
+            if rec.get("ticketwright_status_tracker") is not None \
+                    and _norm(rec["ticketwright_status_tracker"]) != _norm(status):
+                _drop(rec, REVIEW_KEYS)   # the tracker moved on since the review was recorded
+            if set_readme:
+                _ship_readme(rec, readme, status, notes, f"{k[0]}/{k[1]}")
+            if not any(x in rec for x in REVIEW_KEYS):
+                _drop(rec, README_KEYS)
             rec["tracker_status"] = status
             rec["tracker_status_read"] = read_on
             # What the README's Status line said at the read. If the line changes later (the `local`
             # tracker's transition writes it; /ticket rewrites it), the README is the newer copy.
-            rec["readme_status_at_read"] = readme_status(dirs[k].get("readme"))
+            rec["readme_status_at_read"] = readme_status(readme)
             store[k] = rec
             recorded += 1
     return recorded, skipped, rejected
 
 
+def record_review(store: dict, dirs: dict, locators: list[str], set_on: str,
+                  tracker_now: str | None, notes: list) -> tuple[int, list]:
+    """Mark each named folder `In review` on the Ticketwright side (README line + index), for a
+    tracker that has no review status. Returns (recorded, missing)."""
+    recorded, missing = 0, []
+    for loc in locators:
+        owner, tid = _parse_locator(loc)
+        keys = _keys_for(dirs, tid, owner)
+        if not keys:
+            missing.append(loc)
+        for k in keys:
+            rec = store.get(k) or {"id": k[1], "owner": k[0]}
+            _drop(rec, PLANNED_KEYS)
+            rec["ticketwright_status"] = TICKETWRIGHT_REVIEW
+            rec["ticketwright_status_on"] = set_on
+            rec["ticketwright_status_tracker"] = clean_status(tracker_now) if tracker_now else None
+            _ship_readme(rec, dirs[k].get("readme"), TICKETWRIGHT_REVIEW, notes, f"{k[0]}/{k[1]}")
+            store[k] = rec
+            recorded += 1
+    return recorded, missing
+
+
 def withdraw_planned(store: dict, dirs: dict, locators: list[str]) -> tuple[int, list]:
-    """Drop the planned status from each named folder. Returns (withdrawn, not_planned)."""
+    """Drop the planned status from each named folder, and put the README's Status line back to what
+    it said before /ship wrote it. Returns (withdrawn, not_planned)."""
     withdrawn, missing = 0, []
     for loc in locators:
         owner, tid = _parse_locator(loc)
@@ -191,8 +272,11 @@ def withdraw_planned(store: dict, dirs: dict, locators: list[str]) -> tuple[int,
         for k in _keys_for(dirs, tid, owner):
             rec = store.get(k)
             if rec and any(pk in rec for pk in PLANNED_KEYS):
-                for pk in PLANNED_KEYS:
-                    rec.pop(pk, None)
+                readme = dirs[k].get("readme")
+                before, wrote = rec.get("readme_status_before"), rec.get("readme_status_set")
+                if before and wrote and readme_status(readme) == wrote:
+                    set_readme_status(readme, before)
+                _drop(rec, PLANNED_KEYS + README_KEYS)
                 withdrawn += 1
                 hit = True
         if not hit:
@@ -200,33 +284,37 @@ def withdraw_planned(store: dict, dirs: dict, locators: list[str]) -> tuple[int,
     return withdrawn, missing
 
 
-def confirm_planned(store: dict, dirs: dict, rows: list[dict]) -> tuple[int, list[dict]]:
-    """Compare what the tracker returned after the move with the planned status. Read-only."""
+def confirm_planned(store: dict, dirs: dict, rows: list[dict] | None,
+                    locators: list[str]) -> tuple[int, list[dict]]:
+    """Compare what the tracker returned after the move with the planned status of the NAMED
+    tickets only (an older plan on main for another ticket is not this ship's business). `rows` is
+    None when the read-back could not be read at all. Read-only."""
     by_id: dict[tuple, str | None] = {}
-    for r in rows:
+    for r in rows or []:
         tid = r.get("id")
         if isinstance(tid, str) and tid.strip():
             for k in _keys_for(dirs, tid.strip(), r.get("owner")):
                 by_id[k] = clean_status(r.get("status"))
     results, code = [], EXIT_CONFIRMED
-    for k, rec in sorted(store.items()):
-        plan = rec.get("planned_status")
-        if not plan:
-            continue
-        read = by_id.get(k)
-        if read is None:
-            result = "not_read"
-        elif _norm(read) == _norm(plan):
-            result = "confirmed"
-        else:
-            result = "differs"
-        results.append({"owner": k[0], "id": k[1], "planned": plan, "read": read, "result": result})
-        if result == "differs":
-            code = EXIT_DIFFERS
-        elif result == "not_read" and code == EXIT_CONFIRMED:
-            code = EXIT_NOT_READ
-    if not results:
-        code = EXIT_NOT_READ
+    for loc in locators:
+        owner, tid = _parse_locator(loc)
+        keys = _keys_for(dirs, tid, owner)
+        for k in keys or [(owner or "?", tid)]:
+            plan = (store.get(k) or {}).get("planned_status")
+            read = by_id.get(k)
+            if not plan:
+                result = "no_plan"
+            elif read is None:
+                result = "not_read"
+            elif _norm(read) == _norm(plan):
+                result = "confirmed"
+            else:
+                result = "differs"
+            results.append({"owner": k[0], "id": k[1], "planned": plan, "read": read, "result": result})
+            if result == "differs":
+                code = EXIT_DIFFERS
+            elif result in ("not_read", "no_plan") and code == EXIT_CONFIRMED:
+                code = EXIT_NOT_READ
     return code, results
 
 
@@ -250,15 +338,29 @@ def main() -> int:
                       help="drop the planned status from <owner>/<id> (or a bare id: every owner's folder)")
     mode.add_argument("--confirm-planned", metavar="FILE",
                       help="read-only: compare statuses read back from the tracker with the planned ones")
+    mode.add_argument("--in-review", nargs="+", metavar="LOCATOR",
+                      help="mark <owner>/<id> In review on the Ticketwright side (README + index)")
+    ap.add_argument("--for", dest="for_locators", nargs="+", metavar="LOCATOR",
+                    help="with --confirm-planned: the shipped ticket(s) to check (required)")
+    ap.add_argument("--tracker-now", default=None, metavar="STATUS",
+                    help="with --in-review: the tracker's status now, which stays as it is")
     ap.add_argument("--planned", action="store_true",
                     help="with --tracker-status: the status /ship is about to move to, not a read")
+    ap.add_argument("--set-readme", action="store_true",
+                    help="with --tracker-status: also rewrite each README's Status line to the read")
     ap.add_argument("--read-on", default=None, metavar="YYYY-MM-DD",
                     help="with --tracker-status: the date the statuses were read (default: today)")
     args = ap.parse_args()
     if args.read_on is not None and not args.tracker_status:
         ap.error("--read-on goes with --tracker-status")
-    if args.planned and not args.tracker_status:
-        ap.error("--planned goes with --tracker-status")
+    if (args.planned or args.set_readme) and not args.tracker_status:
+        ap.error("--planned and --set-readme go with --tracker-status")
+    if args.confirm_planned and not args.for_locators:
+        ap.error("--confirm-planned needs --for <owner>/<id>: only the shipped ticket is checked")
+    if args.for_locators and not args.confirm_planned:
+        ap.error("--for goes with --confirm-planned")
+    if args.tracker_now is not None and not args.in_review:
+        ap.error("--tracker-now goes with --in-review")
     read_on = date.today().isoformat()
     if args.read_on is not None:
         try:
@@ -287,7 +389,12 @@ def main() -> int:
                  if isinstance(t, dict) and isinstance(t.get("owner"), str) and isinstance(t.get("id"), str)}
 
     if args.confirm_planned:
-        code, results = confirm_planned(store, dirs, load_statuses(args.confirm_planned))
+        try:
+            rows = load_statuses(args.confirm_planned)
+        except (OSError, SystemExit):
+            # No read-back to compare (the search failed and saved nothing): not confirmed, exit 7.
+            rows = None
+        code, results = confirm_planned(store, dirs, rows, args.for_locators)
         print(json.dumps({"results": results}, ensure_ascii=False))
         for r in results:
             loc = f"{r['owner']}/{r['id']}"
@@ -296,12 +403,26 @@ def main() -> int:
             elif r["result"] == "differs":
                 print(f"{loc}: the index says {r['planned']} but the tracker shows {r['read']}.",
                       file=sys.stderr)
+            elif r["result"] == "no_plan":
+                print(f"{loc}: no planned status is on file, so there is nothing to confirm.",
+                      file=sys.stderr)
             else:
                 print(f"{loc}: the index says {r['planned']}, and the tracker's status was not read "
                       "back, so it is not confirmed.", file=sys.stderr)
-        if not results:
-            print("No planned status is on file, so there is nothing to confirm.", file=sys.stderr)
         return code
+
+    notes: list = []
+    if args.in_review:
+        recorded, missing = record_review(store, dirs, args.in_review, read_on, args.tracker_now, notes)
+        _write_store(store_path, store, key_re)
+        kept = f" The tracker stays at {args.tracker_now}." if args.tracker_now else ""
+        print(f"Marked {recorded} ticket folder(s) {TICKETWRIGHT_REVIEW}, awaiting stakeholder "
+              f"feedback, in the README and the index.{kept}", file=sys.stderr)
+        if missing:
+            print(f"No ticket folder for: {', '.join(missing)}", file=sys.stderr)
+        for n in notes:
+            print(n, file=sys.stderr)
+        return 0
 
     if args.withdraw_planned:
         withdrawn, missing = withdraw_planned(store, dirs, args.withdraw_planned)
@@ -313,7 +434,8 @@ def main() -> int:
 
     if args.tracker_status:
         recorded, skipped, rejected = record_statuses(store, dirs, load_statuses(args.tracker_status),
-                                                      read_on, planned=args.planned)
+                                                      read_on, planned=args.planned,
+                                                      set_readme=args.set_readme, notes=notes)
         _write_store(store_path, store, key_re)
         if args.planned:
             print(f"Recorded the planned status for {recorded} ticket folder(s), set on {read_on}. "
@@ -325,6 +447,8 @@ def main() -> int:
             print(f"Skipped {len(skipped)} (no matching folder): {', '.join(skipped)}", file=sys.stderr)
         if rejected:
             print(f"Not recorded ({len(rejected)}): " + "; ".join(rejected), file=sys.stderr)
+        for n in notes:
+            print(n, file=sys.stderr)
         return 0
 
     incoming = load_records(args.from_json)
@@ -358,7 +482,8 @@ def main() -> int:
         if url:
             rec["ticket_url"] = url
         prev = store.get((owner, tid)) or {}
-        for k in ("tracker_status", "tracker_status_read", "readme_status_at_read") + PLANNED_KEYS:
+        for k in ("tracker_status", "tracker_status_read", "readme_status_at_read") + PLANNED_KEYS \
+                + REVIEW_KEYS + README_KEYS:
             if k in prev:   # the tracker's own read has its own writer; a curated upsert keeps it
                 rec[k] = prev[k]
         store[(owner, tid)] = rec

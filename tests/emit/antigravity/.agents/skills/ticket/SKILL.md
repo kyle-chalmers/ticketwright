@@ -101,7 +101,12 @@ this before?", "which tickets touched VW_X?").
    `README.md`, list `final_deliverables/`, check `git log --oneline -10` + `git status`, and
    summarize what's done and what remains, re-fetch the ticket for new comments (and record the
    status it returns the way step 6b does, so the index follows the tracker), then **skip to
-   Phase 3**. Resuming another person's ticket (locator owner ≠ resolved person) is fine — say so
+   Phase 3**. **A ticket shipped for review comes back here for revisions.** When its README's
+   Status line or its index row says it is in review (the Ticketwright-only `In review`, or the
+   tracker review status an earlier `/ship` moved it to), say so in one line: "`<id>` was shipped
+   for stakeholder feedback, so this picks it up for revisions. The next `/ship` can move it to
+   Done." Leave the status as it is; the next `/ship` sets it, in the README and the index together.
+   The new feedback goes in the ticket's `source_materials/` like any other intake. Resuming another person's ticket (locator owner ≠ resolved person) is fine — say so
    out loud. **Check for the plan:** if `plan.md` exists in the ticket dir, read it and report where
    the work stands against its Approach and Deliverables. If it is missing and work remains, Phase 4
    still runs before anything else — a resumed ticket is not exempt from scoping. If the deliverables

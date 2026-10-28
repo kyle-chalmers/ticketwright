@@ -29,6 +29,16 @@ one does (`no_route`, `ambiguous`). On 4 and 8, `target` and `via` are null. `am
 each move in `options` ({via, name}); the person picks one by its name and the caller re-runs with
 `--via <its via>`, which selects that move among the ones reaching the wanted status, and only those.
 
+POST-SHIP CHOICE (`--post-ship`). Shipping does not always mean done: the work is often shared for
+stakeholder feedback and changed again. `--post-ship` turns the same move list into the menu /ship
+offers: `done` (the plan above, for `project.terminal_status`), the `review` moves the tracker has
+(its own `in_progress` moves, or the one `project.review_status` names), and whether a
+Ticketwright-side `In review` is needed because the tracker has no such status. It also carries the
+team default, `project.post_ship_status` (`done`, `review` or `ask`; unset is `ask`). Exit 0 on any
+readable input (it is a menu, not a decision), 4 when malformed.
+
+  transition_plan.py --transitions moves.json --post-ship --id TEST-14
+
 Stdlib only. Read-only. Makes no tracker call: the adapter's verb did that.
 """
 from __future__ import annotations
@@ -63,6 +73,74 @@ def _configured_terminal(root: str | None, stack: str | None) -> str:
     except Exception:  # noqa: BLE001 - fail open to the documented default
         pass
     return DEFAULT_TERMINAL
+
+
+POST_SHIP_CHOICES = ("done", "review", "ask")
+TICKETWRIGHT_REVIEW = "In review"
+
+
+def _configured(root: str | None, stack: str | None) -> dict:
+    """The merged `project` block, or {} when it cannot be read (the defaults then apply)."""
+    try:
+        import effective_config as ec
+        res = ec.resolve(root or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd(), None, stack)
+        return dict(res.project or {})
+    except Exception:  # noqa: BLE001 - fail open to the documented defaults
+        return {}
+
+
+def post_ship(data: dict, terminal: str, project: dict, tid: str | None = None) -> dict:
+    """The post-ship menu: Done, the tracker's review moves, or a Ticketwright-side `In review`."""
+    raw_default = project.get("post_ship_status")
+    default = raw_default.strip().lower() if isinstance(raw_default, str) else "ask"
+    warning = None
+    if default not in POST_SHIP_CHOICES:
+        warning = (f"The team's post-ship status setting is `{raw_default}`, which is not done, review "
+                   f"or ask, so I ask. Details: project.post_ship_status.")
+        default = "ask"
+    review_name = project.get("review_status")
+    review_name = review_name.strip() if isinstance(review_name, str) and review_name.strip() else None
+
+    done, _ = plan(data, terminal, tid)
+    out = {"default": default, "warning": warning, "current": data.get("current"),
+           "done": {k: done[k] for k in ("result", "target", "via", "checked", "message")},
+           "review_status": review_name, "review_moves": [],
+           "ticketwright_review": TICKETWRIGHT_REVIEW, "review_kind": "ticketwright", "message": None}
+    cur = data.get("current")
+    if data.get("status") in ("unavailable", "unsupported"):
+        out["message"] = ("I could not read the tracker's moves, so a review status can only be "
+                          f"recorded in Ticketwright (`{TICKETWRIGHT_REVIEW}`); the tracker stays as it is.")
+        return out
+    moves = data["transitions"]
+    if review_name:
+        rp, code = plan(data, review_name, tid, from_config=False)
+        if code == EXIT_OK and rp["result"] in ("move", "free_form", "already_there"):
+            out["review_moves"] = [{"to": rp["target"], "via": rp["via"], "name": None,
+                                    "already_there": rp["result"] == "already_there"}]
+            out["review_kind"] = "tracker"
+            return out
+        out["message"] = (f"The team's review status `{review_name}` is not a move this ticket can make "
+                          f"now, so a review is recorded in Ticketwright (`{TICKETWRIGHT_REVIEW}`). "
+                          f"Details: project.review_status; {rp['message']}")
+        return out
+    seen = set()
+    for m in moves:
+        to = m["to"].strip()
+        if m.get("category") != "in_progress" or _norm(to) in seen:
+            continue
+        if isinstance(cur, str) and _norm(cur) == _norm(to):
+            continue
+        seen.add(_norm(to))
+        out["review_moves"].append({"to": to, "via": m.get("via"),
+                                    "name": (m.get("name") or "").strip() or None,
+                                    "already_there": False})
+    if out["review_moves"]:
+        out["review_kind"] = "tracker"
+    else:
+        out["message"] = ("The tracker has no in-progress move to a review status for this ticket, so "
+                          f"a review is recorded in Ticketwright (`{TICKETWRIGHT_REVIEW}`); the tracker "
+                          "stays as it is.")
+    return out
 
 
 def _validate(data) -> tuple[dict | None, str | None]:
@@ -170,6 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--id", dest="tid", default=None, help="the ticket id, for the message text")
     ap.add_argument("--via", default=None, metavar="VIA",
                     help="pick one of several moves that reach the wanted status (from `options`)")
+    ap.add_argument("--post-ship", action="store_true",
+                    help="print the post-ship menu: done, the review moves, or a Ticketwright-side review")
     ap.add_argument("--root", default=None, help="repo root for the config read")
     ap.add_argument("--stack", default=None, help="explicit tier-1 stack.yaml path")
     args = ap.parse_args(argv)
@@ -192,6 +272,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(out, indent=2))
         print(f"transition_plan: {out['message']}", file=sys.stderr)
         return EXIT_MALFORMED
+    if args.post_ship:
+        if args.via is not None:
+            ap.error("--via goes with a single target, not --post-ship")
+        out = post_ship(data, want, _configured(args.root, args.stack), args.tid)
+        print(json.dumps(out, indent=2))
+        for line in (out["warning"], out["message"]):
+            if line:
+                print(f"transition_plan: {line}", file=sys.stderr)
+        return EXIT_OK
     if args.via is not None and not args.via.strip():
         ap.error("--via needs a value from the `options` list")
     out, code = plan(data, want, args.tid, from_config=args.want is None,
