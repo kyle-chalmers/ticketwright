@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: The front door — open or resume a ticket, auto-load its context and prior art, write the plan (and the spec when the plan calls for one), and wait for your approval before anything is built. Start every ticket here.
+description: Start or resume a ticket. It loads the context and past work, writes the plan, and waits for your approval before anything is built.
 ---
 
 <!-- emitted by ticketwright install v4.7.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->

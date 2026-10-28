@@ -1,7 +1,7 @@
 ---
 name: setup
-description: Set up Ticketwright in a repo — detect your tools, interview in rounds (the last two skippable, each skip labeled with its cost), write the config, scaffold folders. Team modes configure the repo ((none), tool <tracker|warehouse|chat|docstore|meetings|vcs>, role, team, policies); person modes configure one person (--teammate, --voice, viewer). Also adopts existing repos.
-argument-hint: "(none) | tool <tracker|warehouse|chat|docstore|meetings|vcs> | role | team | policies | viewer | --teammate [name] | --voice [name]"
+description: Set up Ticketwright in a repo. It finds your tools, asks a few questions, and writes the config. Rerun it to change a tool or add a teammate.
+argument-hint: "[tool slot | role | team | policies | viewer | --teammate | --voice]"
 allowed-tools: [Read, Write, Edit, Bash, Glob]
 ---
 

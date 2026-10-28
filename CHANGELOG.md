@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **The slash-command picker shows each skill in plain words.** The picker displays a skill's
+  description and argument hint as written, and the desktop app shows angle brackets as escaped
+  text, so `/setup` read as a long run-on full of argument syntax. Every skill now has a one or two
+  sentence description, and argument hints use square brackets (`[ticket-id or owner/id]`). Full
+  usage stays in each skill's body and in `docs/`. Skills that `/skillify` generates get the same
+  plain ending. Selftest section 14 now checks description length and characters and rejects
+  angle brackets in a hint.
+
 ## [4.7.1] - 2026-10-27
 
 Ticketwright now works in a session that runs in a git worktree, which many coding agents use by

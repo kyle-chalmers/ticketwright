@@ -1,7 +1,7 @@
 ---
 name: review
-description: Independent quality review of a ticket's deliverables — re-runs queries and walks a tiered validation pyramid to an APPROVE / REQUEST-CHANGES verdict. Run before shipping.
-argument-hint: <ticket-id | owner/id> [--deep] [--warehouse <name>]
+description: Independent review of a ticket's work. Reruns the queries, checks the results, and returns APPROVE or REQUEST-CHANGES. Run it before shipping.
+argument-hint: "[ticket-id or owner/id] [--deep] [--warehouse name]"
 allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 

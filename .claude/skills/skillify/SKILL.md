@@ -1,7 +1,7 @@
 ---
 name: skillify
-description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
-argument-hint: "<workflow name> (e.g. monthly vendor reconciliation)"
+description: Turn a workflow you keep redoing by copying the last ticket into a reusable skill, with checks built in and a stop before posting anything.
+argument-hint: "[workflow name, e.g. monthly vendor reconciliation]"
 allowed-tools: [Read, Write, Edit, Bash, Glob]
 ---
 

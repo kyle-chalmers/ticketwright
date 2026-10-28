@@ -1,6 +1,6 @@
 ---
 name: build
-description: Execute the plan or spec on file in small build-and-check loops (subagents that see only the record build the spec-sized tickets), then run the independent review and ask before shipping. The IMPLEMENT + CHECK phase — /ticket starts it on approval, and every build ends with a /review verdict.
+description: Build what the approved plan describes in small checked steps, then run an independent review and ask before shipping.
 ---
 
 <!-- emitted by ticketwright install v4.7.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->

@@ -1,6 +1,6 @@
 ---
 name: skillify
-description: Turn a recurring "clone-the-last-ticket" workflow into a parameterized skill of its own — phased pipeline, QC checkpoints, golden-replay test, hard-halt before external posts.
+description: Turn a workflow you keep redoing by copying the last ticket into a reusable skill, with checks built in and a stop before posting anything.
 ---
 
 <!-- emitted by ticketwright install v4.7.1 — do not hand-edit; re-run `ticketwright install --runtime codex-cli` to update. -->

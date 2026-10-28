@@ -1,7 +1,7 @@
 ---
 name: build
-description: Execute the plan or spec on file in small build-and-check loops (subagents that see only the record build the spec-sized tickets), then run the independent review and ask before shipping. The IMPLEMENT + CHECK phase — /ticket starts it on approval, and every build ends with a /review verdict.
-argument-hint: <ticket-id | owner/id> [spec-path] [--warehouse <name>]
+description: Build what the approved plan describes in small checked steps, then run an independent review and ask before shipping.
+argument-hint: "[ticket-id or owner/id] [spec-path] [--warehouse name]"
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent]
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: refresh
-description: Maintain the repo's knowledge — `index` rebuilds the ticket catalog (INDEX.md), `context` rebuilds the domain knowledge pack (documentation/). Day-to-day, hooks keep these fresh automatically.
-argument-hint: index [--all | TICKET-ID ...] | context [--refresh] [--warehouse <name>] [schema-or-scope] | all
+description: Rebuild the ticket index or the context pack of domain knowledge. Hooks keep both fresh day to day, so run it after big changes.
+argument-hint: "[index | context | all]"
 allowed-tools: [Read, Write, Bash, Glob, Grep]
 ---
 

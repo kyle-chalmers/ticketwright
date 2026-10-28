@@ -1301,6 +1301,23 @@ print("\n".join(bad))
 PY
 fm_bad="$(cat "$TMP/hd632.out")"
 [ -z "$fm_bad" ] && ok "every command/skill has valid, parseable frontmatter (+ a description)" || bad "frontmatter problem (would drop metadata as a plugin)" "$fm_bad"
+# tooltip: the slash-command picker shows description and argument-hint verbatim and HTML-escapes
+# angle brackets, so a description is a short plain sentence (no argument syntax, no dashes) and a
+# hint uses square brackets. Dash characters are matched by code point to keep this block ASCII.
+python3 - <<'PY' >"$TMP/tooltip14.out"
+import re, glob
+dashes = (chr(0x2014), chr(0x2013))
+for f in sorted(glob.glob('.claude/skills/*/SKILL.md')):
+    m = re.match(r'^---\n(.*?)\n---', open(f, encoding='utf-8').read(), re.S)
+    fm = dict(re.findall(r'(?m)^([A-Za-z_][\w-]*):[ ]*(.*)$', m.group(1))) if m else {}
+    d, h = fm.get('description', ''), fm.get('argument-hint', '')
+    if len(d) > 150: print(f + ': description over 150 characters')
+    if re.search('[<>|]', d) or any(c in d for c in dashes): print(f + ': description has argument syntax or a dash')
+    if re.search('[<>]', h): print(f + ': argument-hint uses angle brackets')
+PY
+tt_bad="$(cat "$TMP/tooltip14.out")"
+[ -z "$tt_bad" ] && ok "every skill's picker tooltip is plain: short description, bracketed argument-hint" \
+  || bad "a skill tooltip would render badly in the slash-command picker" "$tt_bad"
 afail=""
 for f in adapters/*/*.md; do
   h="$(head -12 "$f")"; { grep -q '^seam:' <<<"$h" && grep -q '^tool:' <<<"$h"; } || afail="$afail $f"
@@ -4339,13 +4356,18 @@ grep -q 'Mode: `tool <tracker|warehouse|chat|docstore|meetings|vcs>`' "$SK" \
   && ok "canonical team verb: /setup tool <tracker|warehouse|chat|docstore|meetings|vcs>" \
   || bad "canonical tool verb missing"
 # Every one of the six slots must be reachable, or a person stuck on that slot has no repair command.
+# The slot names live in the tool mode's heading, not the argument-hint: the picker shows the hint
+# verbatim and HTML-escapes angle brackets, so the hint stays a short bracketed summary.
 s34slots=""
 for s in tracker warehouse chat docstore meetings vcs; do
-  grep -qE "argument-hint:.*tool <[a-z|]*\\b$s\\b" "$SK" || s34slots="$s34slots $s"
+  grep -qE "^## Mode: \`tool <[a-z|]*\\b$s\\b" "$SK" || s34slots="$s34slots $s"
 done
 [ -z "$s34slots" ] \
-  && ok "all six tool slots are advertised as /setup tool re-entry points" \
+  && ok "all six tool slots are documented as /setup tool re-entry points" \
   || bad "a tool slot has no documented re-entry command" "$s34slots"
+grep -qE '^argument-hint: "\[tool slot' "$SK" \
+  && ok "the setup argument-hint advertises the tool re-entry point" \
+  || bad "the setup argument-hint no longer mentions tool"
 { grep -qi 'deprecated spelling' "$SK" && grep -q '/setup tool chat' "$SK" && grep -qi 'one release' "$SK"; } \
   && ok "old /setup <name> spellings keep working one release, with a deprecation line" \
   || bad "deprecation line for the old spelling missing"
