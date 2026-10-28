@@ -277,7 +277,8 @@ this page work on a plugin install too.
 In a clone of the Ticketwright repo itself, `bash bin/selftest.sh` runs the kit's full 200+-check
 suite (config parsing, adapter coverage, frontmatter, hooks, render gate, index and recall engines)
 and pinpoints what's broken. The full run takes a few minutes; `bash bin/selftest.sh --list` shows
-every section, and `bash bin/selftest.sh 6 6b` reruns only the ones you are fixing.
+every section, and `bash bin/selftest.sh 6 6b` reruns only the ones you are fixing. `bash bin/selftest.sh --jobs 8`
+runs the full suite eight sections at a time and reports the same totals.
 
 
 ## Config resolves to something you did not expect

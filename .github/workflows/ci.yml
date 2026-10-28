@@ -23,8 +23,11 @@ jobs:
           fi
           yq --version
 
+      # Every section as its own job, one per vCPU. It runs the same checks as a serial run (section 85
+      # compares the two on a sample), and a parallel run also proves no section leans on another. The macOS job below
+      # stays serial, so a serial full run is still checked on every push.
       - name: Self-test (config + adapters + hooks + index)
-        run: bash bin/selftest.sh
+        run: bash bin/selftest.sh --jobs "$(nproc)"
 
       - name: Ticket index is in sync (staleness gate)
         run: python3 bin/build_ticket_index.py --check

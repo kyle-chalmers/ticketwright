@@ -48,6 +48,7 @@ These are not decoration. Cite them in review. When a change to this kit is ambi
 bash bin/selftest.sh                       # THE gate — kit integrity + hook/engine unit tests. Run before and after any change.
 bash bin/selftest.sh 6 6b                  # only those sections (most take under 3s alone) while you work; the full run still gates
 bash bin/selftest.sh --list                # every section's id and title
+bash bin/selftest.sh --jobs 8              # the full suite, 8 sections at a time (about 50s vs about 255s serial on an 8-core Mac); same totals as a serial run
 python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
 bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
 claude plugin validate .claude-plugin/marketplace.json --strict   # marketplace schema ONLY
@@ -101,7 +102,9 @@ uses, and anything a second section needs (a helper, a variable, a fixture in `$
 setup block near the top ("fixtures and helpers that more than one section uses"), never in the
 section that first built it. Anything that starts processes is a `fixture_*` builder that does its
 work on the first call. Checks that need the whole suite's count live in the footer and run only
-on a full run.
+on a full run. `--jobs` relies on all of this: it runs each section as its own copy, prints the
+output in file order, and runs the footer once with the summed counts. CI's Linux job runs
+`--jobs`; the macOS bash 3.2 job stays serial as the exact reference.
 
 There is no separate lint/format step; correctness is enforced by selftest assertions.
 
