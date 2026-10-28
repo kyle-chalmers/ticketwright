@@ -78,13 +78,27 @@ below is enforced mechanically. Full checklist: <https://github.com/kyle-chalmer
 **Ask first:** high-risk DB writes; commits, pushes and PRs; tracker comments; chat messages;
 docstore backups. **DB-write protocol:** show the exact SQL, explain the change, wait for `yes`,
 then run; how much is gated is `policies.db_write_requires_approval`, so read it before assuming.
-The hooks see shell commands only: SQL sent through a warehouse MCP server is not gated, so run
-warehouse writes through the CLI. The agent reference's enforcement table says which gates are
-mechanical on which agent runtime.
+**Raw meeting transcripts:** ask before staging one from `source_materials/` for commit or copying
+it into a docstore backup; commit only the curated `*-meeting.md` summary. The hooks see shell
+commands only: SQL sent through a warehouse MCP server is not gated, so run warehouse writes
+through the CLI. The agent reference's enforcement table says which gates are mechanical where.
+
+## On other agent runtimes
+Claude Code runs the plugin's hooks for you. Other agents read this file but load nothing else
+on their own, so on those:
+- **No session-start hook** (Codex CLI, Devin, Cursor, Antigravity, OpenCode): at session start run
+  `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" hook_shim.py --runtime <name> --hook session_context`, then the same with `--hook ticket_index_context`.
+- **No index-refresh hook** (all but Claude Code and Antigravity): after changing a ticket, run
+  `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py`.
+- **Guards not wired** (Codex CLI and Devin until wired by hand, Cline): nothing stops a DB write, a
+  raw transcript commit or an unreviewed push, so the rules above are yours to follow.
+- **Deny-only runtimes** (Codex CLI, Devin, OpenCode): a denied statement names a one-shot
+  re-approval; use it only after the person says yes to that statement.
+- List warehouse connections by name only; never print a list showing account, user or role.
 
 ## Team policies (values in `stack.yaml`; full text in the agent reference)
 1. **hard_halt_before_external_posts**: pause for a human go before any tracker, chat or docstore write, or a push or PR of a ticket without an approved review.
-2. **db_write_requires_approval**: `off` | `high_risk` (default) | `all`.
+2. **db_write_requires_approval**: `off` | `high_risk` (default) | `all`. `high_risk` gates `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `MERGE`, `GRANT`/`REVOKE`, every `CREATE OR REPLACE`, every `ALTER` except `ALTER … ADD`, and anything unrecognized; plain `CREATE`, `INSERT INTO`, `ALTER … ADD` and `COMMENT ON` run without asking. `all` gates every mutation.
 3. **chat_default_draft**: draft, don't send, unless told "send it".
 4. **hyperlink_everything**: every ticket id, file and PR is a link.
 5. **skillify_everything**: recurring work becomes a skill. Before ending a session that worked a ticket and did not reach `/ship`'s retro, follow the repeat check in the kit's `.claude/skills/skillify/repeats.md` and close with one line: the `/skillify` suggestion, the skill that already does it, or nothing. Never run `/skillify` unasked.

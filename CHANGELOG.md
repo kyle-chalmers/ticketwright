@@ -13,7 +13,10 @@ All notable changes to this project are documented here. Format loosely follows
   and the full text of the 11 policies. A demo repo's copy ran to 422 lines. It now holds what is
   specific to the repo (its stack, the plan, build, check and ship flow, the policies as one short
   list, where tickets live) plus a short section on per-person settings in git-ignored
-  `*.local.yaml` files and `/ticketwright:setup --teammate` for a new teammate. The internals moved
+  `*.local.yaml` files and `/ticketwright:setup --teammate` for a new teammate. It also keeps, as
+  short rules, what agents other than Claude Code depend on, since they load only this file: run the
+  session banners and the index refresh by hand, and follow the DB-write, raw-transcript and
+  review-before-push rules where no hook is wired. The internals moved
   to a new kit file, `templates/agent-reference.md`, which the rendered file points at; the
   install checklist now lives only in `docs/getting-started.md` and the plugin doctor. Runtime
   emitters read the enforcement and posture tables from the new file. An existing repo keeps its

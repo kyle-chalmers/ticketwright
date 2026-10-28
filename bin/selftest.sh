@@ -726,12 +726,15 @@ err="$(bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" 2>&1 >
 [ -z "$err" ] && ok "AGENTS.md renders with zero leftover tokens" || bad "unresolved tokens in AGENTS.md" "$err"
 # The rendered AGENTS.md is always loaded into every session, so it stays short: repo-specific rules
 # plus pointers. Plugin internals every repo shares live in templates/agent-reference.md (one copy,
-# read only when needed). A rendered file past 140 lines means internals are creeping back in.
+# read only when needed). A rendered file past 150 lines means internals are creeping back in.
+# Every runtime but Claude Code and Cline loads ONLY this file on its own, so the fallbacks those
+# runtimes depend on (banners, index refresh) and the rules the hooks would enforce stay here.
 bash bin/render.sh templates/AGENTS.md.tmpl --vars "$TMP/vars.env" > "$TMP/s5-agents.md" 2>/dev/null
 s5len="$(wc -l < "$TMP/s5-agents.md" | tr -d ' ')"
 s5miss=""
 for want in 'templates/agent-reference.md' '/ticketwright:setup --teammate' '.local.yaml' \
-            'set up differently'; do
+            'set up differently' '--hook session_context' '--hook ticket_index_context' \
+            'build_ticket_index.py' 'every `CREATE OR REPLACE`' 'Raw meeting transcripts'; do
   grep -qF -- "$want" "$TMP/s5-agents.md" || s5miss="$s5miss [$want]"
 done
 for gone in 'ticketwright:enforcement:begin' 'ticketwright:posture:begin' 'doctor-check:'; do
@@ -739,8 +742,8 @@ for gone in 'ticketwright:enforcement:begin' 'ticketwright:posture:begin' 'docto
 done
 [ -f templates/agent-reference.md ] && grep -q '"templates/agent-reference.md"' bin/plugin_doctor.py \
   || s5miss="$s5miss [agent-reference.md missing or not in plugin_doctor REQUIRED_PAYLOAD]"
-{ [ "$s5len" -le 140 ] && [ -z "$s5miss" ]; } \
-  && ok "rendered AGENTS.md is short ($s5len lines), names per-person settings, and points at the agent reference" \
+{ [ "$s5len" -le 150 ] && [ -z "$s5miss" ]; } \
+  && ok "rendered AGENTS.md is short ($s5len lines), names per-person settings and runtime fallbacks, and points at the agent reference" \
   || bad "rendered AGENTS.md grew or lost its pointers" "lines=$s5len$s5miss"
 # zero KEY=VALUE pairs must not crash (bash 3.2 empty-array under set -u)
 bash bin/render.sh templates/spec.md.tmpl >/dev/null 2>"$TMP/rz.err"; rc=$?
