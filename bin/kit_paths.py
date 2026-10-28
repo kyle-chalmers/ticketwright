@@ -11,6 +11,7 @@ project, and what can this runtime actually do", with no Claude environment vari
   kit_paths.py --project      # the repo being worked on
   kit_paths.py --runtime      # the detected runtime id
   kit_paths.py --json         # everything, with per-value provenance
+  kit_paths.py --local-config connections.local.yaml   # where a machine-local file lives
 
 Exit codes:  0 ok · 2 usage · 3 kit not locatable · 4 runtime adapter unreadable
 
@@ -107,9 +108,37 @@ def _safe_resolve(p: Path) -> Path:
         return p
 
 
-def _main_checkout(project: Path) -> Path | None:
-    """The main checkout when `project` is a linked git worktree, else None (one git call, and only
-    after the direct manifest lookup missed, so the launcher's common path pays nothing)."""
+def main_checkout(project: Path) -> Path | None:
+    """The main checkout when `project` is a linked git worktree, else None.
+
+    Agents put sessions in linked worktrees by default (the Claude desktop app's `.claude/worktrees/<name>`,
+    Codex's own worktrees), and a worktree shares commits with the main checkout but not its
+    gitignored files. Read from the `.git` FILE first, so the common case spawns nothing (hooks call
+    this too); fall back to one git call for layouts the file read does not recognize.
+    """
+    marker = project / ".git"
+    if marker.is_dir():
+        return None                      # a main checkout has a .git directory
+    if marker.is_file():
+        try:
+            line = marker.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            line = ""
+        if line.startswith("gitdir:"):
+            gitdir = Path(line[len("gitdir:"):].strip())
+            if not gitdir.is_absolute():
+                gitdir = project / gitdir
+            try:
+                common = (gitdir / "commondir").read_text(encoding="utf-8").strip()
+            except OSError:
+                common = ""
+            if common:
+                cdir = Path(common) if Path(common).is_absolute() else gitdir / common
+                cdir = _safe_resolve(cdir)
+                if cdir.name == ".git":
+                    main = cdir.parent
+                    return main if main != _safe_resolve(project) else None
+                return None              # a bare repo's worktree has no main checkout to share
     try:
         out = subprocess.run(["git", "-C", str(project), "rev-parse", "--path-format=absolute",
                               "--git-common-dir"], capture_output=True, text=True).stdout.strip()
@@ -118,7 +147,44 @@ def _main_checkout(project: Path) -> Path | None:
     if not out or Path(out).name != ".git":
         return None
     main = _safe_resolve(Path(out).parent)
-    return main if main != project else None
+    return main if main != _safe_resolve(project) else None
+
+
+_main_checkout = main_checkout
+
+
+def machine_local_path(project: Path, rel: str, for_write: bool = False) -> Path:
+    """Where a gitignored, per-machine file (`.claude/config/connections.local.yaml`, …) lives.
+
+    Gitignored files are not shared between worktrees, so a person bound in the main checkout would
+    be a stranger in every agent-made worktree. One rule for readers and writers: a copy in this
+    checkout wins (it was written here on purpose); otherwise, in a linked worktree, the main
+    checkout's copy is the machine's copy, so a value set in one session is seen by the next.
+
+    A write goes to the main checkout only when git there already ignores the path. Before the
+    setup commit is merged, the main checkout has no ignore rule, and a file written there would sit
+    untracked, one `git add -A` away from being committed.
+    """
+    here = project / rel
+    if here.exists():
+        return here
+    main = main_checkout(project)
+    if main is None:
+        return here
+    there = main / rel
+    if there.exists():
+        return there
+    if for_write and not _ignored(main, rel):
+        return here
+    return there
+
+
+def _ignored(repo: Path, rel: str) -> bool:
+    try:
+        return subprocess.run(["git", "-C", str(repo), "check-ignore", "-q", "--no-index", rel],
+                              capture_output=True).returncode == 0
+    except OSError:
+        return False
 
 
 def _plugin_kit(project: Path | None) -> Path | None:
@@ -353,16 +419,33 @@ def capabilities(kit: Path | None, runtime: str) -> dict:
     return {k: fm.get(k, _FLOOR[k]) for k in CAPABILITY_KEYS}
 
 
+def _worktree_info(project: Path) -> dict:
+    """Whether the session already runs in a linked worktree, so /ticket reuses it instead of
+    nesting another one, and /setup knows its commits reach the team only through a merge."""
+    main = main_checkout(project)
+    return {"linked": main is not None, "main_checkout": str(main) if main else None}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Locate the kit + project and report runtime capabilities (no Claude env var required)")
     ap.add_argument("--root", help="the project repo (default: $TICKETWRIGHT_PROJECT, git toplevel, cwd)")
+    ap.add_argument("--local-config", metavar="NAME",
+                    help="print where the machine-local `.claude/config/NAME` lives (the main checkout's "
+                         "copy when this is a linked worktree without its own)")
     for flag, helptext in (("kit", "print the kit root"), ("project", "print the project root"),
                            ("runtime", "print the detected runtime id"), ("json", "print everything as JSON")):
         ap.add_argument(f"--{flag}", action="store_true", help=helptext)
     args = ap.parse_args()
 
     project, project_src = resolve_project(args.root)
+    if args.local_config:
+        name = args.local_config
+        if "/" in name or "\\" in name or not name.endswith((".local.yaml", ".local.json")):
+            print("kit_paths: --local-config takes a file name like connections.local.yaml.", file=sys.stderr)
+            return 2
+        print(machine_local_path(project, f".claude/config/{name}", for_write=True))
+        return 0
     kit, kit_src = resolve_kit(project)
     runtime, runtime_src = detect_runtime(kit)
 
@@ -379,6 +462,7 @@ def main() -> int:
             "runtime": runtime,
             "runtime_adapter": str(adapter[0]) if adapter else None,
             "capabilities": capabilities(kit, runtime),
+            "worktree": _worktree_info(project),
             "provenance": {"kit": kit_src, "project": project_src, "runtime": runtime_src},
         }, indent=2))
         return 0

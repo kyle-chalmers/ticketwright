@@ -102,7 +102,9 @@ Then ask which profile/connection fills each personal key, offering the names de
 fine" is a valid answer, recorded as such in the next step.
 
 ## 4 · Write their machine file — a versioned document, not a bag of keys
-Write `.claude/config/connections.local.yaml` (tier 3, gitignored). File existence alone cannot
+Write `.claude/config/connections.local.yaml` (tier 3, gitignored) at the path
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --local-config connections.local.yaml`
+prints (the main checkout's copy when this session runs in a linked worktree). File existence alone cannot
 distinguish empty, half-finished, "I chose team defaults", or stale-after-the-stack-changed — so
 this flow always writes the full versioned shape (a writer convention `bin/effective_config.py`
 understands and polices):

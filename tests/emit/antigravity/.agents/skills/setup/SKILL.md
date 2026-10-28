@@ -60,6 +60,14 @@ committed file.
 > `{token}` and leave the value to tier 3 — each adapter declares which of its keys are personal
 > in its `user_keys:` frontmatter. `bash bin/verify_stack.sh` warns when a machine-local value is
 > found in committed config.
+>
+> **Machine-local files when the session runs in a worktree.** Many agent apps start every session
+> in a linked git worktree, and gitignored files are not shared between worktrees. So never write a
+> machine-local file (`connections.local.yaml`, `viewer.local.yaml`) by its relative path: write it
+> where `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py
+> --local-config <file name>` points. In a worktree that is the main checkout's copy, which every
+> later session on this machine reads. The resolver reads the same place, so a value set here is
+> not lost when the next session starts in a fresh worktree.
 
 > **THE MODEL-INVOCATION CONFIRM GATE — `/setup` is model-invocable, in every mode.** When the
 > model reaches for `/setup` on its own initiative (the user did not explicitly invoke it), it must,
@@ -580,3 +588,10 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    before committing to a public repo. On a remote created empty (no default branch yet), this
    first push seeds `main` directly — there is nothing to open a PR against — and the PR flow
    starts with the next change; say so rather than colliding with a never-push-to-main rule.
+   **When this session runs in a linked worktree** (`kit_paths.py --json` reports
+   `worktree.linked: true`; agent apps often start sessions in one), the commit lands on the
+   session's branch, not on `<default branch>`. Say so in plain words: the main checkout, other
+   sessions and teammates see the setup only once that branch is merged, so offer to push it and
+   open a pull request. On a repository with no commits yet, the first push seeds the default branch
+   from the session branch (`git push -u origin HEAD:<default branch>`), so the remote's first branch
+   is the default one and not the session's name.

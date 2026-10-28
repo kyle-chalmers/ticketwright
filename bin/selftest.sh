@@ -15431,6 +15431,83 @@ sleep 4
   && ok "stopping a --jobs run stops the sections it started" \
   || bad "a section kept running after its --jobs run was stopped" "rc=$rc85 started=$([ -e "$TMP/s85.started" ] && echo y) late=$([ -e "$TMP/s85.late" ] && echo y)"
 
+hdr "86 · a session that runs in a linked git worktree (agent apps' default) finds this machine's config"
+# Agent apps start sessions in `<repo>/.claude/worktrees/<name>` by default. Commits are shared with
+# the main checkout; gitignored files are not. So the person pin and the drive mount set in the main
+# checkout must still resolve there, and the branch recipe must not try to check out the default
+# branch, which the main checkout already has.
+W86="$TMP/wt86"; G86="git -c user.name=T -c user.email=t@example.com"
+rm -rf "$W86"; mkdir -p "$W86"
+git init -q --bare "$W86/origin.git" 2>/dev/null; git -C "$W86/origin.git" symbolic-ref HEAD refs/heads/main
+git init -q "$W86/repo" 2>/dev/null; git -C "$W86/repo" symbolic-ref HEAD refs/heads/main
+R86="$W86/repo"; mkdir -p "$R86/.claude/config" "$R86/people" "$W86/mnt"
+printf 'project:\n  key_prefix: TEST\nseams:\n  docstore:\n    tool: gdrive\n    adapter: adapters/docstore/gdrive.md\n    transport: cli\n    drive_folder: "Tickets"\n    verify: null\n' > "$R86/.claude/config/stack.yaml"
+printf 'id: ada\ndisplay_name: Ada Lovelace\n' > "$R86/people/ada.yaml"
+cp "$KIT/templates/gitignore.tmpl" "$R86/.gitignore"
+$G86 -C "$R86" add -A && $G86 -C "$R86" commit -qm init && git -C "$R86" remote add origin "$W86/origin.git" \
+  && git -C "$R86" push -q origin main 2>/dev/null
+printf 'person: ada\nseams:\n  docstore:\n    mount_root: "%s"\n' "$W86/mnt" > "$R86/.claude/config/connections.local.yaml"
+git -C "$R86" worktree add -q "$R86/.claude/worktrees/brave" -b claude/brave 2>/dev/null
+WT86="$R86/.claude/worktrees/brave"
+# (a) who you are and where backups go, read from the main checkout's machine file
+who86="$(python3 "$KIT/bin/whoami.py" --root "$WT86" --field id 2>/dev/null)"
+ec86="$(python3 "$KIT/bin/effective_config.py" --root "$WT86" --key seams.docstore.mount_root 2>/dev/null)"
+python3 "$KIT/bin/delivery_plan.py" --root "$WT86" --plan "$TMP/dp86.yaml" --seam docstore --quiet --self "Ada Lovelace" > "$TMP/dp86.json" 2>/dev/null
+dest86="$(python3 -c "import json; print(json.load(open('$TMP/dp86.json'))['destination'])" 2>/dev/null)"
+{ [ "$who86" = "ada" ] && [ "$ec86" = "$W86/mnt" ] && [ "$dest86" = "$W86/mnt/Tickets/Ada Lovelace" ]; } \
+  && ok "in a fresh worktree, the person pin and drive mount come from the main checkout's machine file, and /ship routes there" \
+  || bad "a linked worktree lost this machine's config" "who=[$who86] mount=[$ec86] dest=[$dest86]"
+# (b) a worktree's own copy still wins (it was written there on purpose)
+printf 'person: ada\nseams:\n  docstore:\n    mount_root: "%s/own"\n' "$W86" > "$WT86/.claude/config/connections.local.yaml"
+ec86="$(python3 "$KIT/bin/effective_config.py" --root "$WT86" --key seams.docstore.mount_root 2>/dev/null)"
+rm -f "$WT86/.claude/config/connections.local.yaml"
+[ "$ec86" = "$W86/own" ] && ok "a machine file inside the worktree itself still overrides the main checkout's" \
+  || bad "the worktree's own machine file was ignored" "mount=[$ec86]"
+# (c) writes land where the next session reads: the main checkout, once git there ignores the file
+P86="$(command -v python3)"
+mv "$R86/.claude/config/connections.local.yaml" "$TMP/cl86.yaml"
+"$P86" "$KIT/bin/whoami.py" --root "$WT86" --bind ada > /dev/null 2>&1
+{ [ -f "$R86/.claude/config/connections.local.yaml" ] && [ ! -e "$WT86/.claude/config/connections.local.yaml" ] \
+  && [ "$("$P86" "$KIT/bin/kit_paths.py" --root "$WT86" --local-config viewer.local.yaml)" = "$(cd "$R86" && pwd -P)/.claude/config/viewer.local.yaml" ]; } \
+  && ok "binding from a worktree pins the person in the main checkout's machine file, where the next session reads it" \
+  || bad "a worktree's bind did not reach the main checkout" "$(ls "$R86/.claude/config" "$WT86/.claude/config" 2>&1 | tr '\n' ' ')"
+# ... but never into a main checkout that would show it as an untracked, committable file
+mv "$R86/.gitignore" "$TMP/gi86"; rm -f "$R86/.claude/config/connections.local.yaml"
+"$P86" "$KIT/bin/whoami.py" --root "$WT86" --bind ada > /dev/null 2>&1
+{ [ -f "$WT86/.claude/config/connections.local.yaml" ] && [ ! -e "$R86/.claude/config/connections.local.yaml" ]; } \
+  && ok "when the main checkout does not ignore machine files yet, the write stays in the worktree" \
+  || bad "a machine file landed unignored in the main checkout" "$(ls "$R86/.claude/config" 2>&1 | tr '\n' ' ')"
+rm -f "$WT86/.claude/config/connections.local.yaml"; mv "$TMP/gi86" "$R86/.gitignore"; mv "$TMP/cl86.yaml" "$R86/.claude/config/connections.local.yaml"
+# (d) the worktree is detected from the .git file alone (hooks call this; no git process needed)
+wj86="$(env PATH=/nonexistent "$P86" -c "import sys; sys.path.insert(0, '$KIT/bin'); import kit_paths as k; from pathlib import Path; print(k.main_checkout(Path('$WT86')), k.main_checkout(Path('$R86')))" 2>&1)"
+lk86="$(TICKETWRIGHT_KIT="$KIT" "$P86" "$KIT/bin/kit_paths.py" --root "$WT86" --json 2>/dev/null | "$P86" -c 'import json,sys; print(json.load(sys.stdin)["worktree"]["linked"])')"
+{ [ "$wj86" = "$(cd "$R86" && pwd -P) None" ] && [ "$lk86" = "True" ]; } \
+  && ok "kit_paths reports the linked worktree and its main checkout, read from the .git file without running git" \
+  || bad "worktree detection wrong" "main_checkout=[$wj86] linked=[$lk86]"
+# (e) the branch recipe works inside the worktree: every vcs adapter branches from origin without
+# checking out the default branch, which git refuses while the main checkout has it
+co86=""
+for f in "$KIT"/adapters/vcs/*.md; do
+  body="$(awk '/^## verb: branch/{b=1;next} b&&/^## /{exit} b' "$f")"
+  printf '%s\n' "$body" | grep -q 'git checkout {default_branch}' && co86="$co86 ${f##*/}:checkout"
+  printf '%s\n' "$body" | grep -q 'git switch -c <TICKET-ID> --no-track origin/{default_branch}' || co86="$co86 ${f##*/}:recipe"
+  awk '/^## verb: worktree/{b=1;next} b&&/^## /{exit} b' "$f" | grep -q 'worktree.linked' || co86="$co86 ${f##*/}:nest"
+done
+( cd "$WT86" && git fetch -q origin main && git switch -q -c TEST-14 --no-track origin/main ) 2>"$TMP/br86.err"
+{ [ -z "$co86" ] && [ "$(git -C "$WT86" branch --show-current)" = "TEST-14" ] \
+  && [ "$(git -C "$R86" branch --show-current)" = "main" ]; } \
+  && ok "the branch verb starts <id> from origin inside a worktree, and the worktree verb is skipped when already in one" \
+  || bad "the vcs branch recipe is not worktree-safe" "$co86 $(cat "$TMP/br86.err")"
+# (f) the skills say what to do in a worktree, and setup writes machine files through the helper
+sw86=""
+grep -q 'worktree.linked: true' "$KIT/.claude/skills/ticket/SKILL.md" || sw86="$sw86 ticket"
+grep -q 'worktree.linked: true' "$KIT/.claude/skills/setup/SKILL.md" || sw86="$sw86 setup"
+grep -q 'HEAD:<default branch>' "$KIT/.claude/skills/setup/SKILL.md" || sw86="$sw86 setup-empty"
+grep -q 'kit_paths.py --local-config connections.local.yaml' "$KIT/.claude/skills/setup/teammate.md" || sw86="$sw86 teammate"
+grep -q 'kit_paths.py --local-config viewer.local.yaml' "$KIT/.claude/skills/setup/viewer.md" || sw86="$sw86 viewer"
+[ -z "$sw86" ] && ok "/ticket reuses the session's worktree, and /setup writes machine files where every session reads them" \
+  || bad "a skill is missing its worktree instructions" "$sw86"
+
 # ── selftest footer: whole-suite checks ─────────────────────────────────────────────────────────
 # Kept after every section and outside them, because they need the WHOLE suite's count. A filtered
 # run skips them: a handful of sections can never meet a floor written for all of them.

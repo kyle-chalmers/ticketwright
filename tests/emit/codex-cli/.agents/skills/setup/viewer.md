@@ -27,6 +27,8 @@ it is `all`, add that files also open while building.
 "Should these choices apply to this repo only, or to every ticket repo you work in?"
 
 - **This repo only** (recommended on a first setup): writes `.claude/config/viewer.local.yaml`.
+  Write it where `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --local-config viewer.local.yaml`
+  points, so a session in a linked worktree updates the main checkout's copy that every session reads.
 - **Every ticket repo**: writes `${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml`.
 - **Don't open files for me**: writes `enabled: false` to `.claude/config/viewer.local.yaml`, and
   review never asks again (`/setup viewer` changes it later). Skip steps 3 and 4, and in step 5

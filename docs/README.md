@@ -13,6 +13,7 @@ you're trying to do.
 | [The ticket index](ticket-index.md) | You want to know how `INDEX.md`, `OBJECTS.md` and prior-art recall find past work, including older tickets in your tracker |
 | [Obsidian graph](obsidian.md) | You want to browse which tickets touched which tables as a graph |
 | [What /ship does](ship.md) | You want to see every /ship step in order before it runs: when it merges, backs up, comments and drafts the chat message, and what you approve |
+| [Sessions in a worktree](worktrees.md) | Your coding agent starts sessions in a git worktree (the Claude desktop app does by default), and you want to know where your settings live and how `/ticket` and `/ship` adapt |
 | [Cloud drive backup](drive-mount.md) | `/ship` backs up to Google Drive or SharePoint through a desktop sync folder, or you want rclone instead |
 
 ## Choose a coding agent

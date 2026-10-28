@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Sessions that run in a git worktree now work like the main checkout.** Agent apps often start
+  every session in a worktree (the Claude desktop app does by default). Three things broke there:
+  your person binding and drive mount, kept in a file git ignores, were missing in every new
+  worktree, so `/ticket` could not tell whose ticket it was and `/ship` had nowhere to back up;
+  `/ticket <id>` failed at its first branch command, because it checked out the default branch,
+  which the main checkout already holds; and `--worktree` nested a second worktree inside the
+  session's own. Now machine-local files are read from and written to the main checkout's copy
+  (`bin/tw kit_paths.py --local-config <file>` says where), `/ticket` branches from the remote's
+  default branch in place, and setup says its commit reaches the team through a merge. See
+  [docs/worktrees.md](docs/worktrees.md). Selftest section 86 covers it.
+
 ### Changed
 - **The self-test can run its sections in parallel (contributors).** `bash bin/selftest.sh
   --jobs 8` runs every section as its own job, eight at a time, and prints the output in the same

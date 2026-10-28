@@ -114,6 +114,13 @@ this before?", "which tickets touched VW_X?").
    is git's ref-namespace separator and `alice/x` would permanently forbid a branch named `alice`.
    **If `<id>` is already taken** (typically another owner's ticket), create `<owner>-<id>` instead
    and say so out loud.
+   **When the session already runs in a linked worktree** (many agent apps start every session in
+   one; `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json`
+   reports `worktree.linked: true`), that worktree already isolates the ticket: run the `branch` verb
+   in place, treat `--worktree` as already satisfied rather than nesting a second worktree, and say so
+   in one line. The session's own branch (the name the app gave it) is left as it is; the ticket gets
+   its own `<id>` branch from the default branch. If the session branch carries commits the default
+   branch lacks, say they stay on that branch and are not part of this ticket.
 6. **Scaffold** `project.ticket_path` with `project.ticket_subdirs` (create the subdirs empty —
    **no `.gitkeep` placeholders**; they fill with real files during build and git picks them up
    then); tracker adapter `download_attachments` → `source_materials/` (silent if none);
