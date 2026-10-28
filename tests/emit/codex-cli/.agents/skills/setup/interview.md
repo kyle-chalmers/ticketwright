@@ -267,6 +267,39 @@ they never touch real data."
      chosen adapter's "Permission posture (MCP)" section, for a warehouse the probe is a real
      read-only privilege introspection with a written comparison rule, so its outcome is worth
      carrying into the Phase-4 report next to that slot's verify_stack result.
+7a. **Sensitive data. Required: always asked, never skippable, even with "No database, we work
+   from files".** A wrong or missing answer here still yields confident-looking work (a customer
+   list pasted into a chat draft errors nowhere), so it earns a question by the rule above. Ask:
+   <!-- ticketwright:user-facing:begin -->
+   Does any of the data your team works with include personal or sensitive information, like customer names, emails, or health or financial data? This decides how results that contain it are kept out of git and out of messages.
+   <!-- ticketwright:user-facing:end -->
+   Options: **"Yes"**, **"No"**, **"Not sure"**. Write the answer to `project.sensitive_data.status`
+   (`present`, `none` or `unsure`; `stack.schema.md` § `project`).
+   - **Yes** → three follow-ups, then write `status: present`:
+     1. **Which role is approved for reading it**, but only when the chosen warehouse's setup notes
+        list `pii_role` in `requires:` (one target at a time on a `targets:` shape, since the key is
+        per target). Say what it does in one line first: "Queries switch to this role before they
+        run, so use the one your team is approved to read personal data with." Offer the roles the
+        warehouse's read-only listing shows, plus free text and "I'll fill it in later" (a
+        `# TODO`). Write it to that slot's `pii_role:`; question 8 then does not ask it again. A
+        warehouse whose setup notes have no role key gets no role question: say in one line that
+        access is controlled by the connection's own sign-in.
+     2. **Where it is**, optional: "Do you know which schemas or tables hold it? Naming them helps
+        anyone working a ticket spot it." Free text, one per answer, plus "We don't know" (write
+        nothing). Write the names to `project.sensitive_data.locations` as written; never query
+        the warehouse to find them.
+     3. **Confirm the handling defaults, as a statement, not a question:** "Results that contain
+        personal data stay out of git: name the file `*.private.csv` or put it in a `private/`
+        folder under the ticket's `final_deliverables/`, and `/ship` asks you to confirm no other
+        result file holds it before committing. Keep personal data out of chat messages and email drafts too: share a
+        summary and a link instead. Nothing checks that one automatically, so it is on whoever
+        ships." The git half is the scaffold's `.gitignore` plus `/ship`'s pre-commit check; the
+        message half is a rule people follow, and saying so is the honest version.
+   - **No** or **Not sure** → write `status: none` or `status: unsure` and nothing else, and say how
+     to change it later: "If that changes, run `/setup tool warehouse` to answer again, or edit
+     `sensitive_data:` in `.claude/config/stack.yaml`." The closing report raises no PII follow-up
+     for either answer. On a warehouse whose setup notes require `pii_role`, question 8 still asks
+     it, as the role queries normally run as.
 8. **The chosen adapter's required keys.** Tier-1 values only: which data the *team* reads. Offer
    them from the warehouse's own read-only listing where the CLI can list (projects, datasets,
    catalogs, SQL warehouses), with "Show more" and free text; never invent one. A listing that
@@ -274,7 +307,9 @@ they never touch real data."
    the adapter's auth notes give, **not** a request to type IDs by hand. Never a named profile,
    connection, or local path in `stack.yaml`, those are machine values the person flow writes
    into `.claude/config/connections.local.yaml`; if detection surfaced one, display it and route it
-   there.
+   there. Say what each key means before asking for it. A `pii_role` already answered in 7a is not
+   asked again; otherwise (7a was "No" or "Not sure"): "Which role should queries run as? Queries
+   switch to it before they run, so use the role you normally query with."
 9. **`dev_target`**: "Where should test tables go, so test work never touches real data?" This
    *is* a team value (target selection may never be personal). Options: a listed dev dataset /
    schema if one exists, free text, and **"We don't have one"**, which writes `dev_target: null`
@@ -482,6 +517,9 @@ project:
   history_search: ask                 # round 2, question 4a: /ticket may offer to search older tracker tickets
   history_before: "2024-03-01"        # question 4a: the day ticket work began, written only on a yes
   # history_scope: OPS                # question 4a, "somewhere else" only; unset = the project above
+  sensitive_data:                     # round 3, question 7a: always asked
+    status: present                   # present | none | unsure
+    locations: [crm.customers]        # 7a follow-up, optional; omitted on none/unsure
   domain: data analysis               # round 5 (role is not asked; generalist unless /setup role)
   team_docs:                          # round 5, both lists optional
     standards:

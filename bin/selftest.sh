@@ -333,6 +333,9 @@ project:
   intake: [tracker, email, meetings]
   history_search: ask
   history_before: "2024-03-01"
+  sensitive_data:
+    status: present
+    locations: [crm.customers]
   domain: data analysis
   team_docs:
     standards: [docs/style.md]
@@ -5108,6 +5111,38 @@ yq -e '.seams.docstore.drive_folder' "$IVY" >/dev/null 2>&1 \
 grep -q 'mount_root' "$IVY" \
   && bad "a machine mount root leaked into committed stack.yaml (a tier-3 value in tier 1)" \
   || ok "the machine mount root is ABSENT from stack.yaml (report-only; routed to the person flow)"
+# (B2) sensitive data: question 7a is required (never in a skippable round), and both answers
+# land in real config. "Yes" records status + locations (and pii_role where the adapter needs it);
+# "No" records status: none only. Both configs must still verify, and the resolver must read the
+# answer back as the string the report keys on (never a YAML boolean).
+{ [ "$(yq -r '.project.sensitive_data.status' "$IVY")" = present ] \
+  && [ "$(yq -r '.project.sensitive_data.locations[0]' "$IVY")" = crm.customers ]; } \
+  && ok "a 'Yes' to the sensitive-data question records status: present and the named tables" \
+  || bad "the completed-interview config lost project.sensitive_data"
+IVN="$TMP/s38-pii-no"; mkdir -p "$IVN/.claude/config"
+sed -e 's|^    status: present$|    status: none|' -e '/^    locations: \[crm.customers\]$/d' "$IVY" > "$IVN/.claude/config/stack.yaml"
+pnout="$(CLAUDE_PLUGIN_ROOT="$KIT" bash bin/verify_stack.sh "$IVN/.claude/config/stack.yaml" --dry-run 2>&1)"
+pnst="$(python3 bin/effective_config.py --root "$IVN" --json --quiet 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["project"]["sensitive_data"]["status"])' 2>/dev/null)"
+pyst="$(python3 bin/effective_config.py --root "$IVR" --json --quiet 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["project"]["sensitive_data"]["status"])' 2>/dev/null)"
+{ grep -Eq 'All tools resolve \(dry run, nothing contacted\)\.|[0-9]+ OK, [0-9]+ unverified' <<<"$pnout" \
+  && [ "$pnst" = none ] && [ "$pyst" = present ] \
+  && ! yq -e '.project.sensitive_data.locations' "$IVN/.claude/config/stack.yaml" >/dev/null 2>&1; } \
+  && ok "a 'No' records status: none only, verifies, and both answers resolve as strings" \
+  || bad "the 'No' sensitive-data config is wrong or does not resolve" "no=${pnst:-none} yes=${pyst:-none} $(tail -2 <<<"$pnout")"
+r3_38="$(grep -n '^## Round 3' "$IV" | cut -d: -f1)"; q7a="$(grep -n '^7a\. \*\*Sensitive data' "$IV" | cut -d: -f1)"
+r4_38="$(grep -n '^## Round 4' "$IV" | cut -d: -f1)"; q8_38="$(grep -n "^8\. \*\*The chosen adapter's required keys" "$IV" | cut -d: -f1)"
+{ [ -n "$r3_38" ] && [ -n "$q7a" ] && [ -n "$q8_38" ] && [ -n "$r4_38" ] \
+  && [ "$r3_38" -lt "$q7a" ] && [ "$q7a" -lt "$q8_38" ] && [ "$q8_38" -lt "$r4_38" ] \
+  && grep -q 'never skippable' <<<"$iflat" && grep -q 'pii_role' <<<"$iflat" \
+  && grep -q '\*.private.csv' <<<"$iflat" && grep -q 'Nothing checks that one automatically' <<<"$iflat" \
+  && grep -q 'status: none` or `status: unsure` and nothing else' <<<"$iflat" \
+  && grep -q 'run `/setup tool warehouse` to answer again' <<<"$iflat"; } \
+  && ok "question 7a sits in the required warehouse round before the key questions, with both branches spelled out" \
+  || bad "question 7a is missing, misplaced, or lost a branch" "r3=${r3_38:-none} 7a=${q7a:-none} q8=${q8_38:-none} r4=${r4_38:-none}"
+{ grep -q 'raises no PII follow-up' <<<"$skflat38" && grep -q 'role approved for reading it' <<<"$skflat38" \
+  && grep -q '| `sensitive_data` | map |' .claude/config/stack.schema.md; } \
+  && ok "the closing report drops the PII follow-up once answered none/unsure, and the schema documents the key" \
+  || bad "the report still nags about PII after an answer, or stack.schema.md lacks sensitive_data"
 # (C) skip behavior: rounds 5-6 skipped ⇒ the two # TODO(setup) lines ride the config, and the
 # config still verifies. The TODO forms are the exact ones interview.md specifies, so the fixture
 # and the instructions cannot drift apart without one of these assertions going red.
@@ -11931,9 +11966,24 @@ la60="$(grep -n '^## Ensure the launcher' "$SK60" | head -1 | cut -d: -f1)"
   && grep -q 'No git name or email?' "$SK60"; } \
   && ok "setup offers undetected supported tools, never hides detected ones, hands refused commands to the person, never edits the kit" \
   || bad "a run-2 rule is missing (undetected tools, hidden options, refused commands, kit edits)"
-{ grep -q 'Ready for your first ticket' "$SK60" && grep -q 'things to finish' "$SK60"; } \
+{ grep -q "You're ready for your first ticket" "$SK60" && grep -q 'things to finish' "$SK60"; } \
   && ok "setup ends on a named state (ready, or ready with N things to finish)" \
   || bad "setup's named end states are missing"
+{ grep -qF '5a. **Write `.claude/settings.json` as its own, announced step.**' "$SK60" \
+  && grep -q 'self-modification' "$SK60" && grep -q 'do not retry it' "$SK60" \
+  && grep -q 'WHOLE file' "$SK60" && grep -q 'nothing breaks without it' "$SK60" \
+  && grep -q 'WHOLE file' .claude/skills/setup/scaffold.md; } \
+  && ok "the settings write is its own announced step, and a blocked write ends in a paste-in fallback (whole file, no retry)" \
+  || bad "the settings-write step or its blocked-write fallback is missing"
+rd60="$(grep -n "You're ready for your first ticket. Start one with" "$SK60" | head -1 | cut -d: -f1)"
+op60="$(grep -n 'Optional, when you have a minute' "$SK60" | head -1 | cut -d: -f1)"
+{ [ -n "$rd60" ] && [ -n "$op60" ] && [ "$rd60" -lt "$op60" ] \
+  && grep -q "You skipped describing your team's domain and standards" "$SK60" \
+  && grep -q "can't see a connector's permission grant from inside a session" "$SK60" \
+  && grep -q "can't see a connector's permission grant from inside a session" .claude/skills/setup/teammate.md \
+  && grep -q 'never print the outcome words' "$SK60"; } \
+  && ok "the closing report leads with success and the next command, then plain-worded follow-ups" \
+  || bad "the closing report no longer leads with success, or a follow-up lost its plain wording" "ready=${rd60:-none} optional=${op60:-none}"
 python3 tests/plain_language/check.py --marked "$SK60" --marked "$IV60" > "$TMP/pl60.out" 2>&1 \
   && ok "setup's say-this blocks (the map, the usage question) are marked and plain" \
   || bad "a setup say-this block uses internal terms" "$(head -5 "$TMP/pl60.out")"
