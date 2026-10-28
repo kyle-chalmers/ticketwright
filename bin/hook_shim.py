@@ -39,7 +39,8 @@ manual ask tier:
     (deleted) before the allow, honored only while fresh (15 minutes) so a token left behind by
     an abandoned approval cannot silently wave through a later statement.
 
-MALFORMED INPUT is a per-runtime decision, recorded in the rendered AGENTS.md enforcement table:
+MALFORMED INPUT is a per-runtime decision, recorded in the enforcement table of the kit's agent
+reference (templates/agent-reference.md):
 a guard that cannot read its input must never guess allow. Ask-tier runtimes escalate to ask;
 deny-only runtimes deny with the escape message (the token still works — a deliberate recent
 human action — while the command prefix is unreadable inside unreadable input, and the message
@@ -280,7 +281,7 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
                "a possible database write through unchecked. "
                + escape_text(stack.parent, prefix_readable=False)
                + " Details: the hook payload could not be parsed; see the enforcement table in "
-               "AGENTS.md for this tool's hook wiring.")
+               "the kit's templates/agent-reference.md for this tool's hook wiring.")
         return present_gate(protocol, msg, policy)
 
     tool = tool_identity(payload)
@@ -297,7 +298,7 @@ def run_guard(protocol: str, root_arg: str | None) -> int:
                "a possible database write through unchecked. "
                + escape_text(stack.parent, prefix_readable=False)
                + " Details: no shell command could be extracted from the hook payload; see the "
-               "enforcement table in AGENTS.md.")
+               "enforcement table in the kit's templates/agent-reference.md.")
         return present_gate(protocol, msg, policy)
 
     import sql_scan  # noqa: E402 — lazy, guard-only (module-level would couple the banners to it)
@@ -586,7 +587,7 @@ def main(argv=None) -> int:
     if protocol not in ("codex-json", "cursor-json", "agy-json", "exit-code"):
         print(f"hook_shim: refused — {fm.get('tool', args.runtime)} declares "
               f"hook_protocol: {protocol}; there is no documented hook protocol to speak "
-              f"(see adapters/runtime/ and the enforcement table in AGENTS.md).",
+              f"(see adapters/runtime/ and the enforcement table in the kit's templates/agent-reference.md).",
               file=sys.stderr)
         return 2
 

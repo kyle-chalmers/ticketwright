@@ -26,6 +26,20 @@ All notable changes to this project are documented here. Format loosely follows
   without warning. Setup now says what the file does before the write, never retries or works
   around a block, and when blocked prints the file path, one line on what each addition does, and
   the whole file to paste. Nothing breaks without it.
+- **The `AGENTS.md` that `/setup` writes is about a quarter of its old length.** It used to carry
+  plugin internals that every repo gets identically: the 17-step install checklist, the
+  per-runtime enforcement table, the Bash vs MCP permission posture table, the config-tier rules
+  and the full text of the 11 policies. A demo repo's copy ran to 422 lines. It now holds what is
+  specific to the repo (its stack, the plan, build, check and ship flow, the policies as one short
+  list, where tickets live) plus a short section on per-person settings in git-ignored
+  `*.local.yaml` files and `/ticketwright:setup --teammate` for a new teammate. It also keeps, as
+  short rules, what agents other than Claude Code depend on, since they load only this file: run the
+  session banners and the index refresh by hand, and follow the DB-write, raw-transcript and
+  review-before-push rules where no hook is wired. The internals moved
+  to a new kit file, `templates/agent-reference.md`, which the rendered file points at; the
+  install checklist now lives only in `docs/getting-started.md` and the plugin doctor. Runtime
+  emitters read the enforcement and posture tables from the new file. An existing repo keeps its
+  long `AGENTS.md` until `/setup` re-renders it.
 
 ## [4.7.2] - 2026-10-27
 

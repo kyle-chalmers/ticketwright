@@ -15,7 +15,7 @@ Three rules govern this list:
   checks that verification is *owed and tracked* — only a human with the runtime can pay it.
 - **The honesty linkage is mechanical.** Every `unknown` or `unverified` value in
   `adapters/runtime/*.md` frontmatter, every WIRED cell in the enforcement table
-  (`templates/AGENTS.md.tmpl`), every emitted artifact carrying an "unverified" label, and every
+  (`templates/agent-reference.md`), every emitted artifact carrying an "unverified" label, and every
   adapter metadata-mapping row marked "(unverified)" must be claimed on some entry's `Covers:`
   line here, or the suite goes red. An unverified claim cannot exist in this kit without a
   tracked way to verify it.
@@ -67,7 +67,7 @@ Every PASS lands as one commit containing all of:
 
 ## The WIRED → ENFORCEMENT promotion protocol
 
-The enforcement table in `templates/AGENTS.md.tmpl` reserves **ENFORCEMENT** for mechanisms proven
+The enforcement table in `templates/agent-reference.md` reserves **ENFORCEMENT** for mechanisms proven
 inside this repo's own test contract (today: the Claude Code row). An emitted-but-live-unverified
 mechanism is **WIRED**, and a live confirmation here is the *only* thing that promotes it
 (adversarial-review ruling on #46). **Promotion is per cell, never per entry** — entry 4 covers
@@ -78,7 +78,7 @@ The promotion is mechanical — one commit containing:
    `PROMOTED <tool>.wired.<hook> <YYYY-MM-DD> — <runtime + version> — <observer>`. Selftest
    section 44 requires every non-Claude ENFORCEMENT cell in the template to have this line — a
    cell cannot reach ENFORCEMENT by editing the template and its pins alone.
-2. **The cell.** In `templates/AGENTS.md.tmpl`, the promoted cell's `WIRED (…)` becomes
+2. **The cell.** In `templates/agent-reference.md`, the promoted cell's `WIRED (…)` becomes
    `ENFORCEMENT (…)`, keeping the artifact name and adding the verification date.
 3. **The section 43 pins** (`bin/selftest.sh`), three of them:
    - the "only a live confirmation may promote WIRED" loop must exempt the promoted
