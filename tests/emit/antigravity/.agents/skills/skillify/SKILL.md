@@ -3,7 +3,7 @@ name: skillify
 description: Turn a workflow you repeat by cloning the last ticket into a parameterized skill of its own, with a phased pipeline, QC checkpoints, a golden replay test, and a hard stop before external posts.
 ---
 
-<!-- emitted by ticketwright install v4.7.2 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v4.8.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /skillify
 

@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-10-28
+
+`/ship` now leaves the ticket index, the README and the graph showing where the ticket ended up,
+and shipping can mean in review as well as Done. `/setup` writes a much shorter `AGENTS.md` and
+ends with a closing report a first-time installer can follow. Minor: new `project.*` settings,
+no breaking changes.
+
 ### Added
 - **`/ship` asks where the ticket ends up: Done, or in review.** Shipping often means sharing the
   work for stakeholder feedback, not finishing it. `/ship` reads the tracker's own moves
@@ -16,7 +23,6 @@ All notable changes to this project are documented here. Format loosely follows
   `review` or `ask`) and name their review status with `project.review_status`. Running `/ticket`
   on an in-review ticket picks it up for revisions, and the next `/ship` can move it to Done.
 
-||||||| 108bdc4
 
 ### Changed
 - **`/setup` ends in a way a first-time installer can follow.** The closing report now opens with
