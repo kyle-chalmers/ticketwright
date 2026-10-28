@@ -10,7 +10,8 @@ that guide an agent), versioned together. The AI layer has three tiers:
 
 | Tier | Here | Loaded |
 |---|---|---|
-| **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`; Claude Code loads it via a one-line `CLAUDE.md` `@AGENTS.md` import) | always |
+| **Global rules** | `AGENTS.md` (rendered from `templates/AGENTS.md.tmpl`; Claude Code loads it via a one-line `CLAUDE.md` `@AGENTS.md` import). It stays short: this repo's stack, flow, policies and per-person settings | always |
+| **Agent reference** | `templates/agent-reference.md` in the kit: config tiers, the per-runtime enforcement and MCP posture tables, the full policy text. Every `AGENTS.md` points at it | when needed |
 | **On-demand context** | the `documentation/` pack · `/ticket`'s priming slices · `tickets/INDEX.md` + `OBJECTS.md` | selectively |
 | **Skills** | `.claude/skills/` (7) | on invocation |
 
@@ -236,8 +237,8 @@ message naming the one-shot re-approval (`TICKETWRIGHT_APPROVE=once` prefix or t
 `.claude/config/approve.once` token, consumed on use) — never toward allow, and never blocking
 additive work. Where even the config location is undocumented (codex-cli, devin), the installer
 prints the manual wiring line instead of guessing a path. What each runtime mechanically enforces
-vs. merely reads as guidance is stated per runtime × per hook in the rendered `AGENTS.md`
-enforcement table (and in `.clinerules/` for Cline, whose users don't read AGENTS.md) — a missing
+vs. merely reads as guidance is stated per runtime × per hook in the enforcement table of the
+kit's agent reference, `templates/agent-reference.md` (and in `.clinerules/` for Cline, whose users don't read AGENTS.md) — a missing
 hook never silently weakens a policy. The MCP transport — which no shell hook can see — gets its
 own per-policy posture table right below that one: enforcement moves into the tool's native
 permission controls, every `transport: mcp`/`both` adapter carries a "Permission posture (MCP)"

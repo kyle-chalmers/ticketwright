@@ -97,8 +97,8 @@ except ImportError:                        # pragma: no cover - exercised by sel
 SCHEMA = 1
 TIMEOUT = 10
 
-# THE PINNED ORDER. This list is the contract shared with docs/getting-started.md and
-# templates/AGENTS.md.tmpl, whose install checklists tag each line with `<!-- doctor-check: <id> -->`;
+# THE PINNED ORDER. This list is the contract shared with docs/getting-started.md, whose install
+# checklist tags each line with `<!-- doctor-check: <id> -->`;
 # What `/setup` and the first ticket actually open from an installed payload. `install_payload`
 # checks these exist, so a partial copy fails HERE, named, instead of halfway through setup. This is
 # a completeness check, not an integrity check: it does not prove a file's contents are right (the
@@ -112,15 +112,15 @@ REQUIRED_PAYLOAD = (
     ".claude/skills/skillify/SKILL.md", ".claude/skills/refresh/SKILL.md",
     ".claude/config/stack.schema.md", ".claude/settings.json.tmpl",
     "adapters/README.md",
-    "templates/AGENTS.md.tmpl", "templates/CLAUDE.md.tmpl",
+    "templates/AGENTS.md.tmpl", "templates/agent-reference.md", "templates/CLAUDE.md.tmpl",
     "templates/project-README.md.tmpl", "templates/gitignore.tmpl",
     "bin/tw", "bin/kit_paths.py", "bin/verify_stack.sh", "bin/effective_config.py",
     "bin/whoami.py", "bin/render.sh", "bin/build_ticket_index.py",
     "bin/setup_detect.py", "bin/setup_draft_check.sh",
 )
 
-# selftest section 55(k) asserts the three lists are equal, in order. Renaming or reordering an id
-# means editing all three.
+# selftest section 55(k) asserts the two lists are equal, in order. Renaming or reordering an id
+# means editing both.
 CHECK_IDS = [
     "git_clone",
     "cwd_is_root",

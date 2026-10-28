@@ -223,7 +223,7 @@ _POSTURE_END = "<!-- ticketwright:posture:end -->"
 
 def _marker_block(kit: Path, begin: str, end: str) -> str | None:
     try:
-        text = (kit / "templates" / "AGENTS.md.tmpl").read_text(encoding="utf-8")
+        text = (kit / "templates" / "agent-reference.md").read_text(encoding="utf-8")
         start = text.index(begin) + len(begin)
         stop = text.index(end)
     except (OSError, ValueError):
@@ -232,9 +232,9 @@ def _marker_block(kit: Path, begin: str, end: str) -> str | None:
 
 
 def enforcement_block(kit: Path) -> str | None:
-    """The enforcement table, extracted verbatim from the AGENTS.md template between its markers —
-    ONE authoring point, two surfaces (the rendered AGENTS.md, and the rules-root copy for a
-    runtime whose users never read AGENTS.md)."""
+    """The enforcement table, extracted verbatim from the kit's agent reference between its
+    markers. ONE authoring point, two surfaces (the agent reference every repo's AGENTS.md points
+    at, and the rules-root copy for a runtime whose users never read AGENTS.md)."""
     return _marker_block(kit, _ENF_BEGIN, _ENF_END)
 
 
@@ -253,8 +253,8 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
     Data-driven off adapter frontmatter (`hook_wiring`, `hook_protocol`, `hook_wiring_caveat`,
     `rules_root`, `gate_ask_tier`) — the emitter carries protocol code, never a runtime name in
     branch logic. The 3b collapse is surfaced once per install run on stdout (a safety decision,
-    never a buried config detail) and permanently in the enforcement table the rendered AGENTS.md
-    carries. Nothing here ever writes under .claude/ — the Claude Code wiring cannot be shadowed.
+    never a buried config detail) and permanently in the enforcement table of the kit's agent
+    reference. Nothing here ever writes under .claude/ — the Claude Code wiring cannot be shadowed.
     """
     wiring = fm.get("hook_wiring", "unknown")
     protocol = fm.get("hook_protocol", "unknown")
@@ -281,8 +281,8 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
               "gated statement becomes a confirmation, not a refusal.")
     else:
         print("  policy    db_write_requires_approval degrades to GUIDANCE here — no verified "
-              "hook mechanism can express it (see the enforcement table in the rendered "
-              "AGENTS.md).")
+              "hook mechanism can express it (see the enforcement table in the kit's "
+              "templates/agent-reference.md).")
 
     if wiring == "unknown":
         if protocol == "unknown":
@@ -304,7 +304,7 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
             "_provenance": prov,
             "_schema_note": "hook-entry shape assembled from the documented fields; the config "
                             "file's full schema is live-unverified — see the enforcement table "
-                            "in AGENTS.md.",
+                            "in the kit's templates/agent-reference.md.",
         }
         # ONE entry running BOTH shell guards (`--hook shell_guards`), never two entries. Whether
         # a runtime executes every element of a hook array or stops at the first is undocumented
@@ -373,12 +373,12 @@ def emit_hooks(kit: Path, project: Path, fm: dict, tool: str, version: str,
     if rules_root:
         block = enforcement_block(kit)
         if block is None:
-            print("emit_runtime: templates/AGENTS.md.tmpl has no enforcement-table markers — "
+            print("emit_runtime: templates/agent-reference.md has no enforcement-table markers — "
                   "cannot emit the rules artifact.", file=sys.stderr)
             return 2
         posture = posture_block(kit)
         if posture is None:
-            print("emit_runtime: templates/AGENTS.md.tmpl has no posture-table markers — "
+            print("emit_runtime: templates/agent-reference.md has no posture-table markers — "
                   "cannot emit the rules artifact.", file=sys.stderr)
             return 2
         content = (f"<!-- {prov} -->\n\n# Ticketwright enforcement — what is mechanical here\n\n"
