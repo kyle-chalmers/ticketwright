@@ -61,6 +61,24 @@ create-item(board_id={board_id}, item_name=<summary>,
 Parent/epic → create as a **subitem** of the parent item, or place in the epic **group** (`group_id`).
 monday has no `--parent` flag; the group/subitem is the equivalent.
 
+## verb: assign_ticket
+**In:** item id, `assignee`. **Out:** `{ok, mode: "add"}`: a people column holds several people,
+so this adds the person and keeps everyone already in it. Called only after the person said yes to
+`/ticket`'s offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as their monday user **id**
+(a number) or **email**. An email is looked up first (`users(emails: ["<email>"]) { id }`) and
+passed to the check as `--handle-id`; no match, assign nothing and say so. Unset: the account the connector is signed in as (`me { id }`),
+and the caller says it used that account.
+**Which column:** the board's one column of type `people` in `fetch_ticket`'s column values. No
+such column: return `unsupported` (this board has nowhere to put an assignee). More than one: ask
+the person which, once, with the column titles as the options.
+```
+mcp__{mcp}__change-item-column-values(board_id={board_id}, item_id=<id>,
+  column_values={ "<people column id>": {"personsAndTeams": [<everyone already there>, {"id": <user id>, "kind": "person"}]} })
+```
+The column value is replaced whole, so the people already in it go back in the list; leaving them
+out would take them off the item without asking.
+
 ## verb: transition
 "Status" = set the status column's label to `{done_label}` (or any workflow label).
 ```

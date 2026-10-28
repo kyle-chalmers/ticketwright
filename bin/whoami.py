@@ -372,6 +372,52 @@ def _append_identity(path: Path, pid: str, ident: str) -> str:
     return "appended"
 
 
+def _set_tracker_handle(path: Path, pid: str, handle: str) -> str:
+    """Set the top-level `tracker_handle:` in the person's own file, keeping everything else.
+
+    The person's account in the tracker, the one /ticket assigns on their yes. Replaces the value of
+    an existing key (its trailing comment survives) or appends the key; creates the file when the
+    person has none yet. Returns "set" | "present". Restores the original on an unreadable result.
+    """
+    original = path.read_text(encoding="utf-8") if path.is_file() else None
+    if original is not None:
+        try:
+            current = (parse_file(path) or {}).get("tracker_handle")
+        except YamliteError as exc:
+            raise BindError(f"{path} does not parse; fix it before setting tracker_handle: {exc}") from exc
+        if isinstance(current, str) and current.strip() == handle:
+            return "present"
+        lines, done = original.splitlines(), False
+        for i, ln in enumerate(lines):
+            m = re.match(r"^tracker_handle:[^#]*(#.*)?$", ln)
+            if m:
+                lines[i] = f"tracker_handle: {_quote(handle)}" + (f"  {m.group(1)}" if m.group(1) else "")
+                done = True
+                break
+        if done:
+            new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")
+        else:
+            new_text = original + ("" if original.endswith("\n") or not original else "\n") \
+                + f"tracker_handle: {_quote(handle)}\n"
+    else:
+        new_text = (f"# people/{pid}.yaml — created by `whoami.py --bind`. TIER 2: person-scoped,\n"
+                    f"# portable, committed. Fill it out from templates/person.yaml.tmpl.\n"
+                    f"display_name: {pid}\ntracker_handle: {_quote(handle)}\n")
+        path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new_text, encoding="utf-8")
+    try:
+        landed = (parse_file(path) or {}).get("tracker_handle") == handle
+    except (YamliteError, OSError):
+        landed = False
+    if not landed:
+        if original is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(original, encoding="utf-8")
+        raise BindError(f"setting tracker_handle in {path} produced an unreadable file — restored")
+    return "set"
+
+
 def _pin_person(path: Path, pid: str) -> str:
     """Set the top-level `person:` key in tier 3, preserving everything else in the file."""
     if path.is_file():
@@ -514,12 +560,31 @@ def main(argv: list[str] | None = None) -> int:
                     help="with --bind: the identity to append (default: the first local identity)")
     ap.add_argument("--confirm-cross-person", action="store_true",
                     help="with --bind: required to bind while already resolved as someone else")
+    ap.add_argument("--tracker-handle", default=None, metavar="ACCOUNT",
+                    help="with --bind: also set tracker_handle (the person's own tracker account, "
+                         "what /ticket assigns) in people/<ID>.yaml")
     args = ap.parse_args(argv)
 
     root = Path(args.root) if args.root else project_root()
 
+    if args.tracker_handle is not None and args.bind is None:
+        print("whoami: --tracker-handle goes with --bind <id>: it is the person's own answer, "
+              "written to their own file.", file=sys.stderr)
+        return EXIT_USAGE
     if args.bind is not None:  # not truthiness: --bind "" must be REJECTED (exit 2), not resolved
-        return bind(root, args.bind.strip(), args.identity, args.confirm_cross_person)
+        handle = args.tracker_handle.strip() if args.tracker_handle is not None else None
+        if handle is not None and (not handle or any(ord(c) < 32 for c in handle)):
+            print("whoami: --tracker-handle needs one line of text (an account id, login or "
+                  "email).", file=sys.stderr)
+            return EXIT_USAGE
+        code = bind(root, args.bind.strip(), args.identity, args.confirm_cross_person)
+        if code == EXIT_OK and handle:
+            try:
+                _set_tracker_handle(root / "people" / f"{args.bind.strip()}.yaml", args.bind.strip(), handle)
+            except (OSError, YamliteError, BindError) as exc:
+                print(f"whoami: bound, but tracker_handle was not saved: {exc}", file=sys.stderr)
+                return EXIT_WRITE
+        return code
 
     res = resolve(root)
     code = _STATUS_EXIT[res["status"]]

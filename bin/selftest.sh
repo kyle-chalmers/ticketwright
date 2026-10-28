@@ -641,7 +641,7 @@ vs1="$(bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run 2>&1)"; vs1r
 hdr "2 · adapter verb coverage matches the contract"
 verbs_expected() {  # bash 3.2-safe (no associative arrays)
   case "$1" in
-    tracker) echo 9;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 5;;
+    tracker) echo 10;; warehouse) echo 3;; chat) echo 4;; docstore) echo 3;; vcs) echo 5;;
     viewer) echo 3;; meetings) echo 3;; *) echo 0;;
   esac
 }
@@ -2616,13 +2616,13 @@ grep -q '"ticket_url": "https://x/browse/1"' "$IU/tickets/index_data.json" 2>/de
   || ok "ingest does not invent a tracker number for a key-shaped slug id"
 
 hdr "27 · local tracker adapter (the filesystem IS the tracker)"
-# The whole point is zero skill edits: the adapter must satisfy the same 9-verb contract, so /ticket
+# The whole point is zero skill edits: the adapter must satisfy the same 10-verb contract, so /ticket
 # and /ship keep calling tracker verbs without knowing there's no API.
 lv="$(grep -c '^## verb:' adapters/tracker/local.md)"
-[ "$lv" -eq 9 ] && ok "local adapter implements all 9 tracker verbs" || bad "local adapter has $lv verbs, expected 9"
+[ "$lv" -eq 10 ] && ok "local adapter implements all 10 tracker verbs" || bad "local adapter has $lv verbs, expected 10"
 lvmiss=""
-for v in fetch_ticket create_ticket transition list_transitions comment search search_history download_attachments \
-         rank_projects_by_activity; do
+for v in fetch_ticket create_ticket assign_ticket transition list_transitions comment search search_history \
+         download_attachments rank_projects_by_activity; do
   grep -q "^## verb: $v$" adapters/tracker/local.md || lvmiss="$lvmiss $v"
 done
 [ -z "$lvmiss" ] && ok "local adapter verb NAMES match the contract exactly" \
@@ -15829,6 +15829,131 @@ sh87b="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
   && ok "stack.schema.md documents post_ship_status and review_status" || bad "the post-ship settings are not in the schema"
 grep -q 'A ticket shipped for review comes back here for revisions' .claude/skills/ticket/SKILL.md \
   && ok "/ticket picks an in-review ticket back up for revisions" || bad "/ticket has no path back from review"
+
+hdr "88 · /ticket offers to assign the ticket to you, on every tracker, and never assigns without a yes"
+# /ticket read the tracker's assignee and never wrote it, so a ticket a teammate picked up still said
+# nobody (or whoever triaged it) was working it. `assign_ticket` is the write, on every tracker
+# adapter; bin/assignee_check.py decides mechanically whether to ask; tracker_handle in the person's
+# own file says which account is theirs.
+grep -q '^| `assign_ticket` | `id`, `assignee`' adapters/README.md \
+  && ok "the tracker contract table names assign_ticket" || bad "adapters/README.md tracker table is missing assign_ticket"
+at88=""
+for f in adapters/tracker/*.md; do
+  sec="$(sed -n '/^## verb: assign_ticket$/,/^## /p' "$f" | tr '\n' ' ')"
+  case "$f" in
+    */local.md) grep -q 'unsupported' <<<"$sec" || at88="$at88 local:unsupported" ;;
+    *) { grep -qE 'mode: "(replace|add)"' <<<"$sec" && grep -q 'tracker_handle' <<<"$sec" \
+           && grep -q 'signed in' <<<"$sec" && grep -q 'said yes' <<<"$sec"; } || at88="$at88 $(basename "$f")" ;;
+  esac
+done
+[ -z "$at88" ] && ok "every tracker adapter's assign_ticket names its mode, tracker_handle and the signed-in fallback (local: unsupported)" \
+  || bad "a tracker adapter's assign_ticket section is incomplete" "$at88"
+gh88="$(sed -n '/^## verb: assign_ticket$/,/^## /p' adapters/tracker/github-issues.md)"
+{ grep -q -- '--add-assignee' <<<"$gh88" && ! grep -q -- '^gh .*--remove-assignee' <<<"$gh88"; } \
+  && ok "github-issues adds the assignee and removes nobody" || bad "github-issues assign_ticket can take someone off the issue"
+grep -q 'everyone already there' adapters/tracker/monday.md \
+  && ok "monday keeps the people already in the column" || bad "monday's assign_ticket would drop the people already on the item"
+grep -q 'az boards work-item update --id <id> --assigned-to' adapters/tracker/azure-devops.md \
+  && ok "azure-devops assigns with az boards work-item update --assigned-to" || bad "azure-devops has no assign command"
+python3 - <<'PY' >"$TMP/at88j.out" 2>&1
+import json, subprocess, sys
+f = "adapters/tracker/jira.md"
+bad = []
+for surf in ("default", "codex-cli"):
+    r = subprocess.run([sys.executable, "bin/adapter_surface.py", "--adapter", f, "--surface", surf, "--json"],
+                       capture_output=True, text=True)
+    sec = json.loads(r.stdout)["verbs"].get("assign_ticket") or ""
+    calls = " ".join(l for l in sec.splitlines() if "mcp__" in l).lower()
+    if "editjiraissue(" not in calls or '"accountid"' not in calls:
+        bad.append(f"{surf}: no connector edit of the assignee by accountId")
+    if 'acli jira workitem assign --key "<id>"' not in sec or "--yes" not in sec:
+        bad.append(f"{surf}: no acli assign with --yes")
+print("\n".join(bad))
+PY
+[ -z "$(cat "$TMP/at88j.out")" ] && ok "jira assigns through the connector (accountId) and acli (email), on both surfaces" \
+  || bad "jira's assign_ticket is incomplete" "$(cat "$TMP/at88j.out")"
+
+AC88="$TMP/ac88"; rm -rf "$AC88"; mkdir -p "$AC88/.claude/config" "$AC88/people"
+printf 'project:\n  key_prefix: TEST\n' > "$AC88/.claude/config/stack.yaml"
+printf 'display_name: Dana Doe\ntracker_handle: acc-dana\nidentities:\n  - dana@acme.example\n  - Dana Doe\n' > "$AC88/people/dana.yaml"
+printf 'display_name: Sam\n' > "$AC88/people/sam.yaml"
+ac88() { local p="$1" j="$2"; shift 2; printf '%s' "$j" > "$TMP/ac88.in"
+  env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT python3 bin/assignee_check.py --root "$AC88" --person "$p" \
+    --assignee "$TMP/ac88.in" --id TEST-30 "$@" >"$TMP/ac88.out" 2>"$TMP/ac88.err"; AC88RC=$?; }
+acj() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print($1)" "$TMP/ac88.out" 2>/dev/null; }
+# (a) unassigned and someone else's: offered, with the person's own tracker_handle.
+ac88 dana '{"assignees":[]}'
+{ [ "$AC88RC" -eq 0 ] && [ "$(acj 'd["status"]')" = "unassigned" ] && [ "$(acj 'd["offer"]')" = "True" ] \
+  && [ "$(acj 'd["assign_to"]')" = "acc-dana" ] && [ "$(acj 'd["assign_to_source"]')" = "tracker_handle" ]; } \
+  && ok "an unassigned ticket is offered to the person's own tracker account" || bad "unassigned was not offered" "$(head -c 300 "$TMP/ac88.out")"
+ac88 dana '{"assignees":[{"id":"acc-kyle","name":"Kyle"}]}'
+{ [ "$(acj 'd["status"]')" = "someone_else" ] && [ "$(acj 'd["offer"]')" = "True" ] \
+  && acj 'd["question"]' | grep -q 'is assigned to Kyle. Assign it to you (`acc-dana`) instead? That takes Kyle off it.'; } \
+  && ok "someone else's ticket is offered, and the question names who the write takes off it" || bad "the replace question hides who is taken off" "$(acj 'd["question"]')"
+ac88 dana '{"assignees":[{"login":"kyle"}]}' --mode add
+acj 'd["question"]' | grep -q 'Add you (`acc-dana`) as well? kyle stays on it.' \
+  && ok "on a tracker with several assignees the question says the others stay" || bad "the add question is wrong" "$(acj 'd["question"]')"
+# (b) already theirs: by id (case aside) or by an enumerated email; never by a display name.
+ac88 dana '{"assignees":[{"id":"ACC-DANA"}]}'
+[ "$(acj 'd["status"]')/$(acj 'd["offer"]')" = "mine/False" ] && ok "a ticket on the person's account is not offered" || bad "a ticket already theirs was offered" "$(acj 'd["status"]')"
+ac88 dana '{"assignees":[{"email":"DANA@acme.example","name":"x"}]}'
+[ "$(acj 'd["status"]')" = "mine" ] && ok "an assignee email the person enumerates counts as theirs" || bad "an enumerated email was not matched"
+ac88 dana '{"assignees":[{"name":"Dana Doe","id":"acc-other"}]}'
+[ "$(acj 'd["status"]')" = "someone_else" ] && ok "a matching display name alone is never taken as theirs" || bad "a display name was matched"
+# (c) tracker_handle wins over the signed-in account (a shared demo login is someone else's).
+ac88 dana '{"assignees":[{"id":"acc-shared"}]}' --signed-in acc-shared
+{ [ "$(acj 'd["status"]')" = "someone_else" ] && [ "$(acj 'd["assign_to"]')" = "acc-dana" ]; } \
+  && ok "with tracker_handle set, a ticket on the signed-in account is still someone else's" || bad "the signed-in account overrode tracker_handle"
+# (d) no tracker_handle: the signed-in account, said so; neither: no offer, and how to fix it.
+ac88 sam '{"assignees":[]}' --signed-in me@x.example
+{ [ "$(acj 'd["offer"]')" = "True" ] && [ "$(acj 'd["assign_to_source"]')" = "signed_in" ] && acj 'd["note"]' | grep -q 'signed in to the tracker'; } \
+  && ok "with no tracker_handle the signed-in account is used, and the note says so" || bad "the signed-in fallback is silent or missing"
+acj 'd["note"]' > "$TMP/ac88.pl.in"
+ac88 sam '{"assignees":[]}'
+{ [ "$(acj 'd["offer"]')" = "False" ] && acj 'd["note"]' | grep -q 'tracker_handle in people/sam.yaml'; } \
+  && ok "with no account to assign nothing is offered, and the note says how to set one" || bad "an offer was made with no account" "$(head -c 300 "$TMP/ac88.out")"
+acj 'd["note"]' >> "$TMP/ac88.pl.in"
+ac88 dana '{"assignees":[{"id":"acc-kyle","name":"Kyle"}]}'; acj 'd["question"]' >> "$TMP/ac88.pl.in"
+python3 "$KIT/tests/plain_language/check.py" --text "$TMP/ac88.pl.in" >"$TMP/ac88.pl" 2>&1 \
+  && ok "the question and notes lead in plain words (tests/plain_language/check.py)" || bad "an assign message is not plain" "$(cat "$TMP/ac88.pl")"
+ac88 nobody '{"assignees":[]}' --signed-in acc-someone
+{ [ "$(acj 'd["offer"]')" = "False" ] && [ "$(acj 'd["status"]')" = "no_person" ]; } \
+  && ok "a person with no people file is never offered an assignment, even with a signed-in account" \
+  || bad "a person with no people file was offered the signed-in account" "$(head -c 300 "$TMP/ac88.out")"
+# (d2) an email handle the fetch cannot show: the adapter's looked-up id counts as theirs and is assigned.
+printf 'display_name: Eve\ntracker_handle: eve@acme.example\n' > "$AC88/people/eve.yaml"
+ac88 eve '{"assignees":[{"id":"acc-eve","name":"Eve"}]}' --handle-id acc-eve
+[ "$(acj 'd["status"]')" = "mine" ] && ok "an email handle looked up to the tracker id (--handle-id) recognizes the person's own ticket" \
+  || bad "a ticket already on the person was offered back to them" "$(acj 'd["status"]')"
+ac88 eve '{"assignees":[]}' --handle-id acc-eve
+[ "$(acj 'd["assign_to"]')" = "acc-eve" ] && ok "the looked-up id is what gets assigned" || bad "the email was assigned instead of the looked-up id" "$(acj 'd["assign_to"]')"
+ac88 dana '{"assignees":[{}]}'
+[ "$AC88RC" -eq 4 ] && ok "an assignee with no fields is malformed (exit 4)" || bad "a malformed assignee was accepted" "rc=$AC88RC"
+# (e) whoami --bind --tracker-handle writes the person's own key, keeping the rest of the file.
+WB88="$TMP/wb88"; rm -rf "$WB88"; mkdir -p "$WB88/.claude/config" "$WB88/people"
+printf 'project:\n  key_prefix: TEST\n' > "$WB88/.claude/config/stack.yaml"
+printf '# keep me\ndisplay_name: Dana Doe\ntracker_handle: old  # a comment\nidentities:\n  - dana@acme.example\n' > "$WB88/people/dana.yaml"
+wb88() { env -u CLAUDE_PROJECT_DIR -u TICKETWRIGHT_PROJECT python3 bin/whoami.py --root "$WB88" "$@" >"$TMP/wb88.out" 2>&1; WB88RC=$?; }
+wb88 --bind dana --identity dana@acme.example --tracker-handle "712020:new"
+{ [ "$WB88RC" -eq 0 ] && grep -q '^tracker_handle: "712020:new"  # a comment$' "$WB88/people/dana.yaml" \
+  && grep -q '^# keep me$' "$WB88/people/dana.yaml" && [ "$(grep -c '^tracker_handle:' "$WB88/people/dana.yaml")" -eq 1 ]; } \
+  && ok "whoami --bind --tracker-handle replaces the value in place, keeping comments and other keys" \
+  || bad "whoami --tracker-handle mangled the people file" "rc=$WB88RC $(cat "$WB88/people/dana.yaml")"
+wb88 --tracker-handle x
+[ "$WB88RC" -eq 2 ] && ok "--tracker-handle without --bind is refused (it is the person's own answer)" || bad "--tracker-handle ran without --bind" "rc=$WB88RC"
+# (f) the skills: /ticket asks through the check, setup collects the account.
+tk88="$(tr '\n' ' ' < .claude/skills/ticket/SKILL.md | tr -s ' ')"
+{ grep -q 'step 6c.s offer to assign the ticket to you' <<<"$tk88" && grep -q 'assignee_check.py --assignee <that file>' <<<"$tk88" \
+  && grep -q '"Assign it to me" and "Leave it as it is"' <<<"$tk88" && grep -q 'never decide "already theirs" by eye' <<<"$tk88" \
+  && grep -q "The one tracker write is step 6c's assignee" <<<"$tk88" && grep -q "make step 6c's offer from what it returned" <<<"$tk88"; } \
+  && ok "/ticket offers the assignment after the fetch (new and resumed), through the check, and writes only on a yes" \
+  || bad "/ticket's assign offer is missing or unguarded"
+{ grep -q '^## 2b · Your account in the tracker$' .claude/skills/setup/teammate.md \
+  && grep -q -- '--tracker-handle "<account>"' .claude/skills/setup/teammate.md \
+  && grep -q -- '--tracker-handle "<account>"' .claude/skills/setup/interview.md \
+  && grep -q '^tracker_handle: {{tracker_handle}}$' templates/person.yaml.tmpl; } \
+  && ok "setup asks each person for their own tracker account and saves it through whoami" \
+  || bad "setup does not collect tracker_handle"
 
 # ── selftest footer: whole-suite checks ─────────────────────────────────────────────────────────
 # Kept after every section and outside them, because they need the WHOLE suite's count. A filtered

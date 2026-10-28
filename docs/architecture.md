@@ -159,7 +159,10 @@ guesses: a miss is answered by asking the person and recording the answer with
 one person while git says another wins for the pin but warns naming both. **Who owns new work, and
 how that was decided, is one answer from the resolver** — `owner` + `owner_source`
 (`resolved` · `unbound` · `assignee_dir_fallback` · `none`) — rather than a rule each skill
-re-derives. `project.assignee_dir` is the last resort for repos with no people map at all; once a
+re-derives. The person's tracker account is `tracker_handle` in the same file, set by their own
+`whoami.py --bind <id> --tracker-handle <account>`; `bin/assignee_check.py` compares it with a
+ticket's assignee so `/ticket` can offer, never force, to assign the ticket to them.
+`project.assignee_dir` is the last resort for repos with no people map at all; once a
 roster exists, an unresolved person yields `unbound` and `/ticket` stops there, because filing an
 unbound teammate's work under that key lands it in a colleague's folder. `bin/resolve_user.py` is
 a thin shim over it that maps the resolved person to a voice profile, kept while `/ship` still
@@ -277,7 +280,8 @@ before it is paid.
 - **`bin/`**: `verify_stack.sh`, `render.sh` (`--sections` fills multi-line prose such as `plan.md` from `## Heading` blocks) + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener; `--check-apps` checks app names),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
-  (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), the runtime installer
+  (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), the assign-offer check
+  (`assignee_check.py`: whether `/ticket` offers to assign a ticket to you), the runtime installer
   (`emit_runtime.py` + its shell convenience `install.sh` — see the next section), the runtime
   surface picker (`adapter_surface.py`: which tool names an MCP adapter's verbs use on the agent
   running now, see [adapters/README.md](../adapters/README.md) § Runtime surfaces), and the

@@ -23,7 +23,7 @@ Config is therefore three files, merged by one resolver.
 | Tier | File | Committed? | Holds |
 |---|---|---|---|
 | 1 TEAM | `.claude/config/stack.yaml` | yes | which tool fills each tool slot, which data the team reads, the 11 policies, ticket conventions |
-| 2 PERSON, portable | `people/<id>.yaml` | yes | display name, tracker handle, identities, comms voice, file-type preferences |
+| 2 PERSON, portable | `people/<id>.yaml` | yes | display name, tracker account (`tracker_handle`, what `/ticket` assigns), identities, comms voice, file-type preferences |
 | 3 PERSON, machine | `.claude/config/connections.local.yaml` | **no** (gitignored) | named profiles/connections, local mount roots, the `person:` key |
 
 Tier 2 has two homes with a stated winner: a cross-repo copy at

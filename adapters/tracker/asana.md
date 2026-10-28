@@ -59,6 +59,20 @@ create-task(workspace={workspace_gid}, projects=[{default_project_gid}],
 ```
 Parent/epic → set `parent` task GID or add to a project section instead of `--parent`.
 
+## verb: assign_ticket
+**In:** task GID, `assignee`. **Out:** `{ok, mode: "replace"}`: an Asana task has one assignee, so
+this replaces whoever holds it now. Called only after the person said yes to `/ticket`'s offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as their Asana user **gid**
+or the **email** Asana knows them by (the API takes either). Unset: the account the connector is
+signed in as, read as its real gid (the connector's user read for `me`; give the check that gid,
+never the word `me`), and the caller says it used that account. An email handle: the fetched assignee carries
+a gid and a name only, so look the email up to its gid the same way and pass it as `--handle-id`.
+```
+mcp__{mcp}__update-task(task_gid=<id>, assignee=<gid, email, or "me">)
+```
+The response's `assignee` is the account that landed. A person outside the workspace is refused;
+report that in one line and do not retry.
+
 ## verb: transition
 Asana "status" = moving a task between **sections** or setting a custom field.
 ```

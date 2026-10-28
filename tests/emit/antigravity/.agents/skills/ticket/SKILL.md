@@ -41,8 +41,9 @@ The kit's one question rule, the same in every skill that asks:
 <!-- ticketwright:ask-rule:end -->
 
 In this skill the questions are step 1's `ambiguous` person, step 2's local-only offer, step 3's
-owner choice, step 11's open questions (one round: they go together), and step 12's approval. The
-first of them can come before step 8, so run step 8's probe then and keep the result.
+owner choice, step 6c's offer to assign the ticket to you, step 11's open questions (one round: they
+go together), and step 12's approval. The first of them can come before step 8, so run step 8's
+probe then and keep the result.
 - The options come from the resolver's `candidates`, the owner folders that hold the id, and the
   plan's own assumption with the alternatives it weighed.
 - **More real options than the limit allows:** show the first ones plus a "Show more" option that
@@ -100,8 +101,8 @@ this before?", "which tickets touched VW_X?").
    except through step 0's `assignee_dir_fallback` last resort). If the dir exists: read its
    `README.md`, list `final_deliverables/`, check `git log --oneline -10` + `git status`, and
    summarize what's done and what remains, re-fetch the ticket for new comments (and record the
-   status it returns the way step 6b does, so the index follows the tracker), then **skip to
-   Phase 3**. **A ticket shipped for review comes back here for revisions.** When its README's
+   status it returns the way step 6b does, so the index follows the tracker, and make step 6c's
+   offer from what it returned), then **skip to Phase 3**. **A ticket shipped for review comes back here for revisions.** When its README's
    Status line or its index row says it is in review (the Ticketwright-only `In review`, or the
    tracker review status an earlier `/ship` moved it to), say so in one line: "`<id>` was shipped
    for stakeholder feedback, so this picks it up for revisions. The next `/ship` can move it to
@@ -153,6 +154,32 @@ this before?", "which tickets touched VW_X?").
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py` (writes this
    project's `tickets/INDEX.md` + `OBJECTS.md`, and the graph layer when it's on; the new row shows
    `▱` until `/ship` curates it).
+
+6c. **Offer to take the ticket in the tracker: ask, never assign on your own.** The tracker's
+   assignee is who the team sees working the ticket, so when `fetch_ticket` shows it unassigned or
+   on someone other than the step-0 person, offer to assign it to them. Skip this step, saying
+   nothing, when the tracker was skipped (step 2's local-only choice) or the tracker adapter's
+   `assign_ticket` section says `unsupported`. Otherwise:
+   - Write the assignee(s) `fetch_ticket` returned to a scratch file as
+     `{"assignees": [{"id": …, "login": …, "email": …, "name": …}]}`, with every field the tracker
+     gave and `[]` when nobody is assigned. When the person's `tracker_handle` is unset, also read
+     the signed-in account the way that `assign_ticket` section says, as a real id. When the
+     section says the handle's form must be looked up first, do that lookup. Then run
+     `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" assignee_check.py --assignee <that file> --id <id> --mode <the section's mode>`
+     (adding `--signed-in <account id>` or `--handle-id <id>` when you read one). It compares
+     mechanically, so never decide
+     "already theirs" by eye, and never from a display name.
+   - `offer: false` → nothing to ask. A ticket already theirs needs no line; otherwise say its
+     `note` in one line, so a person whose tracker account is unknown learns how to set it.
+   - `offer: true` → say the `note` first when there is one (it names whose account will be used),
+     then ask its `question` as one question with the options "Assign it to me" and "Leave it as it
+     is". Neither is recommended: it changes what the whole team sees. The question names whoever
+     the write takes off the ticket, so the answer is never a surprise.
+   - **Assign it to me** → the adapter's `assign_ticket` verb with `assign_to`, then one line naming
+     who the tracker shows now. A refusal or `unavailable` is one line with the tracker's reason.
+     **Leave it** → change nothing, and do not ask again in this run. Either way carry on: the
+     offer never blocks scoping.
+   This is the one tracker write scoping makes, and only on that answer.
 
 ## Phase 3 — Prime context automatically (the part you never have to ask for)
 7. Follow [priming.md](priming.md), in order:
@@ -298,7 +325,8 @@ context brief (including the reuse brief) first, then:
 
 ## Stops here
 No SQL beyond the describe/sample reads priming and spec research already make, no analysis, no
-deliverables, no external posts — while scoping. In Phase 4 the plan and the spec are the only files
+deliverables, no external posts — while scoping. The one tracker write is step 6c's assignee, and
+only when the person chose "Assign it to me". In Phase 4 the plan and the spec are the only files
 written, and only after approval. The build that follows an approval is governed by `/build`, not by
 this rule. If the request is ambiguous, state your interpretation and ask before scaffolding heavy
 structure (`reduce_assumptions`).

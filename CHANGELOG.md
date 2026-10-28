@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`/ticket` offers to assign the ticket to you.** When the tracker shows the ticket unassigned or
+  on someone else, `/ticket` asks whether to assign it to the person working it, and writes the
+  assignee only on "Assign it to me". The question names anyone the write would take off the
+  ticket, and nothing is reassigned without asking. A new tracker verb, `assign_ticket`, does the
+  write on every adapter: Jira (the connector's issue edit by accountId, or `acli jira workitem
+  assign` by email), GitHub Issues (`gh issue edit --add-assignee`, which adds rather than
+  replaces), Azure Boards (`az boards work-item update --assigned-to`), Asana, Linear and monday
+  (the people column, keeping everyone already in it). The `local` adapter returns `unsupported`,
+  because there the ticket's folder is its owner, and `/ticket` skips the offer.
+- **Your tracker account lives in `people/<id>.yaml` as `tracker_handle`.** `/setup` (and
+  `/setup --teammate`) asks for it, offering the account signed in on this machine as the
+  recommended answer, and saves it with `whoami.py --bind <id> --tracker-handle <account>`. When it
+  is unset, `/ticket` uses the signed-in account and says so, since a shared login can belong to
+  someone else. `bin/assignee_check.py` makes the "is this already yours" call mechanically.
+
 ## [4.8.0] - 2026-10-28
 
 `/ship` now leaves the ticket index, the README and the graph showing where the ticket ended up,
