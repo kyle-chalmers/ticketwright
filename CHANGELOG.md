@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.7.2] - 2026-10-27
+
+Every skill now reads cleanly in the slash-command picker. Patch: only the text the picker shows
+changed, and the skills behave as before.
+
 ### Fixed
 - **The slash-command picker shows each skill in plain words.** The picker displays a skill's
   description and argument hint as written, and the desktop app shows angle brackets as escaped
