@@ -14,11 +14,22 @@ Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
   each README's content hash), plus each ticket's status as last read from the tracker. This skill
   writes it.
 
-**Status has one source: the tracker.** The index shows the status read from the tracker in Phase
-1b, else a curated status an older kit version wrote, else the ticket README's `- **Status:**`
-line (written from the tracker by `/ticket`), else `Unknown`. No step here writes a status from a
-reading of the README: that guess is what drifted (a ticket shown as `In Review` after the tracker
-had it `Done`, on a workflow with no `In Review` at all).
+**Status has one source: the tracker.** The index shows, in order: the status `/ship` planned to
+move the ticket to when its pull request merged (it rides that pull request, and the next read here
+replaces it), an `In review` kept in Ticketwright only (replaced once a read shows the tracker moved
+since), the status read from the tracker (Phase 1b here, and by `/ticket` when it opens or
+resumes a ticket), a curated status an older kit version wrote, the ticket README's
+`- **Status:**` line, else `Unknown`. No step here writes a status from a reading of the README:
+that guess is what drifted (a ticket shown as `In Review` after the tracker had it `Done`, on a
+workflow with no `In Review` at all).
+
+**The README's Status line follows the ship.** `/ticket` writes it from the tracker when the folder
+is opened, and `/ship` rewrites it in the shipped commit, together with the index: to the status it
+moves the ticket to, or to `In review` when the work went to stakeholders on a tracker with no
+review status (then the tracker stays where it is). A read here does not rewrite the line. Once the
+tracker has been read for a ticket the index no longer falls back to the line, except when the line
+changed after the read or after the ship (for the `local` tracker the line *is* the tracker, and its
+`transition` rewrites it); the index then shows the newer line.
 
 ## Phase 0 — Preflight
 1. Confirm `stack.yaml` has `key_prefix`/`key_prefixes` — or `id_mode: slug`, where folder names are

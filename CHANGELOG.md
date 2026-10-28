@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`/ship` asks where the ticket ends up: Done, or in review.** Shipping often means sharing the
+  work for stakeholder feedback, not finishing it. `/ship` reads the tracker's own moves
+  (`transition_plan.py --post-ship`) and offers Done, the tracker's in-progress statuses (such as
+  `In Review` or `Awaiting Feedback`, whatever the board has), or an `In review` kept in
+  Ticketwright only when the tracker has no such status, in which case the tracker stays where it
+  is and `/ship` says so. Teams can set the default with `project.post_ship_status` (`done`,
+  `review` or `ask`) and name their review status with `project.review_status`. Running `/ticket`
+  on an in-review ticket picks it up for revisions, and the next `/ship` can move it to Done.
+
+||||||| 108bdc4
+
 ### Changed
 - **`/setup` ends in a way a first-time installer can follow.** The closing report now opens with
   "You're ready for your first ticket" and the one command that starts it. Optional follow-ups
@@ -40,6 +52,19 @@ All notable changes to this project are documented here. Format loosely follows
   install checklist now lives only in `docs/getting-started.md` and the plugin doctor. Runtime
   emitters read the enforcement and posture tables from the new file. An existing repo keeps its
   long `AGENTS.md` until `/setup` re-renders it.
+
+### Fixed
+- **The ticket index shows the status `/ship` leaves the ticket in.** `/ship` committed the index
+  before it moved the tracker ticket to Done, so the merged index kept the old status (or the
+  README's creation-time `To Do`) until someone ran `/refresh index` and shipped a second pull
+  request. `/ship` now records the status it is about to move to in the shipped commit, takes it
+  back when the merge is left to the team, and reads the tracker after the move to confirm it,
+  asking before it opens a fix-up pull request when the move did not land. `/ticket` now records
+  the tracker's status when it opens or resumes a ticket, so the index never shows `Unknown` while
+  the tracker answers. `/ship` also rewrites the ticket README's Status line in the same commit,
+  so the README, `INDEX.md`, the graph note and `index_data.json` agree after a ship. New
+  `ingest_index_records.py` options: `--planned`, `--withdraw-planned`, `--confirm-planned`,
+  `--set-readme`, `--in-review`.
 
 ## [4.7.2] - 2026-10-27
 

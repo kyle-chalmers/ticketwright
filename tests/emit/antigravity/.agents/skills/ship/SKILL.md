@@ -139,7 +139,10 @@ typed.
    curated summary says so ("shipped without an independent review"). You have already
    read this ticket — no second model call is needed, and this path works under every runtime.
    The PostToolUse hook already keeps the row present; this upgrades it from auto-derived (`▱`) to
-   curated.
+   curated. **Run its Phase 1b status read too** (`tracker.search` by `ids` for this ticket, then
+   `ingest_index_records.py --tracker-status -`), so the index starts from the tracker's status,
+   never from the README's creation-time Status line. When the tracker cannot be reached, say so in
+   one line and carry on: step 5 then has no fresh read to build on, and the index keeps what it had.
 
    *Not in this flow:* `enrich_ticket.py` does the same job by handing the ticket README to a
    **headless model**. That README is usually tracker-sourced — text someone outside the repo wrote —
@@ -246,9 +249,31 @@ typed.
    **(c) Read where the ticket can move, before the plan names a status.** A status typed from
    memory fails at the very last step when the workflow does not have it (`No allowed transitions
    found for given status`, on a board with no `In Review`). So ask the tracker: run
-   **`tracker.list_transitions`** for the ticket, save what it returns, and pick the target with
+   **`tracker.list_transitions`** for the ticket and save what it returns.
+   **Then settle where the ticket ends up.** Shipping does not always mean done: the work is often
+   shared for stakeholder feedback and changed again. Read the menu with
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" transition_plan.py --transitions <that file> --post-ship --id <id>`.
+   Its `default` is the team's `project.post_ship_status`:
+   - `done`: the ticket ends in its final status. No question.
+   - `review`: when `review_kind` is `tracker` with one `review_moves` entry, the ticket moves
+     there; with several, ask which one, offering each by its `to`. When `review_kind` is
+     `ticketwright`, the review is kept in Ticketwright only, and you say its `message` in one line.
+   - `ask` (unset): ask, by the question rule above, offering Done, then one answer per
+     `review_moves` entry, then the Ticketwright-only review:
+     <!-- ticketwright:user-facing:begin -->
+     > Where should `<id>` be after this ship?
+     > - **Done**: the work is finished, and `<id>` moves to `<done target>` once the pull request merges.
+     > - **In review, `<to>`**: shared for stakeholder feedback, and `<id>` moves to `<to>` once the pull request merges.
+     > - **In review, here only**: shared for stakeholder feedback. The ticket README and the index say In review, and the tracker stays at `<current>`.
+     <!-- ticketwright:user-facing:end -->
+     Print one "In review, `<to>`" answer per review move, and none when there are none; the
+     "here only" answer is always offered, since some teams do not track review in the tracker.
+     No answer is marked recommended: whether the work is finished is the person's call.
+   A Ticketwright-only review moves nothing: skip the rest of this step, and step 10 has nothing
+   to move. Otherwise pick the target for the chosen status with
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" transition_plan.py --transitions <that file> --id <id>`
-   (it reads `project.terminal_status` from the merged config). Exit **0** → its `target` is the
+   (with `--want <the chosen review status>` for a review; without it, it reads
+   `project.terminal_status` from the merged config). Exit **0** → its `target` is the
    status the plan names and step 10 moves to, through its `via`; `already_there` means step 10 has
    nothing to do. Exit **8** → no single move reaches the configured status: ask the person which
    status this ticket should end in, offering the `available` moves it lists (the `suggestion`
@@ -261,6 +286,11 @@ typed.
    the plan names the configured status and says it was not checked against the tracker, so nobody
    reads it as checked. Skip this when the stack has no
    tracker tool slot, or when the merge setting is off (step 10 then moves nothing).
+   Keep the outcome for step 5: the status is **checked** on an exit 0 that is a `move` or
+   `free_form`, and on a status the person picked from the `available` moves after an exit 8. It
+   is not checked on exit 7 or 4, and there is nothing to move on `already_there`. A ticket going
+   back for revisions after an earlier review ship asks the same way: pick Done this time when
+   the feedback is in.
 
 ## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
 Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
@@ -320,6 +350,8 @@ execute — nothing the steps don't do may appear in it:
    > 4. Post the approved comment on the ticket, with links to the backup and the pull request.
    > 5. Draft the chat message for the recipients above, with the same links, or send it only if you say "send it".
    > 6. Move `<id>` to `<status>` once the pull request is merged.
+   > 6. Leave `<id>` at `<current>` in the tracker. The ticket README and the index say In review, awaiting stakeholder feedback, from the commit in step 1.
+   > The ticket README and index in the pull request already show `<id>` as `<status>`, so they are right as soon as the move lands. If the move does not happen, I tell you and offer to set them back.
    > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
    Print the "New folder" line only when the routed docstore JSON says `person_folder_new: true`,
@@ -334,7 +366,11 @@ execute — nothing the steps don't do may appear in it:
    "none, declared" one only when routing returned `skipped: declared` (drop the parentheses when
    no reason was given), and then leave out the chat step. Step 6 names the exact status from
    step 4(c), and adds "(not checked against the tracker)" when the moves could not be read; when
-   the ticket is already there, it reads "`<id>` is already in `<status>`, so it stays there." The numbered list is the steps below
+   the ticket is already there, it reads "`<id>` is already in `<status>`, so it stays there."
+   Print one of the two step 6 lines: "Leave `<id>` at `<current>`" only for a review kept in
+   Ticketwright only. The "README and index in the pull request" line appears only when step 5
+   records a planned status (the merge setting is on and step 4(c) checked the status); leave it
+   out otherwise. The numbered list is the steps below
    (5 to 10), so drop any step the plan does not deliver (for example the documents backup when no
    documents tool slot is configured, or the merge step when the merge setting is off).
 
@@ -364,7 +400,27 @@ execute — nothing the steps don't do may appear in it:
    setup, not this ticket — give them a separate `chore(plugins): …` commit on this ticket's branch
    (a distinct commit that rides the ticket's one PR — not a second PR, never folded into the ticket
    commit); `.claude/settings.local.json` +
-   `.claude/worktrees/` are gitignored, leave them. Then stage this ticket's paths (deliverable files
+   `.claude/worktrees/` are gitignored, leave them.
+   **Record the status the ticket ends on, in this commit**, in the ticket README's Status line and
+   the index together, so the README, `INDEX.md`, the graph note and `index_data.json` agree. The
+   tracker moves only in step 10, after the merge, so a status read now is out of date the moment
+   the pull request lands. When the merge setting is on and step 4(c) **checked** the status, write
+   it as planned (this also rewrites the README's Status line):
+   ```bash
+   echo '{"statuses":[{"id":"<id>","owner":"<owner>","status":"<the status step 4(c) named>"}]}' \
+     | bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --tracker-status - --planned
+   bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py
+   ```
+   For a review kept in Ticketwright only, write that instead (whatever the merge setting, since
+   no tracker move waits on the merge):
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --in-review <owner>/<id> --tracker-now "<current>"`,
+   then `build_ticket_index.py`. Both commands name in plain words any README with no Status line.
+   A planned status is a promise the rest of the ship keeps or takes back: step 6 withdraws it when
+   the merge is left to the team, and step 10 checks it against the tracker after the move. Record
+   none when the status was not checked (the move may well fail, and the index then keeps the step 3
+   read until the next `/refresh index`; say so in one line), when the ticket is already there, or
+   when the merge setting is off.
+   Then stage this ticket's paths (deliverable files
    included: they're committed by default so results live with the ticket and show in the PR) **plus
    the whole index — `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json`, and
    `tickets/graph/` + `tickets/objects/` when `project.graph_notes` is on (the default)** (`--check`
@@ -409,8 +465,19 @@ execute — nothing the steps don't do may appear in it:
    words. Nothing has been backed up or posted yet, so stopping costs nothing outside the repo.
    Never retry with a bypass, admin or auto-merge option: those skip or defer exactly the checks
    the team set. The `review_verdict_guard` hook also asks before a merge of a ticket with no
-   approving verdict on file. On **Leave it open**, carry on with step 7 and leave the merge to the
-   team.
+   approving verdict on file. On **Leave it open**, first take back the planned status from step 5,
+   on the same branch, so a teammate who merges later does not land a status the ticket is not in:
+   `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --withdraw-planned <owner>/<id>`,
+   which also puts the README's Status line back, re-render with `build_ticket_index.py`, commit
+   the README and the index files (`chore(index): <id> keeps its
+   status until it merges`) and push. It is one more commit on the open pull request, never a second
+   one. A review kept in Ticketwright only stays: it is true however the merge goes, since the
+   work is still shared in steps 7 to 9. Then carry on with step 7 and leave the merge to the team.
+   When the merge is **blocked**, leave the planned status in place, since a push could restart the
+   checks or the review it is waiting on, and say so in the stop message:
+   <!-- ticketwright:user-facing:begin -->
+   > The pull request still says `<id>` is `<status>` in the ticket README and index. Run `/ship <owner>/<id>` again once it can merge, and it moves the ticket to match. If someone merges it another way, the index shows `<status>` before the tracker does, until `/refresh index` reads it back.
+   <!-- ticketwright:user-facing:end -->
 7. **Scan the source material first, then docstore.backup.** This runs after step 6, so what is
    shared is the merged work. The backup copies the ticket folder except `comms/` (the unsent
    drafts, which every docstore adapter's `backup` leaves out, since they are kept out of git for
@@ -462,9 +529,29 @@ execute — nothing the steps don't do may appear in it:
     its `via` where the adapter's `transition` section says the call takes one), never another one,
     **and only when
     step 6 merged the pull request.** A move that fails anyway (the workflow changed since step
-    4(c)) is reported in the tracker's own words; do not try other statuses. The index row keeps
-    the status read in step 3 until the next `/refresh index` reads the new one from the tracker:
-    the merged work is not edited again here. When the merge was left to the team (the person chose
+    4(c)) is reported in the tracker's own words; do not try other statuses.
+    **Then read the status back** when step 5 recorded a planned one, success or failure: run
+    `tracker.search` by `ids` for this ticket, save what it returns (`{"statuses":[]}` when the
+    search fails), and run
+    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --confirm-planned <that file> --for <owner>/<id>`.
+    It writes nothing. Exit **0**: the tracker shows the status the merged index already says, so
+    there is nothing to land and no second pull request; say it in one line. Exit **8**: the merged
+    index says one status and the tracker another (the move failed, or landed somewhere else). Say
+    so, then ask by the question rule above, offering exactly these two answers:
+    <!-- ticketwright:user-facing:begin -->
+    > The ticket README and index on `<default branch>` say `<id>` is `<planned>`, but the tracker shows `<read>`. Fix them now?
+    > - **Fix it now**: I open a small pull request that sets the README and the index to `<read>`.
+    > - **Leave it**: the next `/refresh index` corrects it.
+    <!-- ticketwright:user-facing:end -->
+    On **Fix it now**, on a new branch off `<default branch>` (`vcs.branch`, named `<id>-index`),
+    record the read-back with `ingest_index_records.py --tracker-status <that file> --set-readme`
+    (a read replaces the plan, and the README's Status line follows it), re-render, and open that pull request through `vcs.commit` and
+    `vcs.open_pr`; it is the only case where a ship opens a second one. Exit **7**: the status could
+    not be read back (the tracker stopped answering): say the index shows `<planned>` and that it is
+    not confirmed, and that the next `/refresh index` reads it.
+    For a review kept in Ticketwright only there is no move: say in one line that the tracker
+    stays at `<current>` and the README and index say In review.
+    When the merge was left to the team (the person chose
     **Leave it open**, or `ship_merges_pr` is `false`), leave the status where it is and say so: a
     ticket marked done with its work unmerged tells the team something that is not true yet.
 

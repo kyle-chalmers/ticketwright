@@ -44,7 +44,7 @@ settings surface (OAuth consent / server config / its owner) — record the outc
 `.claude/config/posture.local.yaml`.
 
 ## verb: fetch_ticket
-**In:** issue id (e.g. `TEST-123`). **Out:** title, description (markdown), state, assignee, labels,
+**In:** issue id (e.g. `TEST-123`). **Out:** title, description (markdown), state (the status: `state.name`), assignee, labels,
 attachments, parent/project.
 ```
 mcp__{mcp}__get-issue(id=<id>)

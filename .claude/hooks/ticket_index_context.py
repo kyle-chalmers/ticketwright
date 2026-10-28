@@ -105,9 +105,9 @@ def main() -> int:
     total = discovered_total(root) or len(tickets)
     by_status: dict[str, int] = {}
     for t in tickets:
-        # The renderer's order, minus the README read: the tracker's status first, then a curated
-        # one. A curated `Unknown` is no status (the model no longer writes one).
-        s = t.get("tracker_status") or (t.get("status") if t.get("status") != "Unknown" else None) \
+        # The renderer's order, minus the README read: /ship's planned status, a Ticketwright-side review, the tracker's status,
+        # then a curated one. A curated `Unknown` is no status (the model no longer writes one).
+        s = t.get("planned_status") or t.get("ticketwright_status") or t.get("tracker_status") or (t.get("status") if t.get("status") != "Unknown" else None) \
             or "Unknown"
         if not isinstance(s, str) or not s.strip():
             s = "Unknown"

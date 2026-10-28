@@ -24,7 +24,7 @@ note: |
 Maps the `tracker` verb contract to Azure Boards via the `az boards` CLI.
 
 ## verb: fetch_ticket
-**In:** work-item id (integer). **Out:** title, description, state, type, assignee, relations, attachments.
+**In:** work-item id (integer). **Out:** title, description, state (the status: `fields."System.State"`), type, assignee, relations, attachments.
 ```bash
 az boards work-item show --id <id> --output json
 ```
