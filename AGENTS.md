@@ -103,8 +103,8 @@ setup block near the top ("fixtures and helpers that more than one section uses"
 section that first built it. Anything that starts processes is a `fixture_*` builder that does its
 work on the first call. Checks that need the whole suite's count live in the footer and run only
 on a full run. `--jobs` relies on all of this: it runs each section as its own copy, prints the
-output in file order, and runs the footer once with the summed counts. CI's Linux job runs
-`--jobs`; the macOS bash 3.2 job stays serial as the exact reference.
+output in file order, and runs the footer once with the summed counts. CI's macOS bash 3.2 job runs
+`--jobs` (it was the slowest job); the Linux job stays serial as the exact reference.
 
 There is no separate lint/format step; correctness is enforced by selftest assertions.
 
