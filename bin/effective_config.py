@@ -84,6 +84,11 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _yamlite import YamliteError, config_trace, parse_file, scalar_str  # noqa: E402
+try:
+    from kit_paths import machine_local_path  # noqa: E402
+except ImportError:  # a partial copy without kit_paths: no worktree fallback, the file where it sits
+    def machine_local_path(project: Path, rel: str, for_write: bool = False) -> Path:
+        return project / rel
 
 SCHEMA_VERSION = 1
 
@@ -751,7 +756,7 @@ def resolve(root: str | Path, person: str | None = None,
     elif isinstance(res.seams.get("viewer"), dict):
         res.viewer_team = dict(res.seams["viewer"])
 
-    local_path = res.root / LOCAL_REL
+    local_path = machine_local_path(res.root, LOCAL_REL)
     tier3 = _load(local_path, res.errors, "connections.local.yaml")
     if tier3 is not None:
         res.tiers["machine"] = str(local_path)
@@ -868,7 +873,7 @@ def viewer_plan(res: "Resolution") -> dict:
     nothing. Worse, the self-healing interview would not fire, because it only offers setup when NO
     config exists. So source 2 only counts when it actually yields a usable command.
     """
-    local = res.root / VIEWER_LOCAL_REL
+    local = machine_local_path(res.root, VIEWER_LOCAL_REL)
     if local.is_file():
         data = _load(local, [], "viewer.local.yaml") or {}
         out = dict(data)

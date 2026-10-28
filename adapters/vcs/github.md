@@ -15,14 +15,21 @@ Maps the `vcs` verb contract to git + the GitHub CLI. Branch = ticket ID; PR tit
 
 ## verb: branch
 ```bash
-git checkout {default_branch} && git pull origin {default_branch}
-git checkout -b <TICKET-ID>                 # branch name IS the ticket id
+git fetch origin {default_branch}
+git switch -c <TICKET-ID> --no-track origin/{default_branch}   # branch name IS the ticket id
 ```
+This never checks out `{default_branch}` itself. In a linked worktree (where agent apps start
+sessions by default) that branch is already checked out in the main checkout, and git refuses
+a second checkout of it. With no remote yet, branch from the local one:
+`git switch -c <TICKET-ID> {default_branch}`.
 
 ## verb: worktree   (isolates one ticket from other work in flight)
 ```bash
 git worktree add "{worktree_root}/<name>" -b <TICKET-ID>
 ```
+Skip this verb when the session already runs in a linked worktree (`kit_paths.py --json` reports
+`worktree.linked: true`): that worktree already isolates the ticket, so use `branch` in place
+rather than nesting a second worktree inside it.
 A fresh worktree keeps this ticket's files apart from other tickets in flight. (This repo's
 worktree-manager scripts under `~/.claude/skills/worktree-manager/` can also be used.)
 

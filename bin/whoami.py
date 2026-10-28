@@ -76,6 +76,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _yamlite import YamliteError, config_trace, parse_file  # noqa: E402
+try:
+    from kit_paths import machine_local_path  # noqa: E402
+except ImportError:  # a partial copy without kit_paths: no worktree fallback, the file where it sits
+    def machine_local_path(project: Path, rel: str, for_write: bool = False) -> Path:
+        return project / rel
 
 LOCAL_REL = ".claude/config/connections.local.yaml"
 
@@ -204,7 +209,7 @@ def _display_line(name: str, pid: str) -> str:
 
 
 def _load_tier3(root: Path) -> dict | None:
-    path = root / LOCAL_REL
+    path = machine_local_path(root, LOCAL_REL)
     if not path.is_file():
         return None
     try:
@@ -477,7 +482,7 @@ def bind(root: Path, pid: str, identity: str | None, confirm: bool) -> int:
         # people-file append comes second, so its loud failure never leaves the machine unpinned —
         # and a valid append is never rolled back for an unrelated failure, because discarding the
         # person's own answer would be worse than a partial (and still-correct) self-heal.
-        _pin_person(root / LOCAL_REL, pid)
+        _pin_person(machine_local_path(root, LOCAL_REL, for_write=True), pid)
         if ident:
             _append_identity(people_file, pid, ident)
     except (OSError, YamliteError, BindError) as exc:
