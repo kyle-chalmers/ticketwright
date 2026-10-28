@@ -8,27 +8,53 @@ set -uo pipefail
 
 # cd to kit root (this script lives in <kit>/bin/)
 # A filtered run (below) executes a copy of this file from a temp path, so it carries the kit path in.
-# Only that copy may set the two TW_SELFTEST_* values: the real file drops any it inherited, so an
+# Only that copy may set the TW_SELFTEST_* values: the real file drops any it inherited, so an
 # exported TW_SELFTEST_ONLY cannot quietly turn a full run into one that skips the footer.
-case "$0" in *selftest.sh) unset TW_SELFTEST_KIT TW_SELFTEST_ONLY ;; esac
+case "$0" in *selftest.sh) unset TW_SELFTEST_KIT TW_SELFTEST_ONLY TW_SELFTEST_RESULT TW_SELFTEST_CARRY ;; esac
 if [ -n "${TW_SELFTEST_KIT:-}" ]; then cd "$TW_SELFTEST_KIT" || exit 2; else cd "$(dirname "$0")/.." || exit 2; fi
 KIT="$(pwd)"
 
 # ── running some sections, not all ────────────────────────────────────────────────────────────────
 #   bash bin/selftest.sh --list      every section's id and title
 #   bash bin/selftest.sh 6 6b        the setup below, then only sections 6 and 6b
+#   bash bin/selftest.sh --jobs 8    every section as its own job, 8 at a time (ids may follow)
 # A section is everything from its `hdr "<id> · …"` line, always at column 0, up to the next one.
 # A filtered run cuts the setup, the chosen sections and the footer out of this file with awk and
 # runs that copy under the same bash. That is only honest because every section passes on its own:
 # whatever a later section reuses lives in the setup block, never in the section that first built
-# it (section 85 tests the runner itself). The two TW_SELFTEST_* lines are written into the copy as
+# it (section 85 tests the runner itself). The TW_SELFTEST_* lines are written into the copy as
 # plain shell variables, not exported, so a selftest that a section starts runs unfiltered.
-if [ "$#" -gt 0 ]; then
-  if [ "$1" = "--list" ]; then
-    [ "$#" -eq 1 ] || { echo 'selftest: --list takes nothing else. Run it on its own, then pass the ids you want.' >&2; exit 2; }
-    awk '/^hdr "/ { s = $0; sub(/^hdr "/, "", s); sub(/"$/, "", s); print s }' bin/selftest.sh
-    exit 0
-  fi
+# --jobs writes one such copy per section and runs them through xargs -P. Each copy hands its two
+# counters back in a file instead of printing a summary. Each section's output is printed in file
+# order once it and every section before it are done, so the log reads like a serial run. Then one
+# more copy, holding only the setup and the footer, starts from the summed counters, so the
+# whole-suite checks run once against the true total.
+st_copy() {  # st_copy <ids to keep, space-padded> <TW_SELFTEST_ONLY> [result file] [carried counts]
+  printf 'TW_SELFTEST_KIT=%q\nTW_SELFTEST_ONLY=%q\nTW_SELFTEST_RESULT=%q\nTW_SELFTEST_CARRY=%q\n' \
+    "$KIT" "$2" "${3:-}" "${4:-}"
+  awk -v want="$1" '
+    /^# ── selftest footer/ { foot = 1 }
+    /^hdr "/ && !foot { body = 1; id = $2; sub(/^"/, "", id); keep = index(want, " " id " ") > 0 }
+    !body || foot || keep
+  ' bin/selftest.sh
+}
+st_jobs=""
+if [ "${1:-}" = "--jobs" ]; then
+  case "${2:-}" in
+    ''|*[!0-9]*) st_jobs=0 ;;
+    *) st_jobs="$2" ;;
+  esac
+  [ "$st_jobs" -ge 1 ] 2>/dev/null || {
+    echo 'selftest: --jobs needs the number of sections to run at once, such as --jobs 8.' >&2; exit 2; }
+  shift 2
+fi
+if [ "${1:-}" = "--list" ]; then
+  { [ "$#" -eq 1 ] && [ -z "$st_jobs" ]; } \
+    || { echo 'selftest: --list takes nothing else. Run it on its own, then pass the ids you want.' >&2; exit 2; }
+  awk '/^hdr "/ { s = $0; sub(/^hdr "/, "", s); sub(/"$/, "", s); print s }' bin/selftest.sh
+  exit 0
+fi
+if [ "$#" -gt 0 ] || [ -n "$st_jobs" ]; then
   st_all=" $(awk '/^hdr "/ { id = $2; sub(/^"/, "", id); printf "%s ", id }' bin/selftest.sh)"
   st_want=" "
   for st_id in "$@"; do
@@ -38,20 +64,67 @@ if [ "$#" -gt 0 ]; then
          exit 2 ;;
     esac
   done
+fi
+if [ -n "$st_jobs" ]; then
+  # The template keeps the copies' names from ending in selftest.sh (see the unset above).
+  st_dir="$(mktemp -d "${TMPDIR:-/tmp}/tw-selftest-jobs.XXXXXX")" || exit 2
+  # Stopping the runner (Ctrl-C, a kill, a closed pipe) must stop every running section too, so
+  # nothing keeps writing after the prompt is back. xargs does not pass a signal on to the commands it
+  # started, so the jobs get a process group of their own (set -m below) and the trap ends the group.
+  st_xargs=""
+  trap '[ -n "$st_xargs" ] && kill -TERM -- -"$st_xargs" 2>/dev/null; rm -rf "$st_dir"' EXIT
+  trap 'exit 130' INT TERM HUP PIPE
+  st_order=""
+  for st_id in $st_all; do
+    case "$st_want" in " "|*" $st_id "*) ;; *) continue ;; esac
+    st_order="$st_order $st_id"
+    st_copy " $st_id " " $st_id " "$st_dir/$st_id.result" > "$st_dir/$st_id.sh"
+  done
+  printf '%s\n' $st_order > "$st_dir/ids"
+  # A job's exit code lands in <id>.rc only after its copy has exited (written, then renamed, so it
+  # is never read half-written), which makes <id>.rc the "this section is done" signal. A section's
+  # stdin is /dev/null, so it cannot read the id list xargs is still handing out. xargs reads the ids
+  # from a file rather than a pipe so that it is the group's leader and $! names the group.
+  set -m
+  xargs -n 1 -P "$st_jobs" "$BASH" -c \
+    '"$0" "$1/$2.sh" > "$1/$2.log" 2>&1 < /dev/null; echo $? > "$1/$2.rc.tmp"; mv "$1/$2.rc.tmp" "$1/$2.rc"' \
+    "$BASH" "$st_dir" < "$st_dir/ids" &
+  st_xargs=$!
+  set +m
+  st_pass=0; st_fail=0
+  for st_id in $st_order; do
+    while [ ! -f "$st_dir/$st_id.rc" ] && kill -0 "$st_xargs" 2>/dev/null; do sleep 0.1; done
+    cat "$st_dir/$st_id.log" 2>/dev/null
+    if [ -f "$st_dir/$st_id.result" ]; then
+      read -r st_p st_f < "$st_dir/$st_id.result"
+      st_pass=$((st_pass + st_p)); st_fail=$((st_fail + st_f))
+    else
+      # The copy exited before its footer ran (an `exit`, an unset variable under set -u, a crash),
+      # so the checks after that point never ran. That is a failure, never a silent short count.
+      st_fail=$((st_fail + 1))
+      printf "  \033[31m✗\033[0m %s\n" "Section $st_id stopped before its last check, so the checks after that point did not run. Details: exit $(cat "$st_dir/$st_id.rc" 2>/dev/null || echo unknown)"
+    fi
+  done
+  wait "$st_xargs"
+  st_xargs=""  # finished: the trap must not signal a group id the system may hand out again
+  # With ids given, the footer reports the sections it ran and skips the whole-suite checks, as a
+  # serial filtered run does.
+  if [ "$st_want" = " " ]; then st_only=""; else st_only="$st_want"; fi
+  st_copy " " "$st_only" "" "$st_pass $st_fail" > "$st_dir/footer.sh"
+  "$BASH" "$st_dir/footer.sh"
+  exit $?
+fi
+if [ "$#" -gt 0 ]; then
   # The template keeps the copy's name from ending in selftest.sh (see the unset above).
   st_run="$(mktemp "${TMPDIR:-/tmp}/tw-selftest-run.XXXXXX")" || exit 2
   trap 'rm -f "$st_run"' EXIT
-  { printf 'TW_SELFTEST_KIT=%q\nTW_SELFTEST_ONLY=%q\n' "$KIT" "$st_want"
-    awk -v want="$st_want" '
-      /^# ── selftest footer/ { foot = 1 }
-      /^hdr "/ && !foot { body = 1; id = $2; sub(/^"/, "", id); keep = index(want, " " id " ") > 0 }
-      !body || foot || keep
-    ' bin/selftest.sh
-  } > "$st_run"
+  st_copy "$st_want" "$st_want" > "$st_run"
   "$BASH" "$st_run"
   exit $?
 fi
 PASS=0; FAIL=0; TMP="$(mktemp -d)"
+# --jobs hands the footer-only copy the counts its sections already added up (see the runner above).
+if [ -n "${TW_SELFTEST_CARRY:-}" ]; then PASS="${TW_SELFTEST_CARRY% *}"; FAIL="${TW_SELFTEST_CARRY#* }"; fi
 trap 'rm -rf "$TMP"' EXIT
 
 # The config resolver consults ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright for the cross-repo
@@ -15299,10 +15372,64 @@ TW_SELFTEST_KIT="$TMP/no-such-kit" TW_SELFTEST_ONLY=" 4 " "$BASH" bin/selftest.s
 # branch that runs only when nothing was filtered. A full run is the only place it can be checked.
 awk '/^# ── selftest footer/ { f = 1 }
      f && /^if \[ -z "\$\{TW_SELFTEST_ONLY:-\}" \]; then$/ { g = 1 }
-     g && /^else$/ { g = 0 }
+     g && /^(else|elif )/ { g = 0 }
      g && /docs claim more checks/ { ok = 1 } END { exit !ok }' bin/selftest.sh \
   && ok "pinned: the docs' check floor runs in the footer, and only on a full run" \
   || bad "the docs' check floor moved out of the footer's full-run branch"
+# --jobs: the same sections in parallel must print the same totals, in file order, never the order
+# the jobs happened to finish. (A full --jobs run cannot be checked from here: it would include
+# this section, which would start another one.)
+"$BASH" bin/selftest.sh --jobs 2 4 2 > "$TMP/s85.jobs" 2>&1; rc85=$?
+ser85="$(grep -oE '[0-9]+ passed, [0-9]+ failed' "$TMP/s85.run" | tail -1)"
+par85="$(grep -oE '[0-9]+ passed, [0-9]+ failed' "$TMP/s85.jobs" | tail -1)"
+ord85="$(grep -oE '^.*(2 · adapter verb coverage|4 · frontmatter valid)' "$TMP/s85.jobs" | sed 's/.*\([24]\) · .*/\1/' | tr -d '\n')"
+{ [ "$rc85" -eq 0 ] && [ -n "$ser85" ] && [ "$par85" = "$ser85" ] && [ "$ord85" = "24" ] \
+  && grep -q '(sections: 4 2)' "$TMP/s85.jobs" && ! grep -q 'whole-suite checks' "$TMP/s85.jobs"; } \
+  && ok "--jobs 2 4 2 prints the same totals as the serial run, sections in file order" \
+  || bad "a --jobs run disagreed with the serial run of the same sections" "rc=$rc85 serial=[$ser85] jobs=[$par85] order=[$ord85]"
+# Quoted, always followed by an id: if the check ever broke, this would run section 4, never the
+# whole suite (which includes this section, so it would start itself without end).
+bj85=""
+for a in "" 0 x -3; do
+  "$BASH" bin/selftest.sh --jobs "$a" 4 > /dev/null 2> "$TMP/s85.err" && bj85="$bj85 [$a]rc0"
+  grep -q -- '--jobs needs the number of sections' "$TMP/s85.err" || bj85="$bj85 [$a]msg"
+done
+[ -z "$bj85" ] && ok "--jobs with a missing, zero or non-numeric count fails and says what it needs" \
+  || bad "a bad --jobs value did not fail plainly" "$bj85"
+# The rest use throwaway kits: selftest.sh is this file's runner and setup, a few made-up sections
+# ($2, lines separated by \n) and this footer; every other file is a link back to the real kit, and
+# the docs floor is set to 1.
+fk85() {  # fk85 <dir> <sections>
+  mkdir -p "$1/bin" "$1/docs"
+  for e in "$KIT"/* "$KIT"/.claude; do
+    case "${e##*/}" in bin|docs) ;; *) ln -s "$e" "$1/${e##*/}" ;; esac
+  done
+  for e in "$KIT"/bin/*; do [ "${e##*/}" = selftest.sh ] || ln -s "$e" "$1/bin/${e##*/}"; done
+  echo 'This suite runs 1+-check.' > "$1/docs/troubleshooting.md"
+  awk -v s="$2" '/^# ── selftest footer/ { foot = 1; print s }
+       /^hdr "/ { body = 1 }
+       !body || foot' bin/selftest.sh > "$1/bin/selftest.sh"
+}
+# A section that exits partway must count as a failure, not vanish from the total. Section 1 is the
+# slowest, so printing in the order the jobs finish (2, 3, 1) would show up as a wrong order.
+fk85 "$TMP/s85-kit" 'hdr "1 · passes"\nsleep 1\nok "one"\nhdr "2 · stops partway"\nexit 3\nok "never runs"\nhdr "3 · fails"\nbad "three"'
+"$BASH" "$TMP/s85-kit/bin/selftest.sh" --jobs 3 > "$TMP/s85.fk" 2>&1; rc85=$?
+fko85="$(grep -oE '[123] · (passes|stops partway|fails)' "$TMP/s85.fk" | cut -c1 | tr -d '\n')"
+{ [ "$rc85" -ne 0 ] && [ "$fko85" = "123" ] && grep -q 'Section 2 stopped before its last check' "$TMP/s85.fk" \
+  && ! grep -q 'never runs' "$TMP/s85.fk" && grep -q 'selftest: 2 passed, 2 failed' "$TMP/s85.fk"; } \
+  && ok "--jobs counts a section that stopped partway as a failure, prints in file order, and runs the floor once on the sum" \
+  || bad "--jobs lost, miscounted or reordered a section" "rc=$rc85 order=[$fko85] $(tail -3 "$TMP/s85.fk")"
+# Stopping the runner stops the sections it started: one still sleeping when the runner is killed
+# must never get to write its file. TERM, because a script's background job ignores INT.
+fk85 "$TMP/s85-kit2" "hdr \"1 · slow\"\ntouch '$TMP/s85.started'\nsleep 3\ntouch '$TMP/s85.late'\nok \"slow\""
+"$BASH" "$TMP/s85-kit2/bin/selftest.sh" --jobs 1 > "$TMP/s85.int" 2>&1 &
+p85=$!
+n85=0; while [ ! -e "$TMP/s85.started" ] && [ "$n85" -lt 100 ]; do sleep 0.1; n85=$((n85 + 1)); done
+kill -TERM "$p85" 2>/dev/null; wait "$p85"; rc85=$?
+sleep 4
+{ [ -e "$TMP/s85.started" ] && [ "$rc85" -ne 0 ] && [ ! -e "$TMP/s85.late" ]; } \
+  && ok "stopping a --jobs run stops the sections it started" \
+  || bad "a section kept running after its --jobs run was stopped" "rc=$rc85 started=$([ -e "$TMP/s85.started" ] && echo y) late=$([ -e "$TMP/s85.late" ] && echo y)"
 
 # ── selftest footer: whole-suite checks ─────────────────────────────────────────────────────────
 # Kept after every section and outside them, because they need the WHOLE suite's count. A filtered
@@ -15317,6 +15444,9 @@ if [ -z "${TW_SELFTEST_ONLY:-}" ]; then
     && ok "the docs' stated check floor (${floor}+) is met ($((PASS + 1)) checks)" \
     || bad "the docs claim more checks than the suite runs" "floor=${floor:-unset} actual=$PASS"
   printf "\n\033[1mselftest: %d passed, %d failed\033[0m\n" "$PASS" "$FAIL"
+elif [ -n "${TW_SELFTEST_RESULT:-}" ]; then
+  # One section of a --jobs run: hand the counters back, and the runner prints one total for all.
+  printf '%s %s\n' "$PASS" "$FAIL" > "$TW_SELFTEST_RESULT"
 else
   printf "\n\033[1mselftest: %d passed, %d failed (sections:%s)\033[0m\n" "$PASS" "$FAIL" "${TW_SELFTEST_ONLY% }"
 fi

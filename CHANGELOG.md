@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **The self-test can run its sections in parallel (contributors).** `bash bin/selftest.sh
+  --jobs 8` runs every section as its own job, eight at a time, and prints the output in the same
+  order and with the same totals as a normal run: about 50 seconds instead of about four minutes on
+  an 8-core Mac. Section ids can follow (`--jobs 4 6 6b`). A section that stops partway is reported
+  as a failure that names it. CI's Linux job now runs with `--jobs`; the macOS bash 3.2 job stays a
+  normal serial run. Selftest section 85 covers it (LABS-128).
+
 ## [4.7.0] - 2026-10-27
 
 Each person's ticket backups now land in a folder with their name inside the team's folder, created
