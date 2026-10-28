@@ -153,8 +153,12 @@ result mean something:
   comparison rule held — never as a hopeful default. Where the fix lives depends on the connection
   shape: an official connector → its app settings; a CLI-configured server → its config file; a
   homegrown server → a suggestion you forward to its owner. Advisory means advisory: the person
-  may own neither the server nor the grant — an unexpected posture is said and recorded in the
-  report as `exceeds-policy`/`unverified`, never a block. Write the record to the gitignored,
+  may own neither the server nor the grant — an unexpected posture is said to the person and kept in the
+  record as `exceeds-policy`/`unverified`, never a block. Those words and the record file are for
+  the record only: tell the person what they mean. For a connector whose grant can't be read, say
+  "Setup can't see a connector's permission grant from inside a session. To check what it's
+  allowed to do, open the connector in the Claude app." For more access than expected, say what
+  was found and where that permission is changed. Write the record to the gitignored,
   display-only file (never resolver-merged; never secrets, never listing output — names only):
   ```yaml
   # .claude/config/posture.local.yaml — gitignored, display-only, never resolver-merged
@@ -186,4 +190,6 @@ Point them at, in order: `AGENTS.md` (the rules — read end to end),
 Pick a real, small ticket (or have them name one) and run `/ticket <id>` in **dry-run spirit** —
 set up the workspace and prime context, and at the plan approval answer "approve, don't build
 yet" (a plain approval now starts the build), so they see the flow end to end safely. Explain the hard-halt gates and the DB-write approval protocol as you go.
-Finish with a checklist of done vs outstanding, and hand them their first real ticket.
+Finish the way SKILL.md step 8 does: lead with "You're ready for your first ticket" and the
+command that starts it, then anything still outstanding as optional follow-ups, each with why it
+matters and the command or step that finishes it, in plain words.

@@ -11910,9 +11910,24 @@ la60="$(grep -n '^## Ensure the launcher' "$SK60" | head -1 | cut -d: -f1)"
   && grep -q 'No git name or email?' "$SK60"; } \
   && ok "setup offers undetected supported tools, never hides detected ones, hands refused commands to the person, never edits the kit" \
   || bad "a run-2 rule is missing (undetected tools, hidden options, refused commands, kit edits)"
-{ grep -q 'Ready for your first ticket' "$SK60" && grep -q 'things to finish' "$SK60"; } \
+{ grep -q "You're ready for your first ticket" "$SK60" && grep -q 'things to finish' "$SK60"; } \
   && ok "setup ends on a named state (ready, or ready with N things to finish)" \
   || bad "setup's named end states are missing"
+{ grep -qF '5a. **Write `.claude/settings.json` as its own, announced step.**' "$SK60" \
+  && grep -q 'self-modification' "$SK60" && grep -q 'do not retry it' "$SK60" \
+  && grep -q 'WHOLE file' "$SK60" && grep -q 'nothing breaks without it' "$SK60" \
+  && grep -q 'WHOLE file' .claude/skills/setup/scaffold.md; } \
+  && ok "the settings write is its own announced step, and a blocked write ends in a paste-in fallback (whole file, no retry)" \
+  || bad "the settings-write step or its blocked-write fallback is missing"
+rd60="$(grep -n "You're ready for your first ticket. Start one with" "$SK60" | head -1 | cut -d: -f1)"
+op60="$(grep -n 'Optional, when you have a minute' "$SK60" | head -1 | cut -d: -f1)"
+{ [ -n "$rd60" ] && [ -n "$op60" ] && [ "$rd60" -lt "$op60" ] \
+  && grep -q "You skipped describing your team's domain and standards" "$SK60" \
+  && grep -q "can't see a connector's permission grant from inside a session" "$SK60" \
+  && grep -q "can't see a connector's permission grant from inside a session" .claude/skills/setup/teammate.md \
+  && grep -q 'never print the outcome words' "$SK60"; } \
+  && ok "the closing report leads with success and the next command, then plain-worded follow-ups" \
+  || bad "the closing report no longer leads with success, or a follow-up lost its plain wording" "ready=${rd60:-none} optional=${op60:-none}"
 python3 tests/plain_language/check.py --marked "$SK60" --marked "$IV60" > "$TMP/pl60.out" 2>&1 \
   && ok "setup's say-this blocks (the map, the usage question) are marked and plain" \
   || bad "a setup say-this block uses internal terms" "$(head -5 "$TMP/pl60.out")"

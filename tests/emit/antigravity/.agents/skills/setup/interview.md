@@ -274,7 +274,10 @@ they never touch real data."
    the adapter's auth notes give, **not** a request to type IDs by hand. Never a named profile,
    connection, or local path in `stack.yaml`, those are machine values the person flow writes
    into `.claude/config/connections.local.yaml`; if detection surfaced one, display it and route it
-   there.
+   there. Say what each key means before asking for it. For a warehouse `pii_role`: "A PII role is
+   the database role queries switch to before they run, usually the one your team uses to read
+   personal data like names, emails or account numbers. If your tickets never touch personal data,
+   use the role you normally query with."
 9. **`dev_target`**: "Where should test tables go, so test work never touches real data?" This
    *is* a team value (target selection may never be personal). Options: a listed dev dataset /
    schema if one exists, free text, and **"We don't have one"**, which writes `dev_target: null`

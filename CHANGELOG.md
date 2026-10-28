@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **`/setup` ends in a way a first-time installer can follow.** The closing report now opens with
+  "You're ready for your first ticket" and the one command that starts it. Optional follow-ups
+  come after, each saying what it is, why it matters and the command that finishes it, in plain
+  words: no round numbers, status words or internal file names. A skipped domain step says to run
+  `/setup role`, an unset warehouse `pii_role` says what a PII role is (the interview now explains
+  it before asking too), and a connector whose permissions setup can't read says to open the
+  connector in the Claude app.
+- **Writing `.claude/settings.json` is its own announced step.** Claude Code's Auto mode blocks a
+  session from writing its own project's settings file, so every Auto-mode installer hit this
+  without warning. Setup now says what the file does before the write, never retries or works
+  around a block, and when blocked prints the file path, one line on what each addition does, and
+  the whole file to paste. Nothing breaks without it.
+
 ## [4.7.2] - 2026-10-27
 
 Every skill now reads cleanly in the slash-command picker. Patch: only the text the picker shows
