@@ -534,8 +534,8 @@ Which agents can do what, with the sources behind each claim, is in [runtimes.md
   policy as **deny-with-escape** (the deny names a one-shot re-approval), and the install report
   says so. Where even the hooks-config location is undocumented (Codex CLI, Devin), the installer
   prints the line to wire by hand instead of guessing.
-- **What is enforced where is written down, per runtime and per hook,** in the rendered `AGENTS.md`
-  enforcement table (and in `.clinerules/` for Cline): ENFORCEMENT (proven, the native Claude
+- **What is enforced where is written down, per runtime and per hook,** in the enforcement table of the
+  kit's agent reference (`templates/agent-reference.md`) (and in `.clinerules/` for Cline): ENFORCEMENT (proven, the native Claude
   hooks), WIRED (emitted, live confirmation owed), GUIDANCE, or UNKNOWN. The MCP transport, which
   no shell hook can see, has its own per-policy posture table right below it: enforcement moves
   into the tool's own permission controls, and **NATIVE (tool-side)** can be claimed only after a

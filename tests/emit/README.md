@@ -24,7 +24,7 @@ What each tree holds mirrors the emission matrix (emit-vs-verify is decided by e
 - `opencode/` — the throw-to-deny plugin wrapper `.opencode/plugins/ticketwright-db-write-guard.js`
   (its plugin root is documented; nothing else is emitted).
 - `cline/` — the enforcement-table honesty artifact `.clinerules/ticketwright-enforcement.md`
-  (extracted from `templates/AGENTS.md.tmpl` between its markers — cline users don't read
+  (extracted from `templates/agent-reference.md` between its markers — cline users don't read
   AGENTS.md); nothing else, and `.cline/` stays absent (selftest asserts it).
 
 Regenerate after a deliberate output change (repeat per emitting runtime):
@@ -42,7 +42,7 @@ vendor a fixture project
 (`mkdir -p "$tmp/adapters" "$tmp/templates" "$tmp/bin" && cp bin/kit_paths.py "$tmp/bin/" &&
 mkdir -p "$tmp/.claude" && cp -R .claude/skills "$tmp/.claude/skills"`), run the installer against
 it, and copy the emitted `.cursor` / `.devin` / `.opencode` / `.clinerules` directory. The
-enforcement-table markers in `templates/AGENTS.md.tmpl` feed the cline artifact, so an edit to
+enforcement-table markers in `templates/agent-reference.md` feed the cline artifact, so an edit to
 that block regenerates `cline/` in the same commit; `bin/opencode_tool_gate.js` feeds the
 opencode wrapper the same way.
 

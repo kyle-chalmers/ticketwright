@@ -141,8 +141,10 @@ plainly what is about to happen and why, before it happens.
    Listing names inside someone's own space (their drive's folders, their projects) is fine after
    asking, names only. Suggestions from past usage are opt-in and counts-only
    ([interview.md](interview.md) § Suggestions from past usage).
-9. **End on a named state** (Phase 4, step 8): **"Ready for your first ticket"**, or **"Ready, with
-   N things to finish"** followed by each item and the command that finishes it.
+9. **Lead the ending with success** (Phase 4, step 8): **"You're ready for your first ticket"** and
+   the one command that starts it, or **"Almost ready for your first ticket: N things to finish
+   first"** with each item and the command that finishes it. Optional follow-ups come after, each
+   with why it matters and the command that finishes it.
 
 
 ## How this skill asks the person something
@@ -487,8 +489,7 @@ I'd set up. Nothing is written until you say yes." The plan names:
 Only on explicit confirmation, execute — **source of truth first, derived files after**:
 5. Write `.claude/config/stack.yaml` per `stack.schema.md` (chosen tool slots live; optional ones as
    commented blocks; the 11 policies with a one-line "when to change this" comment each) as the
-   FIRST write, then `.claude/settings.json` per [scaffold.md](scaffold.md) (hooks — omitted on a
-   plugin install — + read-only CLI allows). Step 6 renders FROM `stack.yaml`, and some runtimes
+   FIRST write. Step 6 renders FROM `stack.yaml`, and some runtimes
    refuse every write under `.claude/` in a non-interactive run — a categorical path guard (the
    refusal calls the file "sensitive") that no allow rule lifts. **If the `stack.yaml` write is
    refused, STOP: scaffold nothing else** — an `AGENTS.md` describing a stack that does not exist on
@@ -497,6 +498,21 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    interactive session, or create the `.claude/` files by hand from the printed plan (print their
    full contents on request); and that everything else is written on the next confirm. Never route
    around the guard.
+5a. **Write `.claude/settings.json` as its own, announced step.** Its contents come from
+   [scaffold.md](scaffold.md): the hooks (omitted on a plugin install), the read-only command
+   allows, the status line, and on a plugin install the plugin enablement with `autoUpdate`. Claude
+   Code's Auto mode treats a session writing its own project's `.claude/settings.json` as
+   self-modification and blocks it, so most installers meet a prompt or a refusal here. Never let
+   that arrive unexplained: say this first, in these words, then make the one write:
+   <!-- ticketwright:user-facing:begin -->
+   Next I'll update `.claude/settings.json`. It lets read-only commands run without asking you each time, turns on automatic Ticketwright updates for this repo, and adds a status line. Claude Code may ask you to approve this change, or block it in Auto mode. Either answer is fine: nothing breaks without it, and I'll give you the exact text to paste if it's blocked.
+   <!-- ticketwright:user-facing:end -->
+   If the write is refused or blocked, do not retry it and do not reach the file another way (a
+   shell redirect, `cp`, a script, `settings.local.json`). Carry on with step 5b; the scaffold does
+   not depend on this file. Keep the full merged contents you meant to write, because the closing
+   report (step 8) prints them as the paste-in fallback. The same applies to the
+   `.claude/statusline.sh` copy [scaffold.md](scaffold.md) asks for on a plugin install: if it was
+   refused too, the fallback adds the copy command.
 5b. **Confirm the launcher is in the project, and add it to what gets committed.** The
    "Ensure the launcher" preflight above already installed `bin/tw` + `bin/kit_paths.py` (it runs
    first in every mode and is idempotent — do NOT re-run a bare `cp` here: on a vendored or `init`
@@ -547,34 +563,98 @@ Only on explicit confirmation, execute — **source of truth first, derived file
      `matches` is writable only when the adapter's comparison rule held). Chat/tracker slots
      always record the introspection cap — a connector's grant set cannot be read from inside a
      session — with a pointer to where a human confirms the grant. A posture the policy does not
-     expect is reported and recorded, not a stop.
-8. **Report, ending on a named state.** Lead with the state: **"Ready for your first ticket"** when
-   every tool connected (or was deliberately left for later), or **"Ready, with N things to
-   finish"** followed by each item, in plain words, with the exact command or step that finishes
-   it. Then say which check was which (the install check = the kit's files; the tool check = *your*
-   tools), the chosen stack, files written, and any `# TODO` keys. Include, when they apply:
-   - **The punch list** — one entry per skipped round, each naming its re-entry command
-     (`/setup role` for round 5, `/setup policies` for round 6, `/setup viewer` for the review
-     apps). Deferring must be trackable;
-     "took defaults" must never be indistinguishable from "chose".
-   - **`project.assignee_dir`, in one line — what the key is for, not a warning.** It is the
-     last-resort owner subdir under `tickets/` for a repo with no `people/` roster. Once a roster
-     exists, the owner of new work is whoever `whoami` resolves, and a person it does not
-     recognize is a stop (`/setup --teammate`) rather than a fall-back to this key — so say that,
-     and never describe it as something setup is refusing to touch.
-   - **Email, when round 4 set it up:** say plainly that email goes out as **drafts only**, from
-     the sending identity chosen in round 4, to whoever is chosen for each result at `/ship`, and
-     that nothing sends until the person says send. A repo still carrying an older commented
-     `seams.chat.targets.email` block (configured but not yet activated) gets interview.md's offer
-     to activate it as a per-ticket target; the standing-destination alternative is
-     `stack.example.multi-audience.yaml`.
-   - **Obsidian — one line, never a question.** Detected: "this repo already opens as an Obsidian
-     vault — the graph layer is in `tickets/graph/` + `tickets/objects/`." Not detected: the graph
-     layer still renders; print the guide as its full GitHub URL —
-     <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md> — never as a bare
-     `docs/obsidian.md` path, because `docs/` does not ship in the PyPI package, so on a pip
-     install that relative path points at nothing.
-   Then the next step — `/ticket <id>` to start work, or `/setup --teammate` for a new person.
+     expect is reported and recorded, not a stop. The outcome words and the record file are for
+     the record, not for the person: never print the outcome words (the three status names
+     [teammate.md](teammate.md) defines) or the file's name in the report. Say what they mean instead, as step 8 shows.
+8. **Report: lead with success, then the one next command, then optional follow-ups.** The person
+   reading this may have no context on Ticketwright, so the report opens with what worked and what
+   to type next, and nothing technical comes before that. Use the plugin's command names on a
+   plugin install (`/ticketwright:ticket`, `/ticketwright:setup role`) and the bare names
+   (`/ticket`, `/setup role`) on a vendored or `ticketwright init` install. The shape, in order:
+   1. **The state, then the next command.** When every tool connected or was deliberately left for
+      later:
+      <!-- ticketwright:user-facing:begin -->
+      You're ready for your first ticket. Start one with `/ticketwright:ticket <ID>`, using a ticket from your tracker (for example `TEST-14`).
+      <!-- ticketwright:user-facing:end -->
+      When something the first ticket needs is not working yet (a tool that did not connect, a
+      sign-in still pending), lead with "Almost ready for your first ticket: N things to finish
+      first", then those items, each with the exact command or step that finishes it, then the
+      same next command.
+   2. **Optional follow-ups**, under the heading "Optional, when you have a minute". One entry per
+      item that applies, each saying in plain words what it is, why it matters, and the command or
+      step that finishes it. Never an internal name (a round number, a policy key, a status word,
+      a file the person never opens) without saying what it means. These are the entries, in
+      these words:
+      - **The settings file, when step 5a was blocked.** Say the write was blocked by Claude Code
+        and nothing breaks without it, say in one line what each addition does, then give the file
+        path and the exact JSON, as one fenced block holding the WHOLE file setup meant to write
+        (the merged result, so pasting it replaces the file cleanly):
+        <!-- ticketwright:user-facing:begin -->
+        Claude Code blocked me from changing its own settings file, which it does in Auto mode. Nothing breaks without it. Adding it gives you:
+        - Fewer approval prompts: read-only commands (like `git status` and your tools' listing commands) run without asking you each time.
+        - Automatic updates: everyone on this repo gets new Ticketwright releases when they come out.
+        - A status line: the bottom of Claude Code shows your ticket prefix, your branch and your tools.
+        To add it, open `.claude/settings.json` in this repo and replace everything in it with the text below.
+        <!-- ticketwright:user-facing:end -->
+        When the `.claude/statusline.sh` copy was refused too, add one line: run
+        `cp "$(bash bin/tw --kit)/.claude/statusline.sh" .claude/statusline.sh` in a terminal at
+        the repo root, so the status line has its script.
+      - **Skipped domain and standards** (round 5):
+        <!-- ticketwright:user-facing:begin -->
+        You skipped describing your team's domain and standards, so the rules file uses a generic description ("data analysis"). Run `/ticketwright:setup role` to add them; it takes about two minutes.
+        <!-- ticketwright:user-facing:end -->
+      - **Skipped house rules** (round 6): "You kept the default house rules: which database
+        changes ask you first, when results open for your sign-off, and whether shipping merges the
+        pull request. Run `/ticketwright:setup policies` to choose your own."
+      - **Skipped review apps:** "You didn't pick which apps open your results for review, so
+        Ticketwright will print file paths instead. Run `/ticketwright:setup viewer` to choose."
+      - **A key left for later (`# TODO`).** Say what the value is and when a team needs it before
+        naming it, then the step that sets it. The sensitive-data question (interview question 7a)
+        is always asked, so the report never asks the person whether they have personal data:
+        when `project.sensitive_data.status` is `none` or `unsure` it raises no PII follow-up at
+        all. Only when the answer was "Yes" and the approved role was left for later:
+        <!-- ticketwright:user-facing:begin -->
+        You said your data includes personal information, but the role approved for reading it isn't set yet. Queries switch to that role before they run. To set it, edit the `pii_role:` line in `.claude/config/stack.yaml`, or run `/ticketwright:setup tool warehouse`.
+        <!-- ticketwright:user-facing:end -->
+        A repo configured before the question existed (no `sensitive_data:` at all) gets one
+        entry instead: "Setup hasn't asked whether your data includes personal information. Run
+        `/ticketwright:setup tool warehouse` to answer it."
+      - **Connector permissions setup can't read** (any tool step 7 recorded as not checkable):
+        <!-- ticketwright:user-facing:begin -->
+        Setup can't see a connector's permission grant from inside a session. To check what your Slack or Jira connector is allowed to do, open the connector in the Claude app.
+        <!-- ticketwright:user-facing:end -->
+        Name the real tools for this repo. When a probe found more access than the house rules
+        expect, say what it found and where that permission is changed, in one line.
+   3. **Good to know**, one line each, only when they apply:
+      - **Email, when round 4 set it up:** email goes out as **drafts only**, from the sending
+        address chosen in round 4, to whoever is chosen for each result when the work is shipped;
+        nothing sends until the person says send. A repo still carrying an older commented
+        `seams.chat.targets.email` block (configured but not yet activated) gets interview.md's
+        offer to activate it as a per-ticket target; the standing-destination alternative is
+        `stack.example.multi-audience.yaml`.
+      - **`project.assignee_dir`, in one line: what the key is for, not a warning.** It is the
+        last-resort owner folder under `tickets/` for a repo with no `people/` roster. Once a roster
+        exists, the owner of new work is whoever `whoami` resolves, and a person it does not
+        recognize is a stop (`/setup --teammate`) rather than a fall-back to this key. Say that, and
+        never describe it as something setup is refusing to touch.
+      - **Obsidian, never a question.** Detected: "this repo already opens as an Obsidian vault;
+        the ticket graph is in `tickets/graph/` and `tickets/objects/`." Not detected: the graph
+        files still get written; print the guide as its full GitHub URL,
+        <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/obsidian.md>, never as a bare
+        `docs/obsidian.md` path, because `docs/` does not ship in the PyPI package.
+      - **Personal data, when question 7a was "Yes":** results that hold it go in a
+        `*.private.csv` file or a `private/` folder so git skips them, and messages carry a summary
+        and a link rather than the data.
+      - **A new teammate** starts with `/ticketwright:setup --teammate` in their own clone.
+   4. **What was set up**, last and short: the tools chosen for each job in the person's words, the
+      files written, and which check was which ("the install check confirmed Ticketwright's own
+      files are all there; the tool check confirmed your tools answer"). Never the words "seam",
+      "adapter", "draft check" or "connector id"; say "tool", "the tool's setup notes", "the
+      settings check before writing" and "the connector's name in Claude Code".
+   Deferring must stay trackable: every skipped round (`/setup role` for round 5, `/setup policies`
+   for round 6, `/setup viewer` for the review apps) and every `# TODO` key appears in step 2's
+   list, so "took defaults" is never indistinguishable from "chose" (this list is the punch list
+   the interview's skip rule promises).
 9. **Offer to commit the scaffold, even when some items are still to finish** (a pending login or a
    tracker project someone still has to create is not a reason to leave the scaffold uncommitted). What setup just wrote (`.claude/config/stack.yaml`, `AGENTS.md`,
    `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, `documentation/AI_LAYER_INDEX.md`, the seeded `tickets/`
@@ -583,9 +663,10 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    through it, so a clone without those two files gives the next teammate "No such file or directory"
    on their first command; if it isn't committed, a later
    ticket PR references rules/adapters absent from the repo's history. Offer a commit (e.g.
-   `chore: initialize ticketwright workspace`). First flag that `stack.yaml` may hold internal
-   identifiers (tracker site, warehouse project/dataset) — config, not secrets, but worth a glance
-   before committing to a public repo. On a remote created empty (no default branch yet), this
+   `chore: initialize ticketwright workspace`). First say, in plain words, what a
+   commit shares: `stack.yaml` names things like your tracker's site address, the mailbox results are
+   drafted from, and your warehouse project. None of it is a password, but on a public remote anyone
+   can read it, so glance at it before pushing there. On a remote created empty (no default branch yet), this
    first push seeds `main` directly — there is nothing to open a PR against — and the PR flow
    starts with the next change; say so rather than colliding with a never-push-to-main rule.
    **When this session runs in a linked worktree** (`kit_paths.py --json` reports

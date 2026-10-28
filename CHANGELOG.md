@@ -6,6 +6,53 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **`/ship` asks where the ticket ends up: Done, or in review.** Shipping often means sharing the
+  work for stakeholder feedback, not finishing it. `/ship` reads the tracker's own moves
+  (`transition_plan.py --post-ship`) and offers Done, the tracker's in-progress statuses (such as
+  `In Review` or `Awaiting Feedback`, whatever the board has), or an `In review` kept in
+  Ticketwright only when the tracker has no such status, in which case the tracker stays where it
+  is and `/ship` says so. Teams can set the default with `project.post_ship_status` (`done`,
+  `review` or `ask`) and name their review status with `project.review_status`. Running `/ticket`
+  on an in-review ticket picks it up for revisions, and the next `/ship` can move it to Done.
+
+||||||| 108bdc4
+
+### Changed
+- **`/setup` ends in a way a first-time installer can follow.** The closing report now opens with
+  "You're ready for your first ticket" and the one command that starts it. Optional follow-ups
+  come after, each saying what it is, why it matters and the command that finishes it, in plain
+  words: no round numbers, status words or internal file names. A skipped domain step says to run
+  `/setup role`, and a connector whose permissions setup can't read says to open the
+  connector in the Claude app.
+- **Setup always asks whether your data includes personal or sensitive information.** A required
+  question in the warehouse round, never skippable. On "Yes" it asks which role is approved for
+  reading it (written to `pii_role` where the warehouse uses one), optionally which schemas or
+  tables hold it, and states the handling defaults: such results go in `*.private.csv` or a
+  `private/` folder so git skips them, and stay out of chat and email drafts (a rule, not a check).
+  On "No" or "Not sure" it records the answer and the closing report never raises it. The answer
+  is a new `project.sensitive_data` key (`status`, optional `locations`), documented in
+  `stack.schema.md`.
+- **Writing `.claude/settings.json` is its own announced step.** Claude Code's Auto mode blocks a
+  session from writing its own project's settings file, so every Auto-mode installer hit this
+  without warning. Setup now says what the file does before the write, never retries or works
+  around a block, and when blocked prints the file path, one line on what each addition does, and
+  the whole file to paste. Nothing breaks without it.
+- **The `AGENTS.md` that `/setup` writes is about a quarter of its old length.** It used to carry
+  plugin internals that every repo gets identically: the 17-step install checklist, the
+  per-runtime enforcement table, the Bash vs MCP permission posture table, the config-tier rules
+  and the full text of the 11 policies. A demo repo's copy ran to 422 lines. It now holds what is
+  specific to the repo (its stack, the plan, build, check and ship flow, the policies as one short
+  list, where tickets live) plus a short section on per-person settings in git-ignored
+  `*.local.yaml` files and `/ticketwright:setup --teammate` for a new teammate. It also keeps, as
+  short rules, what agents other than Claude Code depend on, since they load only this file: run the
+  session banners and the index refresh by hand, and follow the DB-write, raw-transcript and
+  review-before-push rules where no hook is wired. The internals moved
+  to a new kit file, `templates/agent-reference.md`, which the rendered file points at; the
+  install checklist now lives only in `docs/getting-started.md` and the plugin doctor. Runtime
+  emitters read the enforcement and posture tables from the new file. An existing repo keeps its
+  long `AGENTS.md` until `/setup` re-renders it.
+
 ### Fixed
 - **The ticket index shows the status `/ship` leaves the ticket in.** `/ship` committed the index
   before it moved the tracker ticket to Done, so the merged index kept the old status (or the
@@ -18,16 +65,6 @@ All notable changes to this project are documented here. Format loosely follows
   so the README, `INDEX.md`, the graph note and `index_data.json` agree after a ship. New
   `ingest_index_records.py` options: `--planned`, `--withdraw-planned`, `--confirm-planned`,
   `--set-readme`, `--in-review`.
-
-### Added
-- **`/ship` asks where the ticket ends up: Done, or in review.** Shipping often means sharing the
-  work for stakeholder feedback, not finishing it. `/ship` reads the tracker's own moves
-  (`transition_plan.py --post-ship`) and offers Done, the tracker's in-progress statuses (such as
-  `In Review` or `Awaiting Feedback`, whatever the board has), or an `In review` kept in
-  Ticketwright only when the tracker has no such status, in which case the tracker stays where it
-  is and `/ship` says so. Teams can set the default with `project.post_ship_status` (`done`,
-  `review` or `ask`) and name their review status with `project.review_status`. Running `/ticket`
-  on an in-review ticket picks it up for revisions, and the next `/ship` can move it to Done.
 
 ## [4.7.2] - 2026-10-27
 

@@ -773,7 +773,7 @@ probe):
    The fence is linted against the SQL mutation denylist; explanatory prose around it may name
    write-class grants freely.
 
-**NATIVE (tool-side) needs a comparison rule.** The rendered AGENTS.md posture table may claim
+**NATIVE (tool-side) needs a comparison rule.** The posture table in the kit's agent reference (`templates/agent-reference.md`) may claim
 NATIVE for a policy only where the probe is a genuine read-only privilege *introspection* AND the
 adapter states the comparison rule that turns a probe result into `matches` / `exceeds-policy` /
 `unverified` (today: the warehouse adapters). Seams whose grant sets cannot be introspected from

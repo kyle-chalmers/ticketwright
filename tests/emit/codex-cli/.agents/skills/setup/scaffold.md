@@ -85,7 +85,11 @@ re-renders `AGENTS.md` when `domain`/`role` change but must **not** re-render th
 `{{domain}}` value is a snapshot at setup time, and re-rendering would clobber human edits.
 
 ## Hooks + settings (`.claude/settings.json`)
-Render `<KIT>/.claude/settings.json.tmpl` → `.claude/settings.json`.
+Render `<KIT>/.claude/settings.json.tmpl` → `.claude/settings.json`. This write is its own announced
+step (SKILL.md step 5a): Claude Code's Auto mode blocks a session writing its own project's
+settings file as self-modification. Build the full merged result described below either way. If the
+write is blocked, that result is what the closing report prints for the person to paste, so it
+must be the WHOLE file (the existing keys plus every addition), never a fragment to merge by hand.
 **The `hooks` block is install-mode-dependent:**
 - **Plugin install** (the kit lives outside the project, under the plugin cache): `.claude-plugin/plugin.json` already wires the
   kit's hooks from the plugin dir — **OMIT the `hooks` block** here, or they double-fire (double
@@ -157,7 +161,8 @@ which pre-approves every write that CLI can make, including the non-SQL ones the
 hook never sees. **Statusline:** the template's `statusLine.command` is the
 project-relative `.claude/statusline.sh`, so on a plugin install **copy
 `<KIT>/.claude/statusline.sh` → `.claude/statusline.sh`** so it resolves (on a
-vendored install it's already there).
+vendored install it's already there). That copy is a write under `.claude/` too; if it is refused,
+the closing report gives the person the one `cp` command to run (SKILL.md step 8).
 
 ## Folders + `.gitignore`
 Create `tickets/{assignee_dir}/`, `documentation/`, `resources/` (and `ci/` if wanted). No repo-root
