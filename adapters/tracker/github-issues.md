@@ -36,6 +36,20 @@ gh issue create --repo {repo} --title "<summary>" --body "<markdown>" \
 ```
 Returns the new issue URL (number is the id). Epic → `--milestone` or a parent tracking issue.
 
+## verb: assign_ticket
+**In:** issue number, `assignee`. **Out:** `{ok, mode: "add"}`: GitHub allows several assignees,
+so this adds the person and leaves whoever is on the issue now. Called only after the person said
+yes to `/ticket`'s offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as their GitHub **login**.
+Unset: the account `gh` is signed in as, read as its real login (`gh api user --jq .login`; give the
+check that login, never `@me`, which `--add-assignee` accepts but no fetched assignee ever is), and
+the caller says it used that account.
+```bash
+gh issue edit <number> --repo {repo} --add-assignee "<login, or @me>"
+```
+GitHub only accepts people with access to the repo; a refusal is reported in one line with `gh`'s
+reason and is not retried. Nobody is removed: there is no `--remove-assignee` here.
+
 ## verb: transition
 ```bash
 gh issue close <number> --repo {repo}                       # map terminal_status → closed

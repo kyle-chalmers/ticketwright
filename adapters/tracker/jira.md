@@ -110,6 +110,32 @@ through the connector's read runner). No match: create unassigned and say so, ne
 account. A rejected create names the field at fault and its allowed values: fix that one field
 and retry once, and never create a second issue when the first response already carries a key.
 
+## verb: assign_ticket
+**In:** `id`, `assignee`. **Out:** `{ok, mode: "replace"}`: Jira has one assignee, so this replaces
+whoever holds the ticket now. Called only after the person said yes to `/ticket`'s offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as their Atlassian
+**accountId** (preferred: it is what the connector takes) or their Atlassian **email** (what acli
+takes). Unset: the account signed in here, as a real id: the connector's current-user call returns
+its accountId (`atlassianUserInfo` when checked); on acli, the email `acli jira auth status` shows.
+Give the check that value, never `@me` (no fetched assignee is ever `@me`, so every ticket would look
+like someone else's); `@me` is fine in the acli write itself. The caller says it used that account.
+**An email handle on the connector path:** the fetch usually shows no emails (Atlassian hides them),
+so look the email up to its accountId first (the assignable-users lookup below) and pass that as
+`--handle-id`, so a ticket already on the person is recognized and the write takes the accountId.
+```bash
+acli jira workitem assign --key "<id>" --assignee "<email, or @me>" --yes
+```
+acli takes the email, not the accountId. Without `--yes` the CLI can wait on a confirmation prompt.
+**Connector path:** one edit of the assignee field, by accountId.
+```
+mcp__{mcp}__editJiraIssue(cloudId=<the {site} cloudId>, issueIdOrKey=<id>, fields={"assignee": {"accountId": "<accountId>"}})
+```
+A `tracker_handle` written as an email: look up its accountId with the connector's assignable-users
+operation for this issue's project (`listJiraIssueAssignableUsers` when checked, through the
+connector's read runner) and use the one exact match; no match or several, say so and assign
+nothing, never a near match. A rejected edit (the person cannot be assigned in this project, or the
+grant is read-only) is reported in one line with Jira's reason and is not retried.
+
 ## verb: transition
 ```bash
 acli jira workitem transition --key "<id>" --status "<status>" --yes
@@ -373,6 +399,32 @@ assignable-users operation for this project (`listJiraIssueAssignableUsers` when
 through the connector's read runner). No match: create unassigned and say so, never guess an
 account. A rejected create names the field at fault and its allowed values: fix that one field
 and retry once, and never create a second issue when the first response already carries a key.
+
+### verb: assign_ticket
+**In:** `id`, `assignee`. **Out:** `{ok, mode: "replace"}`: Jira has one assignee, so this replaces
+whoever holds the ticket now. Called only after the person said yes to `/ticket`'s offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as their Atlassian
+**accountId** (preferred: it is what the connector takes) or their Atlassian **email** (what acli
+takes). Unset: the account signed in here, as a real id: the connector's current-user call returns
+its accountId (`atlassianUserInfo` when checked); on acli, the email `acli jira auth status` shows.
+Give the check that value, never `@me` (no fetched assignee is ever `@me`, so every ticket would look
+like someone else's); `@me` is fine in the acli write itself. The caller says it used that account.
+**An email handle on the connector path:** the fetch usually shows no emails (Atlassian hides them),
+so look the email up to its accountId first (the assignable-users lookup below) and pass that as
+`--handle-id`, so a ticket already on the person is recognized and the write takes the accountId.
+```bash
+acli jira workitem assign --key "<id>" --assignee "<email, or @me>" --yes
+```
+acli takes the email, not the accountId. Without `--yes` the CLI can wait on a confirmation prompt.
+**Connector path:** one edit of the assignee field, by accountId.
+```
+mcp__codex_apps__atlassian_editjiraissue(cloudId=<the {site} cloudId>, issueIdOrKey=<id>, fields={"assignee": {"accountId": "<accountId>"}})
+```
+A `tracker_handle` written as an email: look up its accountId with the connector's assignable-users
+operation for this issue's project (`listJiraIssueAssignableUsers` when checked, through the
+connector's read runner) and use the one exact match; no match or several, say so and assign
+nothing, never a near match. A rejected edit (the person cannot be assigned in this project, or the
+grant is read-only) is reported in one line with Jira's reason and is not retried.
 
 ### verb: transition
 ```bash

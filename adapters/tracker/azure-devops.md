@@ -40,6 +40,19 @@ az boards work-item relation add --id <new-id> --relation-type parent --target-i
 ```
 Returns the new integer id + `_links.html.href` (the URL).
 
+## verb: assign_ticket
+**In:** work-item id, `assignee`. **Out:** `{ok, mode: "replace"}`: a work item has one Assigned
+To, so this replaces whoever holds it now. Called only after the person said yes to `/ticket`'s
+offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as the **email** (user
+principal name) Azure DevOps knows them by. Unset: the account `az` is signed in as
+(`az account show --query user.name --output tsv`), and the caller says it used that account.
+```bash
+az boards work-item update --id <id> --assigned-to "<email>" --output json
+```
+The response's `fields."System.AssignedTo".uniqueName` is the account that landed. A person who is
+not a member of the project is refused; report that in one line and do not retry.
+
 ## verb: transition
 ```bash
 az boards work-item update --id <id> --state "<State>"      # e.g. {done_state} for terminal_status

@@ -80,6 +80,14 @@ vars from `fetch_ticket` first so nothing is lost.
 
 **Returns:** the id (the folder name) and the folder path in place of a URL.
 
+## verb: assign_ticket
+**Unsupported: the folder is the assignee.** A local ticket lives at `tickets/<owner>/<id>/`, and
+that folder is who owns it everywhere the kit looks (the index, the graph, `/ship`). Writing a
+different name into the README's Assignee bullet would make the README disagree with the folder,
+and moving the folder is a rename of the ticket. Return `unsupported` with that reason; `/ticket`
+skips the offer without a question. Working on someone else's local ticket is still fine: `/ticket`
+says so out loud when it resumes one.
+
 ## verb: transition
 ```bash
 python3 - "$dir/README.md" "<new-status>" <<'PY'

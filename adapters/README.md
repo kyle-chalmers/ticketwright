@@ -36,6 +36,7 @@ verb in that seam's contract. A verb section gives the command(s), inputs, the e
 | `fetch_ticket` | `id` | title, description, status, type, assignee, links, attachments list; `reporter` and `watchers` where the tracker exposes them, else "not available" (people for `/ship`'s audience suggestions) |
 | `create_ticket` | type, summary, description, assignee, parent/epic | new `id` + URL |
 | `transition` | `id`, `status` | ok/fail |
+| `assign_ticket` | `id`, `assignee` (the person's tracker account: `tracker_handle`, else the signed-in account) | `{ok, mode}` (`mode` is `replace` or `add`) — or `unsupported` / `unavailable` + reason |
 | `list_transitions` | `id` | `{current, transitions: [{to, via, category, name?}], free_form}`: the statuses this ticket can move to from where it is now — or `unsupported` / `unavailable` + reason |
 | `comment` | `id`, body, optional smart-link cards | ok/fail (rendered, not plain text) |
 | `search` | query (JQL/equivalent), limit — or `ids` | list of `{id, summary, status}` |
@@ -66,6 +67,25 @@ statuses can differ; each adapter's `transition` section says which of the two i
 has one that this transport cannot list (an `acli`-only Jira install: the CLI has no listing
 command). Both are said to the person, and the plan then names `project.terminal_status` with "not
 checked against the tracker" beside it.
+
+**`assign_ticket` writes one field, and only after the person says yes.** `/ticket` offers it
+when the ticket it fetched is unassigned or assigned to someone else, so the person working a ticket
+can make the tracker say so. `bin/assignee_check.py` makes that call deterministically from
+`fetch_ticket`'s assignee and the person's own config; nothing calls `assign_ticket` without the
+person's answer, and nothing calls it to take a ticket off someone without asking. What to assign
+comes from `tracker_handle` in the person's `people/<id>.yaml`, written in the form each adapter's
+section names (an accountId or email, a login, a gid). When that key is unset, the section names how
+to read the account signed in to the tracker instead, as a real id (never a placeholder like `me`,
+which no fetched assignee could match), and the caller says which one it used. When the handle's
+form is not one the fetch shows (an email on a tracker that hides emails), the section says how to
+look it up to the tracker's id, which the caller passes to the check as `--handle-id`: the
+signed-in account can belong to someone else (a shared demo login, a teammate's machine), which is
+why the person's own key wins. `mode` says what the write does to whoever holds the ticket now:
+`replace` on a tracker with one assignee (the question then names who is replaced), `add` on one
+that allows several (they stay on it). `unsupported` means the tool has no assignee to write (the
+`local` adapter's folder owner, which a rename would move) and the caller skips the question
+silently; `unavailable` means it has one this transport cannot write (a read-only grant), which gets
+one line before the caller moves on. The write is read back by the next `fetch_ticket`, not assumed.
 
 **`search` by `ids`** is how the ticket index reads current statuses (`/refresh index`): given a
 list of ticket ids instead of a query, return exactly those tickets' `{id, summary, status}`, in one

@@ -58,6 +58,20 @@ create-issue(team={team_id}, title=<summary>, description=<markdown>,
 ```
 Linear auto-mints the identifier from `{team_id}` (your `key_prefix`). Epic → set `project` or `parentId`.
 
+## verb: assign_ticket
+**In:** issue id, `assignee`. **Out:** `{ok, mode: "replace"}`: a Linear issue has one assignee, so
+this replaces whoever holds it now. Called only after the person said yes to `/ticket`'s offer.
+**Which account:** `tracker_handle` in the person's `people/<id>.yaml`, as their Linear user **id**
+or **email**, never a bare name: the server also matches names, and a name can pick a different
+person with the same one. Unset: the account the connector is signed in as, read as its real user id
+(the connector's read of the current user; give the check that id, never the word `me`), and the caller says it used that account. The fetched assignee carries both an
+id and an email, so either form of the handle is recognized.
+```
+mcp__{mcp}__update-issue(id=<id>, assignee=<userId, email, or "me">)
+```
+The response's `assignee` is the account that landed. A person outside the team is refused; report
+that in one line and do not retry.
+
 ## verb: transition
 ```
 update-issue(id=<id>, stateId={done_state_id})     # move to the workflow state for terminal_status

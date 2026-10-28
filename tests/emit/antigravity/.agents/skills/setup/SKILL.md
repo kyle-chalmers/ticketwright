@@ -215,7 +215,8 @@ whose commands all route through this launcher.
 
 ## Mode: `--teammate` — the per-person flow (person-scoped)
 Follow [teammate.md](teammate.md): resolve WHO this is (`whoami`, binding on a miss) → install
-checklist → per-tool auth walk-through → detect *their* machine and write their machine file →
+checklist → per-tool auth walk-through → their tracker account (what `/ticket` assigns on a yes) →
+detect *their* machine and write their machine file →
 verify, bound to the team's expected target (each MCP-transport slot also gets its permission
 posture probed, compared, and recorded) → read-the-map → guided first-ticket dry run. Requires
 an existing `stack.yaml`. Entered automatically when the repo is configured but the person is

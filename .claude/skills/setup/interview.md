@@ -235,6 +235,11 @@ check when a new one starts."
      `YYYY-MM-DD`; otherwise ask again. Never write a value that does not read as one.
    - Say what was set in one line of the plan, in the person's words: "Older tickets: searched in
      <where>, created before <date>" (or "with no date limit"), or "Older tickets: not searched".
+4b. **Your account in the tracker** (the person at the keyboard only). Once the tracker and its
+   project are set, ask which tracker account is theirs, exactly as [teammate.md](teammate.md)
+   § 2b does, and write it the same way (`whoami.py --bind <id> --tracker-handle "<account>"`).
+   `/ticket` uses it to offer to assign tickets to them. Placeholders for teammates never get one:
+   each person answers for themselves on their own first run.
 5. **`ticket_url_template`** — how every `tickets/INDEX.md` row links back to the tracker. A dead
    index link is the textbook silent-wrong failure: the catalog renders confidently either way.
    Derive it where the adapter's shape allows (an issues-style tracker needs the repo and the

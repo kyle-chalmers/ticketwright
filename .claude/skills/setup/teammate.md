@@ -84,6 +84,27 @@ signing in — tracker CLI/MCP auth, warehouse connection, chat MCP connect, doc
 meetings provider access, vcs
 auth login. Pure instructions — the person runs the auth themselves.
 
+## 2b · Your account in the tracker
+`/ticket` offers to assign a ticket to the person working it when the tracker shows it unassigned
+or on someone else, and it needs to know which tracker account is theirs: `tracker_handle` in their
+own `people/<id>.yaml`. Skip this step when the tracker adapter's `assign_ticket` section says
+`unsupported` (the `local` adapter), or when their file already has a `tracker_handle` in a form
+that section names (say which one, in one line, and move on). An older value in another form (a bare
+name such as `alice`, from before `/ticket` assigned tickets) is asked about again, showing it as the
+current value: a name can match a different person in some trackers, and it never matches a
+fetched assignee.
+
+Ask one question: "Which account is yours in <tracker>? `/ticket` assigns tickets to it when you
+say yes." Write the form the adapter's `assign_ticket` section names (an accountId or email, a
+login, a gid). When that section names a way to read the account signed in on this machine, read it
+now and offer it as the first option, marked recommended, with where it came from ("signed in to
+<tracker> here"); the person still picks, and typing another account is always possible (a shared
+or borrowed login is exactly when the signed-in account is someone else's). "Skip for now" is an
+option too: `/ticket` then falls back to the signed-in account and says so each time. Write the
+answer with their bind, which keeps the rest of their file as it is:
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py --bind <id> --tracker-handle "<account>"`.
+Never set another person's `tracker_handle`: like their identities, it is their own answer.
+
 ## 3 · Detect this person's machine — now, not at repo-setup time
 Repo-setup-time detection described the machine of whoever configured the repo. This person's
 machine is a different machine: detect it fresh, at this moment. For each tool slot whose adapter

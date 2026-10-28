@@ -16,7 +16,12 @@
 # Read the merged result with:  python3 bin/effective_config.py --root . --person alice --json
 
 display_name: Alice Smith
-tracker_handle: alice                  # how the tracker addresses this person (not always the id)
+# Your account in the tracker, in the form its adapter's `assign_ticket` section names: a Jira
+# accountId or email, a GitHub login, an Azure DevOps email, an Asana gid or email, a Linear id or
+# email, a monday user id or email. /ticket assigns tickets to this account when you say yes, and
+# reads it to tell whether a ticket is already yours. Unset: the account signed in to the tracker
+# on this machine is used instead, and /ticket says so (it can be someone else's on a shared login).
+tracker_handle: alice
 
 # Every local identity that should resolve to this person, ENUMERATED — never inferred. A fuzzy
 # name-to-folder guess is exactly the footgun the kit avoids: a wrong guess silently misfiles work
