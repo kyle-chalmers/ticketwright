@@ -47,16 +47,18 @@ The kit's one question rule, the same in every skill that asks:
   tool's own "Other", or "or tell me something else" in prose).
 - Whatever the person needs to answer is already in chat before the question, so a picker never
   hides it.
-- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
-  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
-  never one click.
+- A reply the kit asks for word for word (`ship unreviewed`, the `yes` before destructive SQL)
+  stays typed: an unreviewed ship or an irreversible write is never one click. The external-send
+  gate (`go ahead`) is asked like any other question once the full delivery plan is in chat: its
+  first option is "Go ahead", which delivers exactly the printed plan, and with no question tool
+  the person types `go ahead`.
 <!-- ticketwright:ask-rule:end -->
 
 In this skill the questions are the confirm gate above, step 1's owner choice and pending sign-off
-(asked through `/review` step ⑤.4), step 4(a)'s routing questions, step 6's merge question, and step 12's voice-profile proposal. Its
+(asked through `/review` step ⑤.4), step 4(a)'s routing questions, step 6's merge question, Phase B's go-ahead, and step 12's voice-profile proposal. Its
 probe is `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --json`,
-run the first time one of them comes up. `ship unreviewed` (step 1) and `go ahead` (Phase B) stay
-typed.
+run the first time one of them comes up. `ship unreviewed` (step 1) stays typed; `go ahead` (Phase B)
+is asked as a question, with the delivery plan already in chat.
 
 ## Phase A — Finalize (no separate approval when the user invoked `/ship`; internal to repo)
 1. **Resolve WHO first** — `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" whoami.py`
@@ -96,7 +98,7 @@ typed.
        ⑤.4 answers a question and asks again, asks what to change before recording a change
        request, and rewrites the record on an answer.
      - **A sign-off taken in this run, either way, cancels `--go` for this run.** Phase B still
-       prints the delivery plan and waits for a typed `go ahead`, because the sign-off line told
+       prints the delivery plan and asks its go-ahead question, because the sign-off line told
        the person it would. `--go` never answers the sign-off question itself.
      Then re-read the verdict with `review_verdict.py --json` and branch again: `approve` after a
      `ship` reply → continue to step 2 (in this run, ⑤.4's "route as Phase N says" means carrying on
@@ -292,10 +294,10 @@ typed.
    back for revisions after an earlier review ship asks the same way: pick Done this time when
    the feedback is in.
 
-## Phase B — External delivery (HARD HALT → requires `--go` or explicit "go ahead")
+## Phase B — External delivery (HARD HALT → requires `--go` or the person's go-ahead answer)
 Print the **resolved delivery plan**, then **stop and wait** for the user — the human authorizes
 THE PLAN, not the word "ship". `--go` does not count in a run where step 1 took the person's
-review sign-off: then only a typed `go ahead` does. A docstore link is a shareable URL, so a wrong destination is a
+review sign-off: then only the person's own answer to the go-ahead question does. A docstore link is a shareable URL, so a wrong destination is a
 disclosure, not an inconvenience. Resolve each posting seam with
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" effective_config.py --seam <name>`
 and render one line per seam from the RESOLVED values, never from memory of the config. For **chat
@@ -352,8 +354,15 @@ execute — nothing the steps don't do may appear in it:
    > 6. Move `<id>` to `<status>` once the pull request is merged.
    > 6. Leave `<id>` at `<current>` in the tracker. The ticket README and the index say In review, awaiting stakeholder feedback, from the commit in step 1.
    > The ticket README and index in the pull request already show `<id>` as `<status>`, so they are right as soon as the move lands. If the move does not happen, I tell you and offer to set them back.
-   > Reply `go ahead` to deliver exactly this plan, or tell me what to change.
    <!-- ticketwright:user-facing:end -->
+   Then ask the go-ahead as one question under the ask rule, never as a request to type a phrase:
+   "Deliver this plan?", with the options **"Go ahead"** (delivers exactly the printed plan),
+   **"Go ahead, and send the chat message"** only when the plan's Chat line says draft (delivers the
+   plan with that one change, which the option says), and **"Change something"** (the person says
+   what; reprint the plan after the change and ask again). No option is marked recommended. With
+   no question tool, end the plan with "Reply `go ahead` to deliver exactly this plan, or tell me
+   what to change." Any answer other than a go-ahead option or that phrase is a change request,
+   never approval.
    Print the "New folder" line only when the routed docstore JSON says `person_folder_new: true`,
    and the "Your folder" line only when it says `null` (a remote store that cannot be checked
    ahead of time); print neither when it is `false` or when per-person folders are off. Fill

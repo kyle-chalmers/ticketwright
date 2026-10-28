@@ -12217,7 +12217,7 @@ BD61c="$TMP/bd61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/build/SKILL.md >
 # (d) /ship: AWAITING-SIGNOFF is its own case. It hands the sign-off to /review step ⑤.4 (as /build
 # does), takes a same-conversation `/ship` right after /review's "Reply ship" line as that reply,
 # never offers `ship unreviewed` or writes SKIPPED over the reviewer's approval, and a sign-off taken
-# in the run cancels --go, so Phase B still waits for a typed go ahead (the Leslie gap, LABS-107).
+# in the run cancels --go, so Phase B still asks its go-ahead question (the Leslie gap, LABS-107).
 SH61c="$TMP/sh61c.flat"; tr -s '[:space:]' ' ' < .claude/skills/ship/SKILL.md > "$SH61c"
 m61d=""
 grep -q '`approve` · `request-changes` · `awaiting-signoff` ·' "$SH61c" || m61d="$m61d status-list"
@@ -12239,8 +12239,10 @@ grep -q 'ask it as one question, "Ship it" or "Not now"' "$SH61c" || m61d="$m61d
 grep -q 'no audience, destination or recipient option is ever marked recommended' "$SH61c" || m61d="$m61d routing-not-recommended"
 grep -q 'Ask the user which one this ticket is, with the configured values the CLI lists as the options' "$SH61c" || m61d="$m61d exit9-options"
 grep -q 'then ask which was meant, with the configured values as the options' "$SH61c" || m61d="$m61d exit8-options"
-grep -q '`ship unreviewed` (step 1) and `go ahead` (Phase B) stay typed' "$SH61c" || m61d="$m61d typed-tokens"
-[ -z "$m61d" ] && ok "/ship: AWAITING-SIGNOFF goes through /review ⑤.4, never ship unreviewed or SKIPPED, and a sign-off keeps the typed go ahead" \
+grep -q '`ship unreviewed` (step 1) stays typed; `go ahead` (Phase B) is asked as a question' "$SH61c" || m61d="$m61d typed-tokens"
+grep -q 'Then ask the go-ahead as one question under the ask rule, never as a request to type a phrase' "$SH61c" || m61d="$m61d go-ahead-question"
+grep -q 'Any answer other than a go-ahead option or that phrase is a change request, never approval' "$SH61c" || m61d="$m61d other-answers-not-approval"
+[ -z "$m61d" ] && ok "/ship: AWAITING-SIGNOFF goes through /review ⑤.4, never ship unreviewed or SKIPPED, and a sign-off still gets the go-ahead question" \
   || bad "/ship's pending sign-off case lost a condition" "$m61d"
 
 hdr "60 · the plugin directory listing: icon, listing links, disclosure, example prompts"

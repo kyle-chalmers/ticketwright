@@ -43,9 +43,11 @@ The kit's one question rule, the same in every skill that asks:
   tool's own "Other", or "or tell me something else" in prose).
 - Whatever the person needs to answer is already in chat before the question, so a picker never
   hides it.
-- A reply the kit asks for word for word (`ship unreviewed`, `go ahead`, the `yes` before
-  destructive SQL) stays typed: an unreviewed ship, an external send or an irreversible write is
-  never one click.
+- A reply the kit asks for word for word (`ship unreviewed`, the `yes` before destructive SQL)
+  stays typed: an unreviewed ship or an irreversible write is never one click. The external-send
+  gate (`go ahead`) is asked like any other question once the full delivery plan is in chat: its
+  first option is "Go ahead", which delivers exactly the printed plan, and with no question tool
+  the person types `go ahead`.
 <!-- ticketwright:ask-rule:end -->
 
 In this skill the questions are Phase 1's interview about the workflow.
