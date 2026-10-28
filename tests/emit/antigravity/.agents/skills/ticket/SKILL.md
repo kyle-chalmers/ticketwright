@@ -99,7 +99,8 @@ this before?", "which tickets touched VW_X?").
    (the step-0 resolved person for new or bare-id work — never the static `project.assignee_dir`,
    except through step 0's `assignee_dir_fallback` last resort). If the dir exists: read its
    `README.md`, list `final_deliverables/`, check `git log --oneline -10` + `git status`, and
-   summarize what's done and what remains, re-fetch the ticket for new comments, then **skip to
+   summarize what's done and what remains, re-fetch the ticket for new comments (and record the
+   status it returns the way step 6b does, so the index follows the tracker), then **skip to
    Phase 3**. Resuming another person's ticket (locator owner ≠ resolved person) is fine — say so
    out loud. **Check for the plan:** if `plan.md` exists in the ticket dir, read it and report where
    the work stands against its Approach and Deliverables. If it is missing and work remains, Phase 4
@@ -132,8 +133,18 @@ this before?", "which tickets touched VW_X?").
    **only if that README doesn't already exist**. Where the tracker *is* the ticket folder, step 3's
    `create_ticket` already wrote it, and re-rendering would replace a briefed ticket with empty
    template tokens.
-6b. **Refresh the catalog** so the new ticket shows up immediately — it won't otherwise, because the
-   PostToolUse index hook only fires on `Write`/`Edit` and scaffolding happens via Bash:
+6b. **Record the tracker's status, then refresh the catalog** so the new ticket shows up
+   immediately with the status the tracker gave it. Take the status `fetch_ticket` returned (fetch
+   the ticket now if it has not been; priming reuses that fetch) and record it as a tracker read:
+   ```bash
+   echo '{"statuses":[{"id":"<id>","owner":"<owner>","status":"<status exactly as fetch_ticket returned it>"}]}' \
+     | bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ingest_index_records.py --tracker-status -
+   ```
+   That way the index never falls back to `Unknown`, or to the README's Status line, while the
+   tracker answers. When the tracker was skipped (step 2's local-only choice), record nothing and
+   say in one line that the index shows the README's Status line until `/refresh index` reads the
+   tracker. Then render; the PostToolUse index hook only fires on `Write`/`Edit` and scaffolding
+   happens via Bash:
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py` (writes this
    project's `tickets/INDEX.md` + `OBJECTS.md`, and the graph layer when it's on; the new row shows
    `▱` until `/ship` curates it).

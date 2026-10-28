@@ -6,6 +6,17 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **The ticket index shows the status `/ship` leaves the ticket in.** `/ship` committed the index
+  before it moved the tracker ticket to Done, so the merged index kept the old status (or the
+  README's creation-time `To Do`) until someone ran `/refresh index` and shipped a second pull
+  request. `/ship` now records the status it is about to move to in the shipped commit, takes it
+  back when the merge is left to the team, and reads the tracker after the move to confirm it,
+  asking before it opens a fix-up pull request when the move did not land. `/ticket` now records
+  the tracker's status when it opens or resumes a ticket, so the index never shows `Unknown` while
+  the tracker answers. New `ingest_index_records.py` options: `--planned`, `--withdraw-planned`,
+  `--confirm-planned`.
+
 ## [4.7.2] - 2026-10-27
 
 Every skill now reads cleanly in the slash-command picker. Patch: only the text the picker shows

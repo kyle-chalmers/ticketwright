@@ -11821,14 +11821,14 @@ grep -qF 'connects through MCP' .claude/skills/setup/SKILL.md && grep -qF 'conne
 # --- Task 7: say-this templates in /ship, /review and the QC reviewer -------------------------------
 # Exact block count per file: a file that loses a block must fail, not hide behind the total.
 c59=""
-for want59 in ".claude/skills/ship/SKILL.md:6" ".claude/skills/review/SKILL.md:3" ".claude/agents/qc-reviewer.md:1"; do
+for want59 in ".claude/skills/ship/SKILL.md:8" ".claude/skills/review/SKILL.md:3" ".claude/agents/qc-reviewer.md:1"; do
   f59="${want59%%:*}"; w59="${want59##*:}"
   g59="$(grep -c 'ticketwright:user-facing:begin' "$f59")"; e59="$(grep -c 'ticketwright:user-facing:end' "$f59")"
   { [ "$g59" -eq "$w59" ] && [ "$e59" -eq "$w59" ]; } || c59="$c59 $f59(begin=$g59,end=$e59,want=$w59)"
 done
 [ -z "$c59" ] && python3 "$PL59" --marked .claude/skills/ship/SKILL.md --marked .claude/skills/review/SKILL.md \
      --marked .claude/agents/qc-reviewer.md > "$TMP/pl59-skills.out" 2>&1 \
-  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (6 + 3 + 1 blocks)" \
+  && ok "say-this templates in /ship, /review and the QC reviewer are marked and plain (8 + 3 + 1 blocks)" \
   || bad "a say-this template is unmarked, miscounted, or uses internal terms" "counts:$c59 $(head -5 "$TMP/pl59-skills.out")"
 
 # --- Regression: the database guard's bypass message once doubled its modal ("would could") --------
@@ -15534,6 +15534,107 @@ grep -q 'kit_paths.py --local-config connections.local.yaml' "$KIT/.claude/skill
 grep -q 'kit_paths.py --local-config viewer.local.yaml' "$KIT/.claude/skills/setup/viewer.md" || sw86="$sw86 viewer"
 [ -z "$sw86" ] && ok "/ticket reuses the session's worktree, and /setup writes machine files where every session reads them" \
   || bad "a skill is missing its worktree instructions" "$sw86"
+
+hdr "87 · after /ship the index shows the status the ticket ends on (ship then index)"
+# A shipped ticket showed `To Do` in the index after the tracker had it Done: /ship committed the
+# index before its move to Done, /ticket never recorded a status, and the index fell back to the
+# README's creation-time Status line. Now /ticket records the tracker read, /ship records the status
+# it is about to move to in the shipped commit (withdrawn when the merge is left to the team), and
+# reads the tracker back after the move. This walks that path on the engines the skills call.
+IX87="$TMP/ix87"; rm -rf "$IX87"; mkdir -p "$IX87/.claude/config" "$IX87/bin" "$IX87/tickets/dana/TEST-14_views"
+cp bin/build_ticket_index.py bin/ingest_index_records.py "$IX87/bin/"
+printf 'project:\n  key_prefix: TEST\n  graph_notes: false\n' > "$IX87/.claude/config/stack.yaml"
+printf '# TEST-14: views\n\n## Ticket Information\n- **Status:** To Do\n\nCounted the first-day views per video.\n' > "$IX87/tickets/dana/TEST-14_views/README.md"
+ix87() { (cd "$IX87" && TICKETWRIGHT_PROJECT="$IX87" python3 bin/"$@"); }
+row87() { grep "^| \[TEST-14\]" "$IX87/tickets/INDEX.md" | cut -d'|' -f4 | tr -d ' '; }
+st87() { printf '{"statuses":[{"id":"TEST-14","owner":"dana","status":"%s"}]}' "$1" > "$IX87/$2"; }
+# (a) /ticket step 6b: the tracker's status at creation is a read, so a curated record with no
+# status (the model writes `Unknown`) still shows the tracker's word, not `Unknown`.
+st87 "In Progress" open.json
+ix87 ingest_index_records.py --tracker-status "$IX87/open.json" --read-on 2026-10-27 >/dev/null 2>&1
+printf '[{"id":"TEST-14","owner":"dana","title":"views","summary":"Counted the first-day views."}]' > "$IX87/rec.json"
+ix87 ingest_index_records.py --from-json "$IX87/rec.json" >/dev/null 2>&1
+ix87 build_ticket_index.py >/dev/null 2>&1
+[ "$(row87)" = "InProgress" ] \
+  && ok "/ticket's tracker read shows in the index, ahead of the README line and a curated Unknown" \
+  || bad "the index did not show the tracker status recorded at creation" "got $(row87)"
+# (b) /ship step 5: the planned status rides the shipped commit and the merged index shows it.
+st87 Done plan.json
+ix87 ingest_index_records.py --tracker-status "$IX87/plan.json" --planned --read-on 2026-10-28 >"$TMP/ix87.err" 2>&1
+ix87 build_ticket_index.py >/dev/null 2>&1
+{ [ "$(row87)" = "Done" ] && grep -q '^Status set by /ship for 1 of 1 tickets' "$IX87/tickets/INDEX.md" \
+  && grep -q 'Recorded the planned status for 1 ticket folder' "$TMP/ix87.err" \
+  && python3 -c "import json,sys; t=json.load(open(sys.argv[1]))['tickets'][0]; sys.exit(0 if t['tracker_status']=='In Progress' and t['planned_status']=='Done' and t['planned_status_on']=='2026-10-28' else 1)" "$IX87/tickets/index_data.json"; } \
+  && ok "a planned status shows in the index, is named in the header, and is kept apart from the read" \
+  || bad "the planned status did not reach the index as a plan" "$(row87) $(cat "$TMP/ix87.err")"
+ix87 build_ticket_index.py --check >/dev/null 2>&1 \
+  && ok "the render is byte-stable with a planned status in the store" || bad "a planned status made the render unstable"
+ix87 build_ticket_index.py --stats >"$TMP/ix87.stats" 2>&1
+grep -q '^status from: planned 1$' "$TMP/ix87.stats" \
+  && ok "--stats counts a planned status as its own source" || bad "--stats does not name planned statuses" "$(grep 'status from' "$TMP/ix87.stats")"
+ix87 ingest_index_records.py --from-json "$IX87/rec.json" >/dev/null 2>&1
+ix87 build_ticket_index.py >/dev/null 2>&1
+[ "$(row87)" = "Done" ] && ok "a later curated upsert keeps the planned status" || bad "a curated upsert dropped the plan" "got $(row87)"
+CLAUDE_PROJECT_DIR="$IX87" TICKETWRIGHT_PROJECT="$IX87" python3 .claude/hooks/ticket_index_context.py >"$TMP/ix87.banner" 2>&1
+grep -q '1 tickets indexed (Done 1)' "$TMP/ix87.banner" \
+  && ok "the session banner counts the planned status" || bad "the session banner ignores the plan" "$(head -2 "$TMP/ix87.banner")"
+# (c) /ship step 10: the read-back writes nothing and says whether the tracker agrees.
+h87="$(cksum < "$IX87/tickets/index_data.json")"
+st87 done back.json
+ix87 ingest_index_records.py --confirm-planned "$IX87/back.json" >"$TMP/ix87.out" 2>"$TMP/ix87.err"; rc87=$?
+{ [ "$rc87" -eq 0 ] && grep -q '"result": "confirmed"' "$TMP/ix87.out" && [ "$(cksum < "$IX87/tickets/index_data.json")" = "$h87" ] \
+  && grep -q 'as the index says' "$TMP/ix87.err"; } \
+  && ok "a read-back that matches (case aside) confirms with exit 0 and writes nothing" \
+  || bad "the read-back did not confirm cleanly" "rc=$rc87 $(cat "$TMP/ix87.out" "$TMP/ix87.err")"
+st87 "In Progress" fail.json
+ix87 ingest_index_records.py --confirm-planned "$IX87/fail.json" >"$TMP/ix87.out" 2>"$TMP/ix87.err"; rc87=$?
+{ [ "$rc87" -eq 8 ] && grep -q '"result": "differs"' "$TMP/ix87.out" && [ "$(cksum < "$IX87/tickets/index_data.json")" = "$h87" ] \
+  && grep -q 'the index says Done but the tracker shows In Progress' "$TMP/ix87.err"; } \
+  && ok "a move that did not land is exit 8, said in plain words, and nothing is written" \
+  || bad "a failed move was not reported" "rc=$rc87 $(cat "$TMP/ix87.out" "$TMP/ix87.err")"
+printf '{"statuses":[]}' > "$IX87/none.json"
+ix87 ingest_index_records.py --confirm-planned "$IX87/none.json" >"$TMP/ix87.out" 2>"$TMP/ix87.err"; rc87=$?
+{ [ "$rc87" -eq 7 ] && grep -q '"result": "not_read"' "$TMP/ix87.out" && grep -q 'not confirmed' "$TMP/ix87.err"; } \
+  && ok "a tracker that cannot be read back is exit 7, not confirmed (fails visibly, never as success)" \
+  || bad "an unread tracker was reported as confirmed" "rc=$rc87 $(cat "$TMP/ix87.out")"
+# (d) Fix it now: a real read replaces the plan.
+ix87 ingest_index_records.py --tracker-status "$IX87/fail.json" --read-on 2026-10-28 >/dev/null 2>&1
+ix87 build_ticket_index.py >/dev/null 2>&1
+{ [ "$(row87)" = "InProgress" ] && ! grep -q 'planned_status' "$IX87/tickets/index_data.json" \
+  && ! grep -q '^Status set by /ship' "$IX87/tickets/INDEX.md"; } \
+  && ok "a read from the tracker replaces the plan" || bad "a tracker read left the plan in place" "got $(row87)"
+# (e) Leave it open: the plan is withdrawn on the branch and the last read shows again.
+ix87 ingest_index_records.py --tracker-status "$IX87/plan.json" --planned >/dev/null 2>&1
+ix87 ingest_index_records.py --withdraw-planned dana/TEST-14 >/dev/null 2>"$TMP/ix87.err"
+ix87 build_ticket_index.py >/dev/null 2>&1
+{ [ "$(row87)" = "InProgress" ] && ! grep -q 'planned_status' "$IX87/tickets/index_data.json" \
+  && grep -q 'Withdrew the planned status from 1 ticket folder' "$TMP/ix87.err"; } \
+  && ok "--withdraw-planned takes the plan back and the last tracker read shows again" \
+  || bad "withdrawing the plan did not restore the read" "got $(row87) $(cat "$TMP/ix87.err")"
+ix87 ingest_index_records.py --withdraw-planned TEST-14 >/dev/null 2>"$TMP/ix87.err"
+grep -q 'No planned status on file for: TEST-14' "$TMP/ix87.err" \
+  && ok "withdrawing a plan that is not there says so" || bad "a missing plan was withdrawn silently" "$(cat "$TMP/ix87.err")"
+ix87 ingest_index_records.py --from-json "$IX87/rec.json" --planned >/dev/null 2>&1 \
+  && bad "--planned was accepted without --tracker-status" || ok "--planned goes with --tracker-status only"
+# (f) The skills call these at the right steps, and every tracker adapter returns a status.
+sh87="$(tr '\n' ' ' < .claude/skills/ship/SKILL.md)"
+{ grep -q 'ingest_index_records.py --tracker-status - --planned' <<<"$sh87" \
+  && grep -q 'ingest_index_records.py --withdraw-planned <owner>/<id>' <<<"$sh87" \
+  && grep -q 'ingest_index_records.py --confirm-planned <that file>' <<<"$sh87" \
+  && grep -q 'Run its Phase 1b status read too' <<<"$sh87" \
+  && grep -q 'The ticket index in the pull request already shows `<id>` as `<status>`' <<<"$sh87" \
+  && ! grep -q 'keeps    the status read in step 3\|index row keeps the status read in step 3' <<<"$sh87"; } \
+  && ok "/ship plans the status in the shipped commit, withdraws it on Leave it open, and reads it back" \
+  || bad "/ship does not keep the index status in step with its move"
+tk87="$(tr '\n' ' ' < .claude/skills/ticket/SKILL.md)"
+grep -q 'Record the tracker.s status, then refresh the catalog.*ingest_index_records.py --tracker-status -' <<<"$tk87" \
+  && ok "/ticket records the tracker's status when it opens a ticket" || bad "/ticket does not record the tracker status"
+fs87=""
+for f in adapters/tracker/*.md; do
+  sed -n '/^## verb: fetch_ticket$/,/^## /p' "$f" | grep -q '\*\*Out:\*\*.*status' || fs87="$fs87 $(basename "$f")"
+done
+[ -z "$fs87" ] && ok "every tracker adapter's fetch_ticket returns a status for /ticket to record" \
+  || bad "tracker adapter(s) whose fetch_ticket names no status" "$fs87"
 
 # ── selftest footer: whole-suite checks ─────────────────────────────────────────────────────────
 # Kept after every section and outside them, because they need the WHOLE suite's count. A filtered

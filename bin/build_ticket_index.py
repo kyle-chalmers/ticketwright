@@ -53,12 +53,15 @@ EMOJI_STATUS = {"☑️": "Completed", "\U0001f6e0️": "In Progress"}  # ☑️
 SUMMARY_MAX = 180
 STATUS_ORDER = ["Deployed", "Completed", "In Review", "In Progress", "Blocked", "Unknown"]
 # A ticket's status has ONE source, the tracker, and the index shows the freshest copy of it it has:
-# a status read from the tracker by `/refresh index` (recorded as `tracker_status`), else a curated
+# the status /ship planned to move the ticket to after its merge (`planned_status`: it rides the
+# shipped pull request, so it lands exactly when the move is due, and is withdrawn when the move is
+# off), else a status read from the tracker by `/refresh index` or `/ticket` (recorded as
+# `tracker_status`; a later read replaces a plan), else a curated
 # status (only older kit versions wrote one; the model no longer does), else the README's
 # `- **Status:**` bullet (written from the tracker by /ticket, and by the `local` tracker's
 # transition), else a folder-name emoji, else Unknown. A curated `Unknown` counts as no status, so it
 # never hides the README bullet.
-STATUS_SOURCES = ("tracker", "curated", "readme", "folder", "none")
+STATUS_SOURCES = ("planned", "tracker", "curated", "readme", "folder", "none")
 README_STATUS = re.compile(r"^\s*[-*]\s+\*\*Status:\*\*\s*(.*?)\s*$")
 STATUS_MAX = 40
 _STATUS_BAD = set("|`<>{}[]\\")
@@ -821,8 +824,10 @@ def build_rows(root: Path) -> list[dict]:
             # The README's Status line changed after the tracker read (a `local` transition writes
             # it, /ticket rewrites it), so it is the newer copy of the tracker's status.
             tracked = None
+        planned = clean_status((entry or {}).get("planned_status"))
         status, status_source, status_read = "Unknown", "none", None
-        for cand, src in ((tracked, "tracker"),
+        for cand, src in ((planned, "planned"),
+                          (tracked, "tracker"),
                           (None if curated == "Unknown" else curated, "curated"),
                           (parsed.get("status"), "readme"),
                           (t["emoji_status"], "folder")):
@@ -831,6 +836,8 @@ def build_rows(root: Path) -> list[dict]:
                 break
         if status_source == "tracker":
             status_read = (entry or {}).get("tracker_status_read")
+        elif status_source == "planned":
+            status_read = (entry or {}).get("planned_status_on")
         if entry and entry.get("cross_refs"):
             cross_refs = entry["cross_refs"]
         elif readme:
@@ -937,6 +944,12 @@ def render(rows: list[dict]) -> str:
         out.append("")
         out.append(f"Status: read from the tracker for {len(from_tracker)} of {len(rows)} tickets{when}. "
                    "The rest show the curated summary's status or the ticket README's.")
+    from_plan = [r for r in rows if r.get("status_source") == "planned"]
+    if from_plan:
+        out.append("")
+        out.append(f"Status set by /ship for {len(from_plan)} of {len(rows)} tickets: the status it moved "
+                   "the ticket to when the pull request merged. The next /refresh index reads it back "
+                   "from the tracker.")
     out.append("")
     out.append("> **For the agent:** this is the catalog of all prior ticket work in this repo. Before "
                "starting a ticket, grep here for earlier work on the same object / stakeholder / report — "

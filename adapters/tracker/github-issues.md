@@ -21,7 +21,7 @@ Maps the `tracker` verb contract to GitHub Issues via `gh`.
 
 ## verb: fetch_ticket
 **In:** issue number, or `<owner>/<name>#<number>` for an issue in another repo (the form
-`search_history` returns for one). **Out:** title, body (markdown), state, assignees, labels, milestone.
+`search_history` returns for one). **Out:** title, body (markdown), state (the status: `state`, as `search` by ids reports it), assignees, labels, milestone.
 ```bash
 gh issue view <number> --repo {repo} --json number,title,body,state,assignees,author,labels,milestone,url
 ```

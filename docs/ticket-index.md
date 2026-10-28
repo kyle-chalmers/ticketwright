@@ -16,7 +16,7 @@ human-readable summaries.
 
 | File | Role | Authored by |
 |---|---|---|
-| `tickets/index_data.json` | Enrichment store: per-ticket `title`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time; and `tracker_status` + `tracker_status_read`, the status as last read from the tracker. | model (refresh skill / ship step); the tracker read (`ingest_index_records.py --tracker-status`) |
+| `tickets/index_data.json` | Enrichment store: per-ticket `title`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time; `tracker_status` + `tracker_status_read`, the status as last read from the tracker; and `planned_status` + `planned_status_on`, the status `/ship` moves the ticket to after its merge. | model (refresh skill / ship step); the tracker read (`ingest_index_records.py --tracker-status`, run by `/ticket`, `/refresh index` and `/ship`); `/ship`'s plan (`--tracker-status --planned`, `--withdraw-planned`) |
 | `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
@@ -31,8 +31,9 @@ human-readable summaries.
 pre-commit gate. So the model writes summaries into `index_data.json`; the renderer only *renders*
 (no model at render time) and stays byte-stable for the same on-disk state.
 
-**Status has one source: the tracker.** The Status column shows, in order: the status `/refresh
-index` last read from the tracker (through the tracker's `search` by ids), a curated status an
+**Status has one source: the tracker.** The Status column shows, in order: the status `/ship`
+planned to move the ticket to (see below), the status last read from the tracker (by `/ticket`
+from `fetch_ticket`, by `/refresh index` and `/ship` through the tracker's `search` by ids), a curated status an
 older kit version wrote, the ticket README's `- **Status:**` line (written from the tracker by
 `/ticket`), a folder-name emoji, else `Unknown`. No model writes a status any more: a model's guess
 is what showed a finished ticket as `In Review`, on a workflow that has no such status. When any
@@ -40,6 +41,30 @@ status came from the tracker, the index header says for how many tickets and the
 read, and `build_ticket_index.py --stats` prints `status from: tracker N · readme N · …`. When the
 tracker cannot be reached, the index keeps the last status it read. If the README's Status line changes
 after a read (the `local` tracker writes it on every transition), the README wins, being the newer copy.
+The README's Status line is otherwise the status when the folder was opened: nothing rewrites it, so
+once the tracker has been read for a ticket the index no longer falls back to it.
+
+**Why `/ship` plans a status.** `/ship` commits the index inside the pull request and moves the
+tracker ticket only after that pull request merges. A status read before the merge is out of date
+the moment it lands, and writing the new one afterwards would need a second pull request. So when
+the merge setting is on and the move was checked against the tracker's own transitions, `/ship`
+records the status it is about to move to as `planned_status`, in the shipped commit. The merged
+index then shows the status the ticket ends on, and the header says how many statuses were set
+this way. The plan is kept honest at both ends:
+
+- **The merge is left to the team**: `/ship` withdraws the plan on the open pull request
+  (`--withdraw-planned`, one more commit, no second pull request).
+- **After the move**: `/ship` reads the status back and runs `--confirm-planned`, which writes
+  nothing. Exit 0 means the tracker agrees, so there is nothing to land. Exit 8 means the move
+  failed or landed elsewhere: `/ship` says so and asks whether to open a small pull request that
+  records the status read back. Exit 7 means the tracker could not be read back, and the index is
+  marked as set by `/ship` until the next `/refresh index`.
+- **A blocked merge** keeps the plan on the pull request (a push could restart the checks it waits
+  on) and says so; re-running `/ship` after the block clears moves the ticket to match.
+- **The status was not checked** (the tracker's moves could not be read): no plan is recorded,
+  and the index keeps the last read until the next `/refresh index`.
+
+The next read from the tracker (`--tracker-status` without `--planned`) always replaces a plan.
 
 ## What counts as a ticket
 
