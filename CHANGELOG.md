@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.9.1] - 2026-10-28
+
+`/ship` asks its go-ahead as a question instead of asking you to type a phrase. Patch: same
+delivery plan, same gate, no breaking changes.
+
+### Changed
+- **`/ship` asks "Deliver this plan?" after printing the delivery plan.** The options are "Go
+  ahead" (delivers exactly the printed plan), "Go ahead, and send the chat message" (only when the
+  plan's chat line is a draft) and "Change something". No option is marked recommended, and any
+  other answer is a change request, never approval. Runtimes with no question tool still take the
+  typed `go ahead`. `ship unreviewed` and the `yes` before destructive SQL stay typed. Found in a
+  teammate run where the person had to type `go ahead` after already saying to send.
+
 ## [4.9.0] - 2026-10-28
 
 `/ticket` now offers to assign the ticket to you when the tracker shows it unassigned or on someone

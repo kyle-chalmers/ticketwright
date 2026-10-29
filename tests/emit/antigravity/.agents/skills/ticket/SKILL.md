@@ -3,7 +3,7 @@ name: ticket
 description: The front door. Open or resume a ticket, load its context and prior art, write the plan (and the spec when the plan calls for one), and wait for your approval before anything is built. Start every ticket here.
 ---
 
-<!-- emitted by ticketwright install v4.9.0 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
+<!-- emitted by ticketwright install v4.9.1 — do not hand-edit; re-run `ticketwright install --runtime antigravity` to update. -->
 
 # /ticket
 

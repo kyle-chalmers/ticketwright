@@ -1,7 +1,7 @@
 {
   "name": "ticketwright",
   "displayName": "Ticketwright",
-  "version": "4.9.0",
+  "version": "4.9.1",
   "description": "Ticket-driven analysis in Claude Code: prior work recalled, every result re-run and signed off, and nothing posted without your go-ahead.",
   "author": {
     "name": "Kyle Chalmers",
