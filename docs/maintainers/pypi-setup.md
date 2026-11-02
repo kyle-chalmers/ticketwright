@@ -91,7 +91,9 @@ git push origin "$commit:refs/heads/directory"
 
 It keeps the listed version (v4.9.1) and only removes files. Every release after it is committed by
 `publish.yml` on top. Until it is pushed, the `directory-branch` job fails with a message naming
-this step, and the listing stays where it was. Selftest section
+this step, and the listing stays where it was. Push it just before cutting the next release, not
+as a listing of its own: v4.9.1's `/setup` teammate path still runs the self-test unconditionally,
+so a bootstrapped v4.9.1 is not something to submit or leave listed. Selftest section
 60b builds the same tree from the working copy and checks it the way the directory does; CI's
 `plugin-directory` job runs `--profile directory --strict` on it.
 
@@ -108,10 +110,10 @@ Three rules follow from how the directory and Claude Code pick up a version:
   saved or submitted in the developer portal becomes the listing icon, and changing the file later
   does not change it. Settle the icon that `plugin.json` names (square PNG, 512 to 2048 px, under 2 MB)
   before that first save.
-- **The first submission waits for the bootstrap.** Until the bootstrap above is pushed,
-  `directory` still carries the held paths. Submitting right after it works, since it is a complete
-  listing at v4.9.1; cutting a release first also proves the Actions half. Submission is done by the
-  maintainer in the portal.
+- **The first submission waits for the bootstrap and then a release.** Until the bootstrap above
+  is pushed, `directory` still carries the held paths; until a release cut after the trim lands on
+  top of it, the listed `/setup` is v4.9.1's, which still runs the removed self-test. The release
+  also proves the Actions half. Submission is done by the maintainer in the portal.
 
 **The listing is Claude Code only.** Ticketwright ships its scripts in a top-level `bin/`, and
 claude.ai chat and Cowork refuse to install a plugin that has one
@@ -146,10 +148,12 @@ to the plugin.
 
 The maintainer does this from their own claude.ai account; no script or agent touches the portal.
 
-1. Push the one-time bootstrap (above) if `directory` still has `tests/`. Then, ideally, cut a
-   release (`bash bin/bump_version.sh X.Y.Z`, merge, push the `vX.Y.Z` tag) and wait for
-   `publish.yml`'s `directory-branch` job to go green. Confirm the newest commit on `directory`
-   starts `directory: vX.Y.Z`.
+1. Push the one-time bootstrap (above) if `directory` still has `tests/`. Then cut a release
+   (`bash bin/bump_version.sh X.Y.Z`, merge, push the `vX.Y.Z` tag) and wait for `publish.yml`'s
+   `directory-branch` job to go green. Confirm the newest commit on `directory` starts
+   `directory: vX.Y.Z` and that its `.claude/skills/setup/teammate.md` offers the self-test only on a
+   kit that has it. Both are required: the release is what lists a `/setup` that works without the
+   self-test.
 2. Open [claude.ai/directory/manage](https://claude.ai/directory/manage), choose **Submit new**,
    then **Plugin bundle**.
 3. **Source:** repository `kyle-chalmers/ticketwright`, plugin path the repository root, and the
