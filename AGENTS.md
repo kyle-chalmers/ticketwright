@@ -63,8 +63,10 @@ a single-plugin marketplace, and a root target resolves to `marketplace.json` in
 but still reads no skill or agent content: the validator reads content only in the default
 `skills/` and `agents/` folders, and `plugin.json` points into `.claude/` instead. A garbage
 `SKILL.md` passes both, exit 0. Point it at `.claude` to read the content; CI does all three, with a
-negative control (the `plugin-validate` job), and runs the directory profile on the committed tree
-(the `plugin-directory` job). Components are real files under `.claude/`, never root symlinks: the
+negative control (the `plugin-validate` job), and runs the directory profile
+(the `plugin-directory` job) on both the committed tree and the trimmed tree the listing serves
+(`.github/scripts/directory_tree.sh`, which publish.yml uses to build the `directory` branch;
+selftest section 60b). Components are real files under `.claude/`, never root symlinks: the
 plugin directory blocks a symlinked component. A new `.claude/agents/*.md` must also be listed
 under `agents` in `plugin.json`, because that key replaces the default scan and takes files only;
 selftest section 15 fails on an unlisted one. Locally, `bash bin/selftest.sh` is the gate that
@@ -252,7 +254,7 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
   changes; keep `CHANGELOG.md` current for anything user-facing.
 - The README is the plugin directory's listing text and the PyPI page, so it has a **900-word prose
   budget** (selftest §58; fences, image lines and comments don't count) and every image is an
-  absolute `raw.githubusercontent.com/.../main/docs/images/...` URL. Detail goes in `docs/`, indexed
+  absolute raw.githubusercontent.com URL into the repo's docs images folder on `main`. Detail goes in `docs/`, indexed
   by `docs/README.md`. Its `## Data and network` section must name everything the plugin runs, sends
   or fetches: the directory's security scan checks the plugin against it.
 - `scripts/readme_media/` is maintainer-only tooling for the logo, icon, diagrams, GIF and social

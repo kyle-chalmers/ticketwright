@@ -41,8 +41,13 @@ jobs:
   directory-branch:
     # The Claude plugin directory listing follows the `directory` branch, not `main`, so a plugin
     # update reaches directory users only as a tagged release (main carries unreleased commits at
-    # an unchanged version), and only after the same version is on PyPI. A plain push only
-    # fast-forwards: an older tag pushed by hand cannot move the branch back. docs/maintainers/pypi-setup.md.
+    # an unchanged version), and only after the same version is on PyPI. The branch carries the
+    # release tree minus dev-only paths (tests, media tooling, CI, the self-test), which the
+    # directory would otherwise hold for a reviewer on every version. directory_tree.sh builds that
+    # commit with the current branch head as its only parent, so the push stays a fast-forward and
+    # changes nothing under .github/ (which this token may not touch), and refuses a version that
+    # is not higher than the listing's. The first trimmed commit is a one-time maintainer push
+    # (`directory_tree.sh bootstrap`); until then this step fails loudly. pypi-setup.md, Part C.
     needs: build-and-publish
     runs-on: ubuntu-latest
     permissions:
@@ -52,11 +57,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fast-forward `directory` to the release tag
+      - name: Commit the trimmed release tree onto `directory`
         run: |
+          set -euo pipefail
           # A prerelease tag (v4.3.0rc1) still publishes to PyPI, but must not reach the listing.
           if ! printf '%s\n' "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::notice::$GITHUB_REF_NAME is not a final release tag, so directory stays put."
             exit 0
           fi
-          git push origin "refs/tags/${GITHUB_REF_NAME}^{commit}:refs/heads/directory"
+          export GIT_AUTHOR_NAME="github-actions[bot]" GIT_COMMITTER_NAME="github-actions[bot]"
+          export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          base=""
+          if git ls-remote --exit-code --heads origin directory >/dev/null; then
+            git fetch -q origin "refs/heads/directory:refs/remotes/origin/directory"
+            base="refs/remotes/origin/directory"
+          fi
+          # Run the script as the tag has it, so the trim list matches the release being listed.
+          git show "${GITHUB_REF_NAME}:.github/scripts/directory_tree.sh" >"$RUNNER_TEMP/directory_tree.sh"
+          commit="$(bash "$RUNNER_TEMP/directory_tree.sh" commit "$GITHUB_REF_NAME" $base)"
+          echo "directory -> $commit (from $GITHUB_REF_NAME)"
+          git push origin "${commit}:refs/heads/directory"

@@ -59,11 +59,43 @@ and uploads via `pypa/gh-action-pypi-publish`.
 
 The listing in Anthropic's plugin directory ([claude.ai/directory/manage](https://claude.ai/directory/manage))
 follows the **`directory` branch**, not `main`. After `publish.yml` puts a release on PyPI, its
-`directory-branch` job fast-forwards `directory` to the release tag. The directory then scans that
-commit and publishes it. Nothing to do by hand per release; if the job fails, the listing keeps
-serving the previous version. Only a final `vX.Y.Z` tag moves it: a prerelease tag such as
-`v4.3.0rc1` still publishes to PyPI but leaves the listing alone. `.git-sweep-keep` stops branch
-cleanup from deleting `directory`.
+`directory-branch` job runs `.github/scripts/directory_tree.sh commit <tag> <directory head>` and
+pushes the commit it prints. The directory then scans that commit and publishes it. Nothing to do
+by hand per release; if the job fails, the listing keeps serving the previous version. Only a final
+`vX.Y.Z` tag moves it: a prerelease tag such as `v4.3.0rc1` still publishes to PyPI but leaves the
+listing alone. `.git-sweep-keep` stops branch cleanup from deleting `directory`.
+
+**The listing serves a trimmed tree.** The commit holds the release tree but removes `tests/`, `scripts/`, `.github/` and `bin/selftest.sh`.
+Those are dev-only, and they are the only paths that trip the directory's reviewer holds: the
+self-test is over the 256 KiB per-file limit, a test fixture is a binary that is not an image, and
+the README media scripts name bundled images. Nothing a plugin install runs lives there; `/setup`
+offers the self-test only on a kit that has it (a clone, a vendored copy or a pip install, all of
+which keep the full tree). The commit's only parent is the previous `directory` head, so the push
+is a plain fast-forward, and its message names the tag and the tag's commit. The tag is not a
+parent on purpose: GitHub refuses a push from the Actions token whose new commits change anything
+under `.github/workflows/`, and against a parent that still has those files the trim reads as
+deleting them. The script refuses a tag whose `plugin.json` version disagrees with it, a version
+that is not higher than the one already on `directory` (so the listing never moves backward), and
+a `directory` head that still carries the dev-only paths.
+
+**One-time bootstrap.** For that last reason, the first trimmed commit cannot come from Actions:
+through v4.9.1, `directory` was a plain copy of each tag. A maintainer builds it from the current
+listing head and pushes it once, with their own credentials:
+
+```bash
+git fetch origin directory
+commit="$(bash .github/scripts/directory_tree.sh bootstrap origin/directory)"
+git log -1 --stat "$commit" | tail -3     # removes only the dev-only paths, nothing else
+git push origin "$commit:refs/heads/directory"
+```
+
+It keeps the listed version (v4.9.1) and only removes files. Every release after it is committed by
+`publish.yml` on top. Until it is pushed, the `directory-branch` job fails with a message naming
+this step, and the listing stays where it was. Push it just before cutting the next release, not
+as a listing of its own: v4.9.1's `/setup` teammate path still runs the self-test unconditionally,
+so a bootstrapped v4.9.1 is not something to submit or leave listed. Selftest section
+60b builds the same tree from the working copy and checks it the way the directory does; CI's
+`plugin-directory` job runs `--profile directory --strict` on it.
 
 Three rules follow from how the directory and Claude Code pick up a version:
 
@@ -76,12 +108,12 @@ Three rules follow from how the directory and Claude Code pick up a version:
   release's version (AGENTS.md, "Hard constraints").
 - **The icon locks at the first portal save.** Whatever icon the plugin has the first time it is
   saved or submitted in the developer portal becomes the listing icon, and changing the file later
-  does not change it. Settle `.claude-plugin/icon.png` (square PNG, 512 to 2048 px, under 2 MB)
+  does not change it. Settle the icon that `plugin.json` names (square PNG, 512 to 2048 px, under 2 MB)
   before that first save.
-- **The first submission waits for a release with the current layout.** Releases up to v4.2.0 load
-  their skills through root `skills`, `agents` and `commands` symlinks, which the directory blocks.
-  The first release cut after the move to `plugin.json` paths creates `directory`; submit then,
-  with the listing set to follow that branch. Submission is done by the maintainer in the portal.
+- **The first submission waits for the bootstrap and then a release.** Until the bootstrap above
+  is pushed, `directory` still carries the held paths; until a release cut after the trim lands on
+  top of it, the listed `/setup` is v4.9.1's, which still runs the removed self-test. The release
+  also proves the Actions half. Submission is done by the maintainer in the portal.
 
 **The listing is Claude Code only.** Ticketwright ships its scripts in a top-level `bin/`, and
 claude.ai chat and Cowork refuse to install a plugin that has one
@@ -99,14 +131,42 @@ judged:
 tmp="$(mktemp -d)" && git archive HEAD | tar -x -C "$tmp" && claude plugin validate --profile directory --strict "$tmp"
 ```
 
-That command covers a subset; the portal's **Validate** runs the full
+To check what the listing actually serves, build the trimmed tree instead:
+
+```bash
+tmp="$(mktemp -d)" && bash .github/scripts/directory_tree.sh tree HEAD "$tmp/tw" && claude plugin validate --profile directory --strict "$tmp/tw"
+```
+
+Either command covers a subset; the portal's **Validate** runs the full
 [pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist), and a
-security scan follows on each version. Three of its checks hold a version for a reviewer rather
-than block it, and all three apply here today: `bin/selftest.sh` is over the 256 KiB per-file limit,
-`tests/source_materials/fixtures/export.bin` is a binary fixture, and `scripts/readme_media/` names
-bundled image paths in its scripts and docs. The scan can raise the same holds on each new version;
-trimming those dev-only paths from the `directory` branch would clear them. Re-read the checklist
-before any structural change to the plugin.
+security scan follows on each version. The checklist's reviewer holds (a non-image file over
+256 KiB, a non-image binary, a script naming a bundled image, more than 512 files) are cleared by
+the trim and pinned by selftest section 60b. Re-read the checklist before any structural change
+to the plugin.
+
+### Submitting in the portal
+
+The maintainer does this from their own claude.ai account; no script or agent touches the portal.
+
+1. Push the one-time bootstrap (above) if `directory` still has `tests/`. Then cut a release
+   (`bash bin/bump_version.sh X.Y.Z`, merge, push the `vX.Y.Z` tag) and wait for `publish.yml`'s
+   `directory-branch` job to go green. Confirm the newest commit on `directory` starts
+   `directory: vX.Y.Z` and that its `.claude/skills/setup/teammate.md` offers the self-test only on a
+   kit that has it. Both are required: the release is what lists a `/setup` that works without the
+   self-test.
+2. Open [claude.ai/directory/manage](https://claude.ai/directory/manage), choose **Submit new**,
+   then **Plugin bundle**.
+3. **Source:** repository `kyle-chalmers/ticketwright`, plugin path the repository root, and the
+   branch the listing follows: `directory`. The repository is also a single-plugin marketplace; the
+   directory treats the root as the plugin, which is what we want.
+4. Select **Validate**. Fix anything marked **Blocking** on `main`, cut a release, then
+   **Re-validate**. A **Policy hold** can still be submitted, but should not appear: if one does,
+   section 60b missed a rule, so fix the check as well as the file.
+5. Check the listing fields the portal reads from `plugin.json` and the README (name
+   `ticketwright`, display name, description, icon, documentation, support and privacy links). The
+   icon locks at this first save.
+6. Submit. The security scan runs, then review. Follow the plugin's **Versions** tab in the portal;
+   later releases reach the listing through the `directory` branch with no portal step.
 
 ## What ships
 
