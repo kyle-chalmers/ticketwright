@@ -755,13 +755,13 @@ bash bin/render.sh templates/spec.md.tmpl >/dev/null 2>"$TMP/rz.err"; rc=$?
 hdr "6 · db_write_guard hook (PreToolUse policy enforcement)"
 
 mkstack high_risk
-expect allow "SELECT → allow (read-only fast-path)"        'snow sql -q "SELECT * FROM t LIMIT 5"'
+expect none  "SELECT → no decision (read-only; the hook never approves a call)" 'snow sql -q "SELECT * FROM t LIMIT 5"'
 expect ask   "inline UPDATE → ask"                          'snow sql -q "UPDATE t SET x=1"'
 expect none  "non-warehouse bash passes through"            'ls -la'
 echo "CREATE OR REPLACE TABLE foo AS SELECT 1;" > "$TMP/deploy.sql"
 expect ask   "-f deploy.sql (CREATE OR REPLACE) → ask"      "snow sql -f $TMP/deploy.sql"
 echo "SELECT count(*) FROM t;" > "$TMP/qc.sql"
-expect allow "-f qc.sql (SELECT only) → allow"              "snow sql -f $TMP/qc.sql"
+expect none  "-f qc.sql (SELECT only) → no decision"        "snow sql -f $TMP/qc.sql"
 echo "DELETE FROM t WHERE 1=1;" > "$TMP/wipe.sql"
 expect ask   "psql < wipe.sql (stdin redirect) → ask"       "psql mydb < $TMP/wipe.sql"
 # non-Bash tool → no decision
@@ -830,16 +830,20 @@ expect ask  "EXECUTE IMMEDIATE (dynamic SQL) → high-risk" 'snow sql -q "EXECUT
 expect ask  "unrecognized verb → high-risk (default-deny)" 'snow sql -q "VACUUM ANALYZE t"'
 
 # --- noise that should NOT prompt -------------------------------------------------
-expect allow "DROP inside a line comment is not a statement"  'snow sql -q "SELECT 1 -- DROP TABLE x"'
-expect allow "DROP inside a string literal is data"           "snow sql -q \"SELECT 'DROP TABLE x' AS s\""
-expect allow "WITH … SELECT is a read"                        'snow sql -q "WITH c AS (SELECT 1) SELECT * FROM c"'
+expect none  "DROP inside a line comment is not a statement"  'snow sql -q "SELECT 1 -- DROP TABLE x"'
+expect none  "DROP inside a string literal is data"           "snow sql -q \"SELECT 'DROP TABLE x' AS s\""
+expect none  "WITH … SELECT is a read"                        'snow sql -q "WITH c AS (SELECT 1) SELECT * FROM c"'
 expect ask   "WITH … DELETE is not"                           'snow sql -q "WITH c AS (SELECT 1) DELETE FROM t"'
 expect ask   "multi-statement reports the highest tier"       'snow sql -q "SELECT 1; DROP TABLE t"'
 # Seam-scoped cli lookup: the fixture's `vcs.cli: gh` must not become a warehouse CLI,
 # or `gh pr create` matches CREATE and prompts.
 expect none  "gh pr create is not a warehouse command"        'gh pr create --title x'
 
-# --- the allow fast-path stays narrow --------------------------------------------
+# --- no decision is ever an approval --------------------------------------------
+# The hook once auto-approved verifiably read-only SQL (an `allow` fast path). It no longer approves
+# anything (the plugin directory holds a hook that can), so these cases, which once had to stay off
+# that fast path, now pin that a read-only-looking command chained to anything else still gets no
+# decision at all.
 expect none "shell operator defeats the allow fast-path"      'snow sql -q "SELECT 1" && rm -rf /tmp/nope'
 expect none "command substitution defeats the fast-path"      'snow sql -q "SELECT $(whoami)"'
 expect none "unreadable -f file is never auto-allowed"        'snow sql -f /nonexistent/missing.sql'
@@ -12254,22 +12258,25 @@ python3 - <<'PY' > "$TMP/s60.out" 2>&1
 import json, os, re, struct
 bad = []
 m = json.load(open(".claude-plugin/plugin.json"))
-# (a) the icon: a square PNG of 512 to 2048 px, under 2 MB. It becomes the listing icon only once,
-#     at the first save in the developer portal, so a wrong one is hard to take back.
+# (a) the icon: a self-contained square SVG. The directory reads SVG as text; a PNG in the plugin is
+#     an image its scanner cannot read, and any script that could reach one holds the version for a
+#     reviewer. Plain shapes only: no text (fonts), embedded images, scripts, styles or links.
 icon = m.get("icon", "")
 path = icon[2:] if icon.startswith("./") else ""
 if not path or not os.path.isfile(path):
     bad.append("plugin.json icon is missing or not a ./ path: %r" % icon)
 else:
-    head = open(path, "rb").read(24)
-    if head[:8] != b"\x89PNG\r\n\x1a\n":
-        bad.append("the icon is not a PNG")
-    else:
-        w, h = struct.unpack(">II", head[16:24])
-        if w != h or not 512 <= w <= 2048:
-            bad.append("the icon is %dx%d; it must be square, 512 to 2048 px" % (w, h))
-    if os.path.getsize(path) >= 2 * 1024 * 1024:
-        bad.append("the icon is 2 MB or more")
+    svg = open(path, encoding="utf-8", errors="replace").read()
+    vb = re.search(r'<svg\b[^>]*\bviewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"', svg)
+    if not path.endswith(".svg") or not vb:
+        bad.append("the icon is not an SVG with a viewBox")
+    elif vb.group(1) != vb.group(2):
+        bad.append("the icon's viewBox is not square")
+    for tag in ("<text", "<image", "<script", "<style", "<foreignObject", "href="):
+        if tag in svg:
+            bad.append("the icon contains %s; keep it to plain shapes" % tag)
+    if os.path.getsize(path) >= 64 * 1024:
+        bad.append("the icon is 64 KB or more")
 # (b) listing links are https, and a link into this repo names a file that exists
 base = "https://github.com/kyle-chalmers/ticketwright/blob/main/"
 for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl"):
@@ -12317,15 +12324,19 @@ if "older tickets" not in open("PRIVACY.md", encoding="utf-8").read().lower():
 print(" | ".join(bad))
 PY
 [ -z "$(cat "$TMP/s60.out")" ] \
-  && ok "directory listing: square PNG icon, https listing links to real files, every hook in the table, disclosure, 3+ example prompts" \
+  && ok "directory listing: square SVG icon, https listing links to real files, every hook in the table, disclosure, 3+ example prompts" \
   || bad "the plugin directory listing drifted" "$(cat "$TMP/s60.out")"
 
 hdr "60b · the listing's release tree: dev-only files trimmed, nothing the directory holds for review"
 # The listing follows a `directory` branch that publish.yml builds with .github/scripts/directory_tree.sh:
-# the release tree minus tests, media tooling, CI and the self-test. Those are the only paths that trip
-# the directory's reviewer holds (a non-image file over 256 KiB, a binary that is not an image, a
-# script naming a bundled image). This builds the same tree from the working copy, with its git
-# objects in a throwaway store so the repo is not written, and checks it the way the directory would.
+# the release tree minus tests, media tooling, CI, the README images, maintainer docs and the
+# self-test. This builds the same tree from the working copy, with its git objects in a throwaway
+# store so the repo is not written, and checks it the way the directory would: its file rules (a
+# non-image file over 256 KiB, a binary that is not an image, a script naming a bundled image) and
+# the scan's policy holds this kit once tripped (LABS-206): a raster image any script could reach, a
+# skill that pre-approves every shell command, a hook that approves a tool call, and a file that
+# pairs a credential-looking word with a remote URL. The scan's matching is heuristic and changes,
+# so this pins the triggers it reported, not the scan itself; the portal's Validate is the real check.
 DT60="$KIT/.github/scripts/directory_tree.sh"
 if [ ! -f "$DT60" ] || ! git -C "$KIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   printf "  - skipped: needs a git clone of the kit with .github/ (a vendored or pip copy has neither)\n"
@@ -12344,19 +12355,19 @@ else
   fi
   # (a) the trim list, the checks below and the release doc all name the same paths
   list60="$(bash "$DT60" --list | tr '\n' ' ')"
-  [ "$list60" = "tests scripts .github bin/selftest.sh " ] \
-    && ok "the trim list is tests, scripts, .github and bin/selftest.sh" || bad "the trim list changed: update this section and pypi-setup.md Part C" "$list60"
-  grep -q 'removes `tests/`, `scripts/`, `.github/` and `bin/selftest.sh`' docs/maintainers/pypi-setup.md \
+  [ "$list60" = "tests scripts .github docs/images docs/maintainers bin/selftest.sh " ] \
+    && ok "the trim list is tests, scripts, .github, docs/images, docs/maintainers and bin/selftest.sh" || bad "the trim list changed: update this section and pypi-setup.md Part C" "$list60"
+  grep -q 'removes `tests/`, `scripts/`, `.github/`, `docs/images/`, `docs/maintainers/` and `bin/selftest.sh`' docs/maintainers/pypi-setup.md \
     && ok "pypi-setup.md Part C names the same trimmed paths" || bad "pypi-setup.md Part C does not name the trimmed paths"
   # (b) what the directory checks, on the built tree
-  python3 - "$out60" <<'PY' >"$TMP/s60b.out" 2>&1
+  python3 - "$out60" $list60 <<'PY' >"$TMP/s60b.out" 2>&1
 import json, os, re, sys
-root = sys.argv[1]; bad = []
+root = sys.argv[1]; trimmed = sys.argv[2:]; bad = []
 files = []
 for d, dirs, names in os.walk(root):
     for n in names:
         files.append(os.path.relpath(os.path.join(d, n), root))
-for p in ("tests", "scripts", ".github", "bin/selftest.sh"):
+for p in trimmed:
     if os.path.exists(os.path.join(root, p)):
         bad.append("%s is still in the listing tree" % p)
 for p in (".claude-plugin/plugin.json", "README.md", "LICENSE", "bin/tw", "bin/kit_paths.py"):
@@ -12383,6 +12394,34 @@ if len(files) > 512:
     bad.append("the listing tree has %d files; the directory holds more than 512" % len(files))
 IMG = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 images = [f for f in files if f.lower().endswith(IMG)]
+# A raster image is held whenever a script could reach it, and bin/tw runs whatever it is handed,
+# so the listing carries none: the README loads its images from GitHub, the icon is SVG.
+for f in images:
+    bad.append("%s is a raster image in the listing tree; the scan holds one any script could reach" % f)
+# No skill pre-approves shell commands. The scan holds bare Bash, and also a Bash pattern whose program
+# path is built at run time (the bin/tw launcher's `$(git rev-parse ...)`), so the skills grant none:
+# /setup writes the launcher rule into the project's allow list, and every other command goes through
+# the normal permission flow.
+for d, _, names in os.walk(os.path.join(root, ".claude", "skills")):
+    if "SKILL.md" in names:
+        p = os.path.join(d, "SKILL.md")
+        fm = open(p, encoding="utf-8").read().split("\n---\n", 1)[0]
+        line = next((l for l in fm.splitlines() if l.startswith("allowed-tools:")), "")
+        if re.search(r"(^|[\[,\s'\"])Bash\b", line.split(":", 1)[-1]):
+            bad.append("%s pre-approves shell commands (Bash in allowed-tools)" % os.path.relpath(p, root))
+# No hook approves a tool call: a guard asks or says nothing.
+for rel in sorted(set(re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\\ ]+\.py)", json.dumps(m.get("hooks", {}))))):
+    src = open(os.path.join(root, rel), encoding="utf-8").read()
+    if re.search(r"""emit\(\s*["']allow["']|["']permissionDecision["']\s*:\s*["']allow["']""", src):
+        bad.append("hook %s can approve a tool call" % rel)
+# The scan reads a credential-looking word beside a remote URL as a credential the plugin could send
+# there. The words it matched in this kit: $PWD, rclone's config file path, an environment variable
+# read by a computed name, and "pass" where a shell command would start (read as the pass CLI). It
+# also pairs any environment dump in a skill (`set`, `env`, `printenv`, `export -p` where a command
+# would start) with any skill that can send data, so those stay out of command position everywhere.
+URL = re.compile(r"https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+PASS = re.compile(r"""(^\s*|["'`])pass [^\s]""")
+ENVDUMP = re.compile(r"""^\s*(printenv\b|export -p\b|(env|set)(\s*$|[^\sA-Za-z-]))""")
 for f in files:
     full = os.path.join(root, f)
     if f.lower().endswith(IMG):
@@ -12394,6 +12433,17 @@ for f in files:
         bad.append("%s is a binary that is not an image" % f)
         continue
     text = data.decode("utf-8", "replace")
+    for no, line in enumerate(text.splitlines(), 1):
+        if PASS.search(line) and not (f.endswith(".py") and re.match(r"\s*pass\s*(#.*)?$", line)):
+            bad.append("%s:%d starts a shell-like command with the word pass" % (f, no))
+        if f.endswith(".md") and ENVDUMP.search(line):
+            bad.append("%s:%d starts a line with an environment-dump command (set, env, printenv)" % (f, no))
+    if URL.search(text):
+        for word in ("$PWD", "${PWD}", "rclone.conf"):
+            if word in text:
+                bad.append("%s pairs %s with a remote URL" % (f, word))
+        if f.endswith(".py") and re.search(r"os\.environ(\.get)?[\[(]\s*[A-Za-z_]", text):
+            bad.append("%s reads an environment variable by a computed name beside a remote URL" % f)
     for img in images:
         for line in text.splitlines():
             if img in line and not re.search(r"!\[[^\]]*\]\(https://", line) \

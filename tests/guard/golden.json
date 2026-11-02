@@ -37,11 +37,11 @@
   },
   "drop_in_comment_allow": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   },
   "drop_in_string_allow": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   },
   "drop_inline_ask": {
     "exit": 0,
@@ -53,7 +53,7 @@
   },
   "file_read_only_allow": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   },
   "grant_ask": {
     "exit": 0,
@@ -117,7 +117,7 @@
   },
   "read_inline_allow": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   },
   "second_q_payload_classified": {
     "exit": 0,
@@ -165,7 +165,7 @@
   },
   "with_select_allow": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   },
   "wrong_target_bypass_sysmsg": {
     "exit": 0,
@@ -173,7 +173,7 @@
   },
   "wrong_target_match_allow": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   },
   "wrong_target_mismatch_ask": {
     "exit": 0,
@@ -181,6 +181,6 @@
   },
   "wrong_target_typo_no_gate": {
     "exit": 0,
-    "stdout": "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"permissionDecision\": \"allow\", \"permissionDecisionReason\": \"read-only SQL \\u2014 auto-approved by db_write_guard (snow).\"}}\n"
+    "stdout": ""
   }
 }

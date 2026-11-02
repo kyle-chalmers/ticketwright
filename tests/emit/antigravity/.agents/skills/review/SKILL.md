@@ -8,15 +8,15 @@ description: Independent quality review of a ticket's deliverables. It reruns th
 # /review
 
 The **check** step of the lifecycle. `/build` runs this at the end of every build; run it directly
-to re-check after a fix, for a `--deep` panel, or on someone else's ticket. An *independent* second
-pass over a ticket's deliverables —
+to re-check after a fix, for a `--deep` panel, or on someone else's ticket. An *independent*
+second pass over a ticket's deliverables —
 re-runs queries, walks a tiered validation pyramid, sweeps for anti-patterns, and returns an
 APPROVE / REQUEST-CHANGES verdict. Reads `.claude/config/stack.yaml`; warehouse specifics come from
 the resolved target's adapter `dialect_notes`, so the same review runs against any warehouse — or
 several, when a ticket spans more than one.
 Read-only: it reviews and re-runs, it does not edit code (the build owns fixes).
-Independence is probed, never assumed: the **capability probe** below decides whether the second
-pass gets its own context, and the verdict records which review the ticket actually got.
+Independence is probed, never assumed: the **capability probe** below decides whether the
+second pass gets its own context, and the verdict records which review the ticket actually got.
 
 ## How this skill asks the person something
 <!-- ticketwright:ask-rule:begin -->
@@ -47,8 +47,8 @@ The kit's one question rule, the same in every skill that asks:
 <!-- ticketwright:ask-rule:end -->
 
 In this skill the questions are step 0's owner choice, the one-time viewer setup in step ⑤.2, and
-the sign-off in step ⑤.4. Its probe is the capability probe's `kit_paths.py --json` (the second
-pass section); run it early when step 0 has to ask.
+the sign-off in step ⑤.4. Its probe is the capability probe's `kit_paths.py --json` (the
+second pass section); run it early when step 0 has to ask.
 
 ## Phase 0 — Setup
 0. Resolve the **ticket locator**: run
@@ -231,8 +231,8 @@ subagent's prompt — the record copies both from there, verbatim. A subagent ne
 posture: it cannot see the adapter data that decides it.
 
 ## Deep mode (`--deep`) — adversarial panel
-For high-blast-radius work (compliance/regulatory pulls, irreversible writes), replace the single
-pass with a panel, spawned per the capability probe above (on a degraded runtime the panel runs
+For high-blast-radius work (compliance/regulatory pulls, irreversible writes), replace the
+single pass with a panel, spawned per the capability probe above (on a degraded runtime the panel runs
 inline, layer by layer, and the verdict says so):
 1. **Fan out** one independent `qc-reviewer` subagent per pyramid layer (① dialect-lint ·
    ② counts&dedup · ③ cross-source reconcile · ④ re-run + anti-pattern sweep) — each scoped to its
@@ -260,8 +260,8 @@ An inline-degraded APPROVE must never read identically to an independent-subagen
 **Save the report as `qc_queries/<n>_review_verdict.md`** (`<n>` = the next number in that folder)
 with the lowercase `verdict: APPROVE` or `verdict: REQUEST-CHANGES` as its first line after the
 title, then `review_mode:` and `subagent_isolation:` — that fixed name and field are what `/ship`
-reads. **When the sign-off gate runs** (policy `human_review_handoff` is not `off`) and the second
-pass approved, save the file first with `verdict: AWAITING-SIGNOFF`, before the hand-off, and
+reads. **When the sign-off gate runs** (policy `human_review_handoff` is not `off`) and the
+second pass approved, save the file first with `verdict: AWAITING-SIGNOFF`, before the hand-off, and
 update **that same file** when the person answers: `verdict: APPROVE` plus a `human_signoff:` line
 (the date, the person from whoami, and their reply verbatim), or `verdict: REQUEST-CHANGES` with
 their points as findings. `AWAITING-SIGNOFF` never counts as approval: `/ship` and the push guard

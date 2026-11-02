@@ -2,7 +2,7 @@
 name: skillify
 description: Turn a workflow you repeat by cloning the last ticket into a parameterized skill of its own, with a phased pipeline, QC checkpoints, a golden replay test, and a hard stop before external posts.
 argument-hint: "[workflow name, e.g. monthly vendor reconciliation]"
-allowed-tools: [Read, Write, Edit, Bash, Glob]
+allowed-tools: [Read, Write, Edit, Glob]
 ---
 
 # /skillify

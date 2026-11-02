@@ -4,9 +4,12 @@
 # The listing follows the `directory` branch (docs/maintainers/pypi-setup.md, Part C). The
 # directory holds a version for a human reviewer when the plugin folder carries a non-image file
 # over 256 KiB, a binary that is not an image or font, or a script that names a bundled image
-# (https://claude.com/docs/plugins/pre-submission-checklist). Only dev-only paths trip those
-# checks, so the listing gets the release tree minus TRIM_PATHS. Nothing a plugin install runs
-# lives under them: /setup offers the self-test only when bin/selftest.sh exists.
+# (https://claude.com/docs/plugins/pre-submission-checklist), and its scan holds any PNG or GIF a
+# script could reach and any file that pairs a credential-looking word with a remote URL. Only
+# dev-only paths trip those checks, so the listing gets the release tree minus TRIM_PATHS: tests,
+# media tooling, CI, the README images (the README loads them from GitHub URLs), maintainer docs
+# and the self-test. Nothing a plugin install runs lives under them: /setup offers the self-test
+# only when bin/selftest.sh exists.
 #
 #   bash .github/scripts/directory_tree.sh --list                 # the trimmed paths, one per line
 #   bash .github/scripts/directory_tree.sh tree <ref> <outdir>    # export the trimmed tree of <ref>
@@ -27,7 +30,7 @@
 # This file lives under .github/, which it trims, so it never ships in the listing itself.
 set -uo pipefail
 
-TRIM_PATHS="tests scripts .github bin/selftest.sh"
+TRIM_PATHS="tests scripts .github docs/images docs/maintainers bin/selftest.sh"
 PLUGIN_JSON=".claude-plugin/plugin.json"
 
 die() { echo "directory_tree: $1" >&2; exit "${2:-2}"; }

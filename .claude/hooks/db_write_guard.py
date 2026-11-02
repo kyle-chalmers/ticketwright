@@ -184,9 +184,12 @@ def run() -> int:
         emit("ask", detail)
         return 0
 
-    if kind == "allow_fastpath":
-        emit("allow", detail)
-    return 0  # kinds "silent" and "none": nothing to say
+    # "allow_fastpath" (verifiably read-only SQL) says nothing too. The hook never approves a call:
+    # read-only queries go through Claude Code's normal permission flow, where the warehouse read
+    # verbs /setup adds to the project's allow rules pre-approve them. A hook that can approve
+    # calls is held for review by the plugin directory, and it would make the guard more
+    # convenient rather than more visible.
+    return 0  # kinds "allow_fastpath", "silent" and "none": nothing to say
 
 
 def main() -> int:

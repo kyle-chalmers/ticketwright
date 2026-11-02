@@ -99,8 +99,8 @@ The promotion is mechanical — one commit containing:
 What the pins can and cannot certify, stated plainly: moving them proves the promotion was
 *deliberate and complete*, not that the observation *happened* — no offline suite can witness a
 live runtime. The evidence binding is the ledger line plus the entry's `Evidence:` paragraph
-(date, runtime version, observer, what was seen), and a promotion commit without them does not
-pass review.
+(date, runtime version, observer, what was seen), and a promotion commit without them does
+not pass review.
 
 **GUIDANCE → WIRED is a code change, not a doc edit.** Codex CLI and Devin sit at GUIDANCE because
 their hooks-CONFIG file locations are unresearched — the installer refuses to guess a path. When

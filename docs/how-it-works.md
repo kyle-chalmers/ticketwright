@@ -193,19 +193,20 @@ Trust demands transparency: this plugin runs hooks, so here is every one of them
 Python stdlib-only, make **no network calls**, never write outside the repo, and fail open —
 a hook error never blocks your session.
 
-Two places where the DB guard *removes* a prompt rather than adding one, stated plainly:
+No hook approves a command. A guard either asks or says nothing, and saying nothing leaves the
+call to your normal permission settings. Read-only SQL is not auto-approved: the warehouse read
+commands `/setup` adds to the project's allow list are what skip the prompt.
 
-- **Verifiably read-only SQL is auto-approved** — a single simple command, every referenced file
-  read, and every statement a `SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN`.
-- **Under `bypassPermissions` it prints a `systemMessage` instead of asking**, because you already
-  opted out of prompting for that session.
+One place where the DB guard *removes* a prompt rather than adding one, stated plainly: **under
+`bypassPermissions` it prints a `systemMessage` instead of asking**, because you already opted
+out of prompting for that session.
 
-Neither can loosen a `deny` rule in your settings — hooks can tighten permissions, never widen them
+That cannot loosen a `deny` rule in your settings — hooks can tighten permissions, never widen them
 past what your own rules allow.
 
 | Event | Script | What it does |
 |---|---|---|
-| PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying high-risk SQL (including SQL hidden in `-f` files / stdin redirects); auto-approves verifiably read-only SQL |
+| PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying high-risk SQL (including SQL hidden in `-f` files / stdin redirects); says nothing on read-only SQL, which your own permission settings decide |
 | PreToolUse (Bash) | `.claude/hooks/source_material_guard.py` | Pauses for confirmation before a raw meeting transcript in a ticket's `source_materials/` is staged for commit or copied into a docstore backup (`cp` / `rclone`); it reads filenames and document shape, not meaning (classifier: `bin/scan_source_materials.py`) |
 | PreToolUse (Bash) | `.claude/hooks/review_verdict_guard.py` | Pauses for confirmation before `git push` / a PR is opened or merged for a ticket that has deliverables but no approved review result (read by `bin/review_verdict.py`); the prompt says the work "has not been approved in review" and that the check reads the review file, not the work; silent on approved or not-yet-built tickets |
 | PostToolUse (Write\|Edit) | `.claude/hooks/regenerate_ticket_index.py` | Regenerates `tickets/INDEX.md` / `OBJECTS.md` when the curated store changes |

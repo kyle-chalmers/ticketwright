@@ -47,9 +47,10 @@ Ticketwright's safety rails are Claude Code hooks (listed in full in
 - **They only exist where the runtime runs them.** The hooks are proven in Claude Code. On other
   agents the installer wires what each runtime documents, and
   [docs/runtimes.md](docs/runtimes.md) says per runtime what is enforced and what is guidance.
-- **One guard removes a prompt.** Verifiably read-only SQL (`SELECT`, `SHOW`, `DESCRIBE`,
-  `EXPLAIN`, with every referenced file read) is approved without asking. No hook can loosen a
-  deny rule in your own settings.
+- **No guard approves a command.** A guard only asks, or says nothing and leaves the call to
+  your normal permission settings. Read-only SQL is not auto-approved: the warehouse read commands
+  `/setup` adds to the project's allow list are what skip the prompt. No hook can loosen a deny
+  rule in your own settings.
 
 The hooks make no network calls and write nothing outside the repo. The skills and engines make
 no network calls of their own; they reach your tools through the CLIs and MCP servers you

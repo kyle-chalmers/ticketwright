@@ -47,7 +47,7 @@ mints accountless URLs, and neither fact is visible to the kit.
   including the source", and `rclone config redacted` warns that "the redaction may not be perfect".
   To read one remote's backend type safely: `rclone listremotes --long --name <remote> --exact`
   — it emits name, type and description, none of which are credential attributes (the description
-  is free text someone set, so treat it as content, not as a guaranteed-blank field). Never `cat ~/.config/rclone/rclone.conf`, and never paste
+  is free text someone set, so treat it as content, not as a guaranteed-blank field). Never `cat` rclone's own config file, and never paste
   its contents anywhere: it can hold plaintext tokens and access keys.
 - **Expected-target evidence.** A remote name is a per-machine alias, so it can point at a different
   account or bucket than the team's with nothing in review to catch it. Reachability is not identity:

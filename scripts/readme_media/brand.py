@@ -9,7 +9,9 @@ render the same on GitHub, PyPI and the plugin directory.
       "https://github.com/google/fonts/raw/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf"
     uv run --with fonttools --with uharfbuzz python scripts/readme_media/brand.py \\
       --font /tmp/sg/SpaceGrotesk.ttf
-    rsvg-convert -w 1024 -h 1024 scripts/readme_media/icon.svg -o .claude-plugin/icon.png
+
+The icon ships as SVG (.claude-plugin/icon.svg): the plugin directory reads SVG as text, while a
+PNG in the plugin is an image its scanner cannot read, which holds every version for a reviewer.
 
 Space Grotesk is under the SIL Open Font License; only outlines of its glyphs ship here.
 """
@@ -20,7 +22,7 @@ import argparse
 import io
 from pathlib import Path
 
-from _common import BLACK, CREAM, HERE, IMAGES, LIME, ORANGE
+from _common import BLACK, CREAM, IMAGES, LIME, ORANGE, REPO
 
 TICKET = (
     "M14 18H86A10 10 0 0 1 96 28V41A9 9 0 0 0 96 59V72A10 10 0 0 1 86 82H14"
@@ -106,7 +108,7 @@ def main() -> None:
     outputs = {
         IMAGES / "logo-light.svg": logo(args.font, dark=False),
         IMAGES / "logo-dark.svg": logo(args.font, dark=True),
-        HERE / "icon.svg": icon(),
+        REPO / ".claude-plugin" / "icon.svg": icon(),
     }
     for path, svg in outputs.items():
         path.write_text(svg, encoding="utf-8")
