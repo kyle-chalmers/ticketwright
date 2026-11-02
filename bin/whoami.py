@@ -542,6 +542,18 @@ def bind(root: Path, pid: str, identity: str | None, confirm: bool) -> int:
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────────────────────
+def _print_launcher_notice(root: Path) -> None:
+    """The out-of-date launcher line from kit_paths.py, on stderr. Skills run this script early, so
+    the notice reaches every runtime. Never fails the lookup it rides on."""
+    try:
+        from kit_paths import launcher_notice, resolve_kit
+        notice = launcher_notice(root, resolve_kit(root)[0])
+    except Exception:  # noqa: BLE001 — a notice must never break identity resolution
+        return
+    if notice:
+        print(notice, file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="whoami.py",
@@ -591,6 +603,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(res))  # machine callers read the warning from the JSON, stderr stays clean
         return code
+    _print_launcher_notice(root)
     if args.field:
         print(res.get(args.field) or "")
         if res.get("warning") and res["status"] == "conflict":

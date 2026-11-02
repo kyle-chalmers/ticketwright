@@ -165,6 +165,17 @@ plugin install by reading `~/.claude/plugins/installed_plugins.json` — the exa
 THIS project, no environment variable, no glob, no guess — and `bin/tw`'s project-shim tier
 delegates to it.
 
+**The project's copy is stamped and refreshable, and reads both kit layouts** (LABS-209). The
+kit's own scripts are moving from the plugin's top-level `bin/` to `tools/`: the plugin directory
+holds a plugin with a top-level `bin/`, and claude.ai and Cowork refuse to install one. The project
+launcher stays at `<project>/bin/tw` (that folder is the user's repo, not the plugin), so the line
+above never changes. Both copied files carry `# tw-launcher: N` (`LAUNCHER_STAMP` in `kit_paths.py`).
+`refresh_launcher.py --write` replaces an older copy, `/setup`'s preflight runs it every time, and
+`kit_paths.py`, `whoami.py`, the session banner and the doctor's `project_launcher` check say when a
+copy is out of date. **Bump the stamp whenever `tw` or `kit_paths.py` changes in a way an older copy
+cannot handle**, or nothing will replace the copies already committed in users' repos. Selftest 31b
+runs the pre-stamp copy (`tests/launcher/v1/`) against fixture kits in both layouts.
+
 **Two earlier forms were bugs; do not reintroduce either.** `${CLAUDE_PLUGIN_ROOT:-...}` shipped for
 months and broke every documented `bin/` command on plugin installs: the runtime substitutes only
 the EXACT token `${CLAUDE_PLUGIN_ROOT}`, so a token carrying a `:-` default never matched and

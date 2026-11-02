@@ -91,8 +91,8 @@ name, its path (`.claude/skills/<name>/`), and the file list about to be written
    hardcoded tools in the orchestration). Confirm the SKILL.md prose is tool-neutral:
    `!grep -REn "acli|snow |slack|gh " .claude/skills/<name>/SKILL.md || echo OK`. (The leaf
    `bin/drift_check.sh` is allowed to name your warehouse CLI — it's the tool-bound probe.)
-6. Wire the **render gate** (`bin/render_and_validate.sh`) and **export helpers**
-   (`bin/split_and_export.sh`) into the stamped phases so authoring defects fail *closed*, not
+6. Wire the **render gate** (the kit's `render_and_validate.sh`) and **export helpers**
+   (the kit's `split_and_export.sh`), both run through the launcher, into the stamped phases so authoring defects fail *closed*, not
    silently — details and rationale in [authoring.md](authoring.md).
 7. Document the **golden test** + **failure-mode tests** in the new SKILL.md (how to replay the
    known run and assert the fixture; how each Phase-0/QC/render-gate halt is expected to trigger).
