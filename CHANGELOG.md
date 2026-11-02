@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.9.2] - 2026-11-02
+
+The plugin directory listing serves the release without dev-only files, so a new version no longer
+waits on a reviewer. Patch: plugin installs no longer ship the kit's self-test (clones, vendored
+copies and pip installs keep it); nothing else changes for users.
+
 ### Changed
 - **The plugin directory listing serves the release without dev-only files.** `publish.yml` now
   builds each `directory` commit with `.github/scripts/directory_tree.sh`, which removes `tests/`,
