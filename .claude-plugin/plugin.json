@@ -1,7 +1,7 @@
 {
   "name": "ticketwright",
   "displayName": "Ticketwright",
-  "version": "4.9.2",
+  "version": "4.9.3",
   "description": "Ticket-driven analysis in Claude Code: prior work recalled, every result re-run and signed off, and nothing posted without your go-ahead.",
   "author": {
     "name": "Kyle Chalmers",
@@ -25,7 +25,7 @@
     "recall",
     "claude-code"
   ],
-  "icon": "./.claude-plugin/icon.png",
+  "icon": "./.claude-plugin/icon.svg",
   "documentationUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/docs/README.md",
   "supportUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/SUPPORT.md",
   "privacyPolicyUrl": "https://github.com/kyle-chalmers/ticketwright/blob/main/PRIVACY.md",

@@ -298,7 +298,7 @@ def resolve_names(args, root: Path, script_dir: Path) -> tuple:
         names_from, reason = "settings", ""
     elif len(pairs) > 1:
         reason = ("this repo's .claude/settings.json enables more than one plugin; "
-                  "pass --plugin and --marketplace to say which one")
+                  "name the plugin with --plugin and --marketplace")
     else:
         found = manifest_pair(script_dir.parent / ".claude-plugin" / "marketplace.json")
         if found:
@@ -309,7 +309,7 @@ def resolve_names(args, root: Path, script_dir: Path) -> tuple:
                       "beside this script)")
         else:
             reason = ("this repo's .claude/settings.json declares no enabled plugin; "
-                      "pass --plugin and --marketplace")
+                      "name the plugin with --plugin and --marketplace")
 
     if args.plugin:
         plugin, names_from = args.plugin, "flags"
@@ -391,7 +391,7 @@ class Doctor:
 
     def _no_names(self) -> tuple:
         return "unknown", self.name_reason or "no plugin name could be resolved", [
-            "pass --plugin <name> --marketplace <name> (and --url <clone url>) to name the plugin"]
+            "name the plugin with --plugin <name> --marketplace <name> (and --url <clone url>)"]
 
     def _track2(self) -> list:
         ref = self.ref or "<plugin>@<marketplace>"
