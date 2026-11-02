@@ -12,8 +12,8 @@ auth: |
     2. `~/.snowflake/config.toml`, whenever that directory exists;
     3. otherwise the OS default — on macOS `~/Library/Application Support/snowflake/config.toml`
        (the common case on a fresh Mac).
-  So a hand-made `~/.snowflake/config.toml` is either a shadow file that changes nothing (env var
-  set) or a file that silently takes precedence over the working macOS-default config. Don't guess
+  So a hand-made `~/.snowflake/config.toml` is either a shadow file that changes nothing (the env
+  var is set) or a file that silently takes precedence over the working macOS-default config. Don't guess
   files — ask the CLI which connections are live (`snow connection list`; during onboarding use
   the names-only projection below, never the bare command).
   Verify: `snow connection test` (read-only).

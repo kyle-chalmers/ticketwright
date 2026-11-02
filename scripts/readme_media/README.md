@@ -8,8 +8,7 @@ stays stdlib-only.
 | Output | Made by | Source |
 |---|---|---|
 | `docs/images/logo-light.svg`, `logo-dark.svg` | `brand.py` | the mark geometry in `brand.py`, plus Space Grotesk SemiBold outlined to paths |
-| `scripts/readme_media/icon.svg` | `brand.py` | the same mark on a full-bleed black square |
-| `.claude-plugin/icon.png` (1024x1024) | `rsvg-convert` | `icon.svg`. The Claude plugin directory takes it as the listing icon once, at the first save in the developer portal. Rendering it again later changes only the repo copy |
+| `.claude-plugin/icon.svg` | `brand.py` | the same mark on a full-bleed black square, the plugin's icon. It is SVG because the plugin directory reads SVG as text and holds a version that bundles a PNG for a reviewer. The directory took the listing icon once, at the first save in the developer portal; rendering it again changes only the repo copy |
 | `docs/images/banner.png`, `lifecycle.png`, `tool-slots.png`, `recall.png`, `ship-steps.png` | `render_diagrams.py` | each `<svg class="diagram">` in `diagrams.html`. The scores in `recall.png` come from the fixture below; `ship-steps.png` is for `docs/ship.md` |
 | `docs/images/demo.gif` | `render_gif.py` | the scenes in `claude_flow.py` |
 | `docs/images/social-preview.png` (1280x640) | `render_social.py` | `social_preview.html`; upload it by hand under Settings, General, Social preview |
@@ -39,7 +38,6 @@ chromium`, once). Web fonts come from Google Fonts and fall back to system fonts
 curl -L -o /tmp/SpaceGrotesk.ttf \
   "https://github.com/google/fonts/raw/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf"
 uv run --with fonttools --with uharfbuzz python scripts/readme_media/brand.py --font /tmp/SpaceGrotesk.ttf
-rsvg-convert -w 1024 -h 1024 scripts/readme_media/icon.svg -o .claude-plugin/icon.png
 
 # Diagrams, after editing diagrams.html.
 uv run --with playwright --with pillow python scripts/readme_media/render_diagrams.py

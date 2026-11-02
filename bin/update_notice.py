@@ -139,9 +139,9 @@ def _resolve_root(root: str | None) -> Path:
     """
     if root:
         return Path(root).expanduser().resolve()
-    for var in ("TICKETWRIGHT_PROJECT", "CLAUDE_PROJECT_DIR"):
-        if os.environ.get(var):
-            return Path(os.environ[var]).expanduser().resolve()
+    named = os.environ.get("TICKETWRIGHT_PROJECT") or os.environ.get("CLAUDE_PROJECT_DIR")
+    if named:
+        return Path(named).expanduser().resolve()
     try:
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                              capture_output=True, text=True, timeout=10).stdout.strip()

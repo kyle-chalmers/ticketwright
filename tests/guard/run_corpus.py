@@ -242,8 +242,8 @@ def scanner_agreement(case: dict, hook_result: dict, scan_cli: Path) -> str | No
     """Replay the case's command through bin/sql_scan.py; return a mismatch description or None.
 
     The scanner has no Claude protocol: it reports a decision KIND. The mapping the hook applies is
-    kind->protocol: gate/wrong_target -> ask (sysmsg under bypassPermissions), allow_fastpath ->
-    allow, silent/none -> no output. Non-command cases (malformed stdin, non-Bash) have no scanner
+    kind->protocol: gate/wrong_target -> ask (sysmsg under bypassPermissions), allow_fastpath/
+    silent/none -> no output (the hook never approves a call). Non-command cases (malformed stdin, non-Bash) have no scanner
     verdict and are skipped.
     """
     if "raw_stdin" in case or case.get("tool_name", "Bash") != "Bash" or not case.get("command"):
@@ -268,7 +268,7 @@ def scanner_agreement(case: dict, hook_result: dict, scan_cli: Path) -> str | No
     want = {
         "gate": "sysmsg" if case.get("permission_mode") == "bypassPermissions" else "ask",
         "wrong_target": "sysmsg" if case.get("permission_mode") == "bypassPermissions" else "ask",
-        "allow_fastpath": "allow",
+        "allow_fastpath": "none",
         "none": "none",
         "silent": "none",
     }.get(kind)

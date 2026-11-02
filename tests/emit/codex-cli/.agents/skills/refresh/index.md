@@ -90,8 +90,8 @@ changed after the read or after the ship (for the `local` tracker the line *is* 
    headless command will tell you so and point back here.)
 
 ## Phase 3 — Verify
-7. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py --check` must
-   pass (INDEX.md + OBJECTS.md + the graph layer == fresh render).
+7. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" build_ticket_index.py --check`
+   must pass (INDEX.md + OBJECTS.md + the graph layer == fresh render).
 8. Report: total tickets, status breakdown and where the statuses came from (`--stats` prints
    `status from: tracker N · readme N · …`), any still un-enriched. Commit `tickets/INDEX.md` +
    `tickets/OBJECTS.md` + `tickets/index_data.json`, plus `tickets/graph/` + `tickets/objects/` when

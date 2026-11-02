@@ -210,8 +210,9 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   **default-deny**: only plain `CREATE`, `INSERT INTO`, `ALTER … ADD`, and `COMMENT ON` count as
   additive; everything else that mutates — *including anything the scanner doesn't recognize* — is
   high-risk. It sees SQL hidden in a `-f` file or a stdin redirect, and strips comments and string
-  literals first so a verb quoted as data isn't mistaken for a statement. Read-only SQL takes an
-  `allow` fast-path. Under `bypassPermissions` it emits a `systemMessage` instead of asking, since
+  literals first so a verb quoted as data isn't mistaken for a statement. Read-only SQL gets no
+  decision: the hook never approves a call, so it goes through the normal permission flow (the
+  scanner still classifies it as `allow_fastpath`, which every presenter treats as silence). Under `bypassPermissions` it emits a `systemMessage` instead of asking, since
   the operator has already opted out of prompting.
   The scanner itself lives in [`bin/sql_scan.py`](../bin/sql_scan.py) (one deterministic
   implementation, shared with the non-Claude shims — logic in `bin/`, hooks as presentation); the

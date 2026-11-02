@@ -65,10 +65,12 @@ by hand per release; if the job fails, the listing keeps serving the previous ve
 `vX.Y.Z` tag moves it: a prerelease tag such as `v4.3.0rc1` still publishes to PyPI but leaves the
 listing alone. `.git-sweep-keep` stops branch cleanup from deleting `directory`.
 
-**The listing serves a trimmed tree.** The commit holds the release tree but removes `tests/`, `scripts/`, `.github/` and `bin/selftest.sh`.
-Those are dev-only, and they are the only paths that trip the directory's reviewer holds: the
-self-test is over the 256 KiB per-file limit, a test fixture is a binary that is not an image, and
-the README media scripts name bundled images. Nothing a plugin install runs lives there; `/setup`
+**The listing serves a trimmed tree.** The commit holds the release tree but removes `tests/`, `scripts/`, `.github/`, `docs/images/`, `docs/maintainers/` and `bin/selftest.sh`.
+Those are dev-only, and they are paths that trip the directory's reviewer holds: the self-test is
+over the 256 KiB per-file limit, a test fixture is a binary that is not an image, the media scripts
+and the README images are PNGs and GIFs a script could reach (the README loads its images from
+GitHub URLs, so the listing needs none of them), and the maintainer docs pair credential words with
+remote URLs. Nothing a plugin install runs lives there; `/setup`
 offers the self-test only on a kit that has it (a clone, a vendored copy or a pip install, all of
 which keep the full tree). The commit's only parent is the previous `directory` head, so the push
 is a plain fast-forward, and its message names the tag and the tag's commit. The tag is not a
@@ -77,6 +79,19 @@ under `.github/workflows/`, and against a parent that still has those files the 
 deleting them. The script refuses a tag whose `plugin.json` version disagrees with it, a version
 that is not higher than the one already on `directory` (so the listing never moves backward), and
 a `directory` head that still carries the dev-only paths.
+
+**Policy holds a version can still raise.** The scan holds a version for a reviewer on more than
+file rules. The kit cleared the ones it tripped (LABS-206): skills grant no `Bash` (the scan also holds a
+pattern whose program path is built at run time, like the `bin/tw` launcher's), no hook approves a tool call, the listing carries no PNG or GIF (the icon is SVG), and no
+file pairs a word the scan reads as a credential (`$PWD`, rclone's config path, `pass` where a shell
+command would start, an environment variable read by a computed name) with a URL. Selftest section
+60b pins each of those on the trimmed tree. Three holds stay by design, all from two adapters: the Zoom and Azure
+DevOps adapters read the user's token from the environment and send it only to that vendor's API
+(one hold each), and the scan pairs the Zoom token with `/setup`'s rclone backup. A reviewer
+confirms them, so a version still waits on review until those adapters take their tokens another way. The scan's matching is heuristic and changes, so check a release candidate in the
+portal: **Submit new → Plugin bundle**, enter `kyle-chalmers/ticketwright@<branch>` with a branch
+that holds the trimmed tree (`directory_tree.sh tree`), select **Validate**, read the holds, then
+leave the form without submitting.
 
 **One-time bootstrap.** For that last reason, the first trimmed commit cannot come from Actions:
 through v4.9.1, `directory` was a plain copy of each tag. A maintainer builds it from the current

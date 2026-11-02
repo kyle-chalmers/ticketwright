@@ -2,7 +2,7 @@
 name: refresh
 description: Maintain the repo's knowledge. The index mode rebuilds the ticket catalog (INDEX.md) and the context mode rebuilds the domain knowledge pack (documentation/). Day to day, hooks keep both fresh automatically.
 argument-hint: "[index | context | all]"
-allowed-tools: [Read, Write, Bash, Glob, Grep]
+allowed-tools: [Read, Write, Glob, Grep]
 ---
 
 # /refresh

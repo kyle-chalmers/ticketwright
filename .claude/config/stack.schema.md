@@ -357,8 +357,8 @@ A ticket then declares `audience:` plus the same `chat.channel:` and non-empty `
 the tool-only shape below uses, and `/ship` asks for them when they are missing. The rules: the
 opt-in is explicit, so a target with neither a destination nor `destination: per_ticket` still fails
 `verify_stack.sh` (its message names both ways forward); setting a standing destination AND
-`destination: per_ticket` fails (pick one); `always_include` is optional on such a target and, when
-set, is added after the ticket's recipients; the adapter's sender key (`identity` for email) is
+`destination: per_ticket` fails (pick one); `always_include` is optional on such a target and,
+when set, is added after the ticket's recipients; the adapter's sender key (`identity` for email) is
 still required; the duplicate-destination rule skips it (it has no standing destination); a
 `chat.channel:` carrying shell metacharacters is refused. A missing `chat.channel:` or an empty
 `chat.recipients:` halts routing (exit 9) and never falls back to another target; a plan whose

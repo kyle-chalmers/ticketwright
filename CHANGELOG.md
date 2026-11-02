@@ -6,6 +6,27 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **The warehouse guard no longer auto-approves read-only SQL.** `db_write_guard.py` used to
+  approve a command it could prove was read-only; it now says nothing, and the call goes through
+  your normal permission settings. In a repo set up by `/setup`, the warehouse read commands in the
+  project's allow list still skip the prompt; elsewhere a `SELECT` now asks. No hook in the kit
+  approves a tool call any more: a guard asks, or stays silent.
+- **Skills no longer pre-approve shell commands.** `Bash` is gone from every skill's
+  `allowed-tools`. In a repo set up by `/setup` nothing changes: the project's allow list already
+  pre-approves the kit launcher and the read commands. Before that list exists (the first `/setup`
+  run, or a repo never set up), kit scripts ask once per command.
+- **The plugin icon is SVG** (`.claude-plugin/icon.svg`, the same mark). The directory listing
+  keeps the icon it took at the first portal save.
+- **The plugin directory listing also leaves out `docs/images/` and `docs/maintainers/`.** The
+  README loads its images from GitHub, and the maintainer docs are not part of the kit.
+- These clear most of the directory's policy holds on a new version (a skill that pre-approves
+  shell commands, a hook that approves a call, raster images a script could reach, and words
+  the scan reads as credentials beside a URL). Three holds stay by design, all from two adapters: the Zoom and
+  Azure DevOps adapters read your token from the environment and send it only to that vendor's API
+  (one hold each), and the scan also pairs the Zoom token with `/setup`'s rclone backup. A reviewer
+  confirms them; the portal's Validate showed 3 holds, down from 34. Selftest section 60b guards each fix on the listing tree.
+
 ## [4.9.2] - 2026-11-02
 
 The plugin directory listing serves the release without dev-only files, so a new version no longer
@@ -1191,8 +1212,8 @@ half-configured repo cleanly, and every rebuild hint names the plugin, pip and v
   (deliberately — they name `true`, `touch`, and an offline stub), and an absolute path or a
   `PATH`-resetting `verify:` would still escape; the guarantee is that a bare `snow`/`acli`/`gh`
   cannot resolve. §32 gets its own fixture with inert `verify:` commands and stays non-dry-run on
-  purpose, because `--dry-run` never reaches `eval` and would make its command-injection tripwire
-  pass vacuously; a trailing seam now writes a marker to prove `eval` was live in that same run.
+  purpose, because `--dry-run` never reaches `eval` and would make its command-injection
+  tripwire pass vacuously; a trailing seam now writes a marker to prove `eval` was live in that same run.
   New §53 asserts the property directly: no raw non-dry-run invocation in the file — matching a
   `bash` prefix, an `sh` prefix, and the executable in bare command position, since `verify_stack.sh`
   is `+x` and that last shape needs no interpreter at all — no tool CLI in
@@ -2521,7 +2542,7 @@ end-to-end. Six generalizable defect classes, all stdlib-only and tool-agnostic.
   fires on a `v*` tag, builds with `uv`, verifies tag == version, uploads via `pypa/gh-action-pypi-publish`.
 - **`ticketwright` CLI** (zero runtime deps, stdlib-only): `init` scaffolds the kit into a repo (a
   versioned, upgrade-safe `cp -r` that preserves existing per-repo config), and `recall` / `index` /
-  `enrich` run the bundled tools against `$PWD` standalone (no Claude Code needed).
+  `enrich` run the bundled tools against the current directory standalone (no Claude Code needed).
 - The kit assets are bundled into the wheel under `ticketwright/_kit/` via hatchling `force-include`,
   so the Claude Code **plugin** and `cp -r` paths (which reference `bin/` at the repo root) are unchanged.
 - Setup + release flow documented in [`docs/pypi-setup.md`](docs/pypi-setup.md).
