@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-11-02
+
+Your repo's copy of the launcher can now be updated, ahead of a release that moves the kit's
+scripts out of the plugin's `bin/` folder. Run `/setup` once, or the refresh command below, and
+commit `bin/tw` and `bin/kit_paths.py`. Minor: nothing moves yet, and an un-refreshed repo keeps
+working on this version.
+
 ### Added
 - **The launcher in your repo can now be updated.** `/setup` commits two files into your repo,
   `bin/tw` and `bin/kit_paths.py`, and until now nothing ever replaced them. A coming release moves
