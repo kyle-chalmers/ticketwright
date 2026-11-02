@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.9.3] - 2026-11-02
+
+The plugin directory holds a new version for review on 3 policy holds instead of 34. Patch: the
+warehouse guard no longer auto-approves read-only SQL, and skills no longer pre-approve shell
+commands; in a repo set up by `/setup` the project's allow list keeps both prompt-free.
+
 ### Changed
 - **The warehouse guard no longer auto-approves read-only SQL.** `db_write_guard.py` used to
   approve a command it could prove was read-only; it now says nothing, and the call goes through
