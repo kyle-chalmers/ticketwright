@@ -154,6 +154,22 @@ jobs:
           fi
           exit "$rc"
 
+      # The listing serves the `directory` branch: the release tree minus dev-only paths, built by
+      # the same script publish.yml runs. Check that tree too, since it is what the directory scans.
+      - name: Directory profile on the listing tree (strict)
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          bash .github/scripts/directory_tree.sh tree HEAD "$tmp/tw"
+          out="$tmp/validate.out"
+          rc=0; claude plugin validate --profile directory --strict "$tmp/tw" >"$out" 2>&1 || rc=$?
+          cat "$out"
+          if ! grep -qF "Plugin directory checks for" "$out"; then
+            echo "::error::The directory profile did not run on the plugin."; exit 1
+          fi
+          exit "$rc"
+
       # Negative control: a symlinked component (the shape this repo used to ship) must fail.
       - name: "Negative control: a symlinked component must fail the profile"
         run: |

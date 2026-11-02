@@ -255,8 +255,9 @@ that rejects `--scope`?** Run `/plugin install ticketwright@ticketwright` in the
 engine. Then update the CLI (check 6).
 
 *Verify:* `claude plugin list` shows `ticketwright@ticketwright … enabled`, and
-`/ticketwright:setup` appears in the next session's command list. `bin/selftest.sh` takes several
-minutes — judge it by its exit code, not by how long it has been running. Anything still
+`/ticketwright:setup` appears in the next session's command list. A plugin install does not ship
+the kit's self-test; in a clone of the repo, `bin/selftest.sh` takes several minutes — judge it by
+its exit code, not by how long it has been running. Anything still
 unexplained: [`docs/troubleshooting.md`](troubleshooting.md).
 
 **1 · `git clone` the repo and open it in Claude Code** (trust the workspace when prompted). Use a

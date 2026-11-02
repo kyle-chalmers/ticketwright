@@ -6,6 +6,23 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **The plugin directory listing serves the release without dev-only files.** `publish.yml` now
+  builds each `directory` commit with `.github/scripts/directory_tree.sh`, which removes `tests/`,
+  `scripts/`, `.github/` and `bin/selftest.sh`, so a new version no longer waits on a reviewer for
+  the oversized self-test, a binary test fixture or the README media scripts. The commit's only
+  parent is the previous listing (a plain fast-forward that changes nothing under `.github/`, which
+  the Actions token may not touch), and the script refuses a tag whose version is not higher than
+  the listing's or disagrees with `plugin.json`. The first trimmed commit is a one-time maintainer
+  push (`directory_tree.sh bootstrap`, in `docs/maintainers/pypi-setup.md` Part C). Plugin installs therefore no longer
+  ship the self-test: `/setup` (teammate and adopt modes too) offers it only on a kit that has it.
+  Clones, vendored copies and pip installs keep the full tree.
+- CI's `plugin-directory` job also runs `--profile directory --strict` on that trimmed tree, and
+  selftest section 60b builds it from the working copy and checks it against the directory's file
+  rules (size, binaries, bundled image paths, file count, hook and skill scripts present) and the
+  commit's forward-only rules. `docs/maintainers/pypi-setup.md` Part C has a step-by-step portal
+  submission runbook.
+
 ## [4.9.1] - 2026-10-28
 
 `/ship` asks its go-ahead as a question instead of asking you to type a phrase. Patch: same
@@ -694,7 +711,7 @@ changed, and existing ticket folders keep working.
   guards do and don't promise), `SUPPORT.md`, `PRIVACY.md`, `CODE_OF_CONDUCT.md`, and bug and
   feature issue forms.
 - `plugin.json` has a plain description, `author.url`, the 1024px listing icon
-  (`.claude-plugin/icon.png`) and the directory's `documentationUrl`, `supportUrl` and
+  (the PNG beside the manifest) and the directory's `documentationUrl`, `supportUrl` and
   `privacyPolicyUrl` fields. CI's plugin-validate job pins Claude Code 2.1.296, since versions
   before 2.1.281 fail `--strict` on those fields. `pyproject.toml` gains Documentation, Changelog
   and Security links.

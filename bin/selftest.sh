@@ -12320,6 +12320,122 @@ PY
   && ok "directory listing: square PNG icon, https listing links to real files, every hook in the table, disclosure, 3+ example prompts" \
   || bad "the plugin directory listing drifted" "$(cat "$TMP/s60.out")"
 
+hdr "60b · the listing's release tree: dev-only files trimmed, nothing the directory holds for review"
+# The listing follows a `directory` branch that publish.yml builds with .github/scripts/directory_tree.sh:
+# the release tree minus tests, media tooling, CI and the self-test. Those are the only paths that trip
+# the directory's reviewer holds (a non-image file over 256 KiB, a binary that is not an image, a
+# script naming a bundled image). This builds the same tree from the working copy, with its git
+# objects in a throwaway store so the repo is not written, and checks it the way the directory would.
+DT60="$KIT/.github/scripts/directory_tree.sh"
+if [ ! -f "$DT60" ] || ! git -C "$KIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  printf "  - skipped: needs a git clone of the kit with .github/ (a vendored or pip copy has neither)\n"
+else
+  OBJ60="$TMP/s60b-objects"; mkdir -p "$OBJ60"
+  export GIT_OBJECT_DIRECTORY="$OBJ60" GIT_ALTERNATE_OBJECT_DIRECTORIES="$(git -C "$KIT" rev-parse --git-path objects | sed "s|^\([^/]\)|$KIT/\1|")"
+  tree60=""
+  if GIT_INDEX_FILE="$TMP/s60b-index" git -C "$KIT" add -A . >/dev/null 2>&1; then
+    tree60="$(GIT_INDEX_FILE="$TMP/s60b-index" git -C "$KIT" write-tree 2>/dev/null)"
+  fi
+  out60="$TMP/s60b-tree"
+  if [ -n "$tree60" ] && (cd "$KIT" && bash "$DT60" tree "$tree60" "$out60") >"$TMP/s60b-build.out" 2>&1; then
+    ok "directory_tree.sh builds the listing tree from the working copy"
+  else
+    bad "directory_tree.sh could not build the listing tree" "$(cat "$TMP/s60b-build.out" 2>/dev/null)"
+  fi
+  # (a) the trim list, the checks below and the release doc all name the same paths
+  list60="$(bash "$DT60" --list | tr '\n' ' ')"
+  [ "$list60" = "tests scripts .github bin/selftest.sh " ] \
+    && ok "the trim list is tests, scripts, .github and bin/selftest.sh" || bad "the trim list changed: update this section and pypi-setup.md Part C" "$list60"
+  grep -q 'removes `tests/`, `scripts/`, `.github/` and `bin/selftest.sh`' docs/maintainers/pypi-setup.md \
+    && ok "pypi-setup.md Part C names the same trimmed paths" || bad "pypi-setup.md Part C does not name the trimmed paths"
+  # (b) what the directory checks, on the built tree
+  python3 - "$out60" <<'PY' >"$TMP/s60b.out" 2>&1
+import json, os, re, sys
+root = sys.argv[1]; bad = []
+files = []
+for d, dirs, names in os.walk(root):
+    for n in names:
+        files.append(os.path.relpath(os.path.join(d, n), root))
+for p in ("tests", "scripts", ".github", "bin/selftest.sh"):
+    if os.path.exists(os.path.join(root, p)):
+        bad.append("%s is still in the listing tree" % p)
+for p in (".claude-plugin/plugin.json", "README.md", "LICENSE", "bin/tw", "bin/kit_paths.py"):
+    if not os.path.isfile(os.path.join(root, p)):
+        bad.append("%s is missing from the listing tree" % p)
+m = json.load(open(os.path.join(root, ".claude-plugin/plugin.json")))
+for rel in re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\\ ]+)", json.dumps(m.get("hooks", {}))):
+    if not os.path.isfile(os.path.join(root, rel)):
+        bad.append("hook script %s is missing from the listing tree" % rel)
+for s in [m.get("skills", "")] + list(m.get("agents", [])):
+    if s and not os.path.exists(os.path.join(root, s)):
+        bad.append("plugin.json names %s, which the listing tree lacks" % s)
+# every bin/ script a skill or reference calls through bin/tw
+called = set()
+for d, _, names in os.walk(os.path.join(root, ".claude")):
+    for n in names:
+        if n.endswith(".md"):
+            called |= set(re.findall(r'/bin/tw" ([A-Za-z0-9_.-]+\.(?:py|sh))', open(os.path.join(d, n), encoding="utf-8").read()))
+called.discard("selftest.sh")  # offered only where it exists (a vendored or edited kit)
+for s in sorted(called):
+    if not os.path.isfile(os.path.join(root, "bin", s)):
+        bad.append("a skill calls bin/%s, which the listing tree lacks" % s)
+if len(files) > 512:
+    bad.append("the listing tree has %d files; the directory holds more than 512" % len(files))
+IMG = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+images = [f for f in files if f.lower().endswith(IMG)]
+for f in files:
+    full = os.path.join(root, f)
+    if f.lower().endswith(IMG):
+        continue
+    if os.path.getsize(full) > 256 * 1024:
+        bad.append("%s is over 256 KiB" % f)
+    data = open(full, "rb").read()
+    if b"\0" in data:
+        bad.append("%s is a binary that is not an image" % f)
+        continue
+    text = data.decode("utf-8", "replace")
+    for img in images:
+        for line in text.splitlines():
+            if img in line and not re.search(r"!\[[^\]]*\]\(https://", line) \
+               and not (f == ".claude-plugin/plugin.json" and '"icon"' in line):
+                bad.append("%s names the bundled image %s outside a README image link" % (f, img))
+                break
+print("\n".join(bad) if bad else "OK %d files" % len(files))
+PY
+  grep -q '^OK ' "$TMP/s60b.out" \
+    && ok "the listing tree passes the directory's file checks ($(sed 's/^OK //' "$TMP/s60b.out"), hooks and skill scripts present)" \
+    || bad "the listing tree would be blocked or held" "$(cat "$TMP/s60b.out")"
+  unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+  # (c) the commit publish.yml pushes: one parent (the listing head, so the push is a fast-forward
+  #     that changes nothing under .github/, which the Actions token may not touch), forward only,
+  #     final tags only, the tag matching plugin.json; and the one-time bootstrap a maintainer pushes.
+  #     tests/t changes between versions so trimming a ref that differs from HEAD is exercised.
+  R60="$TMP/s60b-repo"; mkdir -p "$R60/.claude-plugin" "$R60/tests" "$R60/.github/scripts"
+  cp "$DT60" "$R60/.github/scripts/"
+  ( cd "$R60" && git init -q && export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+    v60() { printf '{"name":"x","version":"%s"}\n' "$1" > .claude-plugin/plugin.json; echo "$1" > tests/t; git add -A; git commit -qm "$1"; git tag "v$1"; }
+    echo r > README.md; v60 1.2.0; v60 1.10.0; v60 1.10.1rc1
+    D=.github/scripts/directory_tree.sh
+    bash $D commit v1.10.0 v1.2.0 >/dev/null 2>&1; [ $? -eq 6 ] || exit 11
+    b="$(bash $D bootstrap v1.2.0)" || exit 12
+    [ "$(git rev-parse "$b^")" = "$(git rev-parse v1.2.0)" ] || exit 13
+    [ -z "$(git ls-tree "$b" tests .github)" ] || exit 14
+    bash $D bootstrap "$b" >/dev/null 2>&1; [ $? -eq 5 ] || exit 15
+    c="$(bash $D commit v1.10.0 "$b")" || exit 16
+    [ "$(git rev-list --parents -n1 "$c" | wc -w | tr -d ' ')" = 2 ] && [ "$(git rev-parse "$c^")" = "$b" ] || exit 17
+    [ -z "$(git ls-tree "$c" tests .github)" ] && [ -z "$(git diff --name-only "$b" "$c" -- .github)" ] || exit 18
+    git log -1 --format=%B "$c" | grep -q "from v1.10.0 ($(git rev-parse v1.10.0))" || exit 19
+    bash $D commit v1.2.0 "$c" >/dev/null 2>&1; [ $? -eq 4 ] || exit 20
+    bash $D commit v1.10.0 "$c" >/dev/null 2>&1; [ $? -eq 4 ] || exit 21
+    bash $D commit v1.10.1rc1 "$c" >/dev/null 2>&1; [ $? -eq 3 ] || exit 22
+    git tag v9.9.9 v1.10.0; bash $D commit v9.9.9 "$c" >/dev/null 2>&1; [ $? -eq 2 ] || exit 23
+  ) >"$TMP/s60b-commit.out" 2>&1
+  rc60=$?
+  [ "$rc60" -eq 0 ] \
+    && ok "the directory commit has one parent, touches nothing under .github/, needs a bootstrap first, and refuses an older, equal, prerelease or mismatched tag (1.10.0 > 1.2.0)" \
+    || bad "the directory commit logic failed check $rc60" "$(tail -5 "$TMP/s60b-commit.out")"
+fi
+
 hdr "62 · runtime surfaces: one connector, the tool names each agent lists (bin/adapter_surface.py)"
 # The same connector reaches a session under different tool names per agent: Codex CLI lists every
 # ChatGPT app under one server, `codex_apps`, with app-prefixed names and, for Gmail, a different

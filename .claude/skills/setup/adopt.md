@@ -48,6 +48,6 @@ real ticket through `/ticket → /review → /ship` before deleting anything cus
 
 ## 5 · Verify & report
 Same as Phase 4 of the default mode: `selftest.sh` (**kit integrity** — the plugin's own example
-stacks) then `verify_stack.sh .claude/config/stack.yaml` (**your repo's** tool slots). Label the two in
+stacks; only on a vendored or edited kit, since a plugin install does not ship it) then `verify_stack.sh .claude/config/stack.yaml` (**your repo's** tool slots). Label the two in
 the report so the kit's example stack is never mistaken for the repo's config. The report leads with
 the MIGRATION.md path and the trial-ticket suggestion — adoption is incremental by design.
