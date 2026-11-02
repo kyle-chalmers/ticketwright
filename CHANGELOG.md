@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **The release job no longer stops when the trim list grows.** `directory_tree.sh commit` asked for a
+  maintainer bootstrap whenever the listing still held any trimmed path, so adding `docs/images/` in
+  4.9.3 stopped that release's `directory` commit. It now asks only while `.github/` is there (the one
+  path the Actions token cannot remove); any other trimmed path is dropped by the next release.
+
 ## [4.9.3] - 2026-11-02
 
 The plugin directory holds a new version for review on 3 policy holds instead of 34. Patch: the

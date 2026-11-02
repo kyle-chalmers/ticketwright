@@ -78,7 +78,8 @@ parent on purpose: GitHub refuses a push from the Actions token whose new commit
 under `.github/workflows/`, and against a parent that still has those files the trim reads as
 deleting them. The script refuses a tag whose `plugin.json` version disagrees with it, a version
 that is not higher than the one already on `directory` (so the listing never moves backward), and
-a `directory` head that still carries the dev-only paths.
+a `directory` head that still carries `.github/` (the one trimmed path only the bootstrap can remove;
+any other path added to the trim list later is simply dropped by the next release).
 
 **Policy holds a version can still raise.** The scan holds a version for a reviewer on more than
 file rules. The kit cleared the ones it tripped (LABS-206): skills grant no `Bash` (the scan also holds a
