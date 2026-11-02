@@ -27,6 +27,10 @@ All notable changes to this project are documented here. Format loosely follows
   `render_and_validate.sh`, `split_and_export.sh` and `resolve_user.py`, the local tracker's
   `render.sh` call (whose template path was kit-relative too), and the comment in
   `person.yaml.tmpl` that shows how to read your merged config.
+- **The release job no longer stops when the trim list grows.** `directory_tree.sh commit` asked for a
+  maintainer bootstrap whenever the listing still held any trimmed path, so adding `docs/images/` in
+  4.9.3 stopped that release's `directory` commit. It now asks only while `.github/` is there (the one
+  path the Actions token cannot remove); any other trimmed path is dropped by the next release.
 
 ## [4.9.3] - 2026-11-02
 

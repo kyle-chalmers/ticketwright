@@ -12597,10 +12597,18 @@ PY
     bash $D commit v1.10.0 "$c" >/dev/null 2>&1; [ $? -eq 4 ] || exit 21
     bash $D commit v1.10.1rc1 "$c" >/dev/null 2>&1; [ $? -eq 3 ] || exit 22
     git tag v9.9.9 v1.10.0; bash $D commit v9.9.9 "$c" >/dev/null 2>&1; [ $? -eq 2 ] || exit 23
+    # A path added to the trim list after the last release (docs/images in 4.9.3) is still on the
+    # listing head; it is not .github/, so no bootstrap is needed and the next commit removes it.
+    blob="$(echo i | git hash-object -w --stdin)"; idx="$PWD/.git/s60-idx"; rm -f "$idx"
+    GIT_INDEX_FILE="$idx" git read-tree "$c" && GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$blob,docs/images/a.png" || exit 26
+    old="$(git commit-tree "$(GIT_INDEX_FILE="$idx" git write-tree)" -p "$c" -m old)" || exit 27
+    v60 1.11.0
+    n="$(bash $D commit v1.11.0 "$old")" || exit 24
+    [ "$(git rev-parse "$n^")" = "$old" ] && [ -z "$(git ls-tree "$n" docs)" ] || exit 25
   ) >"$TMP/s60b-commit.out" 2>&1
   rc60=$?
   [ "$rc60" -eq 0 ] \
-    && ok "the directory commit has one parent, touches nothing under .github/, needs a bootstrap first, and refuses an older, equal, prerelease or mismatched tag (1.10.0 > 1.2.0)" \
+    && ok "the directory commit has one parent, touches nothing under .github/, needs a bootstrap only while .github/ is on the listing, drops a newly trimmed path, and refuses an older, equal, prerelease or mismatched tag (1.10.0 > 1.2.0)" \
     || bad "the directory commit logic failed check $rc60" "$(tail -5 "$TMP/s60b-commit.out")"
 fi
 

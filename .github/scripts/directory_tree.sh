@@ -90,9 +90,11 @@ case "${1:-}" in
       base_commit="$(git rev-parse -q --verify "${base}^{commit}")" || die "no such ref: $base"
       base_ver="$(plugin_version "$base_commit")"
       [ -n "$base_ver" ] || die "$base has no readable $PLUGIN_JSON version."
-      # shellcheck disable=SC2086
-      [ -z "$(git ls-tree --name-only "$base_commit" -- $TRIM_PATHS)" ] ||
-        die "$base still carries dev-only paths; a maintainer pushes \`directory_tree.sh bootstrap $base\` once first (pypi-setup.md, Part C)." 6
+      # Only .github/ needs the maintainer bootstrap: the Actions token may not push a commit that
+      # changes .github/workflows/. Any other trimmed path still on the base (one added to
+      # TRIM_PATHS after the last release, such as docs/images in 4.9.3) is simply removed here.
+      [ -z "$(git ls-tree --name-only "$base_commit" -- .github)" ] ||
+        die "$base still carries .github/; a maintainer pushes \`directory_tree.sh bootstrap $base\` once first (pypi-setup.md, Part C)." 6
       version_gt "$ver" "$base_ver" ||
         die "$tag is not newer than the listing ($base_ver); the listing only moves forward." 4
       parents="-p $base_commit"
