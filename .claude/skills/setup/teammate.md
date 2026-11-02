@@ -72,11 +72,13 @@ not a missing tool: when the slot's transport is `both` and its adapter's `requi
 does not list `cli` for `both` (Jira's), report it as optional ("not installed; Jira runs through
 the Atlassian connector"), give no install command unless they ask, and make sure the connector
 is connected instead (step 2). Scope note: `yq` is needed only by
-the kit's own `selftest.sh` (step 5 runs it once, as a kit-integrity check) — no skill in a
-configured repo invokes it day to day, so a missing `yq` blocks that one check, nothing else. When
-`yq_present` is not `ok`, print the doctor's platform install command and **offer to run it now**,
-before step 5 needs it — and say what step 5 costs: several minutes, longer than a typical tool
-timeout, judged by its **exit code**, not by how green the tail of its output looks.
+the kit's own `selftest.sh`, which step 5 runs only on a vendored or edited kit (a plugin install
+does not ship it) — no skill in a configured repo invokes it day to day, so a missing `yq` blocks
+that one check, nothing else. When `yq_present` is not `ok` and the kit has `bin/selftest.sh`,
+print the doctor's platform install command and **offer to run it now**, before step 5 needs it —
+and say what step 5 costs: several minutes, longer than a typical tool timeout, judged by its
+**exit code**, not by how green the tail of its output looks. On a plugin install, mention it once
+and move on.
 
 ## 2 · Authenticate each configured tool
 For every configured tool slot, open its adapter's `auth:` notes and walk the person through
@@ -143,8 +145,11 @@ Confirm it resolves:
 must report no errors, with each override attributed to the machine tier.
 
 ## 5 · Verify connectivity — bound to the expected target
-Run `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" selftest.sh` first (the kit itself),
-then `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" verify_stack.sh`. Three rules make the
+On a vendored or edited kit (one that has `bin/selftest.sh`), run
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" selftest.sh` first (the kit itself). A plugin
+install does not ship the self-test, because the released kit is tested before it ships: say so in one
+line ("The kit was tested before release, so I'll skip its self-check.") and go straight on. Then run
+`bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" verify_stack.sh`. Three rules make the
 result mean something:
 - **Bind the check to the target.** "The CLI responded" is not proof the person reached the right
   place — a personal profile can point at an entirely different account or workspace. Use the
