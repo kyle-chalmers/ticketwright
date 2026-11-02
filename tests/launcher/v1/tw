@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# tw — the launcher that makes every other kit script findable without a Claude environment variable.
+#
+#   bash bin/tw --kit | --project | --runtime | --json      # ask kit_paths.py
+#   bash bin/tw <script> [args...]                          # run <kit>/bin/<script>
+#
+# Why this exists: skills used to locate kit assets through ${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR},
+# which expands to nothing under Codex, Cursor, Antigravity and the rest. bin/kit_paths.py is the
+# authority on where things are — but a skill has to FIND it before it can run it, and that is this
+# file's whole job.
+#
+# THE CALL SITES CARRY NO CLAUDE VARIABLE AT ALL:
+#   bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" <script>
+# That works because /setup step 5b copies THIS FILE and kit_paths.py into <project>/bin/ and commits
+# them, and the project-shim tier below resolves the real kit from installed_plugins.json.
+#
+# Two earlier shapes were bugs. Do not reintroduce either.
+# (1) ${CLAUDE_PLUGIN_ROOT:-...} — one expansion. The runtime substitutes only the EXACT token
+#     ${CLAUDE_PLUGIN_ROOT}, so a token carrying a `:-` default never matched and survived verbatim
+#     into the shell, where the variable is genuinely unset (confirmed: neither CLAUDE_PLUGIN_ROOT
+#     nor CLAUDE_PROJECT_DIR is in the Bash tool environment). Precisely: the `:-$CLAUDE_PROJECT_DIR`
+#     variant (setup/*) produced `/bin/…` because BOTH were unset, while `:-$(git rev-parse …)`
+#     produced `<project>/bin/tw` — a real path a Claude PLUGIN install never creates. Different
+#     error text, same dead end, which is part of why it read as intermittent. Teammates hit it as
+#     "No such file or directory" on the very first documented command; the dev repo never saw it,
+#     because its fallback lands on the repo root where bin/ really does live.
+# (2) TW_KIT="${CLAUDE_PLUGIN_ROOT}"; ... — correct shell, but it fixed only HALF the surface, and
+#     that half-fix is the subtler trap. Substitution fires ONLY in a SKILL.md body injected at skill
+#     launch. A file the model opens with Read — every references/ file, every template, the rendered
+#     AGENTS.md — gets raw bytes, so the token arrives verbatim and expands to empty. /setup's
+#     scaffolding and all of /refresh index live in exactly those files, so they stayed broken while
+#     the seven SKILL.md bodies started working, which reads as an intermittent bug rather than a
+#     structural one. No spelling of the token can serve a Read-only file; a project-owned launcher
+#     can. That is why this file gets copied into the repo.
+#
+# The git-toplevel half is not decoration either: a bare `./bin/tw` is CWD-RELATIVE, so a command run
+# from inside a ticket folder would miss the launcher entirely and `"$(tw --kit)"/templates/x` would
+# collapse to `/templates/x`. $CLAUDE_PROJECT_DIR used to supply that absolute anchor; it is empty off
+# Claude Code, so git supplies it instead.
+#
+# Every diagnostic goes to stderr and stdout stays empty on failure, so "$(bash bin/tw --kit)" can
+# never capture an error string and turn it into a filesystem path.
+#
+# bash 3.2-safe (macOS system bash): no associative arrays, no ${var,,}, no mapfile.
+set -uo pipefail
+
+die() { printf 'tw: %s\n' "$1" >&2; exit 3; }
+
+# A directory is only the kit if it carries the assets skills actually ask for — this is what stops a
+# partial copy (a lone bin/ vendored into a project) from answering as the kit and then resolving
+# adapters/runtime/ to nothing.
+is_kit() {
+  [ -n "${1:-}" ] && [ -f "$1/bin/kit_paths.py" ] && [ -d "$1/adapters" ] && [ -d "$1/templates" ]
+}
+
+# This script's own directory, with symlinks resolved (a launcher copied into a project may be a
+# symlink).
+self_dir() {
+  local src="$0" dir
+  while [ -L "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+
+find_kit() {
+  local cand
+  # 1. explicit override, kit-owned name
+  if [ -n "${TICKETWRIGHT_KIT:-}" ] && is_kit "$TICKETWRIGHT_KIT"; then
+    printf '%s' "$TICKETWRIGHT_KIT"; return 0
+  fi
+  # 2. vendored / `ticketwright init` install — this launcher already sits in the kit
+  cand="$(self_dir)/.."
+  cand="$(cd "$cand" 2>/dev/null && pwd)"
+  if is_kit "$cand"; then printf '%s' "$cand"; return 0; fi
+  # 3. Claude plugin install — honored when present, never required
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && is_kit "$CLAUDE_PLUGIN_ROOT"; then
+    printf '%s' "$CLAUDE_PLUGIN_ROOT"; return 0
+  fi
+  # 3b. PROJECT SHIM — this launcher was copied into a project by /setup, so it is NOT inside a kit
+  #     and no Claude variable is set (the Bash tool environment carries neither CLAUDE_PLUGIN_ROOT
+  #     nor CLAUDE_PROJECT_DIR). Its sibling kit_paths.py resolves a plugin install by READING
+  #     ~/.claude/plugins/installed_plugins.json — no env var, no glob, exact version per project.
+  #     This is the tier that makes reference files, templates and generated skills work: the token
+  #     substitution the kit used to lean on fires ONLY in a SKILL.md body injected at skill launch,
+  #     never in a file opened with Read, so no `${CLAUDE_PLUGIN_ROOT}` spelling can serve them.
+  cand="$(self_dir)/kit_paths.py"
+  if [ -f "$cand" ]; then
+    cand="$(python3 "$cand" --kit 2>/dev/null)"
+    if is_kit "$cand"; then printf '%s' "$cand"; return 0; fi
+  fi
+  # 4. installed wheel's bundled _kit. -P keeps cwd off sys.path: a plain import from a repo that HAS
+  #    a ticketwright/ directory would import the source tree instead of the installed package.
+  # `-P` is 3.11+ and this kit supports 3.9, so try it and then fall back. cwd="/" is what actually
+  # keeps a repo-local ticketwright/ source tree off sys.path on the older interpreters.
+  for pyflag in "-P" ""; do
+    cand="$(cd / && PYTHONSAFEPATH=1 python3 $pyflag -c \
+      "import ticketwright,pathlib;print(pathlib.Path(ticketwright.__file__).parent/'_kit')" 2>/dev/null)"
+    if is_kit "$cand"; then printf '%s' "$cand"; return 0; fi
+  done
+  return 1
+}
+
+KIT="$(find_kit)" || die "cannot locate the ticketwright kit. Set TICKETWRIGHT_KIT=<path to the kit>."
+PATHS="$KIT/bin/kit_paths.py"
+
+[ $# -eq 0 ] && { exec python3 "$PATHS" --kit; }
+
+case "$1" in
+  --kit|--project|--runtime|--json|--root) exec python3 "$PATHS" "$@" ;;
+  -h|--help)
+    printf 'usage: tw [--kit|--project|--runtime|--json] | tw <script> [args...]\n' >&2
+    exit 0 ;;
+esac
+
+script="$1"; shift
+# A kit script is a bare filename. Without this, `tw ../../outside.sh` runs anything reachable from
+# $KIT/bin, which makes the "no such kit script" contract bypassable.
+case "$script" in
+  */*|.*) die "not a kit script name: $script (expected a bare filename under bin/)" ;;
+esac
+target="$KIT/bin/$script"
+[ -f "$target" ] || die "no such kit script: bin/$script"
+
+# Dispatch by suffix rather than trusting a shebang + exec bit: file modes are not something to bet a
+# wheel install on. TICKETWRIGHT_PROJECT is passed through ONLY when the caller already set it —
+# defaulting it to $PWD here would make a run from a ticket subdirectory treat that subdirectory as
+# the repo root, which is worse than the git-toplevel fallback the scripts already have.
+case "$script" in
+  *.py) exec python3 "$target" "$@" ;;
+  *.sh) exec bash   "$target" "$@" ;;
+  *)    exec bash   "$target" "$@" ;;
+esac

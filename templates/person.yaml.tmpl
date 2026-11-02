@@ -8,7 +8,7 @@
 # PRECEDENCE. A cross-repo copy at ${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/people/<id>.yaml
 # supplies DEFAULTS; this in-repo file overrides it KEY BY KEY (not whole-file).
 #
-# Read the merged result with:  python3 bin/effective_config.py --root . --person {{person_id}} --json
+# Read the merged result with:  bash "$(git rev-parse --show-toplevel)/bin/tw" effective_config.py --root . --person {{person_id}} --json
 
 display_name: {{display_name}}
 # Your account in the tracker, in the form its adapter's `assign_ticket` section names: a Jira

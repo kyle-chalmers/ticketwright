@@ -195,12 +195,21 @@ project has the launcher. **This file's body is the one place the plugin token i
 this is the one place that can install it. Idempotent — run it every time:
 
 ```bash
-if [ ! -f "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ]; then
-  TW_KIT="${CLAUDE_PLUGIN_ROOT}"; K="${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
-  mkdir -p bin && cp "$K/bin/tw" "$K/bin/kit_paths.py" bin/ && chmod +x bin/tw
+TW_KIT="${CLAUDE_PLUGIN_ROOT}"; K="${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+if [ -f "$K/tools/kit_paths.py" ]; then KS="$K/tools"; else KS="$K/bin"; fi
+if [ -f "$KS/refresh_launcher.py" ]; then python3 "$KS/refresh_launcher.py" --write
+elif [ -f "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ]; then
+  bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" refresh_launcher.py --write
 fi
 bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit
 ```
+
+The first lines install the launcher when it is missing and replace a copy older than this kit's
+(an older copy cannot find a kit whose scripts moved from `bin/` to `tools/`). On an agent that does
+not fill in the plugin path, the project's own launcher runs the refresh instead. They never touch a
+copy that is current or newer, a symlink, or a file with the launcher's name that is not
+Ticketwright's. When the output says `Updated the launcher`, tell the person in one line and
+list both files in what to commit.
 
 **Why this is not only a Track-1 concern:** a teammate joining a repo configured by an earlier
 Ticketwright finds no committed launcher, so without this step their very first `--teammate` command

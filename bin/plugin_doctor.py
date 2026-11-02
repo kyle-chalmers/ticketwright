@@ -138,12 +138,13 @@ CHECK_IDS = [
     "stale_cache",
     "yq_present",
     "git_identity",
+    "project_launcher",
     "restart",
 ]
 
 # "Restart" was read as "new chat" on three machines in a row, and a new chat inside the running app
 # loads nothing. Said once, here, so every surface quotes the same words — and
-# docs/getting-started.md's check 17 carries this string VERBATIM, pinned by selftest 55, so the tool
+# docs/getting-started.md's check 18 carries this string VERBATIM, pinned by selftest 55, so the tool
 # and the page cannot drift apart.
 RESTART_ADVISORY = (
     "Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit "
@@ -183,6 +184,30 @@ def _safe_resolve(p: Path) -> Path:
 
 
 # ── small local helpers ───────────────────────────────────────────────────────────────────────────
+def _launcher_stamp(path: Path) -> int:
+    """The `# tw-launcher: N` stamp near the top of a launcher file: 1 for a pre-stamp Ticketwright
+    launcher, 0 for a file that is not Ticketwright's.
+
+    Mirrors kit_paths.launcher_stamp, which this file may not import."""
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace").splitlines()[:5]
+    except OSError:
+        return 0
+    for line in head:
+        key, sep, val = line.lstrip("# ").partition(":")
+        if sep and key.strip() == "tw-launcher" and val.strip().isdigit():
+            return int(val.strip())
+    markers = ("tw — the launcher", "Locate the kit and the project")
+    return 1 if any(m in line for line in head for m in markers) else 0
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return a.samefile(b)
+    except OSError:
+        return False
+
+
 def _read_json(path: Path) -> object | None:
     """The fallback JSON reader, used only when update_notice.py is not importable.
 
@@ -783,6 +808,50 @@ class Doctor:
                  "git config --global user.email \"you@example.com\""])
 
     # -- 17 --
+    def c_project_launcher(self) -> tuple:
+        # The two files /setup copies into <project>/bin/. An older copy cannot find a kit whose
+        # scripts moved out of bin/ (LABS-209), and nothing used to replace it. The stamp is read
+        # here rather than through kit_paths.launcher_status, because this file never imports
+        # kit_paths (see the module docstring); selftest pins the two readers to the same answer.
+        states = set()
+        root_is_kit = ((self.root / "adapters").is_dir() and (self.root / "templates").is_dir()
+                       and any((self.root / d / "kit_paths.py").is_file() for d in ("tools", "bin")))
+        for name in ("tw", "kit_paths.py"):
+            mine, theirs = self.script_dir / name, self.root / "bin" / name
+            if not mine.is_file():
+                return "unknown", "there is no kit beside this script to compare the launcher with", []
+            if root_is_kit or (theirs.is_file() and _same_file(mine, theirs)):
+                states.add("kit")
+            elif theirs.is_symlink():
+                states.add("linked")
+            elif not theirs.is_file():
+                states.add("missing")
+            else:
+                have, want = _launcher_stamp(theirs), _launcher_stamp(mine)
+                if not have:
+                    states.add("foreign")
+                else:
+                    states.add("stale" if have < want else ("newer" if have > want else "current"))
+        refresh = 'bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write'
+        if "stale" in states:
+            return ("warn",
+                    "this repo's copy of the launcher is out of date, and a coming release will "
+                    "stop working with it",
+                    ["run /setup, or: " + refresh, "then commit bin/tw and bin/kit_paths.py"])
+        if "missing" in states:
+            return ("warn", "this repo has no launcher yet, so skills cannot run the kit's scripts",
+                    ["run /setup, which installs it"])
+        if "foreign" in states or "linked" in states:
+            return ("warn",
+                    "a file where the launcher belongs is not a plain Ticketwright copy, so it is "
+                    "left alone",
+                    ["check bin/tw and bin/kit_paths.py: move a file that is not Ticketwright's, or "
+                     "replace a symlink with a plain file, then run /setup"])
+        if "newer" in states:
+            return "ok", "this repo's launcher is newer than this kit, which is fine", []
+        return "ok", "this repo's copy of the launcher is up to date", []
+
+    # -- 18 --
     def c_restart(self) -> tuple:
         # THE one carrier of RESTART_ADVISORY. Every check whose remedy changes what is installed
         # used to append the advisory to its own fix list, so a single broken install printed the
@@ -833,6 +902,7 @@ LABELS = {
     "stale_cache": "No unused plugin versions left in the cache",
     "yq_present": "yq is installed",
     "git_identity": "Your git name and email are set",
+    "project_launcher": "This repo's copy of the launcher is current",
     "restart": "Reload after install changes",
 }
 

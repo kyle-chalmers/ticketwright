@@ -3658,6 +3658,124 @@ PYCHK
 grep -q 'for pyflag in "-P" ""' bin/tw \
   && ok "bin/tw's pip probe falls back for pythons without -P (3.9/3.10)" \
   || bad "bin/tw's pip probe only uses -P, which does not exist before 3.11"
+hdr "31b · the project launcher reads both kit layouts and refreshes an older copy (LABS-209)"
+# The kit's scripts are moving from a top-level bin/ to tools/, because the plugin directory holds a
+# plugin with a top-level bin/ and claude.ai and Cowork refuse to install one. The PROJECT launcher
+# (<project>/bin/tw + bin/kit_paths.py, copied by /setup) stays put, so it must read either layout,
+# and a copy from before stamping must be replaceable before the move ships. tests/launcher/v1/ is
+# that pre-stamp copy, byte for byte.
+LB="$TMP/lb31b"; mkdir -p "$LB"
+# Two fixture kits: the old layout (scripts in bin/) and the new one (scripts in tools/).
+for lay in bin tools; do
+  mkdir -p "$LB/kit-$lay/adapters" "$LB/kit-$lay/templates" "$LB/kit-$lay/$lay"
+  cp "$KIT/bin/kit_paths.py" "$KIT/bin/tw" "$LB/kit-$lay/$lay/"
+  printf 'echo "ran from %s"\n' "$lay" > "$LB/kit-$lay/$lay/say_layout.sh"
+done
+mkdir -p "$LB/proj-new/bin" "$LB/proj-old/bin"
+cp "$KIT/bin/tw" "$KIT/bin/kit_paths.py" "$LB/proj-new/bin/"
+cp "$KIT/tests/launcher/v1/tw" "$KIT/tests/launcher/v1/kit_paths.py" "$LB/proj-old/bin/"
+for lay in bin tools; do
+  o="$(env -u CLAUDE_PLUGIN_ROOT TICKETWRIGHT_KIT="$LB/kit-$lay" bash "$LB/proj-new/bin/tw" say_layout.sh 2>&1)"
+  [ "$o" = "ran from $lay" ] && ok "a current project launcher runs a kit script from the $lay/ layout" \
+    || bad "the current launcher could not run a script from the $lay/ layout" "$o"
+  o="$(env -u CLAUDE_PLUGIN_ROOT TICKETWRIGHT_KIT="$LB/kit-$lay" bash "$LB/proj-new/bin/tw" --scripts-dir 2>/dev/null)"
+  # kit_paths resolves symlinks, and on macOS $TMPDIR sits under /var -> /private/var.
+  [ "$o" = "$(cd "$LB/kit-$lay" && pwd -P)/$lay" ] && ok "tw --scripts-dir names $lay/ for a kit in that layout" \
+    || bad "tw --scripts-dir was wrong for the $lay/ layout" "got '$o'"
+done
+# The reason the refresh exists: a pre-stamp copy finds the old layout and fails on the new one.
+o="$(env -u CLAUDE_PLUGIN_ROOT TICKETWRIGHT_KIT="$LB/kit-bin" bash "$LB/proj-old/bin/tw" say_layout.sh 2>&1)"
+[ "$o" = "ran from bin" ] && ok "the pre-stamp launcher fixture still runs the old bin/ layout (the fixture is faithful)" \
+  || bad "the pre-stamp launcher fixture did not run the old layout" "$o"
+env -u CLAUDE_PLUGIN_ROOT TICKETWRIGHT_KIT="$LB/kit-tools" bash "$LB/proj-old/bin/tw" say_layout.sh >/dev/null 2>&1 \
+  && bad "the pre-stamp launcher ran a tools/ kit, so the refresh would be unnecessary; check the fixture" \
+  || ok "the pre-stamp launcher cannot find a tools/ kit, which is why old copies must be refreshed first"
+# Both copied files carry the same stamp as kit_paths.LAUNCHER_STAMP.
+st="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import kit_paths as k; from pathlib import Path; print(k.LAUNCHER_STAMP, k.launcher_stamp(Path(sys.argv[1])/"tw"), k.launcher_stamp(Path(sys.argv[1])/"kit_paths.py"), k.launcher_stamp(Path(sys.argv[2])/"tw"))' "$KIT/bin" "$KIT/tests/launcher/v1" 2>&1)"
+set -- $st
+[ "$#" -eq 4 ] && [ "$1" = "$2" ] && [ "$1" = "$3" ] && [ "$4" = "1" ] && [ "$1" -gt 1 ] \
+  && ok "tw and kit_paths.py carry LAUNCHER_STAMP ($1); a copy without a stamp reads as 1" \
+  || bad "the launcher stamps disagree (want LAUNCHER_STAMP, tw, kit_paths.py, v1 = N N N 1)" "$st"
+# refresh_launcher.py: reports, replaces only on --write, says what it wrote, then reports current.
+RP="$LB/refresh"; mkdir -p "$RP/bin"; (cd "$RP" && git init -q . 2>/dev/null)
+cp "$KIT/tests/launcher/v1/tw" "$KIT/tests/launcher/v1/kit_paths.py" "$RP/bin/"
+python3 "$KIT/bin/refresh_launcher.py" --root "$RP" > "$LB/r1.out" 2>&1; r1=$?
+[ "$r1" -eq 1 ] && grep -q 'out of date' "$LB/r1.out" && cmp -s "$RP/bin/tw" "$KIT/tests/launcher/v1/tw" \
+  && ok "refresh_launcher.py without --write reports an old copy (exit 1) and changes nothing" \
+  || bad "refresh_launcher.py check mode misbehaved" "rc=$r1 $(head -2 "$LB/r1.out")"
+python3 "$KIT/bin/kit_paths.py" --root "$RP" --json > /dev/null 2> "$LB/kp.err"
+grep -q 'out of date' "$LB/kp.err" \
+  && ok "kit_paths.py prints the out-of-date notice on stderr, so every agent sees it, not only Claude Code" \
+  || bad "kit_paths.py did not print the out-of-date notice" "$(head -2 "$LB/kp.err")"
+python3 "$KIT/bin/plugin_doctor.py" --root "$RP" --json --no-probe > "$LB/pd.json" 2>/dev/null
+pds="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); r=[c for c in (d.get("checks") or d.get("results") or []) if c.get("id")=="project_launcher"]; print(r[0]["status"] if r else "absent")' "$LB/pd.json" 2>&1)"
+[ "$pds" = "warn" ] && ok "plugin_doctor's project_launcher check warns on the same old copy (its own reader agrees)" \
+  || bad "plugin_doctor's project_launcher check did not warn on an old copy" "$pds"
+python3 "$KIT/bin/refresh_launcher.py" --root "$RP" --write > "$LB/r2.out" 2>&1; r2=$?
+[ "$r2" -eq 0 ] && cmp -s "$RP/bin/tw" "$KIT/bin/tw" && cmp -s "$RP/bin/kit_paths.py" "$KIT/bin/kit_paths.py" \
+  && [ -x "$RP/bin/tw" ] && grep -q 'bin/tw, bin/kit_paths.py' "$LB/r2.out" \
+  && ok "refresh_launcher.py --write replaces both files, keeps tw executable, and names what to commit" \
+  || bad "refresh_launcher.py --write did not replace the launcher cleanly" "rc=$r2 $(head -2 "$LB/r2.out")"
+python3 "$KIT/bin/refresh_launcher.py" --root "$RP" > "$LB/r3.out" 2>&1; r3=$?
+python3 "$KIT/bin/kit_paths.py" --root "$RP" --json > /dev/null 2> "$LB/kp2.err"
+[ "$r3" -eq 0 ] && grep -q 'up to date' "$LB/r3.out" && ! grep -q 'out of date' "$LB/kp2.err" \
+  && ok "after the refresh the copy reads as current and the notice stops" \
+  || bad "the refreshed copy still reads as out of date" "rc=$r3 $(head -1 "$LB/r3.out") $(head -1 "$LB/kp2.err")"
+# A newer copy (another plugin version installed for this repo) is never downgraded.
+sed 's/^# tw-launcher: [0-9]*/# tw-launcher: 99/' "$KIT/bin/tw" > "$RP/bin/tw"
+python3 "$KIT/bin/refresh_launcher.py" --root "$RP" --write > "$LB/r4.out" 2>&1
+grep -q '^# tw-launcher: 99' "$RP/bin/tw" && grep -q 'newer' "$LB/r4.out" \
+  && ok "refresh_launcher.py --write leaves a newer copy alone and says so" \
+  || bad "refresh_launcher.py downgraded a newer launcher" "$(head -2 "$LB/r4.out")"
+# In the kit itself (vendored, init, this repo) the project's bin/tw IS the kit's: nothing to refresh.
+python3 "$KIT/bin/refresh_launcher.py" --root "$KIT" --json > "$LB/r5.json" 2>/dev/null
+grep -q '"state": "kit"' "$LB/r5.json" \
+  && ok "a project that is the kit itself reads as 'kit', never as stale" \
+  || bad "refresh_launcher.py misread the kit's own launcher" "$(head -3 "$LB/r5.json")"
+# Only a Ticketwright copy is ever replaced: a repo's own bin/tw, and a symlinked launcher (a copy
+# would write through to the link's target), are left alone and reported.
+FP="$LB/foreign"; mkdir -p "$FP/bin"
+printf '#!/bin/sh\necho my own tool\n' > "$FP/bin/tw"; cp "$KIT/tests/launcher/v1/kit_paths.py" "$FP/bin/"
+python3 "$KIT/bin/refresh_launcher.py" --root "$FP" --write > "$LB/f.out" 2>&1
+grep -q 'my own tool' "$FP/bin/tw" && cmp -s "$FP/bin/kit_paths.py" "$KIT/bin/kit_paths.py" \
+  && ok "refresh_launcher.py --write never replaces a bin/tw that is not Ticketwright's (it still refreshes the real copy beside it)" \
+  || bad "refresh_launcher.py overwrote a repo's own bin/tw, or skipped the stale copy beside it" "$(head -2 "$LB/f.out")"
+python3 "$KIT/bin/plugin_doctor.py" --root "$FP" --json --no-probe > "$LB/pdf.json" 2>/dev/null
+pdf="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); r=[c for c in d["checks"] if c["id"]=="project_launcher"]; print(r[0]["status"] if r else "absent")' "$LB/pdf.json" 2>&1)"
+[ "$pdf" = "warn" ] && ok "plugin_doctor flags a bin/tw that is not Ticketwright's instead of calling it current" \
+  || bad "plugin_doctor misread a foreign bin/tw" "$pdf"
+SP="$LB/linked"; mkdir -p "$SP/bin" "$LB/elsewhere"
+cp "$KIT/tests/launcher/v1/tw" "$LB/elsewhere/tw"; ln -s "$LB/elsewhere/tw" "$SP/bin/tw"
+cp "$KIT/bin/kit_paths.py" "$SP/bin/"
+python3 "$KIT/bin/refresh_launcher.py" --root "$SP" --write > "$LB/s.out" 2>&1
+cmp -s "$LB/elsewhere/tw" "$KIT/tests/launcher/v1/tw" && [ -L "$SP/bin/tw" ] && grep -q 'symlink' "$LB/s.out" \
+  && ok "refresh_launcher.py --write leaves a symlinked launcher and its target alone, and says why" \
+  || bad "refresh_launcher.py wrote through a symlinked launcher" "$(head -2 "$LB/s.out")"
+# A vendored kit (a whole kit copied into the project) reads as 'kit' even when another kit, such
+# as the installed plugin, is the one doing the comparing.
+VP="$LB/vendored"; mkdir -p "$VP/adapters" "$VP/templates" "$VP/bin"
+cp "$KIT/tests/launcher/v1/tw" "$KIT/tests/launcher/v1/kit_paths.py" "$VP/bin/"
+python3 "$KIT/bin/refresh_launcher.py" --root "$VP" --write --json > "$LB/v.json" 2>/dev/null
+grep -q '"state": "kit"' "$LB/v.json" && cmp -s "$VP/bin/tw" "$KIT/tests/launcher/v1/tw" \
+  && ok "a vendored older kit reads as 'kit' and its files are never overwritten by a different kit" \
+  || bad "refresh_launcher.py treated a vendored kit's own launcher as stale" "$(head -4 "$LB/v.json")"
+# /setup's preflight runs the refresh every time instead of copying only when the file is missing.
+SETUP_MD="$KIT/.claude/skills/setup/SKILL.md"
+grep -qF 'refresh_launcher.py" --write' "$SETUP_MD" && ! grep -qF 'if [ ! -f "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" ]' "$SETUP_MD" \
+  && ok "/setup's launcher preflight refreshes an old copy, not only a missing one" \
+  || bad "/setup's preflight still installs the launcher only when it is missing"
+# The Claude Code session banner shows the same line (presentation only) and nothing for a current copy.
+bn="$(CLAUDE_PLUGIN_ROOT="$KIT" python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import session_context as s; from pathlib import Path; print(len(s.launcher_notice_line(Path(sys.argv[2]))), len(s.launcher_notice_line(Path(sys.argv[3]))))' "$KIT/.claude/hooks" "$LB/proj-old" "$LB/proj-new" 2>&1)"
+[ "$bn" = "1 0" ] && ok "the session banner adds the out-of-date line for an old copy and nothing for a current one" \
+  || bad "the session banner's launcher line misbehaved (want '1 0')" "$bn"
+# The notice leads in plain words and keeps paths in code spans before Details:.
+ntc="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import kit_paths as k; from pathlib import Path; print(k.launcher_notice(Path(sys.argv[2]), Path(sys.argv[3])) or "")' "$KIT/bin" "$LB/proj-old" "$KIT" 2>&1)"
+plain="${ntc%% Details:*}"
+stripped="$(printf '%s' "$plain" | sed 's/`[^`]*`//g')"
+[ -n "$ntc" ] && [ "$plain" != "$ntc" ] && ! printf '%s' "$stripped" | grep -q 'bin/' \
+  && ok "the out-of-date notice leads in plain words, with paths only in code spans or after Details:" \
+  || bad "the out-of-date notice breaks the writing rule" "$ntc"
+
 hdr "32 · three-tier config resolution (bin/effective_config.py)"
 # stack.yaml is COMMITTED and SHARED, so a value true only on one machine must not live there. These
 # assertions are about what the resolver REFUSES as much as what it merges: the scope rule is the

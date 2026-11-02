@@ -236,7 +236,11 @@ The checks, in the order the doctor runs them:
 16. **Git identity is set.** <!-- doctor-check: git_identity -->
     `git config --get user.name` and `git config --get user.email`. Unset, the first commit fails:
     `git config user.name "…"` and `git config user.email "…"`.
-17. **Restart the right way.** <!-- doctor-check: restart -->
+17. **This repo's copy of the launcher is current.** <!-- doctor-check: project_launcher -->
+    `/setup` commits `bin/tw` and `bin/kit_paths.py` into the repo. A copy older than the kit's
+    cannot find a kit whose scripts moved out of `bin/`. Run `/setup`, or
+    `bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write`, and commit both files.
+18. **Restart the right way.** <!-- doctor-check: restart -->
     Printed whenever an install check above is not clean. Run `/reload-plugins` or start a new
     session. If the skills still do not appear, fully quit the Claude app (Cmd+Q on macOS,
     File → Exit on Windows/Linux) and relaunch. A new chat inside the running app is not a restart.
