@@ -1,0 +1,970 @@
+#!/usr/bin/env python3
+"""Name every state a plugin install can be in, and say how to leave it.
+
+WHY THIS EXISTS. Registering a marketplace is not installing a plugin. A repo can carry a committed
+`extraKnownMarketplaces` + `enabledPlugins` block, a teammate can open and trust that repo, and
+NOTHING is installed — the marketplace clone lands, the plugin does not, and on a Claude Code older
+than 2.1.195 nothing on screen says so. Around that one gap sit four more states nobody could name
+from the outside: a CLI too old to accept `--scope` (2.0.x rejects it, and rejects `plugin list`
+too), an install record whose payload directory was never written (seen on 2.0.22), a global install
+nobody meant to make, and a Download-ZIP folder that is not a git clone at all. This CLI turns all of
+them into one line each, with the command that ends them.
+
+  plugin_doctor.py [--root <repo>] [--config-root <dir>] [--plugin <name>] [--marketplace <name>]
+                   [--url <clone url>] [--json] [--no-probe]
+
+WHERE IT RUNS. Anywhere python3 does — including before anything is installed. The marketplace clone
+appears at `~/.claude/plugins/marketplaces/<name>/` as soon as the folder is trusted, which is
+exactly the moment a teammate's agent has nothing else to read:
+
+  python3 ~/.claude/plugins/marketplaces/<marketplace>/tools/plugin_doctor.py
+
+WHAT IT NEVER DOES. No network. No writes. No credentials. It never runs an install, an uninstall or
+a `marketplace add` — it NAMES them and stops. The only subprocesses are `git` and, unless
+`--no-probe` is passed, two read-only `claude` calls (`--version`, `plugin install --help`), each
+with `capture_output=True, timeout=10`.
+
+IT MUST NEVER IMPORT tools/kit_paths.py. That module answers "where is the kit" by collapsing
+ambiguity to None by contract, exits 3 when there is no kit at all, and runs on every single
+`bin/tw` invocation — none of which suits a diagnostic whose entire job is to describe a broken or
+absent install without dying and without adding subprocess probes to the launcher's hot path. What
+this file reuses instead is tools/update_notice.py, imported defensively: when that sibling is not
+importable (a partial copy, a bare script beside a marketplace manifest) the checks that need it
+report `unknown` rather than failing to run.
+
+PRIVACY, stated exactly so it can be tested. `installed_plugins.json` and `known_marketplaces.json`
+carry OTHER REPOS' filesystem paths. The rule: NO VALUE READ FROM EITHER OF THOSE FILES appears in
+any output, in either mode, other than the caller's own `--root`. Versions, scopes and names are
+reported; every `installPath`, `projectPath` and `installLocation` is JUDGED and then discarded —
+named as a field where a fix has to talk about it, never printed as a value.
+
+The user-level `settings.json` is read for ONE key, `extraKnownMarketplaces.<marketplace>.source`,
+and only its KIND (a GitHub shorthand or a git URL) is reported. The value it holds is never printed;
+the fix spells out the repo's own declared source, which is the caller's repo, not a foreign one.
+
+The one `~/…` path that does appear, in the `install_payload` fix, is not an exception to that rule:
+it is a documentation template built from the marketplace NAME the caller supplied (a `--marketplace`
+flag, the repo's own settings, or the clone's own manifest), never a location read from either config
+file. A fork therefore reads its own marketplace name there, and no other repo's path rides along.
+
+EXIT: 0 when nothing failed, 1 when any check failed, 2 on a usage error. Never a traceback — every
+check is wrapped, and an exception becomes `unknown` carrying the exception's class name only.
+
+Stdlib only.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import stat
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# Defensive by design: a diagnostic that dies because the file it wanted to reuse is missing is a
+# diagnostic that cannot run in the situation it exists for. Consumers test the NAME they are
+# about to call (bound to None below), never a bare "did the import work" flag.
+try:
+    from update_notice import (            # noqa: F401  (PAIR_SEP is used to build the ref)
+        PAIR_SEP,
+        _config_root as _un_config_root,
+        _load_json as _un_load_json,
+        _resolve_root as _un_resolve_root,
+        catalog_version,
+        folder_sharing,
+        install_pair_command,
+        is_newer,
+        repo_install_matches,
+        select_repo_install,
+        settings_pairs,
+        install_rows,
+    )
+    _HAVE_UN = True
+except ImportError:                        # pragma: no cover - exercised by selftest 55(h)
+    # Every name is BOUND, to None, rather than left undefined. An unbound name turns the degrade
+    # path into a NameError at the first use — the traceback this file promises never to produce —
+    # and it hides the branch from a type checker, which is how a "defensive" import becomes a crash
+    # nobody sees until the one machine that needs it. Each consumer below tests for None.
+    _HAVE_UN = False
+    PAIR_SEP = "@"
+    _un_config_root = _un_load_json = _un_resolve_root = None
+    catalog_version = folder_sharing = install_pair_command = is_newer = None
+    install_rows = repo_install_matches = select_repo_install = settings_pairs = None
+
+SCHEMA = 1
+TIMEOUT = 10
+
+# THE PINNED ORDER. This list is the contract shared with docs/getting-started.md, whose install
+# checklist tags each line with `<!-- doctor-check: <id> -->`;
+# What `/setup` and the first ticket actually open from an installed payload. `install_payload`
+# checks these exist, so a partial copy fails HERE, named, instead of halfway through setup. This is
+# a completeness check, not an integrity check: it does not prove a file's contents are right (the
+# released kit is CI-tested; the full `tools/selftest.sh` stays available for vendored or edited kits).
+REQUIRED_PAYLOAD = (
+    ".claude/skills/setup/SKILL.md", ".claude/skills/setup/interview.md",
+    ".claude/skills/setup/scaffold.md", ".claude/skills/setup/teammate.md",
+    ".claude/skills/setup/viewer.md",
+    ".claude/skills/ticket/SKILL.md", ".claude/skills/build/SKILL.md",
+    ".claude/skills/review/SKILL.md", ".claude/skills/ship/SKILL.md",
+    ".claude/skills/skillify/SKILL.md", ".claude/skills/refresh/SKILL.md",
+    ".claude/config/stack.schema.md", ".claude/settings.json.tmpl",
+    "adapters/README.md",
+    "templates/AGENTS.md.tmpl", "templates/agent-reference.md", "templates/CLAUDE.md.tmpl",
+    "templates/project-README.md.tmpl", "templates/gitignore.tmpl",
+    "tools/tw", "tools/kit_paths.py", "tools/verify_stack.sh", "tools/effective_config.py",
+    "tools/whoami.py", "tools/render.sh", "tools/build_ticket_index.py",
+    "tools/setup_detect.py", "tools/setup_draft_check.sh",
+)
+
+# selftest section 55(k) asserts the two lists are equal, in order. Renaming or reordering an id
+# means editing both.
+CHECK_IDS = [
+    "git_clone",
+    "cwd_is_root",
+    "claude_on_path",
+    "claude_version",
+    "scope_supported",
+    "install_channel",
+    "marketplace_registered",
+    "marketplace_source",
+    "repo_install",
+    "install_payload",
+    "user_install",
+    "catalog_current",
+    "install_commit",
+    "stale_cache",
+    "yq_present",
+    "git_identity",
+    "project_launcher",
+    "restart",
+]
+
+# "Restart" was read as "new chat" on three machines in a row, and a new chat inside the running app
+# loads nothing. Said once, here, so every surface quotes the same words — and
+# docs/getting-started.md's check 18 carries this string VERBATIM, pinned by selftest 55, so the tool
+# and the page cannot drift apart.
+RESTART_ADVISORY = (
+    "Run `/reload-plugins` or start a new session. If the skills still do not appear, fully quit "
+    "the Claude app (Cmd+Q on macOS, File → Exit on Windows/Linux) and relaunch. A new chat inside "
+    "the running app is not a restart."
+)
+
+# The version at which Claude Code began saying, on its own, that a declared plugin is not installed.
+# Below it the same repo is silently plugin-less, which is the whole reason this file exists.
+HINT_VERSION = "2.1.195"
+
+UPDATE_COMMANDS = {
+    "native": ["claude update"],
+    "npm": ["npm install -g @anthropic-ai/claude-code@latest",
+            "an nvm-installed `claude` shadows a native one; `claude doctor` lists conflicting "
+            "installs"],
+    "brew": ["brew upgrade claude-code"],
+}
+UPDATE_UNKNOWN = ["claude update  (native installer)",
+                  "npm install -g @anthropic-ai/claude-code@latest  (npm/nvm)",
+                  "brew upgrade claude-code  (Homebrew)",
+                  "`claude doctor` shows install health and conflicting installs"]
+
+SYMBOL = {"ok": "✓", "warn": "!", "fail": "✗", "unknown": "?"}
+
+# A cache folder name the doctor will PRINT: a version string, nothing else. Anything else in that
+# folder is counted, never echoed.
+VERSION_DIR = re.compile(r"[0-9][0-9A-Za-z.+-]{0,63}")
+
+
+def _safe_resolve(p: Path) -> Path:
+    """resolve() that never raises: an install record may name a deleted folder."""
+    try:
+        return p.resolve()
+    except (OSError, RuntimeError):
+        return p
+
+
+# ── small local helpers ───────────────────────────────────────────────────────────────────────────
+def _launcher_stamp(path: Path) -> int:
+    """The `# tw-launcher: N` stamp near the top of a launcher file: 1 for a pre-stamp Ticketwright
+    launcher, 0 for a file that is not Ticketwright's.
+
+    Mirrors kit_paths.launcher_stamp, which this file may not import."""
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace").splitlines()[:5]
+    except OSError:
+        return 0
+    for line in head:
+        key, sep, val = line.lstrip("# ").partition(":")
+        if sep and key.strip() == "tw-launcher" and val.strip().isdigit():
+            return int(val.strip())
+    markers = ("tw — the launcher", "Locate the kit and the project")
+    return 1 if any(m in line for line in head for m in markers) else 0
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return a.samefile(b)
+    except OSError:
+        return False
+
+
+def _read_json(path: Path) -> object | None:
+    """The fallback JSON reader, used only when update_notice.py is not importable.
+
+    Same two refusals as the real one, cheaply: a non-regular file (a FIFO would block forever) and
+    anything that does not parse. Every failure is None, never an exception.
+    """
+    try:
+        if not stat.S_ISREG(os.stat(str(path)).st_mode):
+            return None
+        with open(str(path), "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _json(path: Path) -> object | None:
+    return _un_load_json(path) if _un_load_json is not None else _read_json(path)
+
+
+def _resolve_root(root: str | None) -> Path:
+    if _un_resolve_root is not None:
+        return _un_resolve_root(root)
+    if root:
+        return Path(root).expanduser().resolve()
+    return Path.cwd().resolve()
+
+
+def _config_root(explicit: str | None) -> Path:
+    if _un_config_root is not None:
+        return _un_config_root(explicit)
+    if explicit:
+        return Path(explicit).expanduser()
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+
+
+def _run(cmd: list) -> tuple:
+    """`(returncode, stdout, stderr)`, or `(None, "", "")` when the command could not run at all."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
+        return proc.returncode, proc.stdout or "", proc.stderr or ""
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None, "", ""
+
+
+def source_key(entry: object) -> tuple | None:
+    """`(kind, target)` for an `extraKnownMarketplaces` entry's `source`, or None when it has none.
+
+    Compared LITERALLY on purpose. `{"source":"github","repo":"o/r"}` and a git URL for the same repo
+    point at the same code, but Claude Code treats them as different sources: declaring one in user
+    settings and running `marketplace add` with the other fails with "its network source differs
+    from the one declared for it in settings". Normalizing them to one URL would hide exactly the
+    mismatch this exists to name.
+    """
+    if not isinstance(entry, dict):
+        return None
+    src = entry.get("source")
+    if isinstance(src, str):
+        return ("path-or-url", src)
+    if not isinstance(src, dict) or not isinstance(src.get("source"), str):
+        return None
+    kind = src["source"]
+    target = src.get("url") if kind in ("git", "url") else src.get("repo")
+    return (kind, target if isinstance(target, str) else None)
+
+
+def source_kind(key: tuple) -> str:
+    """A reader's name for a source KIND. Never the value: see the privacy note up top."""
+    return {"github": "the GitHub shorthand (`\"source\": \"github\"`)",
+            "git": "a git URL (`\"source\": \"git\"`)",
+            "url": "a URL (`\"source\": \"url\"`)"}.get(key[0], "an unrecognized source kind")
+
+
+def manifest_pair(manifest: Path) -> tuple | None:
+    """`(plugin, marketplace)` from a marketplace manifest, or None.
+
+    This is the tier that makes the pre-install one-liner work in a repo with no settings at all: the
+    script is sitting INSIDE the marketplace clone, so the clone's own manifest knows both names.
+    Reading them beats hardcoding `ticketwright`, which would make every fork's doctor lie.
+    """
+    data = _json(manifest)
+    if not isinstance(data, dict):
+        return None
+    marketplace = data.get("name")
+    plugins = data.get("plugins")
+    if not isinstance(marketplace, str) or not marketplace:
+        return None
+    if not isinstance(plugins, list) or not plugins:
+        return None
+    first = plugins[0]
+    plugin = first.get("name") if isinstance(first, dict) else None
+    if not isinstance(plugin, str) or not plugin:
+        return None
+    return plugin, marketplace
+
+
+def resolve_names(args, root: Path, script_dir: Path) -> tuple:
+    """`(plugin, marketplace, url, names_from, reason)`.
+
+    Order: explicit flags, then the repo's own settings, then the marketplace manifest sitting beside
+    this script, then nothing. `reason` explains a `none` — "two plugins are enabled here" is a
+    different problem from "this repo declares no plugin", and the fix differs too.
+    """
+    plugin = marketplace = url = None
+    names_from, reason = "none", "no plugin name could be resolved"
+
+    if args.plugin and args.marketplace:
+        return args.plugin, args.marketplace, args.url, "flags", ""
+
+    pairs_fn = settings_pairs
+    pairs = pairs_fn(_json(root / ".claude" / "settings.json")) if pairs_fn is not None else []
+    if len(pairs) == 1:
+        plugin, marketplace, url = pairs[0]
+        names_from, reason = "settings", ""
+    elif len(pairs) > 1:
+        reason = ("this repo's .claude/settings.json enables more than one plugin; "
+                  "name the plugin with --plugin and --marketplace")
+    else:
+        found = manifest_pair(script_dir.parent / ".claude-plugin" / "marketplace.json")
+        if found:
+            plugin, marketplace = found
+            names_from, reason = "manifest", ""
+        elif pairs_fn is None:
+            reason = ("this repo's settings could not be read (update_notice.py is not importable "
+                      "beside this script)")
+        else:
+            reason = ("this repo's .claude/settings.json declares no enabled plugin; "
+                      "name the plugin with --plugin and --marketplace")
+
+    if args.plugin:
+        plugin, names_from = args.plugin, "flags"
+    if args.marketplace:
+        marketplace, names_from = args.marketplace, "flags"
+    if args.url:
+        url = args.url
+
+    if not (plugin and marketplace):
+        return None, None, url, "none", reason
+    return plugin, marketplace, url, names_from, ""
+
+
+def claude_channel(claude_path: str | None) -> str:
+    """`native` | `npm` | `brew` | `unknown` — how this machine's `claude` was installed.
+
+    The channel decides the UPDATE COMMAND, and the wrong one is worse than none: telling an nvm user
+    to run `claude update` updates a native install they are not running. The realpath is inspected
+    and DISCARDED — it is a filesystem path, and this CLI prints exactly one of those.
+    """
+    if not claude_path:
+        return "unknown"
+    try:
+        real = os.path.realpath(claude_path)
+    except OSError:
+        return "unknown"
+    if "/.local/share/claude/versions/" in real or real.endswith("/.local/bin/claude"):
+        return "native"
+    if "node_modules/@anthropic-ai/claude-code" in real or "/.nvm/" in real:
+        return "npm"
+    if "/Cellar/" in real or "/homebrew/" in real or "/linuxbrew/" in real:
+        return "brew"
+    return "unknown"
+
+
+def yq_install_command() -> str:
+    # `platform` is read into a local first, deliberately: comparing `sys.platform` directly lets a
+    # type checker narrow it to whichever platform IT was run on and call the other two branches
+    # dead code. The branches are all live — this string is read by a person on some other machine.
+    platform = str(sys.platform)
+    if platform == "darwin":
+        return "brew install yq"
+    if platform.startswith("win"):
+        return "winget install MikeFarah.yq"
+    return "install yq with your distribution's package manager (apt install yq, dnf install yq, …)"
+
+
+# ── the checks ────────────────────────────────────────────────────────────────────────────────────
+class Doctor:
+    """One instance per run. Each `c_<id>` returns `(status, detail, fix_lines)` and may raise."""
+
+    def __init__(self, args) -> None:
+        self.args = args
+        self.root = _resolve_root(args.root)
+        self.config_root = _config_root(args.config_root)
+        self.script_dir = Path(__file__).resolve().parent
+        self.plugin, self.marketplace, self.url, self.names_from, self.name_reason = resolve_names(
+            args, self.root, self.script_dir)
+        self.ref = (f"{self.plugin}{PAIR_SEP}{self.marketplace}"
+                    if self.plugin and self.marketplace else None)
+        self.claude = shutil.which("claude")
+        self.channel = claude_channel(self.claude)
+        self.results: list = []
+        # Filled in by c_repo_install so the payload/catalog checks judge the SAME record.
+        self._rows: list = []
+        self._matches: list = []
+        self._selected: tuple | None = None
+
+    # -- helpers shared by several checks --
+    def _reusable(self) -> bool:
+        """True when update_notice.py's install selectors are actually importable.
+
+        Asked as "is this specific name bound", not as a flag: the four checks below CALL these, and
+        a flag says only that an import once succeeded.
+        """
+        return _HAVE_UN and None not in (install_rows, repo_install_matches,
+                                         select_repo_install, catalog_version, is_newer,
+                                         install_pair_command)
+
+    def _no_names(self) -> tuple:
+        return "unknown", self.name_reason or "no plugin name could be resolved", [
+            "name the plugin with --plugin <name> --marketplace <name> (and --url <clone url>)"]
+
+    def _track2(self) -> list:
+        ref = self.ref or "<plugin>@<marketplace>"
+        url = self.url or "<marketplace clone url>"
+        return [f"claude plugin marketplace add {url} --scope project",
+                f"claude plugin install {ref} --scope project",
+                "run both from the repository root (claude-code#82830 keys a project-scope install "
+                "to the session's working directory)",
+                "no terminal? in a Claude session run `/plugin install " + ref +
+                "` and choose Project scope."]
+
+    def _update_fix(self) -> list:
+        return list(UPDATE_COMMANDS.get(self.channel, UPDATE_UNKNOWN))
+
+    # -- 1 --
+    def c_git_clone(self) -> tuple:
+        if (self.root / ".git").exists():        # a dir normally, a file inside a git worktree
+            return "ok", "this repo is a git clone", []
+        return ("fail",
+                "no .git here — a folder from GitHub's Download ZIP button (named "
+                "<repo>-main) cannot branch, commit or open a pull request",
+                [f"git clone {self.url or '<repository url>'} and work in the clone instead"])
+
+    # -- 2 --
+    def c_cwd_is_root(self) -> tuple:
+        rc, out, _ = _run(["git", "rev-parse", "--show-toplevel"])
+        if rc != 0 or not out.strip():
+            return "unknown", "no git repository at the current working directory", []
+        try:
+            same = Path(out.strip()).resolve() == Path.cwd().resolve()
+        except (OSError, ValueError, RuntimeError):
+            same = False
+        if same:
+            return "ok", "the shell is at the repository root", []
+        return ("warn",
+                "the shell is inside the repo but not at its root",
+                ["cd to the repository root before running any plugin command "
+                 "(claude-code#82830 keys a project-scope install to the session's working "
+                 "directory, not the repository)"])
+
+    # -- 3 --
+    def c_claude_on_path(self) -> tuple:
+        if self.claude:
+            return "ok", "the `claude` CLI is on PATH", []
+        return ("fail",
+                "no `claude` on PATH",
+                ["install Claude Code (https://code.claude.com/docs/en/setup), then open a new "
+                 "terminal",
+                 "the in-app route needs no CLI: in a Claude session run `/plugin install "
+                 f"{self.ref or '<plugin>@<marketplace>'}` and choose Project scope"])
+
+    # -- 4 --
+    def c_claude_version(self) -> tuple:
+        if self.args.no_probe:
+            return "unknown", "version not read (--no-probe)", []
+        if not self.claude:
+            return "unknown", "no `claude` on PATH to ask for a version", []
+        rc, out, err = _run(["claude", "--version"])
+        raw = (out or err).strip().splitlines()
+        if rc is None or not raw:
+            return "unknown", "`claude --version` produced no answer", []
+        version = raw[0].replace("(Claude Code)", "").strip()
+        return ("ok",
+                f"Claude Code CLI {version} — from {HINT_VERSION} the app itself says when a "
+                "declared plugin is not installed; 2.0.x accepts neither `--scope` nor "
+                "`plugin list`",
+                [])
+
+    # -- 5 --
+    def c_scope_supported(self) -> tuple:
+        if self.args.no_probe:
+            return "unknown", "not probed (--no-probe)", []
+        if not self.claude:
+            return "unknown", "no `claude` on PATH to probe", []
+        # --help ONLY. This never installs anything; an install is the one thing a diagnostic must
+        # not do behind someone's back.
+        rc, out, err = _run(["claude", "plugin", "install", "--help"])
+        if rc is None:
+            return "unknown", "`claude plugin install --help` could not run", []
+        if "--scope" in (out + err):
+            return "ok", "this CLI accepts `--scope`, so it can install into this repo only", []
+        return ("fail",
+                "this CLI rejects `--scope`, so every install it makes is global (Claude Code "
+                "2.0.x)",
+                self._update_fix() + [
+                    "no terminal, no update: in a Claude session run `/plugin install "
+                    f"{self.ref or '<plugin>@<marketplace>'}` and choose Project scope, or use "
+                    "+ → Plugins → Add plugin"])
+
+    # -- 6 --
+    def c_install_channel(self) -> tuple:
+        if not self.claude:
+            return "unknown", "no `claude` on PATH to classify", self._update_fix()
+        if self.channel == "unknown":
+            return ("unknown",
+                    "could not tell how this `claude` was installed",
+                    self._update_fix())
+        labels = {"native": "the native installer", "npm": "npm or nvm", "brew": "Homebrew"}
+        return ("ok",
+                f"`claude` was installed by {labels[self.channel]}; update it with "
+                f"`{UPDATE_COMMANDS[self.channel][0]}`",
+                self._update_fix())
+
+    # -- 7 --
+    def c_marketplace_registered(self) -> tuple:
+        if not self.marketplace:
+            return self._no_names()
+        data = _json(self.config_root / "plugins" / "known_marketplaces.json")
+        entries = data
+        if isinstance(data, dict) and isinstance(data.get("marketplaces"), dict):
+            entries = data["marketplaces"]
+        add = (f"claude plugin marketplace add {self.url or '<marketplace clone url>'} "
+               "--scope project")
+        if not isinstance(entries, dict) or self.marketplace not in entries:
+            return ("fail",
+                    f"the `{self.marketplace}` marketplace is not registered on this machine",
+                    [add,
+                     "\"already installed\" from that command means it IS registered — "
+                     "harmless, move on to the install"])
+        entry = entries.get(self.marketplace)
+        location = entry.get("installLocation") if isinstance(entry, dict) else None
+        if isinstance(location, str) and location and Path(location).exists():
+            return "ok", f"the `{self.marketplace}` marketplace is registered and cloned", []
+        return ("warn",
+                f"`{self.marketplace}` is registered but its clone is not on disk",
+                [add, "then restart the session so the clone is re-fetched"])
+
+    # -- 8 --
+    def c_marketplace_source(self) -> tuple:
+        if not self.marketplace:
+            return self._no_names()
+        user = _json(self.config_root / "settings.json")
+        user_markets = user.get("extraKnownMarketplaces") if isinstance(user, dict) else None
+        user_key = (source_key(user_markets.get(self.marketplace))
+                    if isinstance(user_markets, dict) else None)
+        if user_key is None:
+            return ("ok", f"your user settings declare no `{self.marketplace}` marketplace, so no "
+                          "source can conflict with this repo's", [])
+        repo = _json(self.root / ".claude" / "settings.json")
+        repo_markets = repo.get("extraKnownMarketplaces") if isinstance(repo, dict) else None
+        repo_entry = repo_markets.get(self.marketplace) if isinstance(repo_markets, dict) else None
+        repo_key = source_key(repo_entry)
+        if repo_key is not None:
+            wanted, repo_desc = repo_entry["source"], f"this repo declares {source_kind(repo_key)}"
+        elif self.url:
+            # No committed declaration: compare against what `marketplace add <url>` would write.
+            repo_key = ("git", self.url)
+            wanted = {"source": "git", "url": self.url}
+            repo_desc = "the install adds it by git URL"
+        if repo_key is None:
+            # Nothing declared yet: the first-install case. The documented install is always
+            # `marketplace add <https://….git URL>`, which writes a git source, so any other KIND in
+            # user settings is the conflict that command will hit.
+            if user_key[0] == "git":
+                return ("ok", f"your user settings declare `{self.marketplace}` as a git URL, the "
+                              "form the documented `marketplace add` writes (a DIFFERENT git URL "
+                              "would still fail with \"source differs\"; this repo declares none "
+                              "to compare against)", [])
+            return ("warn",
+                    f"your user settings declare the `{self.marketplace}` marketplace with "
+                    f"{source_kind(user_key)}, but the documented install adds it by git URL; "
+                    "`claude plugin marketplace add <url>` then fails with \"its network source "
+                    "differs from the one declared for it in settings\"",
+                    [f"in your user settings.json (~/.claude/settings.json, or $CLAUDE_CONFIG_DIR's), "
+                     f"set extraKnownMarketplaces.{self.marketplace}.source to "
+                     '{"source": "git", "url": "<the https://….git URL you install from>"}',
+                     "or delete that user-level entry",
+                     "then run the marketplace add again"])
+        if user_key == repo_key:
+            return ("ok", f"your user settings declare `{self.marketplace}` with the same source as "
+                          "this repo", [])
+        same_kind = user_key[0] == repo_key[0]
+        detail = (f"your user settings declare the `{self.marketplace}` marketplace with "
+                  + ("a different target of the same kind" if same_kind
+                     else source_kind(user_key))
+                  + f", but {repo_desc}; "
+                  "`claude plugin marketplace add` then fails with \"its network source differs "
+                  "from the one declared for it in settings\"")
+        return ("warn", detail,
+                [f"in your user settings.json (~/.claude/settings.json, or $CLAUDE_CONFIG_DIR's), "
+                 f"set extraKnownMarketplaces.{self.marketplace}.source to "
+                 + json.dumps(wanted, separators=(", ", ": ")),
+                 "or delete that user-level entry: the repo's own declaration is enough",
+                 "then run the marketplace add again"])
+
+    # -- 9 --
+    def c_repo_install(self) -> tuple:
+        if not self.ref:
+            return self._no_names()
+        # Bound to locals first so the "not importable" branch is one the reader AND a type
+        # checker can see: these three names are None on the degrade path.
+        rows_fn, matches_fn, select_fn = install_rows, repo_install_matches, select_repo_install
+        if rows_fn is None or matches_fn is None or select_fn is None:
+            return "unknown", "update_notice.py is not importable beside this script", []
+        self._rows = rows_fn(self.config_root, self.plugin, self.marketplace)
+        self._matches = matches_fn(self._rows, self.root)
+        self._selected = select_fn(self._rows, self.root)
+        if self._selected:
+            version, scope = self._selected
+            return ("ok",
+                    f"{self.plugin} {version} is installed for this repo at {scope} scope",
+                    [])
+        if not self._matches:
+            return ("fail",
+                    f"nothing is installed for this repo — registering a marketplace is not "
+                    f"installing a plugin, and a committed enabledPlugins entry does not install "
+                    f"`{self.ref}` either",
+                    self._track2())
+        versions = ", ".join(sorted({str(r.get("version")) for r in self._matches}))
+        return ("warn",
+                f"{len(self._matches)} install records name this repo (versions: {versions}) "
+                "— which one runs is not knowable from here",
+                [f"claude plugin uninstall {self.ref} --scope project",
+                 f"claude plugin uninstall {self.ref} --scope local",
+                 f"then install once: claude plugin install {self.ref} --scope project"])
+
+    # -- 10 --
+    def c_install_payload(self) -> tuple:
+        if not self.ref:
+            return self._no_names()
+        if not self._reusable():
+            return "unknown", "update_notice.py is not importable beside this script", []
+        if len(self._matches) != 1:
+            return "unknown", "no single install record to check a payload for", []
+        record = self._matches[0]
+        location = record.get("installPath")
+        scope = record.get("scope") or "project"
+        if not isinstance(location, str) or not location:
+            return "unknown", "the install record carries no installPath", []
+        # PRIVACY: the path is judged, never printed.
+        target = Path(location)
+        if target.is_dir() and (target / ".claude-plugin" / "plugin.json").is_file():
+            missing = [rel for rel in REQUIRED_PAYLOAD if not (target / rel).is_file()]
+            if not missing:
+                return "ok", "the install record points at a complete plugin payload", []
+            return ("fail",
+                    f"the plugin's files are incomplete: {len(missing)} of {len(REQUIRED_PAYLOAD)} "
+                    f"files setup needs are missing (first: `{missing[0]}`), so setup would stop "
+                    "partway. Reinstall the plugin",
+                    self._update_fix()[:1] + [
+                        f"claude plugin uninstall {self.ref} --scope {scope} "
+                        f"&& claude plugin install {self.ref} --scope {scope}"])
+        why = ("the install record points at a directory that does not exist"
+               if not target.exists() else
+               "the install directory carries no .claude-plugin/plugin.json")
+        return ("fail",
+                f"{why} — the install reported success and wrote nothing (seen on Claude Code "
+                "2.0.22)",
+                self._update_fix()[:1] + [
+                    f"claude plugin uninstall {self.ref} --scope {scope} "
+                    f"&& claude plugin install {self.ref} --scope {scope}",
+                    # The command shape matters: the installPath usually EXISTS and is merely
+                    # empty or partial (that is the state above), and `cp -R src dst` on an
+                    # existing dst nests the clone at dst/<name> instead of filling it. Trailing
+                    # slashes + rsync copy the CONTENTS. Kept identical to docs/troubleshooting.md.
+                    "if uninstall answers \"not found\", copy the marketplace clone's CONTENTS "
+                    f"(~/.claude/plugins/marketplaces/{self.marketplace}/) into the installPath the "
+                    "record names: mkdir -p \"$DST\" && rsync -a --exclude .git -- \"$SRC\"/ "
+                    "\"$DST\"/ — only when that clone is at the same commit as the record and the "
+                    "marketplace entry uses \"source\": \"./\"",
+                ])
+
+    # -- 11 --
+    def c_user_install(self) -> tuple:
+        if not self.ref:
+            return self._no_names()
+        if not self._reusable():
+            return "unknown", "update_notice.py is not importable beside this script", []
+        globals_ = [r for r in self._rows if isinstance(r, dict) and r.get("scope") == "user"]
+        if not globals_:
+            return "ok", "no user-scope install (this plugin is not global on this machine)", []
+        versions = ", ".join(sorted({str(r.get("version")) for r in globals_}))
+        return ("warn",
+                f"{self.ref} is also installed at user scope (versions: {versions}) — it "
+                "loads in every repo on this machine, which the bare `claude plugin install` "
+                "command does by default",
+                [f"if you meant this repo only: claude plugin uninstall {self.ref} --scope user"]
+                + self._track2()[:2])
+
+    # -- 12 --
+    def c_catalog_current(self) -> tuple:
+        if not self.ref:
+            return self._no_names()
+        catalog_fn, newer_fn, pair_fn = catalog_version, is_newer, install_pair_command
+        if catalog_fn is None or newer_fn is None or pair_fn is None:
+            return "unknown", "update_notice.py is not importable beside this script", []
+        if not self._selected:
+            return "unknown", "no single install record to compare against the catalog", []
+        installed, scope = self._selected
+        catalog = catalog_fn(self.config_root, self.plugin, self.marketplace)
+        if not catalog:
+            return "unknown", "the cached marketplace advertises no comparable version", []
+        if newer_fn(catalog, installed):
+            return ("warn",
+                    f"{self.plugin} {catalog} is in the marketplace catalog; this repo runs "
+                    f"{installed}",
+                    [pair_fn(self.ref, scope)])
+        return "ok", f"this repo runs {installed}; the catalog offers {catalog}", []
+
+    # -- 13 --
+    def c_install_commit(self) -> tuple:
+        # One cache folder per version: a later install of the same version by another repo, at
+        # another commit, rewrites this repo's files (update_notice.folder_sharing says how it
+        # judges that). PRIVACY: only short commit ids and counts leave this check.
+        if not self.ref:
+            return self._no_names()
+        if not self._reusable() or folder_sharing is None:
+            return "unknown", "update_notice.py is not importable beside this script", []
+        if len(self._matches) != 1:
+            return "unknown", "no single install record to check a commit for", []
+        mine = self._matches[0]
+        sha = mine.get("gitCommitSha")
+        if not (isinstance(sha, str) and sha and isinstance(mine.get("installPath"), str)):
+            return "unknown", "the install record carries no installPath or commit", []
+        count, on_disk = folder_sharing(self._rows, mine)
+        if on_disk is None:
+            if not count:
+                return ("ok", f"no other install shares this repo's plugin folder (commit "
+                              f"{sha[:7]})", [])
+            return ("ok", f"{count} other install(s) share this plugin folder, and its files came "
+                          f"from this repo's commit {sha[:7]}", [])
+        scope = mine.get("scope") or "project"
+        return ("warn",
+                f"another repo installed the same version ({mine.get('version')}) later, at "
+                f"commit {on_disk[:7]}, into the same plugin folder, so the files that load here "
+                f"are from that commit, not this repo's {sha[:7]}. Both repos share one folder per "
+                "version, so the most recent install decides what both run",
+                [install_pair_command(self.ref, scope)])
+
+    # -- 14 --
+    def c_stale_cache(self) -> tuple:
+        # Old version folders pile up in the cache and are never loaded, but a person reading the
+        # cache cannot tell which one runs. This NAMES the unused ones and prints the removal
+        # command; it never deletes anything (a destructive write stays the person's call).
+        if not self.ref:
+            return self._no_names()
+        if not self._reusable():
+            return "unknown", "update_notice.py is not importable beside this script", []
+        base = self.config_root / "plugins" / "cache" / self.marketplace / self.plugin
+        if not base.is_dir():
+            return "ok", "no cached versions of this plugin on this machine", []
+        used = {_safe_resolve(Path(r["installPath"])) for r in self._rows
+                if isinstance(r, dict) and isinstance(r.get("installPath"), str)
+                and r["installPath"]}
+        unused, odd = [], 0
+        for entry in sorted(base.iterdir(), key=lambda e: e.name):
+            if not entry.is_dir() or entry.is_symlink() or _safe_resolve(entry) in used:
+                continue
+            if VERSION_DIR.fullmatch(entry.name):
+                unused.append(entry.name)
+            else:
+                odd += 1                     # counted, never printed: not a name we wrote
+        if not unused and not odd:
+            return "ok", "every cached version of this plugin is one an install uses", []
+        shown = ", ".join(unused) if unused else "none with a version-shaped name"
+        default = Path.home() / ".claude"
+        prefix = "~/.claude" if self.config_root == default else str(self.config_root)
+        fix = [f"rm -rf {prefix}/plugins/cache/{self.marketplace}/{self.plugin}/{v}"
+               for v in unused]
+        if fix:
+            fix.append("close every Claude Code session first; nothing above is removed for you")
+        return ("warn",
+                f"{len(unused) + odd} cached version(s) of {self.plugin} are not used by any "
+                f"install ({shown}). They never load, but they make it harder to tell which "
+                "version runs", fix)
+
+    # -- 15 --
+    def c_yq_present(self) -> tuple:
+        if shutil.which("yq"):
+            return "ok", "yq is on PATH", []
+        return ("warn",
+                "yq is missing. Only the kit's self-test (`tools/selftest.sh`) needs it, and without "
+                "it that test reports many unrelated failures from this one cause",
+                [yq_install_command()])
+
+    # -- 16 --
+    def c_git_identity(self) -> tuple:
+        missing = []
+        for key in ("user.name", "user.email"):
+            rc, out, _ = _run(["git", "config", "--get", key])
+            if rc != 0 or not out.strip():
+                missing.append(key)
+        if not missing:
+            return "ok", "git user.name and user.email are set", []
+        return ("warn",
+                "git identity is unset (" + ", ".join(missing) + ") — commits will be "
+                "rejected or misattributed",
+                ["git config --global user.name \"Your Name\"",
+                 "git config --global user.email \"you@example.com\""])
+
+    # -- 17 --
+    def c_project_launcher(self) -> tuple:
+        # The two files /setup copies into <project>/bin/. An older copy cannot find a kit whose
+        # scripts moved out of bin/ (LABS-209), and nothing used to replace it. The stamp is read
+        # here rather than through kit_paths.launcher_status, because this file never imports
+        # kit_paths (see the module docstring); selftest pins the two readers to the same answer.
+        states = set()
+        root_is_kit = ((self.root / "adapters").is_dir() and (self.root / "templates").is_dir()
+                       and any((self.root / d / "kit_paths.py").is_file() for d in ("tools", "bin")))
+        for name in ("tw", "kit_paths.py"):
+            mine, theirs = self.script_dir / name, self.root / "bin" / name
+            if not mine.is_file():
+                return "unknown", "there is no kit beside this script to compare the launcher with", []
+            if root_is_kit or (theirs.is_file() and _same_file(mine, theirs)):
+                states.add("kit")
+            elif theirs.is_symlink():
+                states.add("linked")
+            elif not theirs.is_file():
+                states.add("missing")
+            else:
+                have, want = _launcher_stamp(theirs), _launcher_stamp(mine)
+                if not have:
+                    states.add("foreign")
+                else:
+                    states.add("stale" if have < want else ("newer" if have > want else "current"))
+        refresh = 'bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write'
+        if "stale" in states:
+            return ("warn",
+                    "this repo's copy of the launcher is out of date, so it may not find the kit's "
+                    "scripts",
+                    ["run /setup, or: " + refresh, "then commit bin/tw and bin/kit_paths.py"])
+        if "missing" in states:
+            return ("warn", "this repo has no launcher yet, so skills cannot run the kit's scripts",
+                    ["run /setup, which installs it"])
+        if "foreign" in states or "linked" in states:
+            return ("warn",
+                    "a file where the launcher belongs is not a plain Ticketwright copy, so it is "
+                    "left alone",
+                    ["check bin/tw and bin/kit_paths.py: move a file that is not Ticketwright's, or "
+                     "replace a symlink with a plain file, then run /setup"])
+        if "newer" in states:
+            return "ok", "this repo's launcher is newer than this kit, which is fine", []
+        return "ok", "this repo's copy of the launcher is up to date", []
+
+    # -- 18 --
+    def c_restart(self) -> tuple:
+        # THE one carrier of RESTART_ADVISORY. Every check whose remedy changes what is installed
+        # used to append the advisory to its own fix list, so a single broken install printed the
+        # same four sentences three times and the reader skimmed past all three. The advisory is
+        # said once, by this check, which watches every state whose fix ends in a reload.
+        watched = {r["id"]: r["status"] for r in self.results
+                   if r["id"] in ("repo_install", "install_payload", "user_install",
+                                  "catalog_current", "install_commit")}
+        if watched and any(s != "ok" for s in watched.values()):
+            return ("warn",
+                    "the install state above changes only after Claude Code reloads",
+                    [RESTART_ADVISORY])
+        return "ok", "nothing above needs a restart to take effect", []
+
+    # -- driver --
+    def run(self) -> list:
+        for cid in CHECK_IDS:
+            fn = getattr(self, "c_" + cid)
+            try:
+                status, detail, fix = fn()
+            except Exception as exc:            # noqa: BLE001 — never a traceback, ever
+                status, detail, fix = "unknown", f"the check raised {type(exc).__name__}", []
+            if status not in SYMBOL:
+                status = "unknown"
+            self.results.append({"id": cid, "status": status,
+                                 "detail": str(detail), "fix": [str(f) for f in fix]})
+        return self.results
+
+
+# A plain name for each check, shown beside the raw id (docs and troubleshooting cite the id).
+# Each label describes what the matching c_<id> check actually tests; `claude_version` and
+# `install_channel` are about the Claude Code CLI, not about Ticketwright, and `restart` is "ok"
+# when no reload is needed, so its label stays neutral instead of asserting that one is.
+LABELS = {
+    "git_clone": "This folder is a git clone",
+    "cwd_is_root": "Running from the repo's top folder",
+    "claude_on_path": "Claude Code is installed",
+    "claude_version": "Claude Code version",
+    "scope_supported": "Project-level plugin installs are supported",
+    "install_channel": "How Claude Code was installed",
+    "marketplace_registered": "Ticketwright's plugin source is registered",
+    "marketplace_source": "Your settings agree with the repo on the plugin source",
+    "repo_install": "Ticketwright is installed for this repo",
+    "install_payload": "The plugin's files are complete",
+    "user_install": "Not also installed machine-wide",
+    "catalog_current": "This repo runs the newest version offered",
+    "install_commit": "The plugin files on disk are the ones this repo installed",
+    "stale_cache": "No unused plugin versions left in the cache",
+    "yq_present": "yq is installed",
+    "git_identity": "Your git name and email are set",
+    "project_launcher": "This repo's copy of the launcher is current",
+    "restart": "Reload after install changes",
+}
+
+
+def render_human(doc: Doctor, results: list) -> str:
+    lines = ["plugin_doctor · {} · names from {} · {}".format(
+        doc.ref or "plugin unknown", doc.names_from, doc.root), ""]
+    for res in results:
+        lines.append("{}  {} ({})  {}".format(SYMBOL[res["status"]],
+                                             LABELS.get(res["id"], res["id"]), res["id"], res["detail"]))
+        # `restart`'s fix IS the footer below — printing it in both places is the duplication this
+        # render deliberately avoids. The fix list still carries it for `--json`, which has no
+        # footer and whose consumer (/setup) reports each non-ok finding's fix verbatim.
+        if res["status"] != "ok" and res["id"] != "restart":
+            for fix in res["fix"]:
+                lines.append("     → fix: {}".format(fix))
+    counts = summarize(results)
+    lines.append("")
+    lines.append("plugin_doctor: {ok} ok · {warn} warn · {fail} fail · "
+                 "{unknown} unknown".format(**counts))
+    restart = next((r for r in results if r["id"] == "restart"), None)
+    if restart and restart["status"] != "ok":
+        lines.append("")
+        lines.append(RESTART_ADVISORY)
+    return "\n".join(lines)
+
+
+def summarize(results: list) -> dict:
+    counts = {"ok": 0, "warn": 0, "fail": 0, "unknown": 0}
+    for res in results:
+        counts[res["status"]] += 1
+    return counts
+
+
+def main(argv: list | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        prog="plugin_doctor.py",
+        description="Name every state a plugin install can be in, and say how to leave it.")
+    ap.add_argument("--root", help="the repo (default: $TICKETWRIGHT_PROJECT, git toplevel, cwd)")
+    ap.add_argument("--config-root", help="Claude config dir (default: $CLAUDE_CONFIG_DIR, ~/.claude)")
+    ap.add_argument("--plugin", help="plugin name (default: read from the repo settings/manifest)")
+    ap.add_argument("--marketplace", help="marketplace name (default: the same)")
+    ap.add_argument("--url", help="the marketplace clone URL used in the fix commands")
+    ap.add_argument("--json", action="store_true", help="machine-readable report on stdout")
+    ap.add_argument("--no-probe", action="store_true",
+                    help="skip the two read-only `claude` subprocesses")
+    args = ap.parse_args(argv)      # a usage error exits 2, which is this CLI's usage contract
+
+    try:
+        doc = Doctor(args)
+        results = doc.run()
+        if args.json:
+            print(json.dumps({"schema": SCHEMA, "root": str(doc.root), "plugin": doc.plugin,
+                              "marketplace": doc.marketplace, "names_from": doc.names_from,
+                              "checks": results, "summary": summarize(results)}, indent=2))
+        else:
+            print(render_human(doc, results))
+        return 1 if summarize(results)["fail"] else 0
+    except Exception as exc:        # noqa: BLE001 — a diagnostic may not be the thing that crashes
+        sys.stderr.write("plugin_doctor: could not complete ({})\n".format(type(exc).__name__))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

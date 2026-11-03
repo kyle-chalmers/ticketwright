@@ -7,11 +7,11 @@ channel_key: to        # THIS tool's destination key — ONE address string (a p
 sender_key: identity   # THIS tool's sender key — routing surfaces it on the plan line and pins it in the fingerprint
 user_keys: []             # tier-3 overridable: nothing here is machine-local; the sending identity is a team decision and credentials live in the MCP server's own auth
 default_surface: claude-code   # the runtime the `## verb:` sections were checked on (the Gmail connector's own tool names, 2026-10-25)
-surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by tools/adapter_surface.py
 auth: |
   The Gmail MCP server must be connected, authenticated as (or delegated to) `{identity}`.
   Verify: a read-only `mcp__{mcp}__search_threads` call returns without error (on a runtime with
-  its own section below, that section's probe instead: `bin/adapter_surface.py --probe` prints it).
+  its own section below, that section's probe instead: `tools/adapter_surface.py --probe` prints it).
 note: |
   THE VERB MAPPING, HONESTLY — email is not Slack, and this table does not pretend it is:
   - `draft` / `send` map DIRECTLY: Gmail has native draft objects, so draft-first is real here,
@@ -55,7 +55,7 @@ the CLI warns that the routing is not recorded with the ticket, and the /ship pl
 the approver. Nothing else selects this target.
 
 **`{to}` and `{always_include}` are the ROUTED resolution, not config reads** — the routed
-destination and recipient list from `bin/delivery_plan.py` (`destination` / `recipients`) that
+destination and recipient list from `tools/delivery_plan.py` (`destination` / `recipients`) that
 `/ship` pins. In the **default tool-only shape** the stack sets no `to`: both are authored
 per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` = the address + a non-empty
 `chat.recipients:`), asked at `/ship`.
@@ -64,7 +64,7 @@ per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` = the ad
 `{to}` is that target's own destination (this adapter declares `channel_key: to`, so routing reads
 the right key without any skill knowing this is email) and `{always_include}` is that target's own
 list — never another target's, and never a slot-level one. The routed target comes from the
-ticket's `delivery-plan.yaml` `audience:` declaration (`bin/delivery_plan.py`); it is never
+ticket's `delivery-plan.yaml` `audience:` declaration (`tools/delivery_plan.py`); it is never
 inferred from prose, an address's domain, or a list's name, and a routing failure never falls back
 to another chat target.
 
@@ -127,7 +127,7 @@ membership with its owner once, outside this kit.
 
 ## gotchas
 - Tool names and argument shapes differ by agent: Codex CLI lists Gmail as a different connector
-  under other names (in its own section of this file). `bin/adapter_surface.py --adapter
+  under other names (in its own section of this file). `tools/adapter_surface.py --adapter
   adapters/chat/gmail.md` picks the right section for the agent running now. A name missing from
   your session's tool list is a gap to report so the kit can record it, never a local edit to this
   file: an edited copy silently drifts from the kit on the next upgrade.

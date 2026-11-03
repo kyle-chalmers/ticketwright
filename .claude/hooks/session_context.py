@@ -166,7 +166,7 @@ def scan_stack_resolved(root: Path) -> dict | None:
     """
     try:
         kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
         sys.path.insert(0, str(bindir))
         from effective_config import resolve  # type: ignore
         res = resolve(root)
@@ -207,7 +207,7 @@ def scan_stack_resolved(root: Path) -> dict | None:
     # Does any warehouse unit's RESOLVED transport include mcp? Three-valued on purpose:
     # True (some unit is mcp/both), False (every unit is provably shell-only), None (unknown —
     # and unknown never claims MCP). The configured value wins; adapter frontmatter is only the
-    # fallback, mirroring bin/verify_stack.sh's posture advisory.
+    # fallback, mirroring tools/verify_stack.sh's posture advisory.
     out["warehouse_mcp"] = None
     wnode = res.seams.get("warehouse")
     if isinstance(wnode, dict):
@@ -252,15 +252,15 @@ def viewer_tool(root: Path, stack_text: str) -> str | None:
 
     Unlike every other seam this one is PER-USER: which app opens a .sql is a personal choice, so
     it lives in a gitignored file rather than the shared stack.yaml. Same first-hit-wins order
-    bin/handoff.sh uses. Returns None when nothing is configured or the user set enabled: false,
+    tools/handoff.sh uses. Returns None when nothing is configured or the user set enabled: false,
     so the banner never advertises a gate that will not open anything.
     """
-    # Preferred: the resolver's viewer plan, so the banner and bin/handoff.sh can never disagree
+    # Preferred: the resolver's viewer plan, so the banner and tools/handoff.sh can never disagree
     # about which config is live — including the composed tier-2/tier-3 form, which a local regex
     # ladder cannot see at all.
     try:
         kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
         sys.path.insert(0, str(bindir))
         from effective_config import resolve, viewer_plan  # type: ignore
         plan = viewer_plan(resolve(root))
@@ -315,7 +315,7 @@ def launcher_notice_line(root: Path) -> list[str]:
 
 
 def update_notice_line(root: Path) -> list[str]:
-    """The "a newer release is available" line from bin/update_notice.py, or nothing.
+    """The "a newer release is available" line from tools/update_notice.py, or nothing.
 
     PRESENTATION ONLY — the decision (is a release pending, which versions, which command pair)
     lives in the harness-neutral CLI so every runtime can ask the same question. This hook is the
@@ -336,7 +336,7 @@ def update_notice_line(root: Path) -> list[str]:
     """
     try:
         kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
         script = bindir / "update_notice.py"
         if not script.is_file():
             return []
@@ -375,7 +375,7 @@ def whoami_lines(root: Path) -> list[str]:
     """
     try:
         kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
         sys.path.insert(0, str(bindir))
         import whoami  # type: ignore
         res = whoami.resolve(root)
@@ -478,7 +478,7 @@ def main() -> int:
     # guard is set to `off` teaches the agent the wrong rule.
     mode = db_write_mode(stack)
     # "need your approval first" rather than "ask first": this banner also reaches runtimes with
-    # no ask tier (through bin/hook_shim.py), where the guard blocks and points at the way through.
+    # no ask tier (through tools/hook_shim.py), where the guard blocks and points at the way through.
     db_rule = {
         MODE_OFF: "database writes do NOT need your approval first (`db_write_requires_approval: off`)",
         MODE_ALL: "every database write run in the terminal needs your approval first",

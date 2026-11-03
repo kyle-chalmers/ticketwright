@@ -31,7 +31,7 @@ keep it the rendered template; repo-specific rules get added by humans over time
 **The stack table's adapter column takes WHOLE-PATH tokens** — `{{tracker_adapter}}`,
 `{{warehouse_adapter}}`, `{{chat_adapter}}`, `{{docstore_adapter}}`, `{{meetings_adapter}}`,
 `{{vcs_adapter}}` — never a
-path you compose around the tool name (`bin/render.sh` is a flat substitution pass with no
+path you compose around the tool name (`tools/render.sh` is a flat substitution pass with no
 conditionals, so an absent tool slot would render a broken path). Pass each pair like this:
 
 - **Configured slot:** the tool name and the backticked adapter path, e.g. `chat_tool=slack` +

@@ -19,7 +19,7 @@ plan and spec are the handoff, and a build that needs the chat to make sense of 
 in the record. When the runtime allows it, a spec-sized ticket is built by subagents that are given
 only the record (step 2b), which tests that handoff without opening a second window.
 
-Reads the merged config (`bin/effective_config.py`, never raw `stack.yaml`). Warehouse-agnostic via
+Reads the merged config (`tools/effective_config.py`, never raw `stack.yaml`). Warehouse-agnostic via
 `seams.warehouse`, and works the same when that seam holds several targets — or none.
 
 **Ticket locator:** run

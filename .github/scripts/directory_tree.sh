@@ -9,7 +9,7 @@
 # dev-only paths trip those checks, so the listing gets the release tree minus TRIM_PATHS: tests,
 # media tooling, CI, the README images (the README loads them from GitHub URLs), maintainer docs
 # and the self-test. Nothing a plugin install runs lives under them: /setup offers the self-test
-# only when bin/selftest.sh exists.
+# only when tools/selftest.sh exists.
 #
 #   bash .github/scripts/directory_tree.sh --list                 # the trimmed paths, one per line
 #   bash .github/scripts/directory_tree.sh tree <ref> <outdir>    # export the trimmed tree of <ref>
@@ -30,15 +30,16 @@
 # This file lives under .github/, which it trims, so it never ships in the listing itself.
 set -uo pipefail
 
-TRIM_PATHS="tests scripts .github docs/images docs/maintainers bin/selftest.sh"
+TRIM_PATHS="tests scripts .github docs/images docs/maintainers tools/selftest.sh"
 PLUGIN_JSON=".claude-plugin/plugin.json"
 
 die() { echo "directory_tree: $1" >&2; exit "${2:-2}"; }
 
 # The tree object of <ref> with TRIM_PATHS removed, built in a throwaway index so modes and
-# contents come straight from git and no working tree is touched.
+# contents come straight from git and no working tree is touched. A second argument of "any" skips
+# the top-level bin/ check, for `bootstrap`, which trims a listing head cut before the move.
 trimmed_tree() {
-  local ref="$1" idx tree
+  local ref="$1" check="${2:-}" idx tree
   git rev-parse -q --verify "${ref}^{tree}" >/dev/null || die "not a git ref: $ref"
   idx="$(mktemp "${TMPDIR:-/tmp}/tw-dir-index.XXXXXX")" || die "mktemp failed"
   rm -f "$idx"
@@ -49,6 +50,11 @@ trimmed_tree() {
     rm -f "$idx"; die "could not build the trimmed tree of $ref"
   fi
   rm -f "$idx"
+  # claude.ai and Cowork refuse to install a plugin with a top-level bin/, and the directory holds
+  # it (LABS-209). The kit keeps its scripts in tools/, so a bin/ here is a regression.
+  if [ "$check" != any ] && git ls-tree --name-only "$tree" | grep -qx bin; then
+    die "the trimmed tree of $ref has a top-level bin/, which the plugin directory holds"
+  fi
   printf '%s\n' "$tree"
 }
 
@@ -110,7 +116,7 @@ case "${1:-}" in
   bootstrap)
     [ $# -eq 2 ] || die "usage: directory_tree.sh bootstrap <base>"
     base_commit="$(git rev-parse -q --verify "${2}^{commit}")" || die "no such ref: $2"
-    tree="$(trimmed_tree "$base_commit")" || exit $?
+    tree="$(trimmed_tree "$base_commit" any)" || exit $?
     [ "$tree" != "$(git rev-parse "${base_commit}^{tree}")" ] ||
       die "$2 is already trimmed; nothing to bootstrap." 5
     base_ver="$(plugin_version "$base_commit")"

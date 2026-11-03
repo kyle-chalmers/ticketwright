@@ -14,9 +14,9 @@ skill  ──calls──▶  verb (e.g. tracker.fetch_ticket)
 ```
 
 A skill resolves a verb like this:
-1. Read the MERGED config (`bin/effective_config.py`, not raw `stack.yaml`) → `seams.<seam>.adapter`.
+1. Read the MERGED config (`tools/effective_config.py`, not raw `stack.yaml`) → `seams.<seam>.adapter`.
 2. Open that adapter, find the verb's section. For an MCP adapter, take the section from
-   `bin/adapter_surface.py --adapter <path> --verb <verb>`: one connector can carry different tool
+   `tools/adapter_surface.py --adapter <path> --verb <verb>`: one connector can carry different tool
    names on different agents, and that command picks the section written for the agent running now
    (§ Runtime surfaces, below).
 3. Run the command shown there, substituting `{tokens}` from `stack.yaml` + skill args.
@@ -47,7 +47,7 @@ verb in that seam's contract. A verb section gives the command(s), inputs, the e
 **Statuses are read from the tracker, never assumed.** Workflows differ per team and per project: one
 board has `In Review`, another goes straight from `In Progress` to `Done`, and a transition to a
 status the workflow lacks fails at the very last step of a delivery. So `list_transitions` returns
-the moves this ticket can make right now, read from the tracker, and `bin/transition_plan.py`
+the moves this ticket can make right now, read from the tracker, and `tools/transition_plan.py`
 picks the one that reaches `project.terminal_status` (or reports that none does, so the caller asks
 rather than guesses). The return shape is the same for every tool:
 
@@ -70,7 +70,7 @@ checked against the tracker" beside it.
 
 **`assign_ticket` writes one field, and only after the person says yes.** `/ticket` offers it
 when the ticket it fetched is unassigned or assigned to someone else, so the person working a ticket
-can make the tracker say so. `bin/assignee_check.py` makes that call deterministically from
+can make the tracker say so. `tools/assignee_check.py` makes that call deterministically from
 `fetch_ticket`'s assignee and the person's own config; nothing calls `assign_ticket` without the
 person's answer, and nothing calls it to take a ticket off someone without asking. What to assign
 comes from `tracker_handle` in the person's `people/<id>.yaml`, written in the form each adapter's
@@ -112,7 +112,7 @@ empty `<before>` does (the same query without its date clause, meaning no cutoff
   tracker rejects) says so in one plain sentence and returns `[]`, and the caller carries on with the
   repo's own tickets. An adapter whose tool cannot filter on something says so in its `Filters:` line
   or does that part client-side.
-- The `local` adapter returns `[]`: its tickets are the repo's own, and `bin/recall.py` already ranks them.
+- The `local` adapter returns `[]`: its tickets are the repo's own, and `tools/recall.py` already ranks them.
 
 `rank_projects_by_activity` is the seam's one **bootstrap** verb, and it breaks two rules the
 others follow — deliberately, because it runs *before* the seam is configured. Its job is to stop
@@ -176,7 +176,7 @@ always produces a *default the human confirms*, never an automatic selection.
 ### `meetings` — the spoken record, by reference *(optional)*
 | Verb | Inputs | Returns |
 |---|---|---|
-| `fetch_transcript` | a meeting id (from a validated `meeting_ref:` — grammar in `stack.schema.md`; enumerate with `bin/meeting_refs.py`) | transcript text + metadata `{title, date, participants, content_kind}` — **to context, never to disk**. `content_kind` is `transcript` or `notes`: an adapter whose store holds curated notes rather than a verbatim transcript for this meeting says which, never passing one off as the other |
+| `fetch_transcript` | a meeting id (from a validated `meeting_ref:` — grammar in `stack.schema.md`; enumerate with `tools/meeting_refs.py`) | transcript text + metadata `{title, date, participants, content_kind}` — **to context, never to disk**. `content_kind` is `transcript` or `notes`: an adapter whose store holds curated notes rather than a verbatim transcript for this meeting says which, never passing one off as the other |
 | `search_meetings` | query and/or date window, limit | list of `{id, title, date, participants}` — `participants: []` is a defined value where the provider's list operation exposes no attendee roster; each adapter's section states what it fills |
 | `fetch_action_items` | a meeting id | the typed result below |
 
@@ -207,7 +207,7 @@ unchanged either way. `extract_actions` is deliberately not a verb: extracting a
 free text is model reasoning, and an adapter is a command translation, not a place to hide
 reasoning — the extraction fallback is a documented skill-side step. Every adapter's
 `fetch_transcript` section carries the transcript-privacy rule verbatim; the mechanical gates
-behind that rule (the gitignore patterns, `bin/scan_source_materials.py`, and the
+behind that rule (the gitignore patterns, `tools/scan_source_materials.py`, and the
 source-material guard) read filenames and document shape, never meaning — curation stays agent
 guidance, and the adapters say so rather than implying parity.
 
@@ -227,7 +227,7 @@ choice, so it resolves first-hit-wins from `.claude/config/viewer.local.yaml` (g
 `${XDG_CONFIG_HOME:-$HOME/.config}/ticketwright/viewer.yaml` → a `seams.viewer` block in
 `stack.yaml` for a team that wants to standardize. Nothing configured ⇒ the feature is off and
 skills carry on unchanged. Shape: `.claude/config/viewer.example.yaml`. Skills never invoke these
-commands directly — `bin/handoff.sh` resolves the routes and enforces the rails (never launches in
+commands directly — `tools/handoff.sh` resolves the routes and enforces the rails (never launches in
 CI or a headless session, never opens a path outside the project).
 
 ---
@@ -276,8 +276,8 @@ cannot know them. What it owns is the config half: given a seam and optionally a
 the effective values with inheritance applied, or refuse loudly. Same binary that merges the three
 tiers — never a second one:
 
-    bin/effective_config.py --root <repo> --seam <seam>                  # the default target (or the single mapping)
-    bin/effective_config.py --root <repo> --seam <seam> --target <name>  # an explicitly named target
+    tools/effective_config.py --root <repo> --seam <seam>                  # the default target (or the single mapping)
+    tools/effective_config.py --root <repo> --seam <seam> --target <name>  # an explicitly named target
 
 Output is one JSON object:
 
@@ -355,15 +355,15 @@ The warehouse gets away with a header comment because the `.sql` file IS the exe
 A chat message or a docstore backup has no such file, so its declaration lives in a **persisted
 delivery plan**: `delivery-plan.yaml` at the ticket root, committed with the ticket. **This file is
 where the audience declaration lives** — there is no other place, and nothing infers one. `/ship`
-resolves it, prints it for approval, and executes from that same resolution; `bin/delivery_plan.py`
+resolves it, prints it for approval, and executes from that same resolution; `tools/delivery_plan.py`
 is the engine that reads it:
 
-    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat      # route from the declaration
-    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat --override <target>
-    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat --check-draft <file>
-    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam docstore --file <deliverable>
-    bin/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam docstore --record-delivered <path> --url <url>
-    bin/delivery_plan.py --stack <stack.yaml> --audit                        # the config rules below
+    tools/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat      # route from the declaration
+    tools/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat --override <target>
+    tools/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam chat --check-draft <file>
+    tools/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam docstore --file <deliverable>
+    tools/delivery_plan.py --plan <ticket>/delivery-plan.yaml --seam docstore --record-delivered <path> --url <url>
+    tools/delivery_plan.py --stack <stack.yaml> --audit                        # the config rules below
 
 `--override` is **chat only** — the one escape hatch this design authorizes. A deliverable that
 belongs in a different store declares it (below), because a declaration stays with the ticket and a
@@ -481,7 +481,7 @@ Rules (these are the contract, not commentary):
   do is rely on it for its destination — the audit below requires each target to name its own, so an
   inherited channel can never be where a routed message lands.
 
-**The rules `bin/verify_stack.sh` ENFORCES** (each binds only when that slot declares `targets:`;
+**The rules `tools/verify_stack.sh` ENFORCES** (each binds only when that slot declares `targets:`;
 `--audit` is the same check, and a finding fails the verify run — this list is not advice):
 
 | Rule | Slot | Why it fails rather than warns |
@@ -520,9 +520,9 @@ name that is not a plain config key is refused rather than guessed at: adapter f
 repo-supplied input, not documentation.
 
 **What is MECHANICAL here, and what is instruction.** Worth stating plainly rather than implying
-parity. Mechanical: `bin/delivery_plan.py` refuses to emit a target for an undeclared, unmatched or
+parity. Mechanical: `tools/delivery_plan.py` refuses to emit a target for an undeclared, unmatched or
 ambiguous value; it refuses an inherited destination, an empty recipient list, and a shell-unsafe
-value; `--expect-target` refuses a target other than the approved one; and `bin/verify_stack.sh`
+value; `--expect-target` refuses a target other than the approved one; and `tools/verify_stack.sh`
 fails a config breaking the table above. Instruction: that `/ship` *calls* those commands, and passes
 `--expect-target` after the approval gate. Skills are prose an agent executes, so nothing stops an
 agent — or a person — from invoking a chat adapter directly and skipping the router. The pin is
@@ -628,8 +628,8 @@ server: codex_apps             # the runtime's fixed namespace; the slot's `mcp:
 ### Read-only probe            # this runtime's read call, linted like every posture probe
 ```
 
-`bin/adapter_surface.py --adapter <path>` picks the surface: `--surface <name>` when given (never a
-fallback), else the detected runtime's own section (`bin/kit_paths.py`, the one authority on which
+`tools/adapter_surface.py --adapter <path>` picks the surface: `--surface <name>` when given (never a
+fallback), else the detected runtime's own section (`tools/kit_paths.py`, the one authority on which
 agent is running, aliases included), else the default. `--verb <verb>` prints that verb's section,
 `--probe` the read-only probe, `--json` everything. A verb or probe printed from a runtime section
 carries that section's opening paragraph with it, since that is where it says which rules still
@@ -677,7 +677,7 @@ That difference is the reason it has no verb contract. A seam is something the P
 the whole team shares, so it is resolved per repo and written to committed config. Which agent a
 given person happens to be running is per-machine — two teammates on the same repo may be on
 different ones — so it is never a `stack.yaml` entry. Runtime adapters declare capabilities in
-frontmatter instead, and `bin/kit_paths.py` reads them:
+frontmatter instead, and `tools/kit_paths.py` reads them:
 
 ```yaml
 skills_root:  session_start:  tool_gate:  subagents:  structured_questions:
@@ -712,14 +712,14 @@ hooks-config file (`.cursor/hooks.json`, `.agents/hooks.json`), a documented plu
 (OpenCode), `native` (Claude Code — nothing is ever emitted under `.claude/`), or `unknown` (the
 protocol may be documented while the config location is not; the installer then prints the manual
 wiring line instead of guessing a path). `hook_protocol` selects which schema
-`bin/hook_shim.py` speaks (`codex-json`, `cursor-json`, `agy-json`, `exit-code`, `claude-json` =
+`tools/hook_shim.py` speaks (`codex-json`, `cursor-json`, `agy-json`, `exit-code`, `claude-json` =
 refused, `unknown` = refused). `hook_wiring_caveat` is the one-line honesty statement the install
 report prints verbatim (trusted-by-hash, documented fail-open, …). `rules_root` (cline only today)
 names a runtime's always-loaded rules surface when it is NOT `AGENTS.md`, so the enforcement table
 is emitted where that runtime's users actually read. Values are pinned by selftest section 43.
 
 `model_cmd` and `model_sandbox` are a pair. The first is the headless one-shot command
-`bin/enrich_ticket.py` runs; the second records whether that command is *restricted*, because the
+`tools/enrich_ticket.py` runs; the second records whether that command is *restricted*, because the
 prompt it receives is a ticket README — tracker-sourced text on most installs. Only a small allowlist
 of model CLIs may appear as `model_cmd`'s first word: adapters live inside the repo on a vendored
 install, and a markdown file reads as inert in review, so without that allowlist a `model_cmd:` line
@@ -731,10 +731,10 @@ is the one used when nobody names a model. `model_fast` is a cheaper one for a o
 summarizing an older tracker ticket. A runtime declares `model_fast` only when its `model_cmd` has a
 `{model}` slot to fill, and today that is Claude Code alone (`haiku`): the other runtimes' commands
 take no model argument, so a job there runs on whatever model the command uses by default. The
-older-ticket summaries never run there: `bin/summarize_hits.py` needs `model_sandbox: tools-withheld`,
+older-ticket summaries never run there: `tools/summarize_hits.py` needs `model_sandbox: tools-withheld`,
 which only Claude Code declares. Empty is a real answer, not a gap. A caller that wants the fast model falls back to `model_default`, then to the
-tool's own default. `bin/model_call.py` is the one module that resolves, builds and runs these
-commands, and `bin/enrich_ticket.py` calls it instead of keeping its own copy.
+tool's own default. `tools/model_call.py` is the one module that resolves, builds and runs these
+commands, and `tools/enrich_ticket.py` calls it instead of keeping its own copy.
 
 **So the two rules below do not apply to this directory:** there are no verb sections to implement,
 and there is no `stack.yaml` seam entry to add. Everything else — the frontmatter keys, the
@@ -750,7 +750,7 @@ tool-neutrality rule for skills — is unchanged.
    THIS tool uses for its destination — without it the tool cannot be a named delivery target; a
    chat adapter whose medium has a first-class sender also carries `sender_key:`, see above).
    `requires:` is
-   ENFORCED, not decorative: `bin/verify_stack.sh` reads it and warns for every listed key the seam
+   ENFORCED, not decorative: `tools/verify_stack.sh` reads it and warns for every listed key the seam
    does not set. List exactly the keys the adapter cannot work without — a key named here that the
    adapter merely *prefers* produces a warning on a perfectly good config. Keys the adapter reads
    optionally belong in the trailing comment, not the list. A key that only one way of connecting
@@ -760,8 +760,8 @@ tool-neutrality rule for skills — is unchanged.
 3. Implement **every** verb section for that seam — if the tool can't do one, say so and give the
    manual fallback (skills will surface it rather than silently skipping).
 4. Add a `verify` command to your `stack.yaml` seam entry (read-only, exits non-zero when unreachable).
-5. Run `bash bin/verify_stack.sh` — it confirms each seam's adapter file exists and runs the seam's
-   read-only `verify` to check reachability. (`bash bin/selftest.sh` checks verb coverage vs. this contract.)
+5. Run `bash tools/verify_stack.sh` — it confirms each seam's adapter file exists and runs the seam's
+   read-only `verify` to check reachability. (`bash tools/selftest.sh` checks verb coverage vs. this contract.)
 
 **A new `meetings` adapter** (Otter, Fathom, Gong, …) follows the same five steps with three
 seam-specific rules: implement exactly the three read-only verbs (`fetch_transcript`,
@@ -771,7 +771,7 @@ transcript-privacy rule verbatim in the `fetch_transcript` section, plus the hon
 naming the mechanical gates and their shape-not-meaning limit (copy both from any shipped meetings
 adapter); and declare only credentials/local paths in `user_keys:` — a meeting id never appears in
 config, because it arrives per-ticket via `meeting_ref:` (grammar in `stack.schema.md`, validated
-by `bin/meeting_refs.py`). Any other provider is one documented file — no skill edits.
+by `tools/meeting_refs.py`). Any other provider is one documented file — no skill edits.
 
 ### `## Permission posture (MCP)` — required when `transport:` is `mcp` or `both`
 
@@ -827,10 +827,10 @@ Rules for choosing them:
   path (a docstore's `base_path`) should become two keys — the team half in `stack.yaml`, the machine
   half in tier 3 — rather than becoming personal wholesale.
 
-`bin/verify_stack.sh` warns when a committed `stack.yaml` sets one of these keys to a literal, and
+`tools/verify_stack.sh` warns when a committed `stack.yaml` sets one of these keys to a literal, and
 when a machine-local value is hardcoded into a `verify:` string instead of a `{token}`.
 
-**Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** `bin/selftest.sh`
+**Rule:** adapters may name concrete tools/CLIs/IDs freely. **Skills may not.** `tools/selftest.sh`
 (section 3) enforces this: it greps `.claude/skills/**` + `.claude/commands/**` for tool names, with
 two sanctioned exceptions (the CLI-detection probe in `setup` and the self-lint line in
 `skillify`).

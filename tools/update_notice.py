@@ -1,0 +1,582 @@
+#!/usr/bin/env python3
+"""Say — once, in one line — that a newer release is sitting in the marketplace catalog unused.
+
+WHY THIS EXISTS. `autoUpdate: true` on a git-source marketplace entry refreshes the marketplace
+CATALOG after session start, but Claude Code does not re-install a PROJECT-SCOPED plugin from it
+(claude-code#61854, closed as a duplicate; the behavior persists). So a release reaches every
+teammate's machine and is silently not RUNNING. This CLI makes that visible. It deliberately does
+NOT swap the install: that is upstream's job, and a kit that silently swaps its own running code has
+a worse property than a stale version. When upstream closes the gap the two versions match, this
+prints nothing, and the notice retires itself with no cleanup.
+
+  update_notice.py [--root <repo>] [--config-root <dir>]
+
+Reads THREE local files. No network, no writes, no credentials:
+
+  <root>/.claude/settings.json
+      Eligibility AND the names. The marketplace must appear under `extraKnownMarketplaces` with
+      `"autoUpdate": true`, and `enabledPlugins["<plugin>@<marketplace>"]` must be true. An explicit
+      false on either is a deliberate opt-out that /setup already honors -> silence. Both names are
+      read from here and never hardcoded, so forks and renames keep working.
+
+  <config-root>/plugins/installed_plugins.json
+      The INSTALLED version, from the matching record's own `version` field.
+
+  <config-root>/plugins/marketplaces/<marketplace>/.claude-plugin/plugin.json
+      The CATALOG version. This is the marketplace root's own plugin manifest, which is the right
+      file for a marketplace publishing one plugin at `source: "."` -- what this kit is, and what
+      selftest section 16 pins equal to marketplace.json. A marketplace laid out any other way makes
+      this file absent or name-mismatched, and the answer there is SILENCE, not a second guess at
+      where the version lives: generalizing the lookup is a separate, separately-tested change.
+
+`--config-root` exists for tests; otherwise $CLAUDE_CONFIG_DIR then ~/.claude, matching
+tools/kit_paths.py.
+
+TWO CONTRACTS THIS FILE MUST NEVER BREAK:
+
+  1. EXIT 0, ALWAYS. A notice tool that can fail is a notice tool that can break a session.
+  2. SILENCE OR ONE LINE, NOTHING ELSE -- on stdout or stderr -- for every invocation a HOOK can
+     make. `installed_plugins.json` lists OTHER repos' filesystem paths; nothing read from it is
+     ever printed except a version string. Every failure mode (file missing, truncated JSON,
+     unexpected shape, oversized or non-regular file, no match, ambiguity, unparseable version, a
+     usage error) is silence. The ONE deliberate exception is `--help`, which prints argparse's usage
+     because a harness-neutral CLI with no discoverable help is worse than one with it; no hook
+     passes that flag, and the presenter rejects multi-line output anyway. Stated rather than
+     implied, because "silence or one line, no exceptions" would have been a false claim.
+
+Stdlib only.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+# `<plugin>@<marketplace>` — the key shape Claude Code uses in both enabledPlugins and
+# installed_plugins.json. Split on the LAST "@" so a plugin name containing one cannot shift the
+# marketplace half.
+PAIR_SEP = "@"
+
+# A name is interpolated into a shell command this notice invites a person to PASTE, so it must be
+# an ordinary identifier or the notice does not fire. Anything else — a space, a quote, `;`, `$(`,
+# a newline — would either break the "one line" contract or hand the reader a command that does
+# something other than what it appears to. The repo's own settings.json is the source, which is not
+# a hostile file, but "not hostile" is not the same as "safe to splice into a shell command".
+# fullmatch, NOT match: `re.match(r"^…$", "acme\n")` SUCCEEDS, because `$` also matches just before
+# a trailing newline. That is exactly the input this guard exists to reject, so the anchors are gone
+# and every use below is fullmatch.
+SAFE_NAME = re.compile(r"[A-Za-z0-9._-]+")
+
+# `.` and `..` clear SAFE_NAME and are catastrophic as the marketplace name, which is used as a
+# PATH COMPONENT under plugins/marketplaces/. A marketplace named `..` would read a manifest one
+# directory up and report a version from the wrong catalog entirely.
+TRAVERSAL = {".", ".."}
+
+# Deliberately NOT str.isdigit(): that is True for fullwidth and superscript digits ("３", "³"),
+# which int() then rejects. A version segment is ASCII digits or this is not a version we compare.
+# fullmatch for the same trailing-newline reason — and int() would happily strip that whitespace.
+ASCII_INT = re.compile(r"[0-9]+")
+
+
+# These files are kilobytes in practice (a manifest of a handful of plugins, a repo settings block).
+# The cap is not a security boundary — it is a promise about TIME: this CLI runs as a child inside a
+# SessionStart budget, and "parse whatever is there" is how a notice becomes the reason a session
+# starts slowly.
+MAX_BYTES = 4 * 1024 * 1024
+
+
+def _load_json(path: Path) -> object | None:
+    """Parse `path`, or None. Every failure — missing, unreadable, truncated, not UTF-8 — is None.
+
+    A notice must never turn a malformed local file into a traceback on a session's first breath,
+    and it must not be blockable. Two guards beyond the usual: the path has to be a REGULAR file (a
+    FIFO would hang the read forever, and `st_size` is 0 for one, so a size check alone is no
+    defense), and it has to be under MAX_BYTES.
+    """
+    fd = None
+    try:
+        # O_NONBLOCK, then fstat the DESCRIPTOR — not a stat() of the path. A path-first check is a
+        # race: between "it is a regular file" and open(), the path can become a FIFO and open()
+        # blocks forever, or the file can grow past the cap. O_NONBLOCK makes the open of a FIFO
+        # return instead of waiting, and fstat then judges the thing we actually hold open.
+        fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        chunks, total, limit = [], 0, MAX_BYTES + 1
+        while total < limit:
+            # Bounded by what we READ, never by st_size — a file that grows mid-read cannot make
+            # this child do unbounded work. EACH read is clamped to what is left of the budget, so
+            # the worst case is limit bytes, not limit + one chunk. Reading exactly one byte past
+            # the cap is what separates "at the cap" from "over it".
+            chunk = os.read(fd, min(65536, limit - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        if total > MAX_BYTES:
+            return None
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _resolve_root(root: str | None) -> Path:
+    """The repo this notice is about.
+
+    Same ladder as kit_paths.resolve_project, duplicated rather than imported: this CLI is invoked
+    by a hook as a subprocess and must stand alone even if the rest of bin/ is unreadable.
+    """
+    if root:
+        return Path(root).expanduser().resolve()
+    named = os.environ.get("TICKETWRIGHT_PROJECT") or os.environ.get("CLAUDE_PROJECT_DIR")
+    if named:
+        return Path(named).expanduser().resolve()
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+        if top:
+            return Path(top).resolve()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path.cwd().resolve()
+
+
+def _config_root(explicit: str | None) -> Path:
+    if explicit:
+        return Path(explicit).expanduser()
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+
+
+def eligible_pair(settings: object) -> tuple[str, str] | None:
+    """The one `(plugin, marketplace)` this repo has opted into auto-update for, or None.
+
+    BOTH halves must be affirmative: the marketplace carries `autoUpdate: true`, and the plugin is
+    `true` under `enabledPlugins`. An explicit false on either is a deliberate opt-out. `true` is
+    required literally — a truthy string or 1 is not the shape Claude Code writes, and guessing at
+    intent here would nag someone who opted out.
+
+    AMBIGUITY IS SILENCE: two eligible pairs mean we cannot say which one the notice is about, and a
+    notice naming the wrong plugin is worse than no notice.
+    """
+    if not isinstance(settings, dict):
+        return None
+    markets = settings.get("extraKnownMarketplaces")
+    enabled = settings.get("enabledPlugins")
+    if not isinstance(markets, dict) or not isinstance(enabled, dict):
+        return None
+
+    auto = {name for name, entry in markets.items()
+            if isinstance(entry, dict) and entry.get("autoUpdate") is True}
+    if not auto:
+        return None
+
+    found = []
+    for key, on in enabled.items():
+        if on is not True or not isinstance(key, str) or PAIR_SEP not in key:
+            continue
+        plugin, _, marketplace = key.rpartition(PAIR_SEP)
+        if (SAFE_NAME.fullmatch(plugin) and plugin not in TRAVERSAL
+                and marketplace in auto and SAFE_NAME.fullmatch(marketplace)
+                and marketplace not in TRAVERSAL):
+            found.append((plugin, marketplace))
+    return found[0] if len(found) == 1 else None
+
+
+def install_rows(config_root: Path, plugin: str, marketplace: str) -> list:
+    """Every install record the local manifest holds for `<plugin>@<marketplace>`, or [].
+
+    Nothing is filtered here — scope, path and version judgments belong to the selector below, and
+    the doctor needs the unfiltered list to see a `user`-scope row this repo did not ask for.
+    """
+    data = _load_json(config_root / "plugins" / "installed_plugins.json")
+    if not isinstance(data, dict):
+        return []
+    plugins = data.get("plugins")          # sibling keys (`version`, …) are tolerated and ignored
+    if not isinstance(plugins, dict):
+        return []
+    records = plugins.get(f"{plugin}{PAIR_SEP}{marketplace}")
+    return records if isinstance(records, list) else []
+
+
+# The two scopes that install INTO A REPO. `project` writes `.claude/settings.json` (committed) and
+# `local` writes `.claude/settings.local.json` (gitignored); the desktop app has been observed
+# writing a `local` row with a `projectPath` alongside its own `user` row, so treating `project` as
+# the only repo scope reported a plainly-installed repo as "not installed". `user` is deliberately
+# NOT here: a global install is a different state, named separately by the doctor.
+REPO_SCOPES = ("project", "local")
+
+
+def main_checkout(root: Path) -> Path | None:
+    """The main checkout `root` belongs to when `root` is a linked git worktree, else None.
+
+    An install record names the folder the plugin was installed from, which is the main checkout.
+    A session in `.claude/worktrees/<name>` has a different top folder, so an exact match misses and
+    a repo that IS installed reads as not installed. Git itself says where the shared repository
+    lives (`--git-common-dir`); its parent is the main checkout. Anything unexpected is None.
+    """
+    try:
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute",
+                              "--git-common-dir"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not out:
+        return None
+    common = Path(out)
+    if common.name != ".git":
+        return None                          # a bare repo or an unusual layout: do not guess
+    try:
+        main = common.parent.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    return main if main != root else None
+
+
+def repo_install_matches(rows: object, root: Path, _worktree: bool = True) -> list:
+    """Every record in `rows` that installs INTO `root` (scope `project` or `local`).
+
+    Returned in manifest order. Callers that need one answer go through `select_repo_install`,
+    which refuses to guess between two; the raw list exists so a diagnostic can SAY "two records
+    match" and name their versions.
+
+    NOTHING READ HERE IS EVER PRINTED EXCEPT A VERSION AND A SCOPE. The records carry other repos'
+    filesystem paths.
+    """
+    if not isinstance(rows, list):
+        return []
+
+    root_str = str(root)
+    candidates = [r for r in rows
+                  if isinstance(r, dict) and r.get("scope") in REPO_SCOPES
+                  and isinstance(r.get("projectPath"), str) and r["projectPath"]]
+
+    # Two ways a record can name this repo, and BOTH are checked for EVERY record:
+    #   exact — Claude Code writes an already-resolved path, so a plain string compare against the
+    #           canonical root settles the common case with no filesystem access at all;
+    #   resolved — a record can legitimately hold a symlink to this repo (a git worktree,
+    #           /var vs /private/var), and only resolution can see that.
+    #
+    # NOT normpath. `<root>/alias/..` collapses TEXTUALLY to `<root>`, but if `alias` is a symlink
+    # the real path is somewhere else entirely — a false match, which is the one outcome worse than
+    # a miss. Canonical-vs-canonical, or resolve and find out; never a lexical shortcut in between.
+    #
+    # It is also tempting to skip resolution once an exact match is found. DON'T: one canonical
+    # record plus one symlinked record are TWO installs for this repo at possibly different
+    # versions, and short-circuiting would pick one and call it the answer — the guess this function
+    # exists to refuse. The price is resolving other repos' paths, bounded by the hook's child
+    # timeout. That price buys the ambiguity guarantee, which is the more load-bearing property.
+    matches = []
+    for rec in candidates:
+        raw = rec["projectPath"]
+        if raw == root_str:
+            matches.append(rec)
+            continue
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            # A relative record (`"."`, `"../repo"`) would resolve against THIS PROCESS'S cwd, so a
+            # child launched inside the repo would match a record that names no repo at all. Claude
+            # Code writes absolute paths; anything else is unjudgeable.
+            continue
+        try:
+            # strict=True is the whole point. The default resolve() collapses `..` LEXICALLY when a
+            # component does not exist, so `<root>/missing/..` comes back as `<root>` and matches a
+            # repo it does not name. strict makes a nonexistent path raise instead of pretending.
+            # No expanduser() either: `~` is another lexical rewrite of a path nobody verified.
+            if candidate.resolve(strict=True) == root:
+                matches.append(rec)
+        except (OSError, ValueError, RuntimeError):
+            continue  # missing, dead mount, unreadable parent, symlink loop — all unjudgeable
+    if not matches and _worktree and candidates:
+        # A linked worktree of an installed repo uses the main checkout's record. Only on a miss,
+        # so a worktree that has its OWN record still answers for itself.
+        main = main_checkout(root)
+        if main is not None:
+            return repo_install_matches(rows, main, _worktree=False)
+    return matches
+
+
+def select_repo_install(rows: object, root: Path) -> tuple[str, str] | None:
+    """The ONE `(version, scope)` installed into `root`, or None.
+
+    The manifest keeps every installed version side by side (3.5.0, 3.6.0, 3.6.1 …) across several
+    repos, so selection has to be exact: a repo scope, and a `projectPath` that resolves to the same
+    directory as `root`. Zero matches or two matches is None — the same refusal-to-guess
+    kit_paths._plugin_kit makes, for the same reason.
+
+    The SCOPE comes back with the version because the remediation command needs it: telling someone
+    to `uninstall --scope project` a row that was written at `local` scope answers "not found", and
+    the person is then stuck being told to fix an install the tool says does not exist.
+    """
+    matches = repo_install_matches(rows, root)
+    if len(matches) != 1:
+        return None
+    version, scope = matches[0].get("version"), matches[0].get("scope")
+    if not (isinstance(version, str) and version) or scope not in REPO_SCOPES:
+        return None
+    return version, scope
+
+
+def installed_version(config_root: Path, plugin: str, marketplace: str, root: Path) -> str | None:
+    """The version installed into `root`, or None. Thin wrapper over `select_repo_install`."""
+    selected = select_repo_install(install_rows(config_root, plugin, marketplace), root)
+    return selected[0] if selected else None
+
+
+# `owner/repo`, the only shape a `{"source":"github","repo":…}` marketplace entry may carry. Two
+# ordinary name segments and exactly one slash: anything else would be spliced into a `git clone`
+# URL a person is invited to paste.
+GITHUB_REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+
+
+def marketplace_url(entry: object) -> str | None:
+    """The clone URL an `extraKnownMarketplaces` entry names, or None.
+
+    Claude Code writes the source two ways and BOTH appear in real repos:
+    `{"source":"git","url":…}` and `{"source":"github","repo":"owner/repo"}`. Reading only the first
+    makes a `github` repo look like a marketplace with no URL, and then the "register the
+    marketplace" fix has no command in it.
+    """
+    if not isinstance(entry, dict):
+        return None
+    src = entry.get("source")
+    if isinstance(src, str):
+        return src if "://" in src else None      # a bare local path is not a URL to hand anyone
+    if not isinstance(src, dict):
+        return None
+    kind = src.get("source")
+    if kind == "git":
+        url = src.get("url")
+        return url if isinstance(url, str) and "://" in url else None
+    if kind == "github":
+        repo = src.get("repo")
+        if isinstance(repo, str) and GITHUB_REPO.fullmatch(repo):
+            return f"https://github.com/{repo}.git"
+    return None
+
+
+def settings_pairs(settings: object) -> list:
+    """Every `(plugin, marketplace, url)` the repo's settings DECLARE, autoUpdate ignored.
+
+    Deliberately more permissive than `eligible_pair`: that function answers "may this repo be
+    nagged about a new release", which is an opt-in and therefore requires `autoUpdate: true`. This
+    one answers "what plugin is this repo about", which a diagnostic needs to know whether or not
+    anybody opted into auto-update — a repo with `autoUpdate: false` still has an install to check.
+    """
+    if not isinstance(settings, dict):
+        return []
+    markets = settings.get("extraKnownMarketplaces")
+    enabled = settings.get("enabledPlugins")
+    if not isinstance(markets, dict) or not isinstance(enabled, dict):
+        return []
+
+    found = []
+    for key, on in enabled.items():
+        if on is not True or not isinstance(key, str) or PAIR_SEP not in key:
+            continue
+        plugin, _, marketplace = key.rpartition(PAIR_SEP)
+        if (SAFE_NAME.fullmatch(plugin) and plugin not in TRAVERSAL
+                and SAFE_NAME.fullmatch(marketplace) and marketplace not in TRAVERSAL
+                and marketplace in markets):
+            found.append((plugin, marketplace, marketplace_url(markets.get(marketplace))))
+    return found
+
+
+def settings_pair(settings: object) -> tuple | None:
+    """The one `(plugin, marketplace, url)` this repo declares, or None when there is not exactly one.
+
+    AMBIGUITY IS None, as everywhere else in this file: a repo enabling two plugins cannot tell a
+    diagnostic which one it is being asked about, and the caller's job is to say so and ask for
+    `--plugin`, not to pick.
+    """
+    pairs = settings_pairs(settings)
+    return pairs[0] if len(pairs) == 1 else None
+
+
+def install_pair_command(ref: str, scope: str) -> str:
+    """The uninstall+install pair that swaps a repo onto the catalog version, at its RECORDED scope.
+
+    ONE definition, because two callers print it: this file's notice line and tools/plugin_doctor.py's
+    `catalog_current` fix. Selftest asserts they are byte-identical, which is only a real guarantee
+    while there is a single place the bytes come from.
+    """
+    return (f"claude plugin uninstall {ref} --scope {scope} "
+            f"&& claude plugin install {ref} --scope {scope}")
+
+
+def catalog_version(config_root: Path, plugin: str, marketplace: str) -> str | None:
+    """The version the cached marketplace advertises, or None.
+
+    The `name` must match the plugin the repo enabled. Without that check a marketplace whose root
+    manifest describes a DIFFERENT plugin would have its version compared against ours, and the
+    notice would name a version nobody can install — the one way this file could produce a
+    confidently wrong line rather than silence.
+    """
+    data = _load_json(config_root / "plugins" / "marketplaces" / marketplace
+                      / ".claude-plugin" / "plugin.json")
+    if not isinstance(data, dict) or data.get("name") != plugin:
+        return None
+    version = data.get("version")
+    return version if isinstance(version, str) and version else None
+
+
+def parse_version(value: str) -> tuple[int, ...] | None:
+    """`"3.6.1"` -> `(3, 6, 1)`, or None when any segment is not a base-10 integer.
+
+    Prereleases and exotic schemes are OUT OF SCOPE ON PURPOSE. Ordering `3.7.0-rc1` against `3.6.1`
+    correctly needs precedence rules this file has no business owning, and a wrong answer here nags
+    someone toward a downgrade. None means silence, never a guess.
+    """
+    out = []
+    for seg in value.split("."):
+        if not ASCII_INT.fullmatch(seg):  # rejects "", "-rc1", "1a", "+build", signs, whitespace, "³"
+            return None
+        out.append(int(seg))
+    return tuple(out) if out else None
+
+
+def is_newer(catalog: str, installed: str) -> bool:
+    """True only when `catalog` is strictly newer. Equal or older is False — never a downgrade.
+
+    The shorter tuple is zero-padded, so `3.6` == `3.6.0`.
+    """
+    a, b = parse_version(catalog), parse_version(installed)
+    if a is None or b is None:
+        return False
+    width = max(len(a), len(b))
+    return a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
+
+
+def _resolved(p: str) -> Path:
+    try:
+        return Path(p).resolve()
+    except (OSError, RuntimeError):
+        return Path(p)
+
+
+def folder_sharing(rows: object, record: dict) -> tuple[int, str | None]:
+    """How many OTHER install records point at `record`'s plugin folder, and the commit now on disk
+    when it is not `record`'s own (else None).
+
+    Claude Code keeps one cache folder per VERSION. Two repos that install the same version at
+    different commits share that folder; the later install overwrites the earlier one's files while
+    both records keep their own `gitCommitSha`. The version agrees everywhere and the skills that
+    load are not the ones this repo's record names. The folder carries no commit of its own, so the
+    newest record pointing at it (by `lastUpdated`) is the best evidence of what is on disk.
+    Paths are compared, never returned.
+    """
+    location, sha = record.get("installPath"), record.get("gitCommitSha")
+    if not (isinstance(rows, list) and isinstance(location, str) and location
+            and isinstance(sha, str) and sha):
+        return 0, None
+    target = _resolved(location)
+    sharers = [r for r in rows
+               if isinstance(r, dict) and r is not record
+               and isinstance(r.get("installPath"), str) and r["installPath"]
+               and _resolved(r["installPath"]) == target]
+
+    def stamp(rec: dict) -> str:
+        value = rec.get("lastUpdated")
+        return value if isinstance(value, str) else ""
+
+    newest = max([record] + sharers, key=stamp)
+    on_disk = newest.get("gitCommitSha")
+    if newest is record or not isinstance(on_disk, str) or not on_disk or on_disk == sha:
+        return len(sharers), None
+    return len(sharers), on_disk
+
+
+def notice(root: Path, config_root: Path) -> str | None:
+    """The one line, or None. This is the whole decision, in reading order."""
+    pair = eligible_pair(_load_json(root / ".claude" / "settings.json"))
+    if pair is None:
+        return None
+    plugin, marketplace = pair
+
+    rows = install_rows(config_root, plugin, marketplace)
+    selected = select_repo_install(rows, root)
+    if selected is None:
+        return None
+    installed, scope = selected
+    ref = f"{plugin}{PAIR_SEP}{marketplace}"
+    catalog = catalog_version(config_root, plugin, marketplace)
+    if not catalog or not is_newer(catalog, installed):
+        # Same version as the catalog (or no catalog), but the files on disk can still be another
+        # repo's later install of that version. Said only when the record and the folder disagree.
+        mine = repo_install_matches(rows, root)
+        _, on_disk = folder_sharing(rows, mine[0]) if len(mine) == 1 else (0, None)
+        if on_disk is None:
+            return None
+        recorded = str(mine[0].get("gitCommitSha"))[:7]
+        return (f"{plugin} {installed} here runs files from another repo's later install "
+                f"(commit {on_disk[:7]}, not this repo's {recorded}). "
+                f"Reinstall to match: {install_pair_command(ref, scope)}")
+
+    # The RECORDED scope, never a hardcoded `project`. The desktop app writes `local` rows, and
+    # `uninstall --scope project` against one of those answers "not found" — a remediation line that
+    # sends the reader down a dead end is worse than the stale version it was trying to fix.
+    return (f"{plugin} {catalog} is available — this repo is running {installed}. "
+            f"Pick it up: {install_pair_command(ref, scope)}")
+
+
+class _BadArgs(Exception):
+    """A usage error, raised INSTEAD of argparse printing to stderr and exiting 2."""
+
+
+class _QuietParser(argparse.ArgumentParser):
+    """argparse that cannot violate contract 2.
+
+    On a usage error the stock parser writes usage + a message to stderr and exits 2. A hook that
+    appends this CLI's stdout would then see a nonzero exit with stderr noise — recoverable, but the
+    contract here is that the CLI itself is silent, not that its caller cleans up after it. `--help`
+    is left alone deliberately: it is an explicit human request, never something a hook passes.
+    """
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        raise _BadArgs(message)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = _QuietParser(
+        description="Print one line when the marketplace catalog is newer than the installed plugin")
+    ap.add_argument("--root", help="the repo (default: $TICKETWRIGHT_PROJECT, git toplevel, cwd)")
+    ap.add_argument("--config-root", help="Claude config dir (default: $CLAUDE_CONFIG_DIR, ~/.claude)")
+    try:
+        args = ap.parse_args(argv)
+    except _BadArgs:
+        return 0
+    except SystemExit:   # `--help` (0) and any exit path argparse still owns
+        return 0
+    except Exception:  # noqa: BLE001
+        # `--help` WRITES before it exits, so a closed or unwritable stdout raises here — from the
+        # act of rendering help, not from parsing. Contract 1 has no exceptions, so this is caught
+        # too: the documented `--help` exception is about what gets PRINTED when printing works, not
+        # a licence to traceback.
+        return 0
+
+    # print() is INSIDE the guard on purpose: a closed or non-UTF-8 stdout raises on write, and a
+    # traceback from the act of printing the notice would break contract 1 just as surely as one
+    # from reading a file. flush() forces that failure to surface here rather than at interpreter
+    # exit, where it would print to stderr no matter what this function returned.
+    try:
+        line = notice(_resolve_root(args.root), _config_root(args.config_root))
+        if line:
+            print(line)
+            sys.stdout.flush()
+    except Exception:  # noqa: BLE001 — contract 1: this CLI cannot be the thing that fails
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

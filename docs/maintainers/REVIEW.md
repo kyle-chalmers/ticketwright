@@ -46,7 +46,7 @@ gap** below were not surfaced by self-review alone.
   (ENG-/DEMO-/TEST-/SAMPLE-) throughout. Doc counts/links corrected.
 
 ## Verification after fixes
-- `bin/selftest.sh`: **55 checks, 0 failed**, on stock macOS **bash 3.2** (validates all 3 example
+- `tools/selftest.sh`: **55 checks, 0 failed**, on stock macOS **bash 3.2** (validates all 3 example
   stacks, all 19 adapters, the hooks, and the ticket index incl. new edge cases).
 - Targeted tests: `{number}` URL token, block-list prefixes, empty-repo `--check`, `ticket_url` field.
 - Content-hygiene checks green (the `LICENSE` copyright line and the deliberate `jira_url`
@@ -89,6 +89,6 @@ against the file/CLI before counting) plus an **external-model (Codex)** whole-d
 - Default permission allow-list missed `recall.py` / `enrich_ticket.py` → added.
 
 ## Verification after fixes
-- `bin/selftest.sh`: **65 checks, 0 failed** on stock macOS **bash 3.2** (adds recall ranking, reverse +
+- `tools/selftest.sh`: **65 checks, 0 failed** on stock macOS **bash 3.2** (adds recall ranking, reverse +
   leaf-match lookup, OBJECTS.md render/gate, Python-import exclusion, multi-owner seed disambiguation).
 - Targeted regression tests for each confirmed bug ship in §11 of the self-test.

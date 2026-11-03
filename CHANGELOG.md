@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **The kit's scripts moved from the plugin's top-level `bin/` folder to `tools/`.** claude.ai and
+  Cowork refuse to install a plugin with a top-level `bin/`, and the plugin directory held
+  Ticketwright for it. Your repo's launcher stays at `bin/tw`, and every skill calls it the same way,
+  so a repo whose copy was refreshed on 4.10.0 needs nothing. A copy from before 4.10.0 fails with
+  `tw: cannot locate the ticketwright kit`: run `/setup`, or
+  `python3 ~/.claude/plugins/marketplaces/ticketwright/tools/refresh_launcher.py --write`, then
+  commit `bin/tw` and `bin/kit_paths.py`. The session banner names the command too.
+- **`ticketwright init` puts the kit in `tools/`.** It writes the launcher pair into `bin/`, as
+  `/setup` does on a plugin install. On a repo set up by an older `init`, run `ticketwright init
+  --force`: it refreshes the kit's files, then removes from `bin/` only the files whose bytes match a
+  version Ticketwright shipped (`tools/old_layout.py` holds their hashes), and names each file it
+  removes or keeps. Without `--force` the older hooks stay, so their scripts stay in `bin/` too, and
+  `init` says so. It refuses to write into a `tools/` folder it did not create, and warns when a
+  `bin/tw` of your own would take the launcher's place. The wheel bundles `ticketwright/_kit/tools/`.
+- **Contributors run `bash tools/selftest.sh`.** Every command in the docs that ran a kit script
+  from `bin/` now names `tools/`.
+
 ## [4.10.0] - 2026-11-02
 
 Your repo's copy of the launcher can now be updated, ahead of a release that moves the kit's

@@ -7,13 +7,13 @@ requires_by_transport: {cli: [cli], mcp: [mcp], both: [mcp]}   # acli is optiona
 container_key: project.key_prefix   # which config key a ranked container fills (see rank_projects_by_activity)
 user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 default_surface: claude-code   # the runtime the `## verb:` sections' MCP calls were checked on (the Atlassian connector's own tool names, 2026-10-25)
-surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by tools/adapter_surface.py
 auth: |
   CLI (optional):  acli jira auth   (token in ~/.config/acli/token.txt; site/email in jira_config.yaml)
   MCP:  the tracker's MCP server (`{mcp}`, e.g. the Atlassian connector) must be connected (OAuth).
         Every verb works through it alone, so a teammate needs no acli. Comments always use it.
         On a runtime with its own section below, that section's MCP calls and probe instead
-        (`bin/adapter_surface.py --probe` prints it).
+        (`tools/adapter_surface.py --probe` prints it).
   Verify: `acli jira workitem search --jql "project = {key_prefix}" --limit 1` (read-only; no epic needed)
           when acli is the route. A connector-only slot has `verify: null`: the agent runs the
           read-only probe below in-session, and verify_stack reports it as not shell-checkable.
@@ -335,7 +335,7 @@ asks as it would have anyway.
 - `acli` Duo/MFA: an instant `250001/370001` = lockout (wait 15 min, don't retry); a hang = push pending.
 - If your project requires a parent Epic, a link error means `--parent` was missing (set `default_epic`). "User not found" ⇒ use the exact email.
 - Tool names differ by agent on the MCP path: Codex CLI lists the Atlassian connector under other
-  names (in its own section of this file). `bin/adapter_surface.py --adapter
+  names (in its own section of this file). `tools/adapter_surface.py --adapter
   adapters/tracker/jira.md` picks the right section for the agent running now. A name missing from
   your session's tool list is a gap to report so the kit can record it, never a local edit to
   this file: an edited copy silently drifts from the kit on the next upgrade.

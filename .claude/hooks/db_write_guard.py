@@ -19,12 +19,12 @@ Legacy booleans still parse: `true` → high_risk, `false` → off. A missing, m
 or unrecognized value falls back to `all`, never to a weaker setting — unparseable
 config must not quietly widen what runs unprompted.
 
-THE SCANNER LIVES IN bin/sql_scan.py (one deterministic implementation, shared with the
+THE SCANNER LIVES IN tools/sql_scan.py (one deterministic implementation, shared with the
 non-Claude runtime shims — see PROMPT 7 / U3); this file is the Claude-protocol presenter.
 Classification is default-deny — see sql_scan.py for the tiers and the reasoning. Two
 things deliberately did NOT move: the policy read (in-process via the sibling _stack.py,
 where an unreadable value resolves to `all` — parse failure gates MORE), and this file's
-protocol contract below. And one failure mode is new and deliberate: if bin/sql_scan.py
+protocol contract below. And one failure mode is new and deliberate: if tools/sql_scan.py
 cannot be imported (a partial vendored copy, a corrupted file) — or imports fine but
 CRASHES while classifying — this hook does NOT fall into the blanket fail-open handler:
 it asks on every Bash command in the configured repo, naming the broken module, until
@@ -67,7 +67,7 @@ from _stack import MODE_OFF, db_write_mode, find_stack  # noqa: E402
 # the failure is handled EXPLICITLY at the top of run() — never left to the blanket handler in
 # main(), which would silently gate NOTHING (see the module docstring).
 try:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bin"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
     import sql_scan as _sql_scan
     _SCAN_IMPORT_ERROR: Exception | None = None
 except Exception as _e:  # noqa: BLE001 — any import failure maps to gating MORE, below
@@ -120,13 +120,13 @@ def run() -> int:
                 f"Ticketwright's SQL check is not working, and approval prompts are off for this "
                 f"session, so commands here, including warehouse commands, are running unchecked. "
                 f"Reinstall or update the Ticketwright plugin to fix it. Details: "
-                f"bin/sql_scan.py {problem}; permission mode bypassPermissions."
+                f"tools/sql_scan.py {problem}; permission mode bypassPermissions."
             ))
             return 0
         emit("ask", (
             f"Ticketwright's SQL check is not working, so it is asking before every command in "
             f"this project. Reinstall or update the Ticketwright plugin to fix it. "
-            f"Details: bin/sql_scan.py {problem}."
+            f"Details: tools/sql_scan.py {problem}."
         ))
         return 0
 

@@ -67,7 +67,7 @@ layout instead of scaffolding, and writes a `MIGRATION.md` checklist (see
 
 *Check:* `.claude/config/stack.yaml` exists, and the tool-slot verifier names each slot — ask your
 agent to "run verify_stack" (on a plugin install the script lives in the plugin, and the skills
-resolve it; in a vendored or pip repo you can run `bash bin/verify_stack.sh` directly).
+resolve it; in a vendored or pip repo you can run `bash tools/verify_stack.sh` directly).
 
 **4 · Turn on the catalog refresh, and know that upgrades are manual.** Add one key by hand to the
 `"ticketwright"` marketplace entry in `.claude/settings.json` (no CLI flag sets this one):
@@ -143,7 +143,7 @@ the checklist below for you, in order:
 
 ```text
 Install the Ticketwright plugin for this repo. Start with:
-python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py
 Follow its fixes in order. I want it installed for this repo only, not globally.
 If a check fails in a way its fix doesn't cover, stop and tell me instead of
 working around it. When it's clean, tell me how to restart.
@@ -160,7 +160,7 @@ opens and trusts the repo — before anything is installed — so this runs at t
 does:
 
 ```bash
-python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py
 ```
 
 That path names the `ticketwright` marketplace; a fork substitutes its own marketplace name. The
@@ -230,7 +230,7 @@ The checks, in the order the doctor runs them:
     lists them and prints the `rm -rf` line for each; it never deletes anything itself. Close every
     Claude Code session before removing one.
 15. **`yq` is installed.** <!-- doctor-check: yq_present -->
-    `command -v yq`. Needed only by `bin/selftest.sh`, where its absence fails a dozen-plus checks
+    `command -v yq`. Needed only by `tools/selftest.sh`, where its absence fails a dozen-plus checks
     from one cause. macOS: `brew install yq`. Linux: your distribution's package. Windows:
     `winget install MikeFarah.yq`.
 16. **Git identity is set.** <!-- doctor-check: git_identity -->
@@ -260,7 +260,7 @@ engine. Then update the CLI (check 6).
 
 *Verify:* `claude plugin list` shows `ticketwright@ticketwright … enabled`, and
 `/ticketwright:setup` appears in the next session's command list. A plugin install does not ship
-the kit's self-test; in a clone of the repo, `bin/selftest.sh` takes several minutes — judge it by
+the kit's self-test; in a clone of the repo, `tools/selftest.sh` takes several minutes — judge it by
 its exit code, not by how long it has been running. Anything still
 unexplained: [`docs/troubleshooting.md`](troubleshooting.md).
 
@@ -362,7 +362,7 @@ verification or first use ships as a commented default instead.
 
 Config is three tiers: `.claude/config/stack.yaml` is the **team's** committed answer,
 `people/<id>.yaml` holds each person's portable settings, and `.claude/config/connections.local.yaml`
-holds the per-machine ones and is gitignored. `bin/effective_config.py` merges them — read that, not
+holds the per-machine ones and is gitignored. `tools/effective_config.py` merges them — read that, not
 the raw file. The machine tier can supply credentials and local paths; it can never change which data
 gets read, and never a policy.
 
@@ -505,11 +505,11 @@ Which agents can do what, with the sources behind each claim, is in [runtimes.md
 - **`enrich`** calls a model headlessly. The command it runs comes from the runtime's adapter in
   `adapters/runtime/<name>.md` (`--model-cmd` overrides it), falling back to `claude -p`. A runtime
   that documents no headless command says so and points at the agent-neutral ingest path instead.
-- **`init`** copies the kit's files (skills, agents, hooks, adapters, templates, `bin/`) and keeps
+- **`init`** copies the kit's files (skills, agents, hooks, adapters, templates, `tools/`) and keeps
   your edits on re-runs (`--force` overwrites them).
 - **`install --runtime <name>`** puts the skills where each of the seven runtimes reads them,
   driven by what that runtime's adapter declares, never by a name baked into code
-  (`bin/install.sh` is the same command for a vendored install):
+  (`tools/install.sh` is the same command for a vendored install):
   - **Runtimes that read the canonical `.claude/skills/` copy** (Claude Code natively; Cursor,
     OpenCode, Cline and Devin directly): it checks and writes no skills. The report says what that
     shared file cannot carry for a foreign reader, such as `allowed-tools`, a Claude-only key the
@@ -535,7 +535,7 @@ Which agents can do what, with the sources behind each claim, is in [runtimes.md
 - **The DB-write guard is wired wherever a runtime documents a home for it:** `.cursor/hooks.json`
   (with `failClosed: true`, required configuration), `.agents/hooks.json` for Antigravity, and a
   throw-to-deny plugin under `.opencode/plugins/`. All of them front one scanner,
-  `bin/sql_scan.py`, through `bin/hook_shim.py`. A runtime with no `ask` tier gets the `high_risk`
+  `tools/sql_scan.py`, through `tools/hook_shim.py`. A runtime with no `ask` tier gets the `high_risk`
   policy as **deny-with-escape** (the deny names a one-shot re-approval), and the install report
   says so. Where even the hooks-config location is undocumented (Codex CLI, Devin), the installer
   prints the line to wire by hand instead of guessing.

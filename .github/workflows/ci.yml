@@ -27,10 +27,10 @@ jobs:
       # hosted Linux runner. The macOS job below runs the sections in parallel, so a serial full run
       # is still checked on every push and a parallel full run is too.
       - name: Self-test (config + adapters + hooks + index)
-        run: bash bin/selftest.sh
+        run: bash tools/selftest.sh
 
       - name: Ticket index is in sync (staleness gate)
-        run: python3 bin/build_ticket_index.py --check
+        run: python3 tools/build_ticket_index.py --check
 
   # ubuntu-latest ships a modern bash, so the job above cannot see a bash-3.2 regression — which is
   # exactly how selftest shipped unparseable on every stock Mac (heredocs inside $() desync 3.2's
@@ -51,14 +51,14 @@ jobs:
         run: /bin/bash -c 'echo "$BASH_VERSION"; [ "${BASH_VERSINFO[0]}" -eq 3 ]'
 
       - name: Parse gate (bash 3.2)
-        run: /bin/bash -n bin/selftest.sh
+        run: /bin/bash -n tools/selftest.sh
 
       # Serial, this job took about four minutes and set how long every push waited; in parallel it
       # takes about two. Every section as its own job, one per core: the same checks as a serial run
       # (section 85 compares the two on a sample), and a parallel run also proves no section leans
       # on another. --jobs itself runs under /bin/bash 3.2 here.
       - name: Full self-test (bash 3.2, sections in parallel)
-        run: /bin/bash bin/selftest.sh --jobs "$(sysctl -n hw.ncpu)"
+        run: /bin/bash tools/selftest.sh --jobs "$(sysctl -n hw.ncpu)"
 
   plugin-validate:
     runs-on: ubuntu-latest
@@ -222,9 +222,12 @@ jobs:
           mkdir -p /tmp/fresh && cd /tmp/fresh
           /tmp/tw/bin/ticketwright init .
           fail=0
-          for d in bin .claude/skills .claude/agents .claude/hooks adapters templates; do
+          for d in tools .claude/skills .claude/agents .claude/hooks adapters templates; do
             [ -d "$d" ] || { echo "::error::init did not scaffold $d"; fail=1; }
           done
+          # the kit lives in tools/; bin/ holds only the launcher pair the skills call
+          [ "$(ls bin | tr "\n" " ")" = "kit_paths.py tw " ] \
+            || { echo "::error::bin/ should hold only the launcher pair, found: $(ls bin | tr "\n" " ")"; fail=1; }
           # the kit's own stack.yaml is a fictional "Acme" example — it must never land in a real repo
           if [ -e .claude/config/stack.yaml ]; then
             echo "::error::init wrote .claude/config/stack.yaml — the Acme example leaked into the wheel"; fail=1

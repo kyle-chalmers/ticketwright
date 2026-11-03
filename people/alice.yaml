@@ -13,7 +13,7 @@
 # supplies DEFAULTS; this in-repo file overrides it KEY BY KEY (not whole-file), so you can carry
 # your voice and file-type preferences between repos and still let one repo differ in one field.
 #
-# Read the merged result with:  python3 bin/effective_config.py --root . --person alice --json
+# Read the merged result with:  python3 tools/effective_config.py --root . --person alice --json
 
 display_name: Alice Smith
 # Your account in the tracker, in the form its adapter's `assign_ticket` section names: a Jira

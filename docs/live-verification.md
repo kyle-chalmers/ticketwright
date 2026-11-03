@@ -11,7 +11,7 @@ triggers.
 
 Three rules govern this list:
 
-- **No selftest assertion may claim an entry passed.** The suite (`bin/selftest.sh` section 44)
+- **No selftest assertion may claim an entry passed.** The suite (`tools/selftest.sh` section 44)
   checks that verification is *owed and tracked* — only a human with the runtime can pay it.
 - **The honesty linkage is mechanical.** Every `unknown` or `unverified` value in
   `adapters/runtime/*.md` frontmatter, every WIRED cell in the enforcement table
@@ -51,7 +51,7 @@ Every PASS lands as one commit containing all of:
 
 1. **The adapter flip.** The covered `adapters/runtime/<tool>.md` frontmatter key changes from
    `unknown`/`unverified` to the observed value, with the access date in its inline comment
-   (the vocabulary is closed — see `bin/selftest.sh` section 40's `ENUMS`).
+   (the vocabulary is closed — see `tools/selftest.sh` section 40's `ENUMS`).
 2. **The pins that move.** Selftest pins exist precisely so a drive-by edit cannot flip a safety
    axis silently — a *live-verified* flip moves the pin deliberately, in the same commit:
    - `gate_ask_tier` / `gate_fail_mode` / `subagent_isolation` value flips → the matching pin
@@ -62,7 +62,7 @@ Every PASS lands as one commit containing all of:
    observation and its date (that page's header demands dated findings, never undated edits).
 4. **The entry check-off.** This page's `Status:` line flips and the `Evidence:` paragraph lands;
    `Covers:` tokens stay.
-5. **The gate.** `bash bin/selftest.sh` prints `0 failed` after the pin moves — if it does not,
+5. **The gate.** `bash tools/selftest.sh` prints `0 failed` after the pin moves — if it does not,
    a pin you did not expect to move is telling you the flip has a consumer you missed.
 
 ## The WIRED → ENFORCEMENT promotion protocol
@@ -80,7 +80,7 @@ The promotion is mechanical — one commit containing:
    cell cannot reach ENFORCEMENT by editing the template and its pins alone.
 2. **The cell.** In `templates/agent-reference.md`, the promoted cell's `WIRED (…)` becomes
    `ENFORCEMENT (…)`, keeping the artifact name and adding the verification date.
-3. **The section 43 pins** (`bin/selftest.sh`), three of them:
+3. **The section 43 pins** (`tools/selftest.sh`), three of them:
    - the "only a live confirmation may promote WIRED" loop must exempt the promoted
      (runtime, cell) pair — keep the loop, add the explicit exemption naming this page;
    - the WIRED-set pin for that cell (`guard cell must be WIRED naming <artifact>`, or the
@@ -94,7 +94,7 @@ The promotion is mechanical — one commit containing:
    the dated observation. Any axis the same session resolved (e.g. Antigravity's
    `gate_fail_mode`) follows the general protocol above.
 6. **The docs.** `docs/runtimes.md` re-dated; this entry checked off.
-7. `bash bin/selftest.sh` → `0 failed`.
+7. `bash tools/selftest.sh` → `0 failed`.
 
 What the pins can and cannot certify, stated plainly: moving them proves the promotion was
 *deliberate and complete*, not that the observation *happened* — no offline suite can witness a
@@ -105,7 +105,7 @@ not pass review.
 **GUIDANCE → WIRED is a code change, not a doc edit.** Codex CLI and Devin sit at GUIDANCE because
 their hooks-CONFIG file locations are unresearched — the installer refuses to guess a path. When
 entry 1 or entry 5 establishes the location live, wiring it is a follow-up implementation:
-`emit_hooks` in `bin/emit_runtime.py` grows that runtime, the adapter's `hook_wiring` flips from
+`emit_hooks` in `tools/emit_runtime.py` grows that runtime, the adapter's `hook_wiring` flips from
 `unknown` to the real path (moving section 43's `PIN` dict), section 43's "guard cell must be
 GUIDANCE" pin for that runtime moves, and `tests/emit/<runtime>/` grows the new artifact. The new
 cell enters as WIRED — honoring it live is a *further* observation before ENFORCEMENT.
@@ -554,7 +554,7 @@ Covers: `antigravity.model_sandbox` `devin.model_sandbox` `opencode.model_sandbo
 `devin -p` (docs mention a `--sandbox` mode, unverified for `-p`), `opencode run` (no restriction
 flag verified at all). The enrich step runs these commands as declared; an unsandboxed model call
 there is a real difference in what the kit exposes. The older-ticket summaries
-(`bin/summarize_hits.py`) refuse them (exit 4, and the session writes the lines from the titles), and
+(`tools/summarize_hits.py`) refuse them (exit 4, and the session writes the lines from the titles), and
 they run only on a command recorded as `tools-withheld`: a PASS that finds every tool withheld is
 what lets the summaries run on that runtime, while a `read-only` result does not. A command
 *completing* proves nothing: the probes below are adversarial, and the posture is recorded **per
@@ -602,7 +602,7 @@ the catalog fresh, and `--check` fails a deliberately staled one.
 **Steps.** (a) Open a fixture ticket, run the review skill with `--deep`, read the verdict
 record's `review_mode` and posture fields. (b) Edit a fixture ticket, run the documented fallback,
 confirm `tickets/INDEX.md` reflects the edit; stale it on purpose, confirm
-`python3 bin/build_ticket_index.py --check` exits nonzero.
+`python3 tools/build_ticket_index.py --check` exits nonzero.
 
 **PASS looks like.** A real verdict file carrying the honest mode fields; a catalog that stayed
 fresh without any hook.
@@ -614,7 +614,7 @@ prose; this entry records that an agent followed it).
 ### 12. Hook-wired runtimes — the shim's shell-tool jurisdiction list, checked against real payloads
 
 Status: OPEN
-Covers: the `_SHELLISH` jurisdiction list in `bin/hook_shim.py` (adversarial-review ruling on
+Covers: the `_SHELLISH` jurisdiction list in `tools/hook_shim.py` (adversarial-review ruling on
 #46, routed here — no frontmatter token)
 
 **Claim to verify.** On runtimes whose pre-tool hook fires for **every** tool (antigravity,
@@ -639,7 +639,7 @@ stdin; record the tool-name field the payload actually carries; check it against
 recorded per runtime + version. A miss is a FAIL with a one-line fix: widen `_SHELLISH` (and its
 selftest coverage in section 43) in the same commit as the recorded observation.
 
-**Record on pass.** Observed tool names recorded in `bin/hook_shim.py`'s jurisdiction comment
+**Record on pass.** Observed tool names recorded in `tools/hook_shim.py`'s jurisdiction comment
 with the date and runtime versions; any widening lands with a section 43 case proving the new
 name gates.
 
@@ -657,7 +657,7 @@ Spawning it, and whether `tools:` holds, stay with entries 2 and 9.
 before its first request, so a throwaway `CODEX_HOME` and a stub provider are enough.
 
 **Steps.**
-1. In a fresh git repo, `python3 bin/emit_runtime.py --runtime codex-cli --root <repo>`.
+1. In a fresh git repo, `python3 tools/emit_runtime.py --runtime codex-cli --root <repo>`.
 2. Make an empty directory for `CODEX_HOME` and give it a `config.toml` that trusts the repo:
    `[projects."<repo, as pwd -P prints it>"]` with `trust_level = "trusted"`.
 3. Start a stub on `127.0.0.1:<port>` that saves each POST body and answers HTTP 400.
@@ -727,7 +727,7 @@ Named here so the #46 adversarial review's "U6/future notes" routing resolves so
 explicitly out of this list's scope (it is code hardening, not a runtime observation):
 
 - **Newline-separator hardening** in the guard's command parsing — deterministic work on
-  `bin/sql_scan.py` / `bin/hook_shim.py` input handling, verifiable offline by selftest when
+  `tools/sql_scan.py` / `tools/hook_shim.py` input handling, verifiable offline by selftest when
   someone picks it up.
 
 ## Count, against the plan

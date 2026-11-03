@@ -2,7 +2,7 @@
 
 Two layers, kept separate so the catalog is reproducible and CI/pre-commit-safe:
 
-- **`bin/build_ticket_index.py`** — deterministic, LLM-free renderer. Discovers every ticket folder
+- **`tools/build_ticket_index.py`** — deterministic, LLM-free renderer. Discovers every ticket folder
   (by tracker key from `stack.yaml` `key_prefixes`/`key_prefix`, or by folder name under
   `id_mode: slug`), merges curated fields from
   `tickets/index_data.json`, and writes `INDEX.md` + `OBJECTS.md` (object → tickets reverse index;

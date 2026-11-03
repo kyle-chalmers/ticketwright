@@ -17,13 +17,13 @@ human-readable summaries.
 | File | Role | Authored by |
 |---|---|---|
 | `tickets/index_data.json` | Enrichment store: per-ticket `title`, `date`, one-line `summary`, `tags`, `cross_refs`, `objects`, plus each README's `readme_hash` at enrichment time; `tracker_status` + `tracker_status_read`, the status as last read from the tracker; `planned_status` + `planned_status_on`, the status `/ship` moves the ticket to after its merge; `ticketwright_status` (`In review`, for a tracker with no review status) with the date and the tracker's status at the time; and `readme_status_set` / `readme_status_before`, what `/ship` wrote into the README's Status line and what it said before. | model (refresh skill / ship step); the tracker read (`ingest_index_records.py --tracker-status`, run by `/ticket`, `/refresh index` and `/ship`); `/ship`'s plan (`--tracker-status --planned`, `--withdraw-planned`, `--in-review`) |
-| `bin/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
+| `tools/build_ticket_index.py` | **Renderer.** Discovers every ticket folder, merges the store, writes `tickets/INDEX.md` + `tickets/OBJECTS.md`. Deterministic, LLM-free, stdlib-only. | — |
 | `tickets/INDEX.md` | The rendered catalog (committed; read by humans + the SessionStart hook). | generated |
 | `tickets/OBJECTS.md` | Reverse index: data object → tickets that touched it (objects = enrichment ∪ a grep of each ticket's SQL). | generated |
-| `bin/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). `--repeats` lists earlier tickets that read the same tables (the skillify suggestion). | — |
-| `bin/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
-| `bin/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/date/tags/refs (never the status), ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
-| `bin/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command withholds every tool (Claude Code, on its cheaper model); everywhere else, Codex CLI included, the session writes the lines from the titles. | model (headless) |
+| `tools/recall.py` | Prior-art recall: ranks prior tickets vs a seed/query by object (IDF-discounted)/tag/cross-ref/keyword overlap (lexical, stdlib). Behind `/ticket --recall`. `--eval` reports recall quality vs cross-refs (read-only, never tunes). `--repeats` lists earlier tickets that read the same tables (the skillify suggestion). | — |
+| `tools/ingest_index_records.py` | Upserts records into `index_data.json`, stamping each with the live README hash. | — |
+| `tools/enrich_ticket.py` | One-command close-step enricher: reads a README, has a model write the curated summary/date/tags/refs (never the status), ingests + re-renders. The model command resolves per runtime (`adapters/runtime/*.md`), so this is not Claude-only. | model (headless) |
+| `tools/summarize_hits.py` | One-line summaries of the top older tracker tickets. Runs the runtime's model command only where that command withholds every tool (Claude Code, on its cheaper model); everywhere else, Codex CLI included, the session writes the lines from the titles. | model (headless) |
 | `.claude/hooks/ticket_index_context.py` | SessionStart hook: prints counts + the most-recent tickets + a pointer to grep `INDEX.md`. | — |
 | `.claude/hooks/regenerate_ticket_index.py` | PostToolUse (Write/Edit) hook: auto-re-renders `INDEX.md` whenever a file under `tickets/` changes — new tickets appear immediately, edited READMEs flag `⚠`. | — |
 
@@ -158,7 +158,7 @@ consulted — earlier attempts at that kept leaking images, external URLs and es
 
 The index is only valuable if it's *mined*. Two capabilities turn the passive catalog into active reuse:
 
-- **Prior-art recall** (engine `bin/recall.py`, surfaced as `/ticket --recall`) ranks prior tickets against a seed ticket (or
+- **Prior-art recall** (engine `tools/recall.py`, surfaced as `/ticket --recall`) ranks prior tickets against a seed ticket (or
   `--query` / `--tags` / `--object`) by a transparent lexical score — **object match ×4, tag ×3,
   cross-ref link +5, keyword ×1**, recency as a tiebreak — then reads the top few READMEs and writes a
   *reuse brief* (what to copy, gotchas, what's different). Wired into `/ticket`'s priming + `build`
@@ -231,7 +231,7 @@ plain line and repo-only recall, and the tracker is never contacted.
    match a table some repo ticket already touched count, read the way recall reads a new ticket's own
    text, so a description cannot add a table of its own. A row whose key already has a ticket folder
    is dropped, so a ticket shows once, from the repo. The top 5 are kept.
-3. **Summarize.** `bin/summarize_hits.py` has a separate model, with every tool withheld, write one
+3. **Summarize.** `tools/summarize_hits.py` has a separate model, with every tool withheld, write one
    line for each of the top 3. Of the shipped runtimes only Claude Code has such a command, and it
    runs on Claude Code's cheaper model. Everywhere else, Codex CLI included, the session writes the
    lines from the titles.
@@ -328,11 +328,11 @@ graph looks right for the whole team; per-user `.obsidian/workspace.json` is git
 
 ```bash
 # Install-mode routes: plugin → `/refresh index` (`/ticketwright:refresh index`); pip → `ticketwright index`;
-# the bare `python3 bin/…` forms below are for VENDORED repos (after `ticketwright init`).
-python3 bin/build_ticket_index.py             # (re)render INDEX.md + OBJECTS.md from the store + folders
-python3 bin/build_ticket_index.py --check     # staleness gate: exit 1 if any rendered file (both catalog files, plus the graph nodes when that layer is on) != a fresh render
-python3 bin/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects
-python3 bin/build_ticket_index.py --recurring --min-tickets 8   # objects touched by many tickets → skillify candidates
+# the bare `python3 tools/…` forms below are for VENDORED repos (after `ticketwright init`).
+python3 tools/build_ticket_index.py             # (re)render INDEX.md + OBJECTS.md from the store + folders
+python3 tools/build_ticket_index.py --check     # staleness gate: exit 1 if any rendered file (both catalog files, plus the graph nodes when that layer is on) != a fresh render
+python3 tools/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects
+python3 tools/build_ticket_index.py --recurring --min-tickets 8   # objects touched by many tickets → skillify candidates
 ```
 
 **A repeated analysis, at the second instance.** `--recurring` counts tickets per object, so it
@@ -363,8 +363,8 @@ Upgrade the closed ticket's row from auto-derived to curated, then commit. One c
 README, writes the summary via the runtime's model command, ingests, re-renders):
 
 ```bash
-python3 bin/enrich_ticket.py TEST-123     # or --branch to use the current branch's id
-python3 bin/enrich_ticket.py alice/TEST-123  # the owner/id locator, when two owners share the id
+python3 tools/enrich_ticket.py TEST-123     # or --branch to use the current branch's id
+python3 tools/enrich_ticket.py alice/TEST-123  # the owner/id locator, when two owners share the id
 ```
 
 A bare id under multiple owners is a hard stop (exit 3) naming them — pass `owner/id` to pick one.
@@ -373,7 +373,7 @@ Then commit `tickets/INDEX.md` + `tickets/OBJECTS.md` + `tickets/index_data.json
 plus `tickets/graph/` + `tickets/objects/` when `project.graph_notes` is on (`--check` gates the
 rendered files, graph nodes included; the curated store is an input, so it isn't gated). An agent closing the
 ticket already has full context and may instead write the record itself and pipe it to
-`bin/ingest_index_records.py --from-json -`; `enrich_ticket.py` is the hands-off path that also works
+`tools/ingest_index_records.py --from-json -`; `enrich_ticket.py` is the hands-off path that also works
 for a human at the terminal. This is wired into the `ship` skill.
 
 ## Why markdown, not a vector DB

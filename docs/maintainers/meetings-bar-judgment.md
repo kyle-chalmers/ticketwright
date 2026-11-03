@@ -214,7 +214,7 @@ unproven and the judgment would flip to NO — the ROADMAP record says so too. *
 **YES on all four legs.** The slot clears the bar as rubricized. Consequences: the full Stage 2
 implementation proceeds — five launch adapters (zoom, fireflies, granola, teams, notion), the
 three-verb contract with the typed `fetch_action_items` result, the `meeting_ref:` contract with
-`bin/meeting_refs.py` as its mechanical parser, the optional `seams.meetings` slot, and every
+`tools/meeting_refs.py` as its mechanical parser, the optional `seams.meetings` slot, and every
 fixed-five-slot surface extended. `ROADMAP.md:189-223` is rewritten to this judgment record.
 
 ## Appendix — the codex adjudication, verbatim

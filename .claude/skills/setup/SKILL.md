@@ -58,7 +58,7 @@ committed file.
 > `.claude/config/connections.local.yaml` (tier 3, gitignored); a person's portable settings
 > belong in `people/<id>.yaml` (tier 2). Where a verify command needs a personal value, write the
 > `{token}` and leave the value to tier 3 — each adapter declares which of its keys are personal
-> in its `user_keys:` frontmatter. `bash bin/verify_stack.sh` warns when a machine-local value is
+> in its `user_keys:` frontmatter. `bash tools/verify_stack.sh` warns when a machine-local value is
 > found in committed config.
 >
 > **Machine-local files when the session runs in a worktree.** Many agent apps start every session
@@ -103,7 +103,7 @@ plainly what is about to happen and why, before it happens.
    recommended, with where it came from), never the answer: the person still picks.
 4. **Ask by the question rule** in "How this skill asks the person something" below. This skill's
    probe is
-   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/kit_paths.py" --json`.
+   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/kit_paths.py" --json`.
    In prose the interview goes **one question at a time**, waiting for an explicit answer before
    the next, and an interview never runs in a subagent.
 5. **Option rules** (both presentations):
@@ -333,7 +333,7 @@ a git repository yet."
      repository instead (`git clone <the repository's URL>`) and run `/setup` there," and offer
      option 2 first.
    - **Is the kit installed and usable here?**
-     `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/plugin_doctor.py" --json` — one
+     `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/plugin_doctor.py" --json` — one
      read-only pass over the install prerequisites (it never installs anything, and makes no
      network call). Report **every** finding that is not `ok`, each with its `fix` lines
      **verbatim**: they are exact commands, and a paraphrased command is one nobody can run.
@@ -349,13 +349,13 @@ a git repository yet."
      checks answer `unknown`: that is the expected answer there, not a failure, so leave those
      out of what you tell the person instead of listing them. If the script is
      absent (an older kit copy), say so in one line and carry on.
-   - **`yq`**: needed only by the kit's full self-check (`bin/selftest.sh`), which setup no longer
+   - **`yq`**: needed only by the kit's full self-check (`tools/selftest.sh`), which setup no longer
      runs by default (Phase 4). When `yq_present` is not `ok` on a vendored or edited kit, print the
      platform install command the doctor gives and offer to run it now; on a plugin install, mention
      it once and move on.
    Identity routing is unchanged: it happens at step 4 below.
 1. **CLIs and machine facts, in one probe:**
-   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/setup_detect.py" --json`
+   `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/setup_detect.py" --json`
    reports the command-line tools on PATH, the git facts (repository, branch, origin **host** only,
    default branch and where that answer came from, whether a git name and email are set), the
    synced-drive folders (names and paths of the mount roots, never their contents), Obsidian, and
@@ -412,7 +412,7 @@ a git repository yet."
    2. `stack.yaml` exists but there is **no `people/` directory at all** → this repo predates
       per-person config: run the **Bootstrap** below, then return to what the person asked for.
    3. `stack.yaml` exists (and `people/` too) → resolve who is at the keyboard:
-      `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/whoami.py" --root . --json`
+      `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; python3 "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/whoami.py" --root . --json`
       - `miss` → this is a **teammate new to this repo**: switch to [teammate.md](teammate.md)
         automatically. Editing the team's shared config must never be a new cloner's first
         offered action. (`--teammate` stays the explicit re-run.)
@@ -469,7 +469,7 @@ Everything the interview does not ask ships as a **commented default** the user 
 **Check the draft before showing the plan.** Compose the draft `stack.yaml` and the draft machine
 file (`connections.local.yaml`: the person pin plus any profile, connection or mount values) in the
 session's scratch space, never in the repo, and run:
-`!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/setup_draft_check.sh" <draft stack.yaml> <draft connections.local.yaml>`
+`!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/setup_draft_check.sh" <draft stack.yaml> <draft connections.local.yaml>`
 It copies both into a throwaway repository and runs the tool check there without contacting any
 tool, so a refused character in a folder name, a missing destination or an unset required key shows
 up now, while it is still a question, instead of after the files are written. For each problem it
@@ -528,7 +528,7 @@ Only on explicit confirmation, execute — **source of truth first, derived file
 5b. **Confirm the launcher is in the project, and add it to what gets committed.** The
    "Ensure the launcher" preflight above already installed `bin/tw` + `bin/kit_paths.py` (it runs
    first in every mode and is idempotent — do NOT re-run a bare `cp` here: on a vendored or `init`
-   install the kit root IS the project root, so `cp "$K/bin/tw" bin/` is a file onto itself, which
+   install the kit root IS the project root, so `cp "$K/tools/tw" bin/` is a file onto itself, which
    exits 1 and would halt the scaffold on the one install shape that already worked). Just verify
    and carry both files into step 9's commit list:
 
@@ -557,11 +557,11 @@ Only on explicit confirmation, execute — **source of truth first, derived file
    - **The kit itself was already checked** in Phase 1: the doctor's `install_payload` confirmed the
      installed plugin has every file setup and the first ticket open. That is a completeness check,
      not a content check; the released kit is tested before it ships. The kit's full self-check,
-     `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/selftest.sh"`
+     `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/selftest.sh"`
      (1,400+ assertions, several minutes, needs `yq`), is **not** run by default. Offer it only on
      a vendored or edited kit; when it runs, run it in the background or with a raised timeout and
      judge it by its exit code, never by whether the tail of its output looks green.
-   - `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/bin/verify_stack.sh" .claude/config/stack.yaml`
+   - `!TW_KIT="${CLAUDE_PLUGIN_ROOT}"; bash "${TW_KIT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}/tools/verify_stack.sh" .claude/config/stack.yaml`
      — **your repo's stack** reachability (pass the repo stack path explicitly so it's unambiguous
      which config was checked). An unreachable tool slot is **not** fatal at setup time; print its
      adapter's auth notes as the fix.

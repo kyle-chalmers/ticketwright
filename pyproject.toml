@@ -45,9 +45,9 @@ path = "ticketwright/__init__.py"
 packages = ["ticketwright"]
 
 # Bundle the kit assets into the wheel under ticketwright/_kit/ WITHOUT moving them in the repo —
-# the Claude Code plugin (.claude-plugin/) and `cp -r` install still reference bin/ at the repo root.
+# the Claude Code plugin (.claude-plugin/) and `cp -r` install still reference tools/ at the repo root.
 [tool.hatch.build.targets.wheel.force-include]
-"bin" = "ticketwright/_kit/bin"
+"tools" = "ticketwright/_kit/tools"
 ".claude/commands" = "ticketwright/_kit/.claude/commands"
 ".claude/skills" = "ticketwright/_kit/.claude/skills"
 ".claude/agents" = "ticketwright/_kit/.claude/agents"
@@ -71,4 +71,4 @@ packages = ["ticketwright"]
 "templates" = "ticketwright/_kit/templates"
 
 [tool.hatch.build.targets.sdist]
-include = ["ticketwright", "bin", ".claude", "adapters", "templates", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["ticketwright", "tools", ".claude", "adapters", "templates", "README.md", "LICENSE", "CHANGELOG.md"]

@@ -33,10 +33,10 @@ What that buys, and the mechanism behind each piece:
 - **Prior-art recall compounds.** `tickets/INDEX.md` is an auto-maintained catalog of every
   ticket, surfaced at the start of every session, and `/ticket` opens with a reuse brief - prior
   work ranked by shared objects, tags and keywords (deterministic, stdlib, no vector store), with
-  what to copy and which gotchas carry over. The engine is `bin/recall.py`, and what it ranks
+  what to copy and which gotchas carry over. The engine is `tools/recall.py`, and what it ranks
   against is `tickets/index_data.json` - the curated summaries written at ticket close (`/ship`
-  routes this through `/refresh index`; `bin/enrich_ticket.py` is the headless-model path,
-  `bin/ingest_index_records.py` the agent-neutral one). Every shipped ticket that gets curated
+  routes this through `/refresh index`; `tools/enrich_ticket.py` is the headless-model path,
+  `tools/ingest_index_records.py` the agent-neutral one). Every shipped ticket that gets curated
   makes the next search better.
   The failure mode, plainly: curation can fail or be skipped, and a skipped ticket falls back to
   its bare README title (`▱` in the catalog) - keep skipping and the corpus rots toward a folder
@@ -158,10 +158,10 @@ draft arrives already sounding like you, and then learn from the edits you still
 
 - **Opt-in.** Off until a person has a `voice:` block in `people/<id>.yaml`. Build a profile with
   `/setup --voice`: a short interview (and, if you want, a few of your own already-sent lines).
-- **Per person.** `bin/whoami.py` resolves who is working (offline, via the identities each person
+- **Per person.** `tools/whoami.py` resolves who is working (offline, via the identities each person
   enumerates in `people/<id>.yaml` — never a fuzzy guess; on a miss it asks who you are and
   remembers the answer with `--bind`). `/ship` maps that person to their voice profile
-  (`bin/resolve_user.py`, a thin shim over it) and loads their `voices/<id>.md`.
+  (`tools/resolve_user.py`, a thin shim over it) and loads their `voices/<id>.md`.
 - **Within the rails, always.** Voice shapes *phrasing only*. `/ship` runs a comms-lint step first
   (word limits, hyperlinks, include-list) and only then applies voice, so the profile can never
   breach a word limit, drop a hyperlink, or skip the stakeholder include-list.
@@ -207,8 +207,8 @@ past what your own rules allow.
 | Event | Script | What it does |
 |---|---|---|
 | PreToolUse (Bash) | `.claude/hooks/db_write_guard.py` | Pauses for confirmation before a warehouse CLI command carrying high-risk SQL (including SQL hidden in `-f` files / stdin redirects); says nothing on read-only SQL, which your own permission settings decide |
-| PreToolUse (Bash) | `.claude/hooks/source_material_guard.py` | Pauses for confirmation before a raw meeting transcript in a ticket's `source_materials/` is staged for commit or copied into a docstore backup (`cp` / `rclone`); it reads filenames and document shape, not meaning (classifier: `bin/scan_source_materials.py`) |
-| PreToolUse (Bash) | `.claude/hooks/review_verdict_guard.py` | Pauses for confirmation before `git push` / a PR is opened or merged for a ticket that has deliverables but no approved review result (read by `bin/review_verdict.py`); the prompt says the work "has not been approved in review" and that the check reads the review file, not the work; silent on approved or not-yet-built tickets |
+| PreToolUse (Bash) | `.claude/hooks/source_material_guard.py` | Pauses for confirmation before a raw meeting transcript in a ticket's `source_materials/` is staged for commit or copied into a docstore backup (`cp` / `rclone`); it reads filenames and document shape, not meaning (classifier: `tools/scan_source_materials.py`) |
+| PreToolUse (Bash) | `.claude/hooks/review_verdict_guard.py` | Pauses for confirmation before `git push` / a PR is opened or merged for a ticket that has deliverables but no approved review result (read by `tools/review_verdict.py`); the prompt says the work "has not been approved in review" and that the check reads the review file, not the work; silent on approved or not-yet-built tickets |
 | PostToolUse (Write\|Edit) | `.claude/hooks/regenerate_ticket_index.py` | Regenerates `tickets/INDEX.md` / `OBJECTS.md` when the curated store changes |
 | SessionStart | `.claude/hooks/session_context.py`, `ticket_index_context.py` | Emits a short repo/catalog banner inside a ticketwright repo; silent elsewhere |
 

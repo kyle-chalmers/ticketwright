@@ -33,7 +33,7 @@ These are not decoration. Cite them in review. When a change to this kit is ambi
    only one of them can use is half-built, and which is which should be stated honestly rather than
    implied.
 5. **"On whatever tools they already use" includes the agent.** Logic belongs in harness-neutral CLIs
-   under `bin/`; hooks and skills are presentation. Any behavior whose *correctness* depends on a
+   under `tools/`; hooks and skills are presentation. Any behavior whose *correctness* depends on a
    Claude-specific lifecycle callback is broken for most of the field.
 6. **Safety gates get more visible, never more convenient.** Anything making an external post or a
    destructive write easier must make it more legible at the same time. Where a runtime cannot enforce
@@ -45,12 +45,12 @@ These are not decoration. Cite them in review. When a change to this kit is ambi
 ## Commands
 
 ```bash
-bash bin/selftest.sh                       # THE gate — kit integrity + hook/engine unit tests. Run before and after any change.
-bash bin/selftest.sh 6 6b                  # only those sections (most take under 3s alone) while you work; the full run still gates
-bash bin/selftest.sh --list                # every section's id and title
-bash bin/selftest.sh --jobs 8              # the full suite, 8 sections at a time (about 50s vs about 255s serial on an 8-core Mac); same totals as a serial run
-python3 bin/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
-bash bin/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
+bash tools/selftest.sh                     # THE gate — kit integrity + hook/engine unit tests. Run before and after any change.
+bash tools/selftest.sh 6 6b                # only those sections (most take under 3s alone) while you work; the full run still gates
+bash tools/selftest.sh --list              # every section's id and title
+bash tools/selftest.sh --jobs 8            # the full suite, 8 sections at a time (about 50s vs about 255s serial on an 8-core Mac); same totals as a serial run
+python3 tools/build_ticket_index.py --check  # staleness gate: INDEX.md/OBJECTS.md + the graph nodes must be in sync (CI enforces)
+bash tools/verify_stack.sh <stack.yaml> --dry-run   # prove every seam resolves to an adapter (no network)
 claude plugin validate .claude-plugin/marketplace.json --strict   # marketplace schema ONLY
 claude plugin validate .claude --strict    # skill + agent CONTENT (the only target that reads it)
 claude plugin validate --profile directory --strict .   # the plugin directory's checks (Claude Code 2.1.305+)
@@ -69,7 +69,7 @@ negative control (the `plugin-validate` job), and runs the directory profile
 selftest section 60b). Components are real files under `.claude/`, never root symlinks: the
 plugin directory blocks a symlinked component. A new `.claude/agents/*.md` must also be listed
 under `agents` in `plugin.json`, because that key replaces the default scan and takes files only;
-selftest section 15 fails on an unlisted one. Locally, `bash bin/selftest.sh` is the gate that
+selftest section 15 fails on an unlisted one. Locally, `bash tools/selftest.sh` is the gate that
 matters.
 
 `selftest.sh` is authoritative and self-contained: read-only, no network, no credentials, bash 3.2-safe.
@@ -97,7 +97,7 @@ verb coverage, tool-name isolation, every hook, the index/recall engines, the re
 graph layer, version sync, …); `--list` prints them. **When you change behavior, add or update the matching numbered section** —
 a green selftest is the contract this kit ships on. It must print `0 failed`.
 
-**Every section must pass on its own** (`bash bin/selftest.sh <id>`), because that is how a filtered
+**Every section must pass on its own** (`bash tools/selftest.sh <id>`), because that is how a filtered
 run works: it runs the setup block plus the chosen sections, cut out of the file by their
 `hdr "<id> · …"` lines. So a new section's `hdr` line sits at column 0 with an id no other section
 uses, and anything a second section needs (a helper, a variable, a fixture in `$TMP`) goes in the
@@ -125,7 +125,7 @@ contributor docs like this one). A seam is one of: `tracker`, `warehouse`, `chat
 2. `adapters/<seam>/<tool>.md` — maps the abstract **verbs** (`fetch_ticket`, `query`, `draft`,
    `backup`, `commit`, …) to that tool's concrete commands. Contract + per-seam verb counts in
    `adapters/README.md`.
-3. `bin/verify_stack.sh` — pings each seam's read-only `verify` before use.
+3. `tools/verify_stack.sh` — pings each seam's read-only `verify` before use.
 
 **Messages a person reads follow one writing rule.** Lead with what happened and what to do, in
 plain words; put anything technical (a policy key, a script path, an exception) after ` Details:`.
@@ -150,26 +150,28 @@ frontmatter (`seam`, `tool`, `transport`, `requires`, `auth`), implement **every
 seam's contract lists, point a `stack.yaml` seam at it with a read-only `verify`, then run
 `verify_stack.sh` + `selftest.sh`. No skill edits.
 
-**Kit assets resolve through `bin/tw`, and `bin/tw` lives in the PROJECT.** `bin/kit_paths.py` is
-the one authority on where the kit is, where the project is, and what the running runtime can do
-(`--kit`/`--project`/`--runtime`/`--json`, no Claude variable required); `bin/tw` is the launcher
-that finds it. Every skill, reference file, template and generated skill calls it exactly one way:
+**The kit's scripts live in `tools/`; the launcher that finds them lives in the PROJECT at `bin/tw`.**
+`tools/kit_paths.py` is the one authority on where the kit is, where the project is, and what the
+running runtime can do (`--kit`/`--project`/`--runtime`/`--json`/`--scripts-dir`, no Claude variable
+required); `tools/tw` is the launcher that finds it. The kit ships no top-level `bin/`: claude.ai and
+Cowork refuse to install a plugin with one, and the plugin directory holds it (LABS-209). Every skill,
+reference file, template and generated skill calls the PROJECT's copy exactly one way:
 
 ```bash
 bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" <script> [args]
 ```
 
 **No Claude variable appears in that line, deliberately** (tiebreaker 5). `/setup` step 5b copies
-`bin/tw` + `bin/kit_paths.py` into `<project>/bin/` and commits them; `kit_paths.py` then resolves a
+`tools/tw` + `tools/kit_paths.py` into `<project>/bin/` and commits them; `kit_paths.py` then resolves a
 plugin install by reading `~/.claude/plugins/installed_plugins.json` — the exact installed kit for
 THIS project, no environment variable, no glob, no guess — and `bin/tw`'s project-shim tier
 delegates to it.
 
 **The project's copy is stamped and refreshable, and reads both kit layouts** (LABS-209). The
-kit's own scripts are moving from the plugin's top-level `bin/` to `tools/`: the plugin directory
-holds a plugin with a top-level `bin/`, and claude.ai and Cowork refuse to install one. The project
-launcher stays at `<project>/bin/tw` (that folder is the user's repo, not the plugin), so the line
-above never changes. Both copied files carry `# tw-launcher: N` (`LAUNCHER_STAMP` in `kit_paths.py`).
+project launcher stays at `<project>/bin/tw` (that folder is the user's repo, not the plugin), so the
+line above never changes, and it reads a kit whose scripts sit in `tools/` or, for an older kit, in
+`bin/`. In this dev repo there is no `bin/tw`: run kit scripts directly (`bash tools/selftest.sh`).
+Both copied files carry `# tw-launcher: N` (`LAUNCHER_STAMP` in `kit_paths.py`).
 `refresh_launcher.py --write` replaces an older copy, `/setup`'s preflight runs it every time, and
 `kit_paths.py`, `whoami.py`, the session banner and the doctor's `project_launcher` check say when a
 copy is out of date. **Bump the stamp whenever `tw` or `kit_paths.py` changes in a way an older copy
@@ -199,14 +201,14 @@ sourced evidence in `docs/runtimes.md`.
 **Config is three tiers behind one resolver.** `.claude/config/stack.yaml` is TEAM config
 (committed); `people/<id>.yaml` is PERSON config (committed, portable — a cross-repo copy under
 `$XDG_CONFIG_HOME/ticketwright/people/` supplies defaults and the in-repo file overrides it key by
-key); `.claude/config/connections.local.yaml` is PERSON+MACHINE config (gitignored). `bin/effective_config.py`
-is the single authority merging them, and `bin/_yamlite.py` is the one YAML reader (an explicit
+key); `.claude/config/connections.local.yaml` is PERSON+MACHINE config (gitignored). `tools/effective_config.py`
+is the single authority merging them, and `tools/_yamlite.py` is the one YAML reader (an explicit
 supported subset, stdlib-only, failing loudly rather than misreading). Every config consumer goes
 through that stack. Three honest qualifications, each deliberate: several consumers keep their
 pre-resolver reader as a FALLBACK so a config outside the supported subset still yields a banner or a
-catalog rather than a hard failure; `bin/whoami.py` — the kit's SINGLE identity resolver (tier-3
+catalog rather than a hard failure; `tools/whoami.py` — the kit's SINGLE identity resolver (tier-3
 `person:` → `$TICKETWRIGHT_PERSON` → the enumerated identity map; statuses
-resolved/miss/ambiguous/conflict, never a guess; `bin/resolve_user.py` is a thin voice-mapping shim
+resolved/miss/ambiguous/conflict, never a guess; `tools/resolve_user.py` is a thin voice-mapping shim
 over it) — reads `people/*.yaml` with `_yamlite` directly rather than via the resolver, because the
 resolver asks IT who the person is and the dependency cannot run both ways; and the two hooks below
 never call the resolver at all. The scope rule is enforced in code: tier 3 may
@@ -230,7 +232,7 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
 - `db_write_guard.py` (PreToolUse/Bash) — asks before destructive warehouse SQL, *including SQL
   hidden in a `-f` file or stdin redirect*; read-only SELECT/DESCRIBE/SHOW pass through.
 - `review_verdict_guard.py` (PreToolUse/Bash) — asks before `git push` / a PR opens or merges for a
-  ticket that has deliverables but no APPROVE verdict on file; `bin/review_verdict.py` is the
+  ticket that has deliverables but no APPROVE verdict on file; `tools/review_verdict.py` is the
   classifier the skills call too (highest-numbered `qc_queries/<n>_review_verdict.md`, `verdict:` line).
 - `source_material_guard.py` (PreToolUse/Bash): asks before a raw meeting transcript in a ticket's
   `source_materials/` is staged for commit or copied into a docstore backup.
@@ -246,7 +248,7 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
   three in lockstep — selftest section 16 asserts they agree. `autoUpdate` re-installs teammates only
   when the *version* moves, so day-to-day commits to `main` must NOT bump it; version bumps belong to
   tagged release commits.
-- **The repo root is the source; the wheel bundles copies.** `pyproject.toml` force-includes `bin/`,
+- **The repo root is the source; the wheel bundles copies.** `pyproject.toml` force-includes `tools/`,
   `.claude/*`, `adapters/`, `templates/` into `ticketwright/_kit/`. Don't move kit files into the
   package dir — keep the layout the plugin and `cp -r`/`ticketwright init` installs expect. Scripts
   and hooks must resolve sibling files from their own kit dir (`__file__`/`CLAUDE_PLUGIN_ROOT`),
@@ -256,7 +258,7 @@ a guard only ever *adds* a confirmation. Each is repo-gated (zero output outside
   store (gitignored); anything tracked must be fixture-only (`ENG-`/`DEMO-`/`TEST-`/`SAMPLE-`).
   Selftest sections 13, 14, and 20 enforce this.
 - **The `AGENTS.md` / `CLAUDE.md` under `templates/` are user-repo scaffolds**, rendered by
-  `bin/render.sh` from `.tmpl` files — not this repo's own config. Don't hand-edit rendered output;
+  `tools/render.sh` from `.tmpl` files — not this repo's own config. Don't hand-edit rendered output;
   edit the `.tmpl`. `templates/CLAUDE.md.tmpl` must stay exactly one line: `@AGENTS.md`.
 
 ## Conventions

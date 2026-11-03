@@ -4,7 +4,7 @@
 // OpenCode has no ask tier (`permission.ask` exists in the SDK types but never fires — open
 // upstream issue), so the kit's guard is presented through the one documented deny mechanism:
 // "throwing an error prevents the tool from executing" (tool.execute.before). The classification
-// itself lives in bin/sql_scan.py behind bin/hook_shim.py --runtime opencode, which speaks the
+// itself lives in tools/sql_scan.py behind tools/hook_shim.py --runtime opencode, which speaks the
 // exit-code protocol: 0 passes, 2 denies with the message (deny-with-escape — the message names
 // the one-shot re-approval, since a flat refusal with no escalation path trains people to turn
 // the guard off).
@@ -53,7 +53,7 @@ export const TicketwrightDbWriteGuard = async ({ directory }) => {
       throw new Error(detail ||
         "Ticketwright's safety checks could not run, so this command is blocked instead of " +
         "allowed unchecked. Reinstall or update Ticketwright in this repo, or turn the check off " +
-        "in .claude/config/stack.yaml. Details: bin/tw or bin/hook_shim.py is missing or failed.")
+        "in .claude/config/stack.yaml. Details: bin/tw or tools/hook_shim.py is missing or failed.")
     },
   }
 }

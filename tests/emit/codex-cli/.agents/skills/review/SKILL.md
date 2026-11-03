@@ -58,7 +58,7 @@ second pass section); run it early when step 0 has to ask.
    sharing a bare id is a hard stop that asks which one, with the `owner/id` choices as the options,
    never a pick**. Reviewing
    another person's ticket is normal; say whose work is under review.
-1. Read the merged config (`bin/effective_config.py --json`), not raw `stack.yaml`. Resolve every
+1. Read the merged config (`tools/effective_config.py --json`), not raw `stack.yaml`. Resolve every
    warehouse **target** this ticket touches and verify each one
    (halt with that target's adapter auth notes if unreachable) — resolution order in
    `adapters/README.md` § Multi-target seams. Load each target's `dialect_notes`: the lint layer is

@@ -19,7 +19,7 @@ prefix="$(basename "$root")"; tracker="—"; warehouse="—"
 # failure falls through to the standalone scan below rather than surfacing.
 resolved=""
 if [[ -f "$stack" ]]; then
-  resolved="$(python3 "$(dirname "$0")/../bin/effective_config.py" --root "$root" --json --quiet 2>/dev/null \
+  resolved="$(python3 "$(dirname "$0")/../tools/effective_config.py" --root "$root" --json --quiet 2>/dev/null \
     | python3 -c '
 import json, sys
 try:

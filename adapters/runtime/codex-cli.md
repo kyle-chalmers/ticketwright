@@ -60,7 +60,7 @@ auth: |
   fetched from a tracker — text someone outside the repo wrote. Building it as argv stops shell
   injection, but nothing stops that text from *instructing* an agent that can use tools. Do not drop
   the flag, and never replace it with `--dangerously-bypass-approvals-and-sandbox`. The older-ticket
-  summaries (`bin/summarize_hits.py`) do not run this command at all: they need every tool withheld,
+  summaries (`tools/summarize_hits.py`) do not run this command at all: they need every tool withheld,
   and a read-only sandbox can still read files, so on Codex the session writes those lines from the
   ticket titles.
 - **No `ask` tier.** `permissionDecision: "ask"` is parsed but not supported, so a hook can refuse or
@@ -79,7 +79,7 @@ auth: |
   `microsoft_outlook_email_draft_email` (observed 2026-10-26 in a Codex Desktop session). The
   chat, meetings and tracker adapters record these names in their `## Runtime surface: codex-cli`
   sections,
-  and `bin/adapter_surface.py` selects them when Codex CLI is the detected runtime, so nothing in
+  and `tools/adapter_surface.py` selects them when Codex CLI is the detected runtime, so nothing in
   `stack.yaml` changes. A server connected directly in Codex's own MCP config keeps that server's
   own names instead; pass `--surface default` for it.
 - **An emitted agent is not a loaded agent.** Codex skips a role file that breaks its schema and
@@ -100,7 +100,7 @@ auth: |
 
 ## Metadata mapping
 
-How the canonical source's control fields map here when `bin/emit_runtime.py` emits the kit into
+How the canonical source's control fields map here when `tools/emit_runtime.py` emits the kit into
 `.agents/skills/`. A `lost` entry is never silent: it is named in the install report, and for
 user-invocable-only skills it is restated inside the emitted artifact itself.
 

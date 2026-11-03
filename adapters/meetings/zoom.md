@@ -19,7 +19,7 @@ auth: |
 Maps the `meetings` verb contract to Zoom — the AI Companion summary and the cloud-recording
 transcript. Read-only: nothing in this seam writes to the provider. The meeting `{id}` below is the
 validated id from a ticket's `meeting_ref:` (grammar in `stack.schema.md`; enumerate with
-`bin/meeting_refs.py` — ids arrive per-ticket, never from config).
+`tools/meeting_refs.py` — ids arrive per-ticket, never from config).
 
 ## verb: fetch_transcript
 
@@ -45,7 +45,7 @@ what to do with it:
   segment — pass the parser's value **verbatim, unencoded**. Encoding it here would corrupt the
   id, because the server does its own URL construction.
 
-`bin/meeting_refs.py` validates the charset and never encodes; encoding is this adapter's job, per
+`tools/meeting_refs.py` validates the charset and never encodes; encoding is this adapter's job, per
 transport.
 
 Two routes, by what the meeting has:
