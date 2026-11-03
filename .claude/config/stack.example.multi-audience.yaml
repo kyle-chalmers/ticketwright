@@ -11,12 +11,12 @@
 # at once, and the two docstore targets are two different systems.
 #
 # HOW A TICKET PICKS: the ticket's `delivery-plan.yaml` declares `audience:` (chat) and
-# `classification:` (docstore); `bin/delivery_plan.py` matches that declaration against the
+# `classification:` (docstore); `tools/delivery_plan.py` matches that declaration against the
 # `audience:` / `classification:` each target declares below. There is NO fallback — an undeclared
 # or unmatched value halts, because the target it would fall through to may be the external one.
 # `default:` below is STRUCTURAL ONLY (the verifier requires it and pre-routing readers display it);
 # chat and docstore routing never reads it.
-# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.multi-audience.yaml
+# Field docs: stack.schema.md  ·  Validate: bash tools/verify_stack.sh .claude/config/stack.example.multi-audience.yaml
 
 project:
   key_prefix: TEST
@@ -134,7 +134,7 @@ seams:
   # ── OPTIONAL meetings slot: the spoken record, by reference ────────────────────────────────────
   # Read-only, single-tool (never target-routed): a ticket names a meeting with a
   # `meeting_ref: zoom:<id>` frontmatter key in a source_materials/ stub (grammar in
-  # stack.schema.md; bin/meeting_refs.py validates it), and /ticket's priming fetches the
+  # stack.schema.md; tools/meeting_refs.py validates it), and /ticket's priming fetches the
   # transcript TO CONTEXT for curation — raw transcripts never land on disk by default.
   # Omit this slot entirely when the team has no meeting provider; the file-backed intake
   # path (a human export into source_materials/) keeps working unchanged.

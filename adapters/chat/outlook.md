@@ -6,12 +6,12 @@ requires: [mcp, identity, default_mode]   # destination (to) + recipients are pe
 channel_key: to        # THIS tool's destination key — ONE address string (a person or a distribution list), read by delivery routing
 sender_key: identity   # THIS tool's sender key — routing surfaces it on the plan line and pins it in the fingerprint
 user_keys: []             # tier-3 overridable: nothing here is machine-local; the sending identity (often a shared mailbox) is a team decision and credentials live in the MCP server's own auth
-surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by tools/adapter_surface.py
 auth: |
   An Outlook / Graph MCP server connected, with Mail permissions for `{identity}`
   (a licensed user or a shared mailbox with send-as rights).
   Verify: a read-only `mcp__{mcp}__list_mail_folders` call returns without error (on a runtime
-  with its own section below, that section's probe instead: `bin/adapter_surface.py --probe`
+  with its own section below, that section's probe instead: `tools/adapter_surface.py --probe`
   prints it).
 note: |
   THE VERB MAPPING, HONESTLY — email is not Teams, and this table does not pretend it is:
@@ -59,7 +59,7 @@ the CLI warns that the routing is not recorded with the ticket, and the /ship pl
 the approver. Nothing else selects this target.
 
 **`{to}` and `{always_include}` are the ROUTED resolution, not config reads** — the routed
-destination and recipient list from `bin/delivery_plan.py` (`destination` / `recipients`) that
+destination and recipient list from `tools/delivery_plan.py` (`destination` / `recipients`) that
 `/ship` pins. In the **default tool-only shape** the stack sets no `to`: both are authored
 per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` = the address + a non-empty
 `chat.recipients:`), asked at `/ship`.
@@ -68,7 +68,7 @@ per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` = the ad
 `{to}` is that target's own destination (this adapter declares `channel_key: to`, so routing reads
 the right key without any skill knowing this is email) and `{always_include}` is that target's own
 list — never another target's, and never a slot-level one. The routed target comes from the
-ticket's `delivery-plan.yaml` `audience:` declaration (`bin/delivery_plan.py`); it is never
+ticket's `delivery-plan.yaml` `audience:` declaration (`tools/delivery_plan.py`); it is never
 inferred from prose, an address's domain, or a list's name, and a routing failure never falls back
 to another chat target.
 
@@ -136,7 +136,7 @@ email it always does — confirm the list's membership with its owner once, outs
 - External recipients may be rewritten by the org's mail hygiene (banner injection, link
   rewriting) — the delivered body is not guaranteed byte-identical to the draft.
 - Tool names and argument shapes differ by agent: Codex lists Outlook as a different connector
-  under other names (in its own section of this file). `bin/adapter_surface.py --adapter
+  under other names (in its own section of this file). `tools/adapter_surface.py --adapter
   adapters/chat/outlook.md` picks the right section for the agent running now. A name missing
   from your session's tool list is a gap to report so the kit can record it, never a local edit.
 

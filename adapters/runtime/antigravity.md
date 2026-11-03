@@ -86,7 +86,7 @@ auth: |
 
 ## Metadata mapping
 
-How the canonical source's control fields map here when `bin/emit_runtime.py` emits the kit into
+How the canonical source's control fields map here when `tools/emit_runtime.py` emits the kit into
 `.agents/skills/` (one emission serves Codex CLI and Antigravity both — each requires only
 `name` + `description`). A `lost` entry is never silent: it is named in the install report, and
 for user-invocable-only skills it is restated inside the emitted artifact itself.

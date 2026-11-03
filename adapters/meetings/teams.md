@@ -18,7 +18,7 @@ auth: |
 
 Maps the `meetings` verb contract to Microsoft Graph. Read-only. The meeting `{id}` below is the
 validated id from a ticket's `meeting_ref:` (grammar in `stack.schema.md`; enumerate with
-`bin/meeting_refs.py` — ids arrive per-ticket, never from config).
+`tools/meeting_refs.py` — ids arrive per-ticket, never from config).
 
 ## verb: fetch_transcript
 
@@ -37,7 +37,7 @@ an unencoded id changes which path is requested instead of naming a meeting. The
 `<transcriptId>` and `<joinWebUrl>` in the insights call (a URL used as a path segment is encoded
 whole). Note the scope: it is the URL path that needs encoding, not the MCP argument itself — an
 operation taking a bare meeting id as its own argument (rather than a path) would take the
-parser's value verbatim; this adapter has none. `bin/meeting_refs.py` validates the charset and
+parser's value verbatim; this adapter has none. `tools/meeting_refs.py` validates the charset and
 never encodes; encoding is this adapter's job.
 
 ```

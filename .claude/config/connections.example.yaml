@@ -14,7 +14,7 @@
 #
 # Which keys ARE personal is declared by each adapter's `user_keys:` frontmatter — see
 # `adapters/README.md`. Check what this file actually changes:
-#   python3 bin/effective_config.py --root . --json      # `provenance` names the tier per key
+#   python3 tools/effective_config.py --root . --json      # `provenance` names the tier per key
 
 person: alice                 # WHO this machine belongs to; picks up people/<id>.yaml (tier 2)
 

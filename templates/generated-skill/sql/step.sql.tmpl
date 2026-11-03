@@ -1,5 +1,5 @@
 -- Step SQL — the skill renders this (substituting tokens) before each run.
--- Authoring rules (enforced by bin/render_and_validate.sh):
+-- Authoring rules (enforced by tools/render_and_validate.sh):
 --   1. Describe params in PROSE here, never as mustache tokens. The renderer expands tokens even
 --      inside a comment, so a multi-line value spills past the `--` and the continuation rows become
 --      bare SQL → compile error.

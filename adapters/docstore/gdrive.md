@@ -20,7 +20,7 @@ reads directory entries only.
 
 **Under named targets** (`seams.docstore.targets:`), `{base_path}` is the ROUTED target's own
 destination, chosen from the ticket `delivery-plan.yaml`'s `classification:` declaration
-(`bin/delivery_plan.py`) — never inferred from a folder name. `backup` records the target it used,
+(`tools/delivery_plan.py`) — never inferred from a folder name. `backup` records the target it used,
 and `link_for` is called against **that same target**, so a link can never be minted from a
 different store than the copy. The target's `sharing_scope:` is a DECLARATION: this adapter verifies
 that the mount exists (`test -d`) and never inspects the folder's real sharing ACL, so a correctly
@@ -38,7 +38,7 @@ someone's work than they agreed to show. Setup's folder question calls this verb
 
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention), and the
-routed `destination` from `bin/delivery_plan.py`. With per-person folders on (the default) that is
+routed `destination` from `tools/delivery_plan.py`. With per-person folders on (the default) that is
 `{base_path}/<person folder>`, the shipper's own folder inside the team's; with `per_person: false`
 it is `{base_path}` itself. Never rebuild it by hand: the routed value is the one the person approved.
 ```bash

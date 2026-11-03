@@ -1,7 +1,7 @@
 # stack.example.asana-bq.yaml — ABSTRACTION PROOF (hypothetical repo).
 # A completely different stack — Asana + BigQuery + Teams + SharePoint + GitLab — with the SAME
 # skills and SAME verb contract. Nothing in .claude/skills/** changes; only this file + adapters do.
-# Try it: bash bin/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run
+# Try it: bash tools/verify_stack.sh .claude/config/stack.example.asana-bq.yaml --dry-run
 
 project:
   key_prefix: GROW                      # a tag added to task names for branch parity

@@ -1,7 +1,7 @@
 # stack.example.azure.yaml — ABSTRACTION PROOF (hypothetical Microsoft-stack repo).
 # Azure DevOps (Boards) + Synapse + Teams + SharePoint + Azure Repos — the SAME skills and SAME
 # verb contract as the Jira/Snowflake and Asana/BigQuery examples. Only this file + adapters change.
-# Try it: bash bin/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run
+# Try it: bash tools/verify_stack.sh .claude/config/stack.example.azure.yaml --dry-run
 
 project:
   key_prefix: TEST                      # branch/index display convention (ADO ids are bare integers)
@@ -39,7 +39,7 @@ seams:
 
   # A multi-target chat slot: Teams inside the org, email (Outlook) out to stakeholders. Which one
   # a ticket uses comes from its delivery-plan.yaml `audience:` declaration — never a guess, never
-  # a fallback (bin/delivery_plan.py; the routing rules live in adapters/README.md § The delivery
+  # a fallback (tools/delivery_plan.py; the routing rules live in adapters/README.md § The delivery
   # plan). Each target declares its OWN audience, destination and always_include.
   chat:
     default: internal                   # STRUCTURAL only (pre-routing readers display it); routing never reads it

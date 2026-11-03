@@ -19,7 +19,7 @@ Maps the `docstore` verb contract to SharePoint/OneDrive. Two transports: the **
 
 **Under named targets** (`seams.docstore.targets:`), `{base_path}` is the ROUTED target's own
 destination, chosen from the ticket `delivery-plan.yaml`'s `classification:` declaration
-(`bin/delivery_plan.py`) — never inferred from a folder name. `backup` records the target it used
+(`tools/delivery_plan.py`) — never inferred from a folder name. `backup` records the target it used
 and `link_for` runs against **that same target**, so a shareable link can never come from a
 different store than the copy. `sharing_scope:` is a DECLARATION: this adapter checks that the sync
 folder exists, never the library's real permissions.
@@ -40,7 +40,7 @@ verb and nothing else.
 
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID**), and the
-routed `destination` from `bin/delivery_plan.py`. With per-person folders on (the default) that is
+routed `destination` from `tools/delivery_plan.py`. With per-person folders on (the default) that is
 `{base_path}/<person folder>`, the shipper's own folder inside the team's; with `per_person: false`
 it is `{base_path}` itself. Never rebuild it by hand: the routed value is the one the person approved.
 ```bash

@@ -5,8 +5,8 @@
 only in the skill's prose, so it fired only when a human typed `/ship`. Two real tickets shipped unreviewed by
 `git push` + `gh pr create` — the skill never ran, and nothing said anything. A skill instruction is
 GUIDANCE by the kit's own definition; this file is the ENFORCEMENT half, exactly as
-db_write_guard.py presents bin/sql_scan.py and source_material_guard.py presents
-bin/scan_source_materials.py. THE CLASSIFIER LIVES IN bin/review_verdict.py; this is the
+db_write_guard.py presents tools/sql_scan.py and source_material_guard.py presents
+tools/scan_source_materials.py. THE CLASSIFIER LIVES IN tools/review_verdict.py; this is the
 Claude-protocol presenter.
 
 JURISDICTION — outbound vcs actions, parsed by subcommand, never by substring:
@@ -57,7 +57,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _stack import find_stack, hard_halt_mode, HH_OFF  # noqa: E402
 
 try:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bin"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
     import review_verdict as _rv
     _RV_IMPORT_ERROR: Exception | None = None
 except Exception as _e:  # noqa: BLE001 — any import failure maps to gating MORE, below
@@ -164,11 +164,11 @@ def _command_paths(command: str, cwd: Path) -> list[Path]:
 def assess(command: str, cwd_raw: str, repo: Path) -> str | None:
     """The gate's judgment as a message, or None for silence. Pure: no I/O beyond reading files.
 
-    Shared with bin/hook_shim.py, which presents the same message in other runtimes' protocols.
+    Shared with tools/hook_shim.py, which presents the same message in other runtimes' protocols.
     Raises only if the classifier is missing — callers turn that into a fail-safe ask.
     """
     if _rv is None:
-        raise RuntimeError(f"bin/review_verdict.py could not be loaded ({_RV_IMPORT_ERROR})")
+        raise RuntimeError(f"tools/review_verdict.py could not be loaded ({_RV_IMPORT_ERROR})")
     action = outbound_action(command)
     if not action:
         return None
@@ -251,7 +251,7 @@ def run() -> int:
         return _ask_or_note(payload, (
             f"Ticketwright can't check review results right now, so this push or PR needs "
             f"your approval first. Reinstall or update the Ticketwright plugin to fix it. "
-            f"Details: bin/review_verdict.py could not run ({e.__class__.__name__}: {e})."))
+            f"Details: tools/review_verdict.py could not run ({e.__class__.__name__}: {e})."))
     if message is None:
         return 0
     return _ask_or_note(payload, message, approve_anyway(outbound_action(command)))

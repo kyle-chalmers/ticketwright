@@ -9,7 +9,7 @@ ambiguous change.
 ## Getting started
 
 ```bash
-bash bin/selftest.sh        # kit integrity + hook unit tests: must pass before you change anything
+bash tools/selftest.sh        # kit integrity + hook unit tests: must pass before you change anything
 ```
 
 The self-test needs `yq` and `python3`. No network, no credentials. It must print `0 failed`.
@@ -31,8 +31,8 @@ one is not.
 2. Keep the frontmatter (`seam`, `tool`, `transport`, `requires`, `auth`) and implement **every**
    verb section the seam's contract lists (see `adapters/README.md`).
 3. Point a `stack.yaml` seam at it and add a read-only `verify` command.
-4. `bash bin/verify_stack.sh <your stack.yaml> --dry-run` proves every slot resolves to an adapter
-   without touching the network, and `bash bin/selftest.sh` checks coverage. Both must pass.
+4. `bash tools/verify_stack.sh <your stack.yaml> --dry-run` proves every slot resolves to an adapter
+   without touching the network, and `bash tools/selftest.sh` checks coverage. Both must pass.
 
 No skill edits should be required. If they are, the abstraction is leaking; raise it in the PR.
 
@@ -40,7 +40,7 @@ No skill edits should be required. If they are, the abstraction is leaking; rais
 
 - Keep the `SKILL.md` frontmatter (`name`, `description`, …) and the verb-only discipline.
 - If it reads config, read it from `stack.yaml` (don't hardcode project facts).
-- Run `bash bin/selftest.sh`: frontmatter validity and tool-name isolation are checked.
+- Run `bash tools/selftest.sh`: frontmatter validity and tool-name isolation are checked.
 
 ## House rules the self-test enforces
 
@@ -62,7 +62,7 @@ No skill edits should be required. If they are, the abstraction is leaking; rais
 - Keep changes focused; update `docs/` and the README if behavior changes, and add a line to
   `CHANGELOG.md` under Unreleased for anything user-facing.
 - When you change behavior, add or update the matching numbered selftest section.
-- Ensure `bash bin/selftest.sh` prints `0 failed`.
+- Ensure `bash tools/selftest.sh` prints `0 failed`.
 - Conventional commit titles (`feat:`, `fix:`, `docs:`, …) are appreciated.
 - Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems go to
   [SECURITY.md](SECURITY.md), never a public issue.

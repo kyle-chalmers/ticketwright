@@ -83,7 +83,7 @@ capabilities and carry no `## verb:` sections — see `adapters/README.md` § Ru
 
 ## Metadata mapping
 
-How the canonical source's control fields map here when `bin/emit_runtime.py` installs the kit.
+How the canonical source's control fields map here when `tools/emit_runtime.py` installs the kit.
 This is the reference runtime: the canonical files ARE the installed files, so nothing is
 translated and nothing can be lost in translation.
 

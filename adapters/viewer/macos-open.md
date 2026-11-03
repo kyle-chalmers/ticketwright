@@ -16,7 +16,7 @@ artifact to a **human's own application** — a SQL file to their IDE, a result 
 spreadsheet app — so they can look at the real thing before signing off.
 
 Unlike every other seam, viewer config is **per-user and gitignored** (which app a person wants is
-a personal choice, not a repo convention). `bin/handoff.sh` resolves it; see
+a personal choice, not a repo convention). `tools/handoff.sh` resolves it; see
 `.claude/config/viewer.example.yaml` for the file shape.
 
 ## verb: open
