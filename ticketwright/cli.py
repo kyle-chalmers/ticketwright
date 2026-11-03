@@ -12,6 +12,7 @@ with the project root set to the current directory, so they read the repo you're
 from __future__ import annotations
 
 import argparse
+import filecmp
 import os
 import shutil
 import subprocess
@@ -47,7 +48,7 @@ def _run_script(script: str, rest: list[str]) -> int:
     return subprocess.call([sys.executable, str(path), *rest], env=env)
 
 
-def _install_launcher(dest: Path, force: bool, preserved: list[str]) -> list[str]:
+def _install_launcher(dest: Path, force: bool, preserved: list[str], foreign: list[str]) -> list[str]:
     """Write the launcher pair into <dest>/bin/, as /setup does on a plugin install.
 
     A copy whose stamp is older than the bundled one is replaced; a current one is kept unless
@@ -68,7 +69,11 @@ def _install_launcher(dest: Path, force: bool, preserved: list[str]) -> list[str
             continue
         if out.exists():
             stamp = launcher_stamp(out)
-            if stamp == 0 or (stamp is not None and stamp >= LAUNCHER_STAMP and not force):
+            if stamp == 0:
+                preserved.append(rel)
+                foreign.append(rel)
+                continue
+            if stamp is not None and stamp >= LAUNCHER_STAMP and not force:
                 preserved.append(rel)
                 continue
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +96,7 @@ def cmd_init(args) -> int:
               file=sys.stderr)
         return 2
     dest.mkdir(parents=True, exist_ok=True)
-    copied, preserved, removed = [], [], []
+    copied, preserved = [], []
     for top in ("tools", ".claude", "adapters", "templates"):
         src = KIT / top
         if not src.is_dir():
@@ -112,18 +117,26 @@ def cmd_init(args) -> int:
             shutil.copy2(f, out)
             copied.append(rel)
     # An init run before the scripts moved to tools/ copied them all into bin/ and marked that with
-    # bin/KIT_VERSION. Only under that mark, remove the bin/ files that carry a kit script's name
-    # (the launcher pair is replaced just below), and name each one. Anything else in bin/ is the
-    # team's and stays.
-    old_marker = dest / "bin" / "KIT_VERSION"
-    if old_marker.is_file():
-        names = {f.name for f in (KIT / "tools").iterdir() if f.is_file()} - set(LAUNCHER)
-        for name in sorted(names | {"KIT_VERSION"}):
-            stale = dest / "bin" / name
-            if stale.is_file() and not stale.is_symlink():
-                stale.unlink()
-                removed.append(f"bin/{name}")
-    copied += _install_launcher(dest, args.force, preserved)
+    # bin/KIT_VERSION. Clear them, but only once .claude/hooks/ matches this kit: an older hook
+    # imports its scanner from bin/, so removing bin/ first would leave the guards unable to load
+    # (and a re-run without --force keeps the older hooks). tools/old_layout.py removes only files
+    # whose bytes match a version Ticketwright shipped, and names any it keeps.
+    removed, kept, deferred = [], [], False
+    if (dest / "bin" / "KIT_VERSION").is_file():
+        hooks = sorted((KIT / ".claude" / "hooks").glob("*.py"))
+        if all((dest / ".claude" / "hooks" / f.name).is_file()
+               and filecmp.cmp(f, dest / ".claude" / "hooks" / f.name, shallow=False) for f in hooks):
+            sys.path.insert(0, str(KIT / "tools"))
+            try:
+                from old_layout import clear_old_bin
+            finally:
+                sys.path.pop(0)
+            names, kept = clear_old_bin(dest / "bin")
+            removed = [f"bin/{n}" for n in names]
+        else:
+            deferred = True
+    foreign: list[str] = []
+    copied += _install_launcher(dest, args.force, preserved, foreign)
     # A vendored kit carries no version marker of its own (init deliberately copies only the four
     # kit dirs, never ticketwright/__init__.py) — write one so `ticketwright install`'s provenance
     # header can name the version that vendored these files. It follows the same preserve/--force
@@ -151,6 +164,16 @@ def cmd_init(args) -> int:
     print(f"  copied {len(copied)} files · preserved {len(preserved)} existing")
     for rel in removed:
         print(f"  removed {rel} (an older init put the kit's scripts in bin/; they now live in tools/)")
+    for name in kept:
+        print(f"  kept bin/{name}: it has a kit script's name but differs from every version "
+              "Ticketwright shipped, so it may be yours. Delete it once nothing uses it.")
+    if deferred:
+        print("  bin/ still holds the kit's scripts from an older init, because .claude/hooks/ has "
+              "older copies that load them. Run `ticketwright init --force` to finish the move; it "
+              "replaces the kit's files and keeps stack.yaml and your settings.")
+    for rel in foreign:
+        print(f"  left {rel} alone: it is not Ticketwright's launcher, so skills that call it will "
+              "run your file instead. Details: move it aside and run init again to install the launcher.")
     print("  next: run `/setup` (writes stack.yaml + AGENTS.md + the index), then `/ticket <id>`")
     print("  on a non-Claude runtime: `ticketwright install --runtime <name>` translates the skills")
     return 0

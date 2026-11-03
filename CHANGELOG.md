@@ -15,10 +15,12 @@ All notable changes to this project are documented here. Format loosely follows
   `python3 ~/.claude/plugins/marketplaces/ticketwright/tools/refresh_launcher.py --write`, then
   commit `bin/tw` and `bin/kit_paths.py`. The session banner names the command too.
 - **`ticketwright init` puts the kit in `tools/`.** It writes the launcher pair into `bin/`, as
-  `/setup` does on a plugin install. Re-running it on a repo set up by an older `init` removes the
-  kit's scripts from `bin/` (only under the `bin/KIT_VERSION` mark an older `init` left, and only
-  files named like a kit script) and prints each one. It refuses to write into a `tools/` folder it
-  did not create. The wheel bundles `ticketwright/_kit/tools/`.
+  `/setup` does on a plugin install. On a repo set up by an older `init`, run `ticketwright init
+  --force`: it refreshes the kit's files, then removes from `bin/` only the files whose bytes match a
+  version Ticketwright shipped (`tools/old_layout.py` holds their hashes), and names each file it
+  removes or keeps. Without `--force` the older hooks stay, so their scripts stay in `bin/` too, and
+  `init` says so. It refuses to write into a `tools/` folder it did not create, and warns when a
+  `bin/tw` of your own would take the launcher's place. The wheel bundles `ticketwright/_kit/tools/`.
 - **Contributors run `bash tools/selftest.sh`.** Every command in the docs that ran a kit script
   from `bin/` now names `tools/`.
 

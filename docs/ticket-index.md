@@ -328,7 +328,7 @@ graph looks right for the whole team; per-user `.obsidian/workspace.json` is git
 
 ```bash
 # Install-mode routes: plugin → `/refresh index` (`/ticketwright:refresh index`); pip → `ticketwright index`;
-# the bare `python3 bin/…` forms below are for VENDORED repos (after `ticketwright init`).
+# the bare `python3 tools/…` forms below are for VENDORED repos (after `ticketwright init`).
 python3 tools/build_ticket_index.py             # (re)render INDEX.md + OBJECTS.md from the store + folders
 python3 tools/build_ticket_index.py --check     # staleness gate: exit 1 if any rendered file (both catalog files, plus the graph nodes when that layer is on) != a fresh render
 python3 tools/build_ticket_index.py --stats     # coverage + health: enriched %, median summary, one-off/shared objects

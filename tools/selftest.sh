@@ -185,7 +185,7 @@ safe_verify_stack() { PATH="${VS_PATH:-$SAFEBIN}" CLAUDE_PLUGIN_ROOT="$KIT" bash
 # PATH=/usr/bin:/bin, i.e. only because nobody had installed a model CLI into /usr/bin. That is an
 # accident of the machine, not a property of the suite, and on a machine where it does not hold the
 # suite makes a real, billable, networked model call while still printing ✓.
-# The relative tools/enrich_ticket.py is deliberate: every fixture copies the script into its own bin/.
+# The relative tools/enrich_ticket.py is deliberate: every fixture copies the script into its own tools/.
 # NOTE there is deliberately no EN_PATH escape hatch to match VS_PATH. An inherited EN_PATH would
 # silently reopen exactly this hole, and nothing needs one — section 53's tripwire prepends its stubs
 # to the AMBIENT path and calls this helper unchanged, which is the honest way to test it.
@@ -3811,13 +3811,25 @@ grep -qF "python3 \"$KIT/tools/refresh_launcher.py\" --write" "$TC/notice.out" \
   && ! grep -q 'bin/tw" refresh_launcher' "$TC/notice.out" \
   && ok "the notice for a pre-stamp copy names the kit's refresh_launcher.py, a command the old copy cannot break" \
   || bad "the notice for a pre-stamp copy offers a command that goes through the broken launcher" "$(cat "$TC/notice.out")"
+# Only kit_paths.py older (one file committed, not both): tw asks it where the kit is, so the same holds.
+NQ="$TC/notice-half"; mkdir -p "$NQ/bin"; cp "$KIT/tools/tw" "$KIT/tests/launcher/v1/kit_paths.py" "$NQ/bin/"
+python3 - "$KIT/tools" "$NQ" > "$TC/notice2.out" 2>&1 <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import kit_paths
+print(kit_paths.launcher_notice(Path(sys.argv[2]), Path(sys.argv[1]).parent) or "")
+PY
+grep -qF "python3 \"$KIT/tools/refresh_launcher.py\" --write" "$TC/notice2.out" \
+  && ok "the notice names the kit's refresh_launcher.py when only kit_paths.py is a pre-stamp copy" \
+  || bad "with only kit_paths.py old, the notice offers a command that goes through it" "$(cat "$TC/notice2.out")"
 (cd "$NP" && python3 "$KIT/tools/refresh_launcher.py" --write) > "$TC/nr.out" 2>&1 \
   && cmp -s "$NP/bin/tw" "$KIT/tools/tw" && cmp -s "$NP/bin/kit_paths.py" "$KIT/tools/kit_paths.py" \
   && ok "running that command from the repo replaces the pre-stamp copy" \
   || bad "the command the notice names did not repair the copy" "$(head -2 "$TC/nr.out")"
 # `ticketwright init`, against a small kit laid out like the wheel's _kit.
-MK="$TC/mk"; mkdir -p "$MK/.claude/skills"; cp -R "$KIT/tools" "$KIT/adapters" "$KIT/templates" "$MK/"
-rm -rf "$MK/tools/__pycache__"
+MK="$TC/mk"; mkdir -p "$MK/.claude/skills"; cp -R "$KIT/tools" "$KIT/adapters" "$KIT/templates" "$MK/"; cp -R "$KIT/.claude/hooks" "$MK/.claude/hooks"
+rm -rf "$MK/tools/__pycache__" "$MK/.claude/hooks/__pycache__"
 init31c() {  # init31c <dest> [--force]: run cmd_init with KIT pointed at $MK
   python3 - "$KIT" "$MK" "$@" <<'PY'
 import argparse, sys
@@ -3837,20 +3849,53 @@ init31c "$TC/fresh" > "$TC/i1.out" 2>&1; i1=$?
 o="$(cd "$TC/fresh" && env -u CLAUDE_PLUGIN_ROOT -u TICKETWRIGHT_KIT bash "$TC/fresh/bin/tw" --scripts-dir 2>&1)"
 [ "$o" = "$(cd "$TC/fresh" && pwd -P)/tools" ] && ok "the launcher init wrote finds the vendored kit's tools/" \
   || bad "the launcher init wrote did not find the vendored tools/" "$o"
-# A repo set up by an older init: the whole kit sat in bin/ under bin/KIT_VERSION.
+# A repo set up by an older init: the whole kit sat in bin/ under bin/KIT_VERSION. A file goes only
+# when its bytes match a version Ticketwright shipped (tests/launcher/old-init/install.sh is v4.9.3's);
+# a file that shares a kit script's name but differs may be the team's, so it stays and is named.
 OI="$TC/old-init"; mkdir -p "$OI/bin"
-cp "$KIT/tests/launcher/v1/tw" "$KIT/tests/launcher/v1/kit_paths.py" "$OI/bin/"
-cp "$KIT/tools/recall.py" "$OI/bin/"; printf '4.9.3\n' > "$OI/bin/KIT_VERSION"; printf 'echo mine\n' > "$OI/bin/team_script.sh"
+cp "$KIT/tests/launcher/v1/tw" "$KIT/tests/launcher/v1/kit_paths.py" "$KIT/tests/launcher/old-init/install.sh" "$OI/bin/"
+printf '4.9.3\n' > "$OI/bin/KIT_VERSION"; printf 'echo mine\n' > "$OI/bin/team_script.sh"
+printf 'echo our own render\n' > "$OI/bin/render.sh"
 init31c "$OI" > "$TC/i2.out" 2>&1; i2=$?
-[ "$i2" -eq 0 ] && [ ! -e "$OI/bin/recall.py" ] && [ ! -e "$OI/bin/KIT_VERSION" ] && [ -f "$OI/bin/team_script.sh" ] \
-  && cmp -s "$OI/bin/tw" "$KIT/tools/tw" && grep -q 'removed bin/recall.py' "$TC/i2.out" \
+[ "$i2" -eq 0 ] && [ ! -e "$OI/bin/install.sh" ] && [ -f "$OI/bin/team_script.sh" ] \
+  && cmp -s "$OI/bin/tw" "$KIT/tools/tw" && grep -q 'removed bin/install.sh' "$TC/i2.out" \
   && ! grep -q 'team_script' "$TC/i2.out" \
-  && ok "re-running init on an older init's repo removes the kit's scripts from bin/, names each, and keeps the team's file" \
+  && ok "re-running init on an older init's repo removes a shipped kit file from bin/, names it, and leaves the team's other files alone" \
   || bad "init did not migrate an older init's bin/ cleanly" "rc=$i2 bin=$(ls "$OI/bin" | tr '\n' ' ')"
-# Without the old mark, a bin/ file named like a kit script is the team's: init leaves it alone.
-NM="$TC/no-mark"; mkdir -p "$NM/bin"; printf 'echo theirs\n' > "$NM/bin/recall.py"
+grep -q 'our own render' "$OI/bin/render.sh" && grep -q 'kept bin/render.sh' "$TC/i2.out" && [ -f "$OI/bin/KIT_VERSION" ] \
+  && ok "a bin/ file named like a kit script but matching no shipped version is kept and named, and the old mark stays for a later run" \
+  || bad "init removed or silently kept a team file that shares a kit script's name" "$(grep 'render' "$TC/i2.out")"
+# The older hooks import their scanners from bin/. While .claude/hooks/ differs from the kit (a re-run
+# without --force keeps it), init must leave bin/ alone and say how to finish; --force finishes it.
+OH="$TC/old-hooks"; mkdir -p "$OH/bin" "$OH/.claude"; cp -R "$KIT/.claude/hooks" "$OH/.claude/hooks"
+rm -rf "$OH/.claude/hooks/__pycache__"; printf '# an older hook\n' >> "$OH/.claude/hooks/db_write_guard.py"
+cp "$KIT/tests/launcher/old-init/install.sh" "$OH/bin/"; printf '4.9.3\n' > "$OH/bin/KIT_VERSION"
+init31c "$OH" > "$TC/i6.out" 2>&1
+[ -f "$OH/bin/install.sh" ] && [ -f "$OH/bin/KIT_VERSION" ] && grep -q 'init --force' "$TC/i6.out" \
+  && ok "with an older hook still in place, init keeps the kit's old scripts in bin/ (the hook loads them) and names --force" \
+  || bad "init cleared bin/ while an older hook still loads its scanner from there" "$(tail -3 "$TC/i6.out")"
+init31c "$OH" --force > "$TC/i7.out" 2>&1
+[ ! -e "$OH/bin/install.sh" ] && [ ! -e "$OH/bin/KIT_VERSION" ] \
+  && cmp -s "$OH/.claude/hooks/db_write_guard.py" "$KIT/.claude/hooks/db_write_guard.py" \
+  && ok "init --force refreshes the hooks and then clears the old scripts and the old mark" \
+  || bad "init --force did not finish the move" "$(tail -3 "$TC/i7.out")"
+# The frozen hash list is every blob ever committed directly under bin/. Recomputed from history
+# when this clone has it (CI's shallow checkout does not, and then this check says it was skipped).
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = false ] && git rev-parse -q --verify v4.9.3 >/dev/null 2>&1; then
+  git rev-list --objects HEAD -- bin/ | awk 'NF==2 && $2 ~ /^bin\/[^\/]+$/ {print $1}' | sort -u \
+    | while read -r b; do git cat-file blob "$b" | shasum -a 256 | cut -d' ' -f1; done | sort -u > "$TC/hist.sha"
+  python3 -c "import sys; sys.path.insert(0, 'tools'); import old_layout as o; print('\n'.join(sorted(o.SHIPPED_BIN_SHA256)))" > "$TC/frozen.sha"
+  cmp -s "$TC/hist.sha" "$TC/frozen.sha" && [ -s "$TC/frozen.sha" ] \
+    && ok "old_layout.py's frozen hashes are exactly the files ever shipped under bin/ ($(wc -l < "$TC/frozen.sha" | tr -d ' ') versions)" \
+    || bad "old_layout.py's frozen hashes differ from bin/'s history" "$(diff "$TC/hist.sha" "$TC/frozen.sha" | head -3)"
+else
+  ok "old_layout.py's frozen hashes not recomputed: this clone has no history before the move (shallow)"
+fi
+# Without the old mark, a bin/ file is the team's, even one whose bytes match: init leaves it alone.
+NM="$TC/no-mark"; mkdir -p "$NM/bin"; cp "$KIT/tests/launcher/old-init/install.sh" "$NM/bin/"
 init31c "$NM" > "$TC/i3.out" 2>&1
-grep -q theirs "$NM/bin/recall.py" && ok "with no bin/KIT_VERSION mark, init removes nothing from bin/" \
+cmp -s "$NM/bin/install.sh" "$KIT/tests/launcher/old-init/install.sh" \
+  && ok "with no bin/KIT_VERSION mark, init removes nothing from bin/, even a shipped file" \
   || bad "init removed a bin/ file it had no mark for"
 # A tools/ folder init did not write is refused outright, before anything is copied.
 FT="$TC/foreign-tools"; mkdir -p "$FT/tools"; printf 'team\n' > "$FT/tools/notes.txt"
@@ -3862,7 +3907,8 @@ init31c "$FT" > "$TC/i4.out" 2>&1; i4=$?
 FB="$TC/foreign-bin"; mkdir -p "$FB/bin"; printf '#!/bin/sh\necho my own tool\n' > "$FB/bin/tw"
 init31c "$FB" --force > "$TC/i5.out" 2>&1
 grep -q 'my own tool' "$FB/bin/tw" && cmp -s "$FB/bin/kit_paths.py" "$KIT/tools/kit_paths.py" \
-  && ok "init never overwrites a bin/tw that is not Ticketwright's, even with --force" \
+  && grep -q 'left bin/tw alone' "$TC/i5.out" \
+  && ok "init never overwrites a bin/tw that is not Ticketwright's, even with --force, and says skills will run it" \
   || bad "init overwrote a foreign bin/tw"
 
 hdr "32 · three-tier config resolution (tools/effective_config.py)"

@@ -292,8 +292,11 @@ python3 ~/.claude/plugins/marketplaces/ticketwright/tools/refresh_launcher.py --
 ```
 
 Then commit `bin/tw` and `bin/kit_paths.py`. If you added the marketplace under another name, use
-that name in the path. On a `ticketwright init` install, re-run `ticketwright init` instead: it moves
-the kit's scripts from `bin/` to `tools/` and leaves anything else in `bin/` alone.
+that name in the path. On a `ticketwright init` install, run `ticketwright init --force` instead. It
+puts the kit in `tools/`, replaces the kit's own files (it keeps `stack.yaml` and your settings), and
+then removes from `bin/` only the files whose bytes match a version Ticketwright shipped. It names
+anything it keeps. Without `--force` it adds `tools/` but leaves the old scripts in `bin/`, because
+the older hooks in `.claude/hooks/` still load them.
 
 ## Something else went wrong
 

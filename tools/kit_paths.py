@@ -185,11 +185,13 @@ def launcher_notice(project: Path, kit: Path | None) -> str | None:
     status = launcher_status(project, kit)
     if status["state"] != "stale":
         return None
-    # A pre-stamp `tw` knows only a bin/ kit, so it cannot run refresh_launcher.py from a tools/
-    # kit: name the kit's own copy instead, which this caller has already located.
+    # A pre-stamp copy of either file knows only a bin/ kit (tw tests for it, and tw asks its sibling
+    # kit_paths.py where the kit is), so `bin/tw refresh_launcher.py` cannot reach a tools/ kit:
+    # name the kit's own copy instead, which this caller has already located.
     cmd = 'bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write'
     src_dir = scripts_dir(kit)
-    if src_dir is not None and src_dir.name != "bin" and status["files"]["tw"]["stamp"] == 1:
+    if src_dir is not None and src_dir.name != "bin" and any(
+            e["stamp"] == 1 for e in status["files"].values()):
         cmd = f'python3 "{src_dir / "refresh_launcher.py"}" --write'
     return ("This project's copy of the Ticketwright launcher is out of date, so it may not find "
             f"this kit. Run /setup, or run `{cmd}`, "
