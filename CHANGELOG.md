@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-11-02
+
+The kit's scripts now live in `tools/` instead of the plugin's top-level `bin/` folder, which
+claude.ai and Cowork refuse to install and the plugin directory held for. Your repo's launcher stays at `bin/tw`. If you
+refreshed it on 4.10.0, there is nothing to do. If a skill fails with `tw: cannot locate the
+ticketwright kit`, run `/setup` once and commit `bin/tw` and `bin/kit_paths.py`.
+
 ### Changed
 - **The kit's scripts moved from the plugin's top-level `bin/` folder to `tools/`.** claude.ai and
   Cowork refuse to install a plugin with a top-level `bin/`, and the plugin directory held
