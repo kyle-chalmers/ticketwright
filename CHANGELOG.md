@@ -6,6 +6,39 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-11-02
+
+Your repo's copy of the launcher can now be updated, ahead of a release that moves the kit's
+scripts out of the plugin's `bin/` folder. Run `/setup` once, or the refresh command below, and
+commit `bin/tw` and `bin/kit_paths.py`. Minor: nothing moves yet, and an un-refreshed repo keeps
+working on this version.
+
+### Added
+- **The launcher in your repo can now be updated.** `/setup` commits two files into your repo,
+  `bin/tw` and `bin/kit_paths.py`, and until now nothing ever replaced them. A coming release moves
+  the kit's own scripts out of the plugin's top-level `bin/` folder into `tools/`, because the
+  plugin directory holds a plugin with a top-level `bin/` and claude.ai and Cowork refuse to install
+  one. An older copy of the launcher cannot find the moved scripts, so refresh it now: run `/setup`,
+  or `bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write`, then commit both
+  files. Your repo's launcher stays at `bin/tw` either way; only the plugin's folder changes.
+- **You are told when the copy is out of date.** `kit_paths.py` and `whoami.py`, which most skills
+  run early, print a one-line notice on any agent; the Claude Code session banner shows it too; and
+  the doctor (`plugin_doctor.py`) has a new check, `project_launcher`.
+- **The launcher reads both layouts.** `bin/tw` and `bin/kit_paths.py` find a kit whose scripts
+  are in `tools/` or in `bin/`, so a repo pinned to an older plugin keeps working. Each carries a
+  `# tw-launcher: N` stamp, and `tw --scripts-dir` names the folder in use.
+
+### Fixed
+- **Template commands that named a kit script by a path a plugin install does not have now go
+  through the launcher.** These were the generated skill's `verify_stack.sh`,
+  `render_and_validate.sh`, `split_and_export.sh` and `resolve_user.py`, the local tracker's
+  `render.sh` call (whose template path was kit-relative too), and the comment in
+  `person.yaml.tmpl` that shows how to read your merged config.
+- **The release job no longer stops when the trim list grows.** `directory_tree.sh commit` asked for a
+  maintainer bootstrap whenever the listing still held any trimmed path, so adding `docs/images/` in
+  4.9.3 stopped that release's `directory` commit. It now asks only while `.github/` is there (the one
+  path the Actions token cannot remove); any other trimmed path is dropped by the next release.
+
 ## [4.9.3] - 2026-11-02
 
 The plugin directory holds a new version for review on 3 policy holds instead of 34. Patch: the

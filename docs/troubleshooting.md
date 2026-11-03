@@ -267,6 +267,21 @@ repo, re-run `/setup role` or edit that line in your own `AGENTS.md` by hand.
 
 **If you installed via `ticketwright init` or `ticketwright install --runtime <name>`, re-run it to clear a retired skill.** An upgrade copies files in but cannot mirror the kit, so `.claude/skills/productize/` or `.claude/skills/spec-and-build/` (or the `.agents/skills/` copy on a non-Claude runtime) can sit beside the new `skillify/` and `build/`. Both copies show up in the `/` menu and both are model-invocable, and the stale one points at templates that no longer exist, so it fails *after* its confirmation gate has already been cleared. Current versions of `init` and `install` remove a retired directory when every file in it is an unedited copy of a version Ticketwright shipped (checked by hash; an emitted file also counts when it still carries the installer's provenance header), and print the path they removed. A directory with anything edited or unrecognized is kept, and the WARNING names the files that differ; delete it yourself once nothing in it is needed. A vendored copy that you upgrade with `git pull` can run the same check directly: `bash bin/tw retired_skills.py`. A plugin install needs none of this, because updating the plugin replaces its skills wholesale. If `/spec-and-build` still shows up there, the plugin is pinned to an old version: upgrade it the way [Upgrading](#upgrading) gives for your scope (at project scope that is uninstall, install, relaunch).
 
+## "This project's copy of the Ticketwright launcher is out of date"
+
+`/setup` commits `bin/tw` and `bin/kit_paths.py` into your repo. They find the installed kit for
+every skill. Your copy is older than the kit, and a coming release moves the kit's scripts out of
+the plugin's `bin/` folder into `tools/`, which an older copy cannot find. Run `/setup`, or:
+
+```bash
+bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write
+```
+
+Then commit `bin/tw` and `bin/kit_paths.py`. The refresh never replaces a copy that is current or
+newer, and never touches any other file. If a skill already fails with `tw: cannot locate the
+ticketwright kit` after an update, the copy is from before this notice existed: `/setup` still
+repairs it, because it does not need the launcher to run.
+
 ## Something else went wrong
 
 When a skill misbehaves, the cause is usually `stack.yaml` (a wrong key, a stub adapter). In your

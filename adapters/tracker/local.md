@@ -55,7 +55,8 @@ resume it rather than overwrite it.
 ```bash
 mkdir -p "<ticket-dir>"                                    # then, per project.ticket_subdirs:
 for d in {ticket_subdirs}; do mkdir -p "<ticket-dir>/$d"; done
-bash bin/render.sh templates/ticket-README.md.tmpl --vars <vars.env> > "<ticket-dir>/README.md"
+bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh "$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)/templates/ticket-README.md.tmpl" \
+  --vars <vars.env> > "<ticket-dir>/README.md"
 ```
 **Interview the user for the brief before rendering** — what the work is, what "done" looks like,
 and any known constraints — and write it into `## Business Context`. Skipping this is the failure
@@ -70,7 +71,8 @@ the *same file*, and that second render is a plain redirect: it will replace an 
 with an unresolved `{{description}}` token. So:
 
 ```bash
-[ -s "<ticket-dir>/README.md" ] || bash bin/render.sh templates/ticket-README.md.tmpl \
+[ -s "<ticket-dir>/README.md" ] || bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" render.sh \
+  "$(bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" --kit)/templates/ticket-README.md.tmpl" \
   --vars <vars.env> > "<ticket-dir>/README.md"
 ```
 

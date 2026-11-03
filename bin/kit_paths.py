@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# tw-launcher: 2
 """Locate the kit and the project, and report the current runtime's capabilities.
 
 The kit ships three ways (Claude Code plugin, `pip install ticketwright` + `ticketwright init`,
@@ -7,7 +8,8 @@ plain `cp -r`), and until now every skill found kit assets through
 Gemini CLI or anything else. This is the one command that answers "where is the kit, where is the
 project, and what can this runtime actually do", with no Claude environment variable required.
 
-  kit_paths.py --kit          # the kit root (where adapters/ + templates/ + bin/ live)
+  kit_paths.py --kit          # the kit root (where adapters/ + templates/ + the scripts live)
+  kit_paths.py --scripts-dir  # the kit's scripts folder: tools/ (new layout) or bin/ (old)
   kit_paths.py --project      # the repo being worked on
   kit_paths.py --runtime      # the detected runtime id
   kit_paths.py --json         # everything, with per-value provenance
@@ -30,7 +32,19 @@ from pathlib import Path
 # A directory is only the kit if it carries the assets skills actually ask for. This is what stops
 # a partial copy (say a lone bin/ vendored into a project) from declaring itself the kit and then
 # resolving adapters/runtime/ to nothing.
-KIT_MARKERS = ("adapters", "templates", "bin/kit_paths.py")
+KIT_MARKERS = ("adapters", "templates")
+
+# Where the kit keeps its scripts, newest layout first. The kit's own scripts move from a top-level
+# bin/ to tools/ (LABS-209), because a plugin with a top-level bin/ is held by the plugin directory
+# and cannot be installed on claude.ai or Cowork. A project pinned to an older plugin version still
+# has a bin/ kit, so the launcher accepts both. The PROJECT launcher stays at <project>/bin/tw either
+# way: that folder is the user's repo, not the plugin.
+SCRIPT_DIRS = ("tools", "bin")
+
+# The version of the two files /setup copies into <project>/bin/ (tw and this file). Bump it when
+# either changes in a way an older copy cannot handle; refresh_launcher.py replaces any copy whose
+# stamp is lower. A copy with no stamp predates stamping and counts as 1: it knows only bin/.
+LAUNCHER_STAMP = 2
 
 CAPABILITY_KEYS = (
     "skills_root", "skills_format", "session_start", "tool_gate",
@@ -75,8 +89,106 @@ _FLOOR = {
 }
 
 
+def scripts_dir(path: Path | None) -> Path | None:
+    """The kit's scripts folder (tools/ or bin/), or None when `path` carries neither."""
+    if not path:
+        return None
+    for name in SCRIPT_DIRS:
+        if (path / name / "kit_paths.py").is_file():
+            return path / name
+    return None
+
+
 def is_kit(path: Path | None) -> bool:
-    return bool(path) and all((path / m).exists() for m in KIT_MARKERS)
+    return (bool(path) and all((path / m).exists() for m in KIT_MARKERS)
+            and scripts_dir(path) is not None)
+
+
+# Text that the opening lines of every pre-stamp launcher file carry. A stamp-less file without one
+# is not Ticketwright's, so nothing may overwrite it.
+V1_MARKERS = ("tw — the launcher", "Locate the kit and the project")
+
+
+def launcher_stamp(path: Path) -> int | None:
+    """The `# tw-launcher: N` stamp in a launcher file.
+
+    1 for a pre-stamp Ticketwright launcher, 0 for a file that is not Ticketwright's (no stamp and
+    no V1_MARKERS line), None when unreadable.
+    """
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace").splitlines()[:5]
+    except OSError:
+        return None
+    for line in head:
+        key, sep, val = line.lstrip("# ").partition(":")
+        if sep and key.strip() == "tw-launcher" and val.strip().isdigit():
+            return int(val.strip())
+    return 1 if any(m in line for line in head for m in V1_MARKERS) else 0
+
+
+def launcher_status(project: Path, kit: Path | None) -> dict:
+    """Whether <project>/bin/ holds an up-to-date copy of the launcher.
+
+    `state` is one of: `current`; `stale` (a copy older than the kit's, which refresh_launcher.py
+    replaces); `missing` (no copy, which /setup installs); `kit` (the project IS a kit, as in a
+    vendored or `ticketwright init` install, even when a different kit was resolved, so there is
+    nothing to refresh); `newer` (the copy is newer than this kit); `foreign` (a file there that is
+    not Ticketwright's); `linked` (a symlink, which a copy would write through); `unknown` (no kit to
+    compare against). Only `stale` and `missing` are ever written.
+    """
+    files = {}
+    src_dir = scripts_dir(kit)
+    project_is_kit = is_kit(project)
+    for name in ("tw", "kit_paths.py"):
+        dest = project / "bin" / name
+        src = src_dir / name if src_dir else None
+        entry = {"path": str(dest), "stamp": launcher_stamp(dest) if dest.is_file() else None}
+        if project_is_kit or (src is not None and src.is_file() and dest.is_file() and _same_file(src, dest)):
+            entry["state"] = "kit"
+        elif dest.is_symlink():
+            entry["state"] = "linked"
+        elif not dest.is_file():
+            entry["state"] = "missing"
+        elif src is None or not src.is_file():
+            entry["state"] = "unknown"
+        else:
+            want = launcher_stamp(src) or LAUNCHER_STAMP
+            have = entry["stamp"]
+            if not have:
+                entry["state"] = "foreign"
+            else:
+                entry["state"] = "stale" if have < want else ("newer" if have > want else "current")
+        files[name] = entry
+    states = {e["state"] for e in files.values()}
+    for state in ("stale", "missing", "unknown", "foreign", "linked", "newer", "kit"):
+        if state in states:
+            break
+    else:
+        state = "current"
+    return {"state": state, "files": files}
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return a.samefile(b)
+    except OSError:
+        return False
+
+
+def launcher_notice(project: Path, kit: Path | None) -> str | None:
+    """One stderr line when <project>/bin/ holds an older launcher, else None.
+
+    Kit scripts that skills run early (this file and whoami.py) print it, so the notice reaches every
+    runtime, not only Claude Code's session banner. It goes to stderr only: stdout of these scripts
+    is captured into paths and JSON.
+    """
+    if launcher_status(project, kit)["state"] != "stale":
+        return None
+    return ("This project's copy of the Ticketwright launcher is out of date, and a coming release "
+            "will stop working with it. Run /setup, or run "
+            "`bash \"$(git rev-parse --show-toplevel)/bin/tw\" refresh_launcher.py --write`, "
+            "then commit `bin/tw` and `bin/kit_paths.py`. Details: launcher stamp older than "
+            f"{LAUNCHER_STAMP} in {project / 'bin'} (LABS-209).")
 
 
 def _pip_kit() -> Path | None:
@@ -432,6 +544,7 @@ def main() -> int:
                     help="print where the machine-local `.claude/config/NAME` lives (the main checkout's "
                          "copy when this is a linked worktree without its own)")
     for flag, helptext in (("kit", "print the kit root"), ("project", "print the project root"),
+                           ("scripts-dir", "print the kit's scripts folder (tools/ or bin/)"),
                            ("runtime", "print the detected runtime id"), ("json", "print everything as JSON")):
         ap.add_argument(f"--{flag}", action="store_true", help=helptext)
     args = ap.parse_args()
@@ -447,15 +560,23 @@ def main() -> int:
     kit, kit_src = resolve_kit(project)
     runtime, runtime_src = detect_runtime(kit)
 
-    if not kit and (args.kit or args.json or not (args.project or args.runtime)):
+    if not kit and (args.kit or args.json or args.scripts_dir or not (args.project or args.runtime)):
         print("kit_paths: cannot locate the ticketwright kit. Set TICKETWRIGHT_KIT=<path to the kit>.",
               file=sys.stderr)
         return 3
 
+    notice = launcher_notice(project, kit)
+    if notice:
+        print(notice, file=sys.stderr)
+
+    if args.scripts_dir:
+        print(scripts_dir(kit))
+        return 0
     if args.json:
         adapter = runtime_adapters(kit).get(runtime)
         print(json.dumps({
             "kit_root": str(kit) if kit else None,
+            "scripts_dir": str(scripts_dir(kit)) if kit else None,
             "project_root": str(project),
             "runtime": runtime,
             "runtime_adapter": str(adapter[0]) if adapter else None,

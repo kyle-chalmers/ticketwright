@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
+# tw-launcher: 2
 # tw — the launcher that makes every other kit script findable without a Claude environment variable.
 #
 #   bash bin/tw --kit | --project | --runtime | --json      # ask kit_paths.py
-#   bash bin/tw <script> [args...]                          # run <kit>/bin/<script>
+#   bash bin/tw <script> [args...]                          # run <kit>/<scripts>/<script>
+#
+# <scripts> is tools/ in the new layout and bin/ in the old one (LABS-209: a plugin with a top-level bin/ is held
+# by the plugin directory and cannot be installed on claude.ai or Cowork). This launcher accepts both,
+# so a project pinned to an older plugin keeps working. It stays at <project>/bin/tw in every layout:
+# that folder is the user's repo, not the plugin. The `tw-launcher` stamp above is compared by
+# refresh_launcher.py, which replaces an older copy; bump it (and LAUNCHER_STAMP in kit_paths.py)
+# when this file changes in a way an older copy cannot handle.
 #
 # Why this exists: skills used to locate kit assets through ${CLAUDE_PLUGIN_ROOT:-$CLAUDE_PROJECT_DIR},
 # which expands to nothing under Codex, Cursor, Antigravity and the rest. bin/kit_paths.py is the
@@ -50,7 +58,13 @@ die() { printf 'tw: %s\n' "$1" >&2; exit 3; }
 # partial copy (a lone bin/ vendored into a project) from answering as the kit and then resolving
 # adapters/runtime/ to nothing.
 is_kit() {
-  [ -n "${1:-}" ] && [ -f "$1/bin/kit_paths.py" ] && [ -d "$1/adapters" ] && [ -d "$1/templates" ]
+  [ -n "${1:-}" ] && [ -d "$1/adapters" ] && [ -d "$1/templates" ] &&
+    { [ -f "$1/tools/kit_paths.py" ] || [ -f "$1/bin/kit_paths.py" ]; }
+}
+
+# The kit's scripts folder, newest layout first. Mirrors SCRIPT_DIRS in kit_paths.py.
+scripts_dir() {
+  if [ -f "$1/tools/kit_paths.py" ]; then printf '%s' "$1/tools"; else printf '%s' "$1/bin"; fi
 }
 
 # This script's own directory, with symlinks resolved (a launcher copied into a project may be a
@@ -104,25 +118,26 @@ find_kit() {
 }
 
 KIT="$(find_kit)" || die "cannot locate the ticketwright kit. Set TICKETWRIGHT_KIT=<path to the kit>."
-PATHS="$KIT/bin/kit_paths.py"
+SCRIPTS="$(scripts_dir "$KIT")"
+PATHS="$SCRIPTS/kit_paths.py"
 
 [ $# -eq 0 ] && { exec python3 "$PATHS" --kit; }
 
 case "$1" in
-  --kit|--project|--runtime|--json|--root) exec python3 "$PATHS" "$@" ;;
+  --kit|--project|--runtime|--json|--root|--scripts-dir) exec python3 "$PATHS" "$@" ;;
   -h|--help)
-    printf 'usage: tw [--kit|--project|--runtime|--json] | tw <script> [args...]\n' >&2
+    printf 'usage: tw [--kit|--project|--runtime|--json|--scripts-dir] | tw <script> [args...]\n' >&2
     exit 0 ;;
 esac
 
 script="$1"; shift
 # A kit script is a bare filename. Without this, `tw ../../outside.sh` runs anything reachable from
-# $KIT/bin, which makes the "no such kit script" contract bypassable.
+# the scripts folder, which makes the "no such kit script" contract bypassable.
 case "$script" in
-  */*|.*) die "not a kit script name: $script (expected a bare filename under bin/)" ;;
+  */*|.*) die "not a kit script name: $script (expected a bare filename in the kit's scripts folder)" ;;
 esac
-target="$KIT/bin/$script"
-[ -f "$target" ] || die "no such kit script: bin/$script"
+target="$SCRIPTS/$script"
+[ -f "$target" ] || die "no such kit script: ${SCRIPTS##*/}/$script"
 
 # Dispatch by suffix rather than trusting a shebang + exec bit: file modes are not something to bet a
 # wheel install on. TICKETWRIGHT_PROJECT is passed through ONLY when the caller already set it —

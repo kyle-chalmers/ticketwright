@@ -293,6 +293,27 @@ def viewer_tool(root: Path, stack_text: str) -> str | None:
     return tools[0] if tools else None
 
 
+def launcher_notice_line(root: Path) -> list[str]:
+    """The "your copy of the launcher is out of date" line, or nothing.
+
+    PRESENTATION ONLY: the decision lives in kit_paths.launcher_notice, which kit scripts the skills
+    run early also print, so every runtime sees it. This is the Claude Code way of showing it at
+    session start. Fails open: any error yields no line.
+    """
+    try:
+        kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
+        base = Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent
+        scripts = next((base / d for d in ("tools", "bin") if (base / d / "kit_paths.py").is_file()), None)
+        if scripts is None:
+            return []
+        sys.path.insert(0, str(scripts))
+        from kit_paths import launcher_notice
+        notice = launcher_notice(root, base)
+    except Exception:  # noqa: BLE001 — a hook must fail open
+        return []
+    return [notice] if notice else []
+
+
 def update_notice_line(root: Path) -> list[str]:
     """The "a newer release is available" line from bin/update_notice.py, or nothing.
 
@@ -477,6 +498,7 @@ def main() -> int:
     lines.extend(policy_advisory_lines(s, mode))
     # Last, so it reads as a footer rather than interrupting the stack summary — and appended from a
     # list that is empty on every failure, which is what keeps the rest byte-identical.
+    lines.extend(launcher_notice_line(root))
     lines.extend(update_notice_line(root))
     print("\n".join(lines))
     return 0
