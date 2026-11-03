@@ -168,7 +168,7 @@ my answer (never answer one for me), and show me the file list before committing
    `claude plugin marketplace add https://github.com/kyle-chalmers/ticketwright.git --scope project`
    and then `claude plugin install ticketwright@ticketwright --scope project`. Both
    record the plugin in this repo's .claude/settings.json, not my user settings. If
-   either fails, run `python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py`
+   either fails, run `python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py`
    (on disk once the marketplace is added) and follow its fixes in order. Then tell me
    to run `/reload-plugins` (or fully quit and relaunch the app; a new chat is not a
    restart), then `/ticketwright:setup`, or `/ticketwright:setup --teammate` if the
@@ -181,7 +181,7 @@ my answer (never answer one for me), and show me the file list before committing
    has no .claude/config/stack.yaml, offer to draft it with me from
    .claude/config/stack.schema.md and the closest .claude/config/stack.example.*.yaml,
    asking me which tool fills each slot, then check it with
-   `bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run`.
+   `bash tools/verify_stack.sh .claude/config/stack.yaml --dry-run`.
 
 Rules: never ask me for a password, token or key in chat; I sign in to each tool
 myself. While installing, run no warehouse SQL and post nothing to my tracker or chat.

@@ -10,7 +10,7 @@ description: Finalize and deliver a reviewed ticket. It commits, opens the PR, m
 Ships a ticket that has **passed `/review`** — and warns, waits, and records it when one has not. Split
 into a safe Phase A (local, no approval) and a
 gated Phase B (every external side effect), honoring `hard_halt_before_external_posts`. Reads
-the **merged** config (`bin/effective_config.py`, never raw `stack.yaml` — a raw read misses every
+the **merged** config (`tools/effective_config.py`, never raw `stack.yaml` — a raw read misses every
 personal and machine override); routes through the docstore / tracker / chat / vcs adapters, so it
 works regardless of the underlying tools.
 
@@ -67,7 +67,7 @@ is asked as a question, with the delivery plan already in chat.
    `tickets/<owner>/` first, then across other owners — **two or more foreign owners sharing it is a
    hard stop that asks which one, with the `owner/id` choices as the options, never a pick**. Shipping a ticket whose owner isn't the
    shipper is allowed — say so out loud before continuing.
-   Then read the merged config (`bin/effective_config.py --json`) + the ticket README + the plan +
+   Then read the merged config (`tools/effective_config.py --json`) + the ticket README + the plan +
    **the current verdict, read mechanically:**
    `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" review_verdict.py --ticket <ticket-dir> --json`
    — it picks the `qc_queries/*_review_verdict.md` with the highest `<n>` (compared numerically:

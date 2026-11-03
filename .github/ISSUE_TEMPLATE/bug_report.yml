@@ -71,7 +71,7 @@ body:
     attributes:
       label: Plugin doctor output
       description: |
-        Run `python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py` (or
+        Run `python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py` (or
         `bash bin/tw plugin_doctor.py` inside a configured repo) and paste the output. It reads
         local files only and sends nothing.
       render: text

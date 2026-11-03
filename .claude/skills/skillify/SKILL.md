@@ -13,7 +13,7 @@ a phased pipeline with hard halts, parameterized SQL/steps, a QC checkpoint, a g
 regression test, and a hard halt before any external post. Candidates come from two places: the
 repeat check in [repeats.md](repeats.md) (`recall.py --repeats`: this ticket reads the same tables
 as an earlier one), which `/ticket`, `/ship`'s retro and a session's closing message run at the
-second instance, and the `--recurring` flag of `bin/build_ticket_index.py` ("this object shows up
+second instance, and the `--recurring` flag of `tools/build_ticket_index.py` ("this object shows up
 in 7 tickets").
 
 **Where it came from.** When the run starts from a repeat suggestion, it arrives with the tickets
@@ -83,14 +83,14 @@ name, its path (`.claude/skills/<name>/`), and the file list about to be written
 3. Write the `{{token}}` step files into `sql/` (or `bin/` for non-SQL), the output templates into
    `templates/`, and seed `golden/<run>.json` with the determinism anchor. **Follow the two SQL
    authoring rules in [authoring.md](authoring.md)** — a render gate enforces both.
-4. Scaffold `bin/drift_check.sh` (confirms every object the workflow reads is still reachable —
+4. Scaffold `tools/drift_check.sh` (confirms every object the workflow reads is still reachable —
    the Phase-0 catch for relocations).
 
 ## Phase 3 — Wire to the stack & self-test
 5. The stamped skill reads `.claude/config/stack.yaml` and resolves all I/O through adapters (no
    hardcoded tools in the orchestration). Confirm the SKILL.md prose is tool-neutral:
    `!grep -REn "acli|snow |slack|gh " .claude/skills/<name>/SKILL.md || echo OK`. (The leaf
-   `bin/drift_check.sh` is allowed to name your warehouse CLI — it's the tool-bound probe.)
+   `tools/drift_check.sh` is allowed to name your warehouse CLI — it's the tool-bound probe.)
 6. Wire the **render gate** (the kit's `render_and_validate.sh`) and **export helpers**
    (the kit's `split_and_export.sh`), both run through the launcher, into the stamped phases so authoring defects fail *closed*, not
    silently — details and rationale in [authoring.md](authoring.md).

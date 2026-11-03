@@ -7,7 +7,7 @@ setup meets the same choice at review.
 
 Which app opens a `.sql` is a personal choice, so the answers go to a gitignored per-person file and
 each teammate answers for themselves. This interview never touches `stack.yaml`. It writes through
-the existing viewer config (`.claude/config/viewer.example.yaml` is the shape, `bin/handoff.sh`
+the existing viewer config (`.claude/config/viewer.example.yaml` is the shape, `tools/handoff.sh`
 reads it), and adds no setting of its own.
 
 ## 1. Say what the review stage is for, in one sentence

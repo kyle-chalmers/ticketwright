@@ -17,9 +17,9 @@ two paths bypassed the skills entirely:
 Both are Bash, so one PreToolUse/Bash presenter covers both, at the COMMAND layer rather than the
 workflow layer. That is the whole reason this file exists instead of another paragraph in a skill.
 
-THE CLASSIFIER LIVES IN bin/scan_source_materials.py (one deterministic implementation, shared
+THE CLASSIFIER LIVES IN tools/scan_source_materials.py (one deterministic implementation, shared
 with the non-Claude runtime shims); this file is the Claude-protocol presenter, exactly as
-db_write_guard.py presents bin/sql_scan.py.
+db_write_guard.py presents tools/sql_scan.py.
 
 The policy is a two-value enum in `.claude/config/stack.yaml`:
 
@@ -76,7 +76,7 @@ from _stack import find_stack, source_material_mode, SM_OFF  # noqa: E402
 # The classifier sits in the kit's bin/, a sibling of this hook's .claude/hooks/ in every install
 # shape (repo, plugin cache, `ticketwright init` vendor, wheel _kit). Handled explicitly in run().
 try:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bin"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
     import scan_source_materials as _scan
     _SCAN_IMPORT_ERROR: Exception | None = None
 except Exception as _e:  # noqa: BLE001 — any import failure maps to gating MORE, below
@@ -255,7 +255,7 @@ def run() -> int:
         return _ask_or_note(payload, (
             f"Ticketwright can't check for raw meeting transcripts right now, so this commit or "
             f"copy needs your approval first. Reinstall or update the Ticketwright plugin to fix it. "
-            f"Details: bin/scan_source_materials.py could not be loaded ({_SCAN_IMPORT_ERROR})."
+            f"Details: tools/scan_source_materials.py could not be loaded ({_SCAN_IMPORT_ERROR})."
         ))
 
     try:

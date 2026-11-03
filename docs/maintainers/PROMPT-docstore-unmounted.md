@@ -52,7 +52,7 @@ Frontmatter:
 - `destination_key: remote_path` — MANDATORY for a docstore adapter used as a named target (the
   routing contract in `adapters/README.md` § "Resolving the active target" keys on it). Also
   extend the resolver's reserved destination-key protection: it is currently hardcoded to
-  `drive_folder` (`bin/effective_config.py`, `RESERVED_SEAM_KEYS` area) — generalize it to
+  `drive_folder` (`tools/effective_config.py`, `RESERVED_SEAM_KEYS` area) — generalize it to
   every adapter-declared `destination_key`, or at minimum add `remote_path`, so no future
   adapter can leave its destination tier-3-overridable.
 - `user_keys: [remote]` — the named rclone remote from `~/.config/rclone/rclone.conf`, a
@@ -65,7 +65,7 @@ Frontmatter:
   declared backend type + root), and the delivery-plan fingerprint must incorporate the resolved
   destination so a redirect trips `--expect-fingerprint`, not just prose.
 
-Verbs (the docstore contract is EXACTLY two — `bin/selftest.sh` asserts `docstore) echo 2` by
+Verbs (the docstore contract is EXACTLY two — `tools/selftest.sh` asserts `docstore) echo 2` by
 exact equality; do not add a third):
 - `backup`: use `rclone copy --dry-run` first, then `rclone copy` — NOT `rclone sync`, which
   DELETES destination files absent from the source; a folder-backup verb must never be able to
@@ -105,7 +105,7 @@ Tool CHOICE stays adapter/config-driven; a skill must not gain an rclone-specifi
 probe). So: add `rclone` to the existing Phase-1 detector line. ⚠ THE TRAP, precisely: the two
 leak-grep EXEMPTIONS match the literal substring `for c in snow acli gh` and SURVIVE an append —
 appending `rclone` to the list does not break them — but a SEPARATE exact-line assertion pins
-the detector line VERBATIM (near `bin/selftest.sh:3863`), and THAT must be updated in the same
+the detector line VERBATIM (near `tools/selftest.sh:3863`), and THAT must be updated in the same
 change. Remotes are enumerated by NAME ONLY (`rclone listremotes`) — never echo `rclone.conf`
 contents anywhere: config files a probe opens can hold plaintext secrets, and a pretty-printed
 probe result is one paste away from publishing one (the same rule the warehouse profile

@@ -18,7 +18,7 @@ Maps the `meetings` verb contract to Granola's local notes cache. Read-only, cre
 fixture-friendly. The cache file is **double-encoded JSON** — a top-level `cache` string field
 containing the real state — so every command below is a two-step `jq`: unwrap, then select. The
 meeting `{id}` below is the validated id from a ticket's `meeting_ref:` (grammar in
-`stack.schema.md`; enumerate with `bin/meeting_refs.py` — ids arrive per-ticket, never from config).
+`stack.schema.md`; enumerate with `tools/meeting_refs.py` — ids arrive per-ticket, never from config).
 
 ## verb: fetch_transcript
 
@@ -32,7 +32,7 @@ source-material guard, and those read filenames and document shape, never meanin
 
 **ID encoding — none, and that is a decision, not an omission.** `{id}` is a JSON object KEY in a
 `jq` filter here, never a URL path segment or a shell word of its own, so a `/` in the id is
-inert; pass it verbatim inside the quoted key. (The charset `bin/meeting_refs.py` enforces excludes quotes
+inert; pass it verbatim inside the quoted key. (The charset `tools/meeting_refs.py` enforces excludes quotes
 and shell metacharacters, so the value cannot break out of the filter.)
 
 ```

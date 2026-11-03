@@ -6,10 +6,10 @@ IDs, epics, or paths — those live **here** and in the per-tool adapters. Swapp
 Snowflake→BigQuery means editing this file and pointing at a different adapter; **no skill changes.**
 
 The `setup` skill writes this file by interviewing you and detecting installed tooling.
-`bin/verify_stack.sh` reads it to smoke-test every tool slot.
+`tools/verify_stack.sh` reads it to smoke-test every tool slot.
 
 **This file is TIER 1 of three, and nothing should read it directly** — see "The three tiers" below.
-Skills, hooks and scripts read the MERGED result via `bin/effective_config.py`.
+Skills, hooks and scripts read the MERGED result via `tools/effective_config.py`.
 
 ---
 
@@ -34,11 +34,11 @@ file-type preferences between repos while one repo differs in one field.
 ### Read the merged result, never the raw file
 
 ```bash
-python3 bin/effective_config.py --root . --json          # everything, with per-key provenance
-python3 bin/effective_config.py --root . --key seams.warehouse.cli
-python3 bin/effective_config.py --root . --verify-plan   # one row per slot/target
-python3 bin/effective_config.py --root . --lint          # machine-local values in committed config
-python3 bin/effective_config.py --root . --seam warehouse --target lake   # select one target (inheritance applied)
+python3 tools/effective_config.py --root . --json          # everything, with per-key provenance
+python3 tools/effective_config.py --root . --key seams.warehouse.cli
+python3 tools/effective_config.py --root . --verify-plan   # one row per slot/target
+python3 tools/effective_config.py --root . --lint          # machine-local values in committed config
+python3 tools/effective_config.py --root . --seam warehouse --target lake   # select one target (inheritance applied)
 ```
 
 No agent-specific environment variable is required, so this works under any harness. Exit codes:
@@ -81,7 +81,7 @@ moved since this machine was configured.
 ### Keeping machine values out of `verify:`
 
 A `verify` command must not embed a machine-local literal. Use `{token}` interpolation and let tier 3
-supply the value; `bin/verify_stack.sh` warns on a literal in a key the adapter declares personal,
+supply the value; `tools/verify_stack.sh` warns on a literal in a key the adapter declares personal,
 and on a machine literal baked into the verify string itself. **An unresolved `{token}` is SKIPPED
 with a pointer, never executed** — running a command with a literal brace in it reads as broken auth
 rather than as missing config.
@@ -130,15 +130,15 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `key_prefix` | string | `TEST` | Ticket-ID prefix. Branch names = `{key_prefix}-NNNN`. Omit it when `id_mode: slug` — there are no keys to prefix. |
 | `id_mode` | enum | `keyed` | `keyed` (default) = folder names carry a tracker key; `slug` = the folder name **is** the id. See "Trackerless work". |
 | `key_prefixes` | list | `[TEST]` | Prefixes the ticket index recognizes in folder names. Optional; defaults to `[key_prefix]`. Use when one repo holds tickets from several trackers (e.g. `[TEST, OPS]`). |
-| `assignee_dir` | string | `alice` | Last-resort owner subdir under `tickets/`, used only when **no people map exists at all** (`bin/whoami.py` returns `miss` and there are no `people/*.yaml`). With a people map, the whoami-resolved person is the owner, and an unresolved person is a **hard stop** — never this key, which would file a new teammate's work in a colleague's folder. `effective_config.py` reports which case applies as `owner_source` (`resolved` / `unbound` / `assignee_dir_fallback` / `none`) and the answer as `owner`. |
+| `assignee_dir` | string | `alice` | Last-resort owner subdir under `tickets/`, used only when **no people map exists at all** (`tools/whoami.py` returns `miss` and there are no `people/*.yaml`). With a people map, the whoami-resolved person is the owner, and an unresolved person is a **hard stop** — never this key, which would file a new teammate's work in a colleague's folder. `effective_config.py` reports which case applies as `owner_source` (`resolved` / `unbound` / `assignee_dir_fallback` / `none`) and the answer as `owner`. |
 | `ticket_path` | template | `tickets/{assignee}/{id}` | Where a ticket folder lives. `{assignee}` `{id}` tokens; `{assignee}` is the ticket's **owner** — the whoami-resolved person for new work, or the locator's owner (`owner/id`) when named explicitly. |
 | `ticket_subdirs` | list | `[source_materials, final_deliverables, qc_queries, exploratory_analysis]` | Scaffolded per ticket. |
 | `default_epic` | string \| null | `TEST-100` | Parent epic for newly created tickets (null if tracker has no epics). |
 | `terminal_status` | string | `Done` | The "done" workflow state (not always "Done"). |
-| `post_ship_status` | enum | `ask` | Where `/ship` leaves a ticket. `done` moves it to `terminal_status`. `review` hands it to stakeholders for feedback: the tracker moves to `review_status` (or to its one in-progress move), and when the tracker has no such status the ticket README and index say `In review` while the tracker stays where it is. `ask` (the default when unset) asks at each ship, offering Done, the tracker's own in-progress moves, and an `In review` kept in Ticketwright only. Any other value is reported and treated as `ask`. Team-only. Consumers: `bin/transition_plan.py --post-ship`, `/ship` step 4(c). |
-| `review_status` | string | `Stakeholder Review` | The tracker's review status, spelled as the tracker spells it, for `post_ship_status: review`. Optional: unset, `/ship` offers the tracker's in-progress moves instead. A name the ticket cannot move to is reported, and the review is kept in Ticketwright only. Team-only. Consumer: `bin/transition_plan.py --post-ship`. |
+| `post_ship_status` | enum | `ask` | Where `/ship` leaves a ticket. `done` moves it to `terminal_status`. `review` hands it to stakeholders for feedback: the tracker moves to `review_status` (or to its one in-progress move), and when the tracker has no such status the ticket README and index say `In review` while the tracker stays where it is. `ask` (the default when unset) asks at each ship, offering Done, the tracker's own in-progress moves, and an `In review` kept in Ticketwright only. Any other value is reported and treated as `ask`. Team-only. Consumers: `tools/transition_plan.py --post-ship`, `/ship` step 4(c). |
+| `review_status` | string | `Stakeholder Review` | The tracker's review status, spelled as the tracker spells it, for `post_ship_status: review`. Optional: unset, `/ship` offers the tracker's in-progress moves instead. A name the ticket cannot move to is reported, and the review is kept in Ticketwright only. Team-only. Consumer: `tools/transition_plan.py --post-ship`. |
 | `ticket_url_template` | template \| null | `https://acme.atlassian.net/browse/{id}` | How `tickets/INDEX.md` links each ticket (`{id}` token). Null/omitted → the index renders no per-ticket link. |
-| `intake` | list | `[tracker, email]` | Where work arrives; any of `tracker`, `email`, `chat`, `meetings`. Optional; **defaults to `[tracker]`** — the example shows email intake *added* (a "email carries work in" answer in the setup interview), not the default. Consumer: when `email`/`chat`/`meetings` is listed, `/ticket`'s priming step reads `source_materials/` for material a human dropped in — intake beyond the tracker arrives as files, not API calls. **`meetings`** names the AI-notetaker channel: export the notes or a curated transcript excerpt as `source_materials/YYYY-MM-DD-<slug>-meeting.md`. That name is the **committed, curated form** — trimmed to decisions and action items. Raw full transcripts stay out of git by default (`templates/gitignore.tmpl`) and are gated before any commit or docstore copy by `source_material_guard`, whose classifier (`bin/scan_source_materials.py`) matches filenames and document shape, **never meaning** — a curated summary quoting confidential material verbatim passes, so this is a gate against the bulk artifact, not a confidentiality review. |
+| `intake` | list | `[tracker, email]` | Where work arrives; any of `tracker`, `email`, `chat`, `meetings`. Optional; **defaults to `[tracker]`** — the example shows email intake *added* (a "email carries work in" answer in the setup interview), not the default. Consumer: when `email`/`chat`/`meetings` is listed, `/ticket`'s priming step reads `source_materials/` for material a human dropped in — intake beyond the tracker arrives as files, not API calls. **`meetings`** names the AI-notetaker channel: export the notes or a curated transcript excerpt as `source_materials/YYYY-MM-DD-<slug>-meeting.md`. That name is the **committed, curated form** — trimmed to decisions and action items. Raw full transcripts stay out of git by default (`templates/gitignore.tmpl`) and are gated before any commit or docstore copy by `source_material_guard`, whose classifier (`tools/scan_source_materials.py`) matches filenames and document shape, **never meaning** — a curated summary quoting confidential material verbatim passes, so this is a gate against the bulk artifact, not a confidentiality review. |
 | `history_search` | enum | `ask` | Whether `/ticket` may offer to search the tracker's older tickets when the repo's own tickets give no strong match. `ask` offers the search each time (read-only, and the person can skip it); `never` turns off that automatic offer, and the tracker is searched only when someone asks for it. Optional; **defaults to `ask`** when the tracker is any tool but `local`, and to `never` when it is `local` or absent, because those tickets are the repo's own. Team-only: a personal or machine file cannot set it. Written by the setup interview's question 4a. Consumer: `ticket/priming.md` § 2b. |
 | `history_scope` | string | `OPS` | Which project, team, repo or board of the tracker holds the older tickets, written the way that tracker's own project value is (the `id` that `rank_projects_by_activity` returns, the same shape as the adapter's `container_key`). Optional; **defaults to the project the tracker is already set up with**. Set only when the older tickets lived somewhere else (setup question 4a, "Yes, somewhere else"). Team-only. Consumer: `ticket/priming.md` § 2b. |
 | `history_before` | ISO date | `"2024-03-01"` | Only tracker tickets created **before** this date are searched. The date setup offers is when ticket work in this repo began, on the idea that work from then on is in the repo's own ticket folders; set it earlier or later to match how the team worked. Write it in quotes as `YYYY-MM-DD`. Optional; **unset means no cutoff**, so every older ticket in the scope is searched. The setup interview recommends the date of the first commit that touched the ticket folders (`git log --reverse --format=%as -- tickets \| head -1`), otherwise the repo's first commit (`git log --reverse --format=%as \| head -1`), and writes it only on the person's yes. A value that is not a real date is reported in plain words and the tracker is not contacted. Team-only. Consumer: `ticket/priming.md` § 2b. |
@@ -147,7 +147,7 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 | `role` | enum | `generalist` | Persona for the rendered `AGENTS.md` role-focus snippet: `generalist`, `analyst`, `engineer`, or `scientist` (see `templates/roles/`). Optional; defaults to `generalist`. The setup interview never asks it; set it with `/setup role`. |
 | `domain` | string | `data analysis` | Short phrase naming the team's kind of work; fills the `{{domain}}` token in the rendered `AGENTS.md` ("Ticket-driven *{{domain}}* work"). Optional; defaults to `data analysis`. |
 | `analysis_tools` | list | `[notebooks, spreadsheets]` | The tools the team does the actual analysis in, rendered into `AGENTS.md` as **descriptive context for the agent**. Optional; defaults to `[]`. **Not a tool slot**: nothing verifies it and nothing executes from it — it has no adapter and no verb contract; it just tells the agent what the team's outputs are built with. **No longer asked by setup** (superseded by `team_docs`); still rendered when present. |
-| `team_docs` | map | `{standards: [https://wiki.acme.example/sql-style], context: [docs/metric-definitions.md]}` | Optional docs the team already keeps, in two lists. `standards`: rules for how analysis is done here; `/build` follows them and `/review` checks deliverables against them, a broken rule being a finding (blocking only where the doc itself makes it a must). `context`: anything else about the team or its data (wiki, onboarding notes, data dictionary, metric definitions); `/ticket` reads it while planning. Each item is a path or URL, or `{location, note}`. Links are read live, never copied; a doc that cannot be opened is reported unreadable. One reader: `bin/team_docs.py`. Defaults to none. |
+| `team_docs` | map | `{standards: [https://wiki.acme.example/sql-style], context: [docs/metric-definitions.md]}` | Optional docs the team already keeps, in two lists. `standards`: rules for how analysis is done here; `/build` follows them and `/review` checks deliverables against them, a broken rule being a finding (blocking only where the doc itself makes it a must). `context`: anything else about the team or its data (wiki, onboarding notes, data dictionary, metric definitions); `/ticket` reads it while planning. Each item is a path or URL, or `{location, note}`. Links are read live, never copied; a doc that cannot be opened is reported unreadable. One reader: `tools/team_docs.py`. Defaults to none. |
 | `graph_notes` | bool | `true` | Generate the Obsidian graph layer (`tickets/graph/` + `tickets/objects/`). On by default; set `false` to disable. |
 | `graph_config` | bool | `true` | Also write/merge `.obsidian/graph.json` (tickets↔objects filter + color groups) so the Graph view opens ready-to-read. Create/merge-only — never clobbers manual tweaks. On by default; set `false` to keep the nodes but not manage the Obsidian config. Ignored when `graph_notes` is `false`. |
 | `voice_profiles` | map \| null | *(see below)* | **LEGACY — still read, no longer written.** Per-person comms **voice profiles** now live in tier 2, `people/<id>.yaml`. This block holds one person's work email and display name in committed TEAM config, which is the identity leak the three-tier split removes. An existing block keeps resolving (with a one-time warning) so upgrading loses nothing; `/setup --voice` writes `people/<id>.yaml` instead. |
@@ -158,7 +158,7 @@ policies:       # behavioral rules every skill inherits (the kit's "global rules
 > See `templates/person.yaml.tmpl`. The shape below is documented because existing repos still have
 > it and it still resolves — not because anything should create one.
 
-When set, `/ship` resolves the shipper via `bin/resolve_user.py` and, if a profile exists, uses it
+When set, `/ship` resolves the shipper via `tools/resolve_user.py` and, if a profile exists, uses it
 as a **phrasing style guide** for the tracker comment / chat / PR body — always *within* the hard
 comms rails (`word_limits`, `hyperlink_everything`, business-first segmentation, the include-list),
 never overriding them. Fail-open: an unset field, a missing map entry, or a missing profile file all
@@ -211,7 +211,7 @@ working unchanged, and `/ticket` fetches nothing.
 `seams.meetings` is a read-only slot: three verbs (`fetch_transcript`, `search_meetings`,
 `fetch_action_items` — contract in `adapters/README.md`), a read-only `verify:`, worked example in
 `stack.example.multi-audience.yaml`. What a ticket writes to name a meeting is defined here, and
-`bin/meeting_refs.py` enforces it at parse time (exit family: 0 ok · 2 usage · 4
+`tools/meeting_refs.py` enforces it at parse time (exit family: 0 ok · 2 usage · 4
 malformed-or-refused):
 
 - **One canonical placement:** the YAML frontmatter of a
@@ -219,7 +219,7 @@ malformed-or-refused):
   any other filename is refused at parse time (`misplaced-ref`) — never quietly honored or
   dropped.
 - **Grammar:** `meeting_ref: <provider>:<id>` — `<provider>` is `[a-z0-9-]+` and must equal the
-  configured `seams.meetings.tool` (checked by the calling skill via `bin/effective_config.py`,
+  configured `seams.meetings.tool` (checked by the calling skill via `tools/effective_config.py`,
   not the parser); `<id>` is the provider's opaque id, charset `[A-Za-z0-9._~/=+-]+`. An id
   needing YAML quoting may be double-quoted; the same charset applies after unquoting.
   Whitespace and shell metacharacters are **refused** — the value interpolates into adapter
@@ -269,16 +269,16 @@ Rules:
   `verify: null` on a target means "skip", it does not fall back to the slot's command.
 - **List the default first.** Readers that predate this feature (an un-relaunched session's statusline
   and SessionStart banner) show the first target they find, so first == default keeps them honest.
-  `bin/verify_stack.sh` warns when the default isn't first, and fails when `default` is missing or
+  `tools/verify_stack.sh` warns when the default isn't first, and fails when `default` is missing or
   names an unknown target.
 - **Which target is active** is resolved per `adapters/README.md` § Multi-target seams — the
   caller-context precedence lives there, and the config half is
-  `bin/effective_config.py --seam <slot> [--target <name>]`. A `.sql` file
+  `tools/effective_config.py --seam <slot> [--target <name>]`. A `.sql` file
   names its own target in a `-- warehouse-target: <name>` header comment; that never goes in a CSV,
   whose header must stay on row 1 with no preamble.
 - **Operational support is per slot, and stated here explicitly.** The `targets:` shape is legal on
-  any slot — `bin/verify_stack.sh` validates it anywhere, and
-  `bin/effective_config.py --seam <slot> --target <name>` selects a target on any slot. Three slots
+  any slot — `tools/verify_stack.sh` validates it anywhere, and
+  `tools/effective_config.py --seam <slot> --target <name>` selects a target on any slot. Three slots
   are routed end to end by skills: **warehouse** (the `.sql` header, the dev-target rule, and the
   `db_write_guard` cross-check), and now **chat** and **docstore** (the delivery plan below).
   **tracker** and **vcs** are deferred — a multi-tracker repo needs target-owned id prefixes and
@@ -407,7 +407,7 @@ routing halts (exit 9) when a ticket declares none. A single mapping that *does*
 `default_channel` still validates and routes to itself exactly as before (an omitted `always_include`
 is allowed there too). A single mapping may also write `destination: per_ticket` as an explicit
 spelling of the tool-only shape; writing it next to a standing destination fails (pick one).
-`bin/verify_stack.sh` enforces the multi-target rules and **fails** on a
+`tools/verify_stack.sh` enforces the multi-target rules and **fails** on a
 violation (the full table is in `adapters/README.md`).
 
 **A docstore needs no desktop mount.** The `gdrive`/`sharepoint` adapters write into a sync folder,
@@ -481,7 +481,7 @@ Two consequences worth knowing before you adopt it:
 |---|---|---|---|
 | `hard_halt_before_external_posts` | bool | `true` | `ship`, every generated skill — pause for human go before any tracker/chat/docstore write; and the `review_verdict_guard` hook (Claude Code; shimmed elsewhere) — ask before `git push` / a PR for a ticket with deliverables and no APPROVE verdict on file. `false` silences the hook; a missing or unparseable value resolves to `true`. |
 | `db_write_requires_approval` | enum | `high_risk` | the `db_write_guard` hook (Claude Code) + any skill issuing a non-SELECT. See below. |
-| `source_material_guard` | `on` \| `off` | `on` | Ask before a raw meeting transcript is staged for commit or copied into a docstore backup. Optional; **defaults to `on`**, and a missing or unparseable value resolves to `on` — unparseable config must never quietly widen what leaves the repo. Enforced by `.claude/hooks/source_material_guard.py` over `bin/scan_source_materials.py`; `/ship` calls the same classifier so the halt is visible where hooks are not wired. Matches filenames and document shape, **never meaning**. |
+| `source_material_guard` | `on` \| `off` | `on` | Ask before a raw meeting transcript is staged for commit or copied into a docstore backup. Optional; **defaults to `on`**, and a missing or unparseable value resolves to `on` — unparseable config must never quietly widen what leaves the repo. Enforced by `.claude/hooks/source_material_guard.py` over `tools/scan_source_materials.py`; `/ship` calls the same classifier so the halt is visible where hooks are not wired. Matches filenames and document shape, **never meaning**. |
 | `chat_default_draft` | bool | `true` | `chat.draft` not `chat.send` unless the user says "send it". |
 | `ship_merges_pr` | bool | `true` | `ship` — after the go-ahead and the PR, ask once more (an interactive choice where the runtime has one) and then squash-merge the PR into `default_branch` via `vcs.merge_pr`, before the backup, so what is shared is the merged work. A blocked merge (protection, checks, conflict) stops the ship with the reason; it is never bypassed. `false` = the team merges by hand: the delivery plan says so and the ticket is not moved to its final status. A missing value resolves to `true`; an unparseable one resolves to `false` (merge by hand), since unparseable config must never add a write. |
 | `hyperlink_everything` | bool | `true` | comms skills wrap every ticket-ID / file / PR in a smart link. |
@@ -542,7 +542,7 @@ signed off and focuses on what changed since. Skipping silently is how a deliver
 verdict unseen, which is the failure this policy exists to prevent.
 
 On-demand is always available whenever the value is not `off` — ask to see anything and the skill
-calls `bash bin/handoff.sh <paths>`.
+calls `bash tools/handoff.sh <paths>`.
 
 Enforcement is **prose**, like `hard_halt_before_external_posts`: a skill contract, not a hook.
 Analysis work does not have a fixed enough shape for a hook to gate it without getting in the way,
@@ -569,17 +569,17 @@ apps, and it cannot ask a new cloner what they want.
 
 The file shape, all keys, and per-platform variants: `.claude/config/viewer.example.yaml`. Adapters:
 `adapters/viewer/{macos-open,xdg-open,windows-start}.md`. Check routing without launching anything
-with `bash bin/handoff.sh --dry-run <file>`.
+with `bash tools/handoff.sh --dry-run <file>`.
 
 `always_include` (under `seams.chat`, optional) — a **standing stakeholder list** added to every chat
 message; the "never solo-DM a stakeholder" rule. It is *not* a self-tag. The default tool-only shape
 sets no standing list — the recipient list is declared per-ticket in `delivery-plan.yaml`
 (`chat.recipients:`, non-empty), asked at `/ship`. Under `targets:` a per-target `always_include`
-becomes **required and non-empty there**, enforced by `bin/verify_stack.sh`; a slot-level list is
+becomes **required and non-empty there**, enforced by `tools/verify_stack.sh`; a slot-level list is
 then dead config (lists are not inherited) and warns.
 
 `include_self` (under `seams.chat`, optional, default off) — when `true`, the chat adapter also
-mentions the **shipper** (resolved via `bin/resolve_user.py`) *in addition to* `always_include`.
+mentions the **shipper** (resolved via `tools/resolve_user.py`) *in addition to* `always_include`.
 Keeps the fixed stakeholder list intact instead of overloading it with a per-teammate name.
 
 ---
@@ -596,4 +596,4 @@ prove the abstraction holds with zero skill edits: `stack.example.asana-bq.yaml`
 routed by the ticket's declared audience/classification),
 `stack.example.no-warehouse.yaml` (**no warehouse slot** — document/report deliverables), and
 `stack.example.solo.yaml` (**no tracker at all** — `tracker: local` + `id_mode: slug`, and no chat or
-docstore). To validate any config: `bash bin/verify_stack.sh`.
+docstore). To validate any config: `bash tools/verify_stack.sh`.

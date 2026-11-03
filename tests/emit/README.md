@@ -1,7 +1,7 @@
 # tests/emit — golden fixture trees for the runtime installer
 
-Each `tests/emit/<runtime>/` directory is the EXACT set of files `bin/emit_runtime.py
---runtime <runtime>` must produce in a fresh project — `bin/selftest.sh` (sections 39 and 41) runs
+Each `tests/emit/<runtime>/` directory is the EXACT set of files `tools/emit_runtime.py
+--runtime <runtime>` must produce in a fresh project — `tools/selftest.sh` (sections 39 and 41) runs
 the installer into `mktemp` projects with the Claude env vars unset and diffs the results against
 these files byte-for-byte. A deliberate change to the emitted output therefore lands in the same
 commit as a fixture regeneration; an accidental one turns the suite red.
@@ -31,7 +31,7 @@ Regenerate after a deliberate output change (repeat per emitting runtime):
 
 ```bash
 tmp=$(mktemp -d)
-python3 bin/emit_runtime.py --runtime codex-cli --root "$tmp"
+python3 tools/emit_runtime.py --runtime codex-cli --root "$tmp"
 rm -rf tests/emit/codex-cli/.agents tests/emit/codex-cli/.codex
 cp -R "$tmp/.agents" "$tmp/.codex" tests/emit/codex-cli/
 rm -rf "$tmp"

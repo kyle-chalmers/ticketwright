@@ -10,7 +10,7 @@
 # Chat and docstore are also omitted — /ship skips those artifacts and names the `/setup chat` /
 # `/setup docstore` command that would enable them, rather than blocking.
 #
-# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml
+# Field docs: stack.schema.md  ·  Validate: bash tools/verify_stack.sh .claude/config/stack.example.no-warehouse.yaml
 
 project:
   key_prefix: TEST                      # display/branch convention; GitHub issue ids are bare numbers

@@ -10,7 +10,7 @@ same commit and says why; an accidental one turns the suite red.
 Modes:
   --check              replay every case against the hook and diff stdout+exit (default)
   --generate           (re)write golden.json from the current hook — deliberate changes only
-  --agreement          also replay each case's command through bin/sql_scan.py and assert the
+  --agreement          also replay each case's command through tools/sql_scan.py and assert the
                        scanner's decision kind agrees with the hook's emitted decision
   --hook <path>        hook to exercise (default: <repo>/.claude/hooks/db_write_guard.py)
 
@@ -239,7 +239,7 @@ def decision_of(stdout: str) -> str:
 
 
 def scanner_agreement(case: dict, hook_result: dict, scan_cli: Path) -> str | None:
-    """Replay the case's command through bin/sql_scan.py; return a mismatch description or None.
+    """Replay the case's command through tools/sql_scan.py; return a mismatch description or None.
 
     The scanner has no Claude protocol: it reports a decision KIND. The mapping the hook applies is
     kind->protocol: gate/wrong_target -> ask (sysmsg under bypassPermissions), allow_fastpath/
@@ -283,7 +283,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--generate", action="store_true")
     ap.add_argument("--agreement", action="store_true",
-                    help="also assert bin/sql_scan.py verdicts agree with the hook's decisions")
+                    help="also assert tools/sql_scan.py verdicts agree with the hook's decisions")
     ap.add_argument("--hook", default=str(REPO / ".claude" / "hooks" / "db_write_guard.py"))
     args = ap.parse_args()
     # Resolve now: run_case executes the hook with cwd set to the fixture repo, where a relative
@@ -322,9 +322,9 @@ def main() -> int:
         failures.append(f"{name}: case has no golden entry (run --generate deliberately)")
 
     if args.agreement:
-        scan_cli = REPO / "bin" / "sql_scan.py"
+        scan_cli = REPO / "tools" / "sql_scan.py"
         if not scan_cli.is_file():
-            failures.append("agreement: bin/sql_scan.py does not exist")
+            failures.append("agreement: tools/sql_scan.py does not exist")
         else:
             for c in CASES:
                 mismatch = scanner_agreement(c, results[c["name"]], scan_cli)

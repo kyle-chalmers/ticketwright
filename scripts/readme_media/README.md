@@ -56,7 +56,7 @@ it: it is not part of the kit.
 
 ## The recall diagram's numbers
 
-Every score, reason and verdict in `recall.png` is what `bin/recall.py` prints for this fixture. The
+Every score, reason and verdict in `recall.png` is what `tools/recall.py` prints for this fixture. The
 seed (dana's TEST-130) and the five tracker rows are the ones selftest section 63(b) uses; the four
 prior tickets are added here. Run it from the repo root, and redraw the diagram from its output
 whenever recall's scoring changes.
@@ -96,9 +96,9 @@ row = lambda key, title, text, labels=(): dict(key=key, title=title, description
     row("TEST-80", "Payroll tax export", "Quarterly filing.")]))
 PY
 export CLAUDE_PROJECT_DIR="$X"
-python3 bin/ingest_index_records.py --from-json "$X/records.json" && python3 bin/build_ticket_index.py
-python3 bin/recall.py --for dana/TEST-130                            # the ranked list and its verdict
-python3 bin/recall.py --for dana/TEST-130 --external "$X/rows.json"  # the tracker branch
+python3 tools/ingest_index_records.py --from-json "$X/records.json" && python3 tools/build_ticket_index.py
+python3 tools/recall.py --for dana/TEST-130                            # the ranked list and its verdict
+python3 tools/recall.py --for dana/TEST-130 --external "$X/rows.json"  # the tracker branch
 ```
 
 TEST-118's tables are left out of its record on purpose, so the scan of its `q.sql` is what finds

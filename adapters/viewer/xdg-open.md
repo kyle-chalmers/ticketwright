@@ -15,7 +15,7 @@ Maps the `viewer` verb contract to freedesktop.org desktop integration. This is 
 a finished artifact to a **human's own application** so they can look at the real thing before
 signing off.
 
-Unlike every other seam, viewer config is **per-user and gitignored**. `bin/handoff.sh` resolves
+Unlike every other seam, viewer config is **per-user and gitignored**. `tools/handoff.sh` resolves
 it; see `.claude/config/viewer.example.yaml` for the file shape.
 
 ## verb: open

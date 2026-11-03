@@ -92,7 +92,7 @@ reading the file.
 `review_verdict_guard` is the review-before-ship gate at the command layer: it sees **Bash** —
 `git push`, `gh pr create` / `gh pr merge`, `glab mr create` / `merge`, `az repos pr create` / `update` — finds
 the ticket from the command's paths, its cwd, or the checked-out branch, and asks when that ticket
-has files in `final_deliverables/` and the verdict on file (read by `bin/review_verdict.py`, the
+has files in `final_deliverables/` and the verdict on file (read by `tools/review_verdict.py`, the
 highest-numbered `qc_queries/<n>_review_verdict.md`) is anything but APPROVE: none, SKIPPED,
 REQUEST-CHANGES, AWAITING-SIGNOFF (the reviewer approved, your sign-off is pending), or unreadable. It never denies, and `hard_halt_before_external_posts: false`
 silences it. A push from a git client, an IDE button, or a browser never reaches it, and it reads
@@ -235,7 +235,7 @@ config stays gitignored and is never committed: `.claude/settings.local.json`,
 The install checklist, with every check the doctor runs and its fix, lives in
 <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/getting-started.md>, and the doctor
 prints the same checks with the fix for each:
-`python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py` before the plugin is
+`python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py` before the plugin is
 installed, `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" plugin_doctor.py`
 after. More states and their recoveries:
 <https://github.com/kyle-chalmers/ticketwright/blob/main/docs/troubleshooting.md>.

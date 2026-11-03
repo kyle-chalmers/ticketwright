@@ -19,7 +19,7 @@ resolves all I/O through adapters (no hardcoded tools).
 
 ## Phase 0 — Pre-flight (halt-on-fail)
 1. Validate every parameter ({{param_validation}}).
-2. `bash bin/drift_check.sh` — confirm every object/view this workflow reads is still reachable; halt on any miss.
+2. `bash tools/drift_check.sh` — confirm every object/view this workflow reads is still reachable; halt on any miss.
 3. `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" verify_stack.sh` for the seams this workflow touches; halt with adapter auth notes if unreachable.
 4. Source-state precondition: {{precondition}} — halt with a pointer if unmet.
 5. Scaffold the ticket folder if absent.
@@ -82,6 +82,6 @@ system-evolution retro.
 {{failure_mode_tests}}
 
 ## Files read / written / side effects
-- Reads: `sql/*`, `templates/*`, `golden/*`, `bin/drift_check.sh`, `.claude/config/stack.yaml`
+- Reads: `sql/*`, `templates/*`, `golden/*`, `tools/drift_check.sh`, `.claude/config/stack.yaml`
 - Writes: the ticket's README, deliverable SQL, QC SQL, the canonical CSVs, the tracker-comment draft
 - Side effects: {{side_effects}}

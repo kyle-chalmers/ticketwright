@@ -59,12 +59,12 @@ more surfaces than the adapter tree:
 - `adapters/meetings/<tool>.md` for the launch tools (two or three), in the existing adapter
   format exactly (`seam: meetings`, `tool:`, `transport:`, `requires:`, `user_keys:`, `auth:`,
   one `## verb:` section per contract verb). Copy the closest read-only pattern.
-- The verb contract in `adapters/README.md` with an exact per-slot verb count — `bin/selftest.sh`
+- The verb contract in `adapters/README.md` with an exact per-slot verb count — `tools/selftest.sh`
   asserts counts by EXACT EQUALITY (`<seam>) echo N` in `verbs_expected`); every adapter
   implements every verb (one that cannot documents it and returns "unsupported").
 - THREE-TIER RULES: provider/workspace/content-selection keys are TEAM-owned (tier 1); only
   adapter-declared credential/local-path keys (`user_keys:`) may come from tiers 2/3; every
-  config consumer goes through `bin/effective_config.py`, never raw YAML.
+  config consumer goes through `tools/effective_config.py`, never raw YAML.
 - A TOOL-NEUTRAL MEETING-REFERENCE FORMAT, defined, not implied: what a ticket writes to name a
   meeting (recommend a `meeting:` line in the ticket README or a `source_materials/` stub with a
   `meeting_ref:` frontmatter key), its ID grammar, and the no-reference behavior (the slot stays
@@ -109,7 +109,7 @@ ENFORCEABLE source-material policy:
   a raw transcript in `source_materials/` trips the staged-file flag.
 
 ## Standing constraints (carried over; the retired planning doc no longer states them for you)
-- `bash bin/selftest.sh` must print `0 failed` — AND CHECK ITS EXIT CODE, never just the printed
+- `bash tools/selftest.sh` must print `0 failed` — AND CHECK ITS EXIT CODE, never just the printed
   tail. It treats docs as tested artifacts: adapter/seam counts are derived from the tree and
   asserted as literals in `docs/architecture.md` (`**<N> adapters**`) and `ROADMAP.md`
   (`- <N> adapters across <M> seams`); every shipped adapter is listed in `adapters/README.md`

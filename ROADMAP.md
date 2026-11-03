@@ -19,7 +19,7 @@ Next up: a listing in the Claude plugin directory, and a setup path that does no
 
 The ticket index is **active**, not just browsable, and observable:
 
-- **Prior-art recall** (`/ticket --recall`, engine `bin/recall.py`) with **IDF object down-weighting** (eval-tuned),
+- **Prior-art recall** (`/ticket --recall`, engine `tools/recall.py`) with **IDF object down-weighting** (eval-tuned),
   an advisory verdict line, and a read-only **`--eval`** recall-quality diagnostic.
 - **Object reverse-index** (`tickets/OBJECTS.md`), scale-aware above ~150 objects.
 - **Deep QC** (`review --deep`) — adversarial reviewer panel.
@@ -50,11 +50,11 @@ Lineage: Ticketwright is the canonical evolution of earlier prototypes — the a
 Hardened by exercising a productized recurring pull end-to-end. All stdlib-only, tool-agnostic; none changes
 the lightweight stance.
 
-- **Render gate** (`bin/render_and_validate.sh`) for `/skillify` — errors on a `{{token}}`
+- **Render gate** (`tools/render_and_validate.sh`) for `/skillify` — errors on a `{{token}}`
   inside a SQL comment (a multi-line value would break out of the `--`), warns on an unquoted SQL
   string/date literal (`= {{asof}}` reads as arithmetic), and asserts zero leftover tokens + balanced
   quotes/parens on the rendered SQL.
-- **Export helper** (`bin/split_and_export.sh`) — robust multi-statement-preamble strip + split a
+- **Export helper** (`tools/split_and_export.sh`) — robust multi-statement-preamble strip + split a
   multi-`SELECT` file on `-- Query N` markers into N runnable, preamble-carrying files.
 - **gitignore template** — deliverables commit with the ticket by default (results show in the PR);
   PII/customer data opts out via a `*.private.csv` name or a `private/` subfolder. *(3.1.0 flipped
@@ -104,7 +104,7 @@ Surfaced by early install sessions (2026-07-06); the highest-value, lowest-risk 
 `--prune`, verify labeling, `--all`/`--force`). These remain — each issue-ready and named by the
 artifact it touches:
 
-- **Per-user chat identity** — *(resolver + token landed with voice profiles)* `bin/resolve_user.py`
+- **Per-user chat identity** — *(resolver + token landed with voice profiles)* `tools/resolve_user.py`
   resolves the shipper offline (`git config user.email` → `user.name` → `$USER`, via an explicit
   `stack.yaml` map), and `seams.chat.include_self` adds the shipper's mention *alongside* the fixed
   `always_include` stakeholder list rather than overloading it. Remaining polish: per-tool mention
@@ -200,7 +200,7 @@ ai-data-security); apply here first since ticketwright is the design ancestor:
   (that branching serves *vendoring*, which predates pip), and the wheel force-includes the
   same kit rather than maintaining a parallel implementation. What made the channel a liability
   was drift, not cost — PyPI sat on 3.2.0 while the repo ran 3.3.0, so pip users were served
-  month-old skill prose. Fixed structurally: `bin/bump_version.sh` moves all three version files
+  month-old skill prose. Fixed structurally: `tools/bump_version.sh` moves all three version files
   at once, and CI now builds + installs the wheel on every PR and every push to `main`, instead
   of only at tag time.
 - **autoUpdate hook caveat** to carry in every release note: bundled hook changes do not reach
@@ -255,7 +255,7 @@ The record, per leg:
 
 What shipped with the judgment: `seams.meetings` as an OPTIONAL, read-only, single-tool slot
 (never target-routed); the `meeting_ref: <provider>:<id>` reference contract with
-`bin/meeting_refs.py` as its mechanical parser (0 ok · 2 usage · 4 malformed-or-refused,
+`tools/meeting_refs.py` as its mechanical parser (0 ok · 2 usage · 4 malformed-or-refused,
 credential-bearing refs refused at parse time as `refused-credential`); five adapters; and every
 formerly-fixed-five-slot surface extended. The transcript-privacy mechanics are unchanged from
 stage 1 — curation-in-context and never-save-raw remain agent guidance; the mechanical gates

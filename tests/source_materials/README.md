@@ -1,7 +1,7 @@
 # tests/source_materials — the classifier's golden corpus
 
 `fixtures/` holds synthetic source-material files; `golden.json` pins what
-`bin/scan_source_materials.py` must classify each one as. `bin/selftest.sh` section 49 replays
+`tools/scan_source_materials.py` must classify each one as. `tools/selftest.sh` section 49 replays
 the corpus and compares, so a change to the thresholds or the shape patterns turns the suite red
 instead of shipping silently.
 
@@ -44,7 +44,7 @@ ordinary forwarded input.
 
 **A known limit, fixtured nowhere because the classifier cannot cover it:** a transcript exported
 as a binary office document (`.docx`) classifies as `binary` and is NOT flagged — its text is
-never extracted. Only its filename and extension are evidence. `bin/scan_source_materials.py`'s
+never extracted. Only its filename and extension are evidence. `tools/scan_source_materials.py`'s
 docstring lists this alongside the other honest limits.
 
 Regenerate after a deliberate classification change:

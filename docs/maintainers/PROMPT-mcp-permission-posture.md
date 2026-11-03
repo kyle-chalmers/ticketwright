@@ -73,7 +73,7 @@ MCP-transport seams get a third value: **NATIVE (tool-side)** — enforcement li
 own permission controls, pointer to the adapter's posture section, checked at setup time by the
 probe. GUIDANCE keeps meaning "prose the agent follows"; NATIVE means "a control outside the
 harness is configured to carry this policy, and here is when it was last checked." The emitters
-(`bin/emit_runtime.py`) carry the same cell to the other runtimes' artifacts; regenerate the
+(`tools/emit_runtime.py`) carry the same cell to the other runtimes' artifacts; regenerate the
 `tests/emit/` fixtures.
 
 ## Deliverable 4 — selftest

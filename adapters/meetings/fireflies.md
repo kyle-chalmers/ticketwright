@@ -15,7 +15,7 @@ auth: |
 
 Maps the `meetings` verb contract to the Fireflies GraphQL API. Read-only. The meeting `{id}` below
 is the validated id from a ticket's `meeting_ref:` (grammar in `stack.schema.md`; enumerate with
-`bin/meeting_refs.py` — ids arrive per-ticket, never from config).
+`tools/meeting_refs.py` — ids arrive per-ticket, never from config).
 
 ## verb: fetch_transcript
 
@@ -29,7 +29,7 @@ source-material guard, and those read filenames and document shape, never meanin
 
 **ID encoding — none, and that is a decision, not an omission.** `{id}` is a GraphQL string
 ARGUMENT here, never a URL path segment, so a `/` in the id is inert; pass it verbatim inside the
-quoted string. (The charset `bin/meeting_refs.py` enforces excludes quotes and shell metacharacters,
+quoted string. (The charset `tools/meeting_refs.py` enforces excludes quotes and shell metacharacters,
 so the value cannot break out of the argument.)
 
 ```

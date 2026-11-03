@@ -50,7 +50,7 @@ directory to a shared repo and breaks the slot for everyone else.
 ## Verify it in one line
 
 ```bash
-bash bin/verify_stack.sh .claude/config/stack.yaml --dry-run
+bash tools/verify_stack.sh .claude/config/stack.yaml --dry-run
 ```
 
 The docstore row runs `test -d "{base_path}"`. A `✗ UNREACHABLE` there means the mount is missing or

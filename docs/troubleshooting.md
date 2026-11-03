@@ -91,13 +91,13 @@ marketplace you re-pointed at user scope is silently reverted next session. The 
 override is the gitignored `.claude/settings.local.json`, which takes precedence over the
 committed project settings: repoint the marketplace there.
 
-One interaction worth knowing: the update-notice banner (`bin/update_notice.py`) names an
+One interaction worth knowing: the update-notice banner (`tools/update_notice.py`) names an
 uninstall + install pair to pick up a release. If case 3 has struck, that uninstall fails with
 "not found" — follow recovery 3 first, then run the pair.
 
 ### Diagnose all of this in one command
 
-`bin/plugin_doctor.py` names every state above — CLI too old for `--scope`, marketplace registered
+`tools/plugin_doctor.py` names every state above — CLI too old for `--scope`, marketplace registered
 with nothing installed, a global install nobody meant, an install record with no payload, a
 Download-ZIP folder instead of a clone — and prints the fix for each. It reads files and runs
 `claude --version` / `claude plugin install --help`; it never installs, never writes, and never
@@ -105,13 +105,13 @@ reaches the network. Three ways to run it, in the order they become available:
 
 ```bash
 # before anything is installed — the marketplace clone appears when you trust the repo
-python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py
 
 # on a plugin install, from the repo
 bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" plugin_doctor.py
 
 # machine-readable, for an agent
-python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py --json
+python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py --json
 ```
 
 The first path names the `ticketwright` marketplace; a fork substitutes its own marketplace name.
@@ -130,7 +130,7 @@ entry's `source` to `{"source": "git", "url": "https://github.com/kyle-chalmers/
 
 ## "Tool slot unreachable" / auth errors
 
-`bin/verify_stack.sh` (run by `/setup`, and by skills at preflight) names the failing tool slot.
+`tools/verify_stack.sh` (run by `/setup`, and by skills at preflight) names the failing tool slot.
 The fix lives in that tool's adapter: open `adapters/<seam>/<tool>.md` and follow its `auth:`
 notes (CLI login, `config.toml`, MCP server connect). For a personalized walk-through, run
 `/setup --teammate`. MCP-only tools need the server connected *in this session* — check `/mcp`.
@@ -141,7 +141,7 @@ notes (CLI login, `config.toml`, MCP server connect). For a personalized walk-th
 
 ## The ticket index looks stale or wrong
 
-- Staleness check: `/refresh index` (`/ticketwright:refresh index` on a plugin install) reports and fixes it; `ticketwright index --check` on pip; `python3 bin/build_ticket_index.py --check` in a vendored repo — tells you if `INDEX.md`/`OBJECTS.md`, or the graph
+- Staleness check: `/refresh index` (`/ticketwright:refresh index` on a plugin install) reports and fixes it; `ticketwright index --check` on pip; `python3 tools/build_ticket_index.py --check` in a vendored repo — tells you if `INDEX.md`/`OBJECTS.md`, or the graph
   nodes under `tickets/graph/` + `tickets/objects/` when that layer is on, drift from a fresh render.
   Fix: run it without `--check` (or let the PostToolUse hook do it on the next edit).
 - A row marked `▱` is un-enriched (deterministic title only) — `/refresh index <id>` curates it.
@@ -190,8 +190,8 @@ session displays the first target it finds. Listing the default target first kee
   ticketwright enabled, then start a fresh session.
 - Repo install (pip/vendored): hooks are wired in `.claude/settings.json` — confirm the `hooks`
   block exists (rendered from `.claude/settings.json.tmpl` by `/setup`).
-- Plugin doctor: `python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py` names
-  the install state the hooks depend on. In a clone of the Ticketwright repo, `bash bin/selftest.sh`
+- Plugin doctor: `python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py` names
+  the install state the hooks depend on. In a clone of the Ticketwright repo, `bash tools/selftest.sh`
   unit-tests every hook directly.
 
 ## The DB-write guard blocked something it shouldn't (or vice versa)
@@ -249,7 +249,7 @@ claude plugin install ticketwright@ticketwright --scope project
 
 Pass `--scope user` to `marketplace remove` explicitly — with no `--scope` it drops the declaration from
 **every** scope, including other repos' project-scoped ones. Then commit the repo's
-`.claude/settings.json`. `bin/plugin_doctor.py` reports this state as its `user_install` check,
+`.claude/settings.json`. `tools/plugin_doctor.py` reports this state as its `user_install` check,
 with the same two commands.
 
 **v1 → v2 rename map:** `configure-workspace`+`onboard-teammate` → `setup` ·
@@ -270,17 +270,30 @@ repo, re-run `/setup role` or edit that line in your own `AGENTS.md` by hand.
 ## "This project's copy of the Ticketwright launcher is out of date"
 
 `/setup` commits `bin/tw` and `bin/kit_paths.py` into your repo. They find the installed kit for
-every skill. Your copy is older than the kit, and a coming release moves the kit's scripts out of
-the plugin's `bin/` folder into `tools/`, which an older copy cannot find. Run `/setup`, or:
+every skill. Your copy is older than the kit, which now keeps its scripts in `tools/` instead of
+the plugin's `bin/` folder. Run `/setup`, or:
 
 ```bash
 bash "$(git rev-parse --show-toplevel)/bin/tw" refresh_launcher.py --write
 ```
 
 Then commit `bin/tw` and `bin/kit_paths.py`. The refresh never replaces a copy that is current or
-newer, and never touches any other file. If a skill already fails with `tw: cannot locate the
-ticketwright kit` after an update, the copy is from before this notice existed: `/setup` still
-repairs it, because it does not need the launcher to run.
+newer, and never touches any other file.
+
+## `tw: cannot locate the ticketwright kit` after an update
+
+Your repo's copy of the launcher is from before the launcher could be refreshed, so it looks for the
+kit's scripts only in the plugin's `bin/` folder, and they now live in `tools/`. The command above cannot run,
+because it goes through that same old copy. Either run `/setup`, which repairs it without needing the
+launcher, or run the refresh straight from the plugin's marketplace copy:
+
+```bash
+python3 ~/.claude/plugins/marketplaces/ticketwright/tools/refresh_launcher.py --write
+```
+
+Then commit `bin/tw` and `bin/kit_paths.py`. If you added the marketplace under another name, use
+that name in the path. On a `ticketwright init` install, re-run `ticketwright init` instead: it moves
+the kit's scripts from `bin/` to `tools/` and leaves anything else in `bin/` alone.
 
 ## Something else went wrong
 
@@ -289,10 +302,10 @@ ticket repo, `bash bin/tw verify_stack.sh` pings each tool slot's read-only chec
 one slot. `bin/tw` is the launcher `/setup` commits; it finds the installed kit, so the commands on
 this page work on a plugin install too.
 
-In a clone of the Ticketwright repo itself, `bash bin/selftest.sh` runs the kit's full 200+-check
+In a clone of the Ticketwright repo itself, `bash tools/selftest.sh` runs the kit's full 200+-check
 suite (config parsing, adapter coverage, frontmatter, hooks, render gate, index and recall engines)
-and pinpoints what's broken. The full run takes a few minutes; `bash bin/selftest.sh --list` shows
-every section, and `bash bin/selftest.sh 6 6b` reruns only the ones you are fixing. `bash bin/selftest.sh --jobs 8`
+and pinpoints what's broken. The full run takes a few minutes; `bash tools/selftest.sh --list` shows
+every section, and `bash tools/selftest.sh 6 6b` reruns only the ones you are fixing. `bash tools/selftest.sh --jobs 8`
 runs the full suite eight sections at a time and reports the same totals.
 
 

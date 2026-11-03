@@ -74,7 +74,7 @@ the Atlassian connector"), give no install command unless they ask, and make sur
 is connected instead (step 2). Scope note: `yq` is needed only by
 the kit's own `selftest.sh`, which step 5 runs only on a vendored or edited kit (a plugin install
 does not ship it) — no skill in a configured repo invokes it day to day, so a missing `yq` blocks
-that one check, nothing else. When `yq_present` is not `ok` and the kit has `bin/selftest.sh`,
+that one check, nothing else. When `yq_present` is not `ok` and the kit has `tools/selftest.sh`,
 print the doctor's platform install command and **offer to run it now**, before step 5 needs it —
 and say what step 5 costs: several minutes, longer than a typical tool timeout, judged by its
 **exit code**, not by how green the tail of its output looks. On a plugin install, mention it once
@@ -129,7 +129,7 @@ Write `.claude/config/connections.local.yaml` (tier 3, gitignored) at the path
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" kit_paths.py --local-config connections.local.yaml`
 prints (the main checkout's copy when this session runs in a linked worktree). File existence alone cannot
 distinguish empty, half-finished, "I chose team defaults", or stale-after-the-stack-changed — so
-this flow always writes the full versioned shape (a writer convention `bin/effective_config.py`
+this flow always writes the full versioned shape (a writer convention `tools/effective_config.py`
 understands and polices):
 - `schema_version: 1`
 - `mode:` — `defaults` (they accepted team defaults; the file must then carry no tool-slot overrides —
@@ -145,7 +145,7 @@ Confirm it resolves:
 must report no errors, with each override attributed to the machine tier.
 
 ## 5 · Verify connectivity — bound to the expected target
-On a vendored or edited kit (one that has `bin/selftest.sh`), run
+On a vendored or edited kit (one that has `tools/selftest.sh`), run
 `bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/bin/tw" selftest.sh` first (the kit itself). A plugin
 install does not ship the self-test, because the released kit is tested before it ships: say so in one
 line ("The kit was tested before release, so I'll skip its self-check.") and go straight on. Then run

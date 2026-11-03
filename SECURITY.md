@@ -12,7 +12,7 @@ A useful report names:
 - the Ticketwright version (`ticketwright --version`, or the `version` in the plugin's
   `.claude-plugin/plugin.json`) and how it is installed (Claude Code plugin, PyPI package, or a
   vendored copy);
-- the part affected: a hook, a skill, an adapter, a `bin/` engine, or the setup scaffolding;
+- the part affected: a hook, a skill, an adapter, a `tools/` engine, or the setup scaffolding;
 - the steps that reproduce it, and what an attacker gains.
 
 Leave out credentials, warehouse or tracker identifiers and real data. A fictional example is

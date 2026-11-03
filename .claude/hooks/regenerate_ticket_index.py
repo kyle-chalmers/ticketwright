@@ -6,7 +6,7 @@ artifacts themselves), it re-renders tickets/INDEX.md so the catalog always refl
 reality: a new ticket appears immediately (marked ▱ until curated), and an edited README
 flags its row ⚠ (summary may be stale). LLM-authored summaries are *not* regenerated here
 (a hook can't run the model synchronously) — those refresh at ticket close via
-bin/ingest_index_records.py.
+tools/ingest_index_records.py.
 
 Deterministic + fast (re-renders from disk + index_data.json). Writes only when the
 rendered output actually changes, so irrelevant edits produce no churn. Fails open.
@@ -53,7 +53,7 @@ def main() -> int:
     # The renderer module ships with the kit (bin/), not the user's project — resolve it against
     # CLAUDE_PLUGIN_ROOT (else this hook's own kit dir). `root` stays the project for the data.
     kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+    bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
     sys.path.insert(0, str(bindir))
     try:
         from build_ticket_index import build_rows, render, render_objects, render_graph_layer, load_config  # type: ignore

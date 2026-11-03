@@ -52,7 +52,7 @@ def discovered_total(root: Path) -> int | None:
         # The renderer module ships with the kit (bin/), not the project — resolve via
         # CLAUDE_PLUGIN_ROOT (else this hook's own kit dir); `root` stays the project for discover().
         kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
         sys.path.insert(0, str(bindir))
         from build_ticket_index import discover  # type: ignore
         return len(discover(root))
@@ -65,7 +65,7 @@ def hidden_keyed(root: Path) -> list[str]:
     try:
         import sys
         kit = os.environ.get("CLAUDE_PLUGIN_ROOT")
-        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "bin"
+        bindir = (Path(kit).resolve() if kit else Path(__file__).resolve().parent.parent.parent) / "tools"
         sys.path.insert(0, str(bindir))
         from build_ticket_index import hidden_keyed_folders, hidden_keyed_warning  # type: ignore
         hidden = hidden_keyed_folders(root)

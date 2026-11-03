@@ -72,7 +72,7 @@ protection a team is getting.
 ## The matrix, machine-readable
 
 Since wave F2 (2026-08-19) the load-bearing rows above also live as frontmatter keys on every
-`adapters/runtime/*.md`, read through `bin/kit_paths.py --json` — so installers and skills consume
+`adapters/runtime/*.md`, read through `tools/kit_paths.py --json` — so installers and skills consume
 declared data, never a parse of this page. The six keys, with the shipped values:
 
 | Runtime | `gate_ask_tier` | `gate_fail_mode` ¹ | `subagent_isolation` | `reads_foreign_skills` ² | `global_skills_root` | `plan_mode` ⁹ |
@@ -127,15 +127,15 @@ Two rules the encoding carries, stated here so nobody re-derives them wrongly:
   `reads_foreign_skills` to `none`, the boolean rows to `no` — and every consumer must treat
   `unknown` as the never-optimistic case. Each `unknown` or `unverified` value here is owed a live
   re-check on the punch list, [`docs/live-verification.md`](live-verification.md) — and the link is
-  mechanical: `bin/selftest.sh` section 44 fails if such a value exists without a matching entry.
+  mechanical: `tools/selftest.sh` section 44 fails if such a value exists without a matching entry.
 
 
 ## The headless model command
 
-Two engines run a model in the background, with nobody at the keyboard: `bin/enrich_ticket.py` writes a
-ticket's index summary at close, and `bin/summarize_hits.py` writes a one-line summary for each of the
+Two engines run a model in the background, with nobody at the keyboard: `tools/enrich_ticket.py` writes a
+ticket's index summary at close, and `tools/summarize_hits.py` writes a one-line summary for each of the
 top three older tracker tickets ([the older-ticket search](ticket-index.md#older-tickets-in-your-tracker)).
-Both go through `bin/model_call.py`, which reads four keys from the running runtime's adapter:
+Both go through `tools/model_call.py`, which reads four keys from the running runtime's adapter:
 
 | Key | What it says |
 |---|---|
@@ -449,8 +449,8 @@ Sources (accessed 2026-08-18; skills re-verified 2026-08-19): [rules](https://do
 Cursor, Antigravity, OpenCode and Devin all expose a pre-execution deny. Since wave F2 / U3
 (2026-08-19) the kit wires it where a config location is documented: the installer emits
 `.cursor/hooks.json` (with `failClosed: true`), `.agents/hooks.json` (Antigravity), and the
-`.opencode/plugins/` throw-to-deny wrapper, all fronting one scanner (`bin/sql_scan.py`) through
-`bin/hook_shim.py`; Codex CLI and Devin get a protocol-correct shim but manual wiring, because
+`.opencode/plugins/` throw-to-deny wrapper, all fronting one scanner (`tools/sql_scan.py`) through
+`tools/hook_shim.py`; Codex CLI and Devin get a protocol-correct shim but manual wiring, because
 their hooks-CONFIG file locations are not recorded here — an honest gap the live punch list
 ([`docs/live-verification.md`](live-verification.md)) chases. The rendered `AGENTS.md` states the *specific* limitation per runtime in its enforcement
 table, because none of these is a like-for-like replacement:

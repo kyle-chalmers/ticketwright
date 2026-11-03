@@ -14,7 +14,7 @@
 # You normally do not write this by hand: the first time a review gate fires, Ticketwright asks
 # which apps you want and writes the file for you. `/setup viewer` re-runs that interview.
 #
-# Check it without launching anything:  bash bin/handoff.sh --dry-run <a file>
+# Check it without launching anything:  bash tools/handoff.sh --dry-run <a file>
 
 enabled: true                            # false = "configured to stay off"; never prompts again
 

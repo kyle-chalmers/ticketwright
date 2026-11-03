@@ -5,12 +5,12 @@ transport: mcp         # a Notion MCP server (server = {mcp}) exposing the meeti
 requires: [mcp]        # the MCP server name
 user_keys: []          # the Notion connection lives in the MCP server's own config, never in stack.yaml
 default_surface: claude-code   # the runtime the `## verb:` sections were checked on (the hosted Notion connector's tool names, 2026-10-25)
-surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by tools/adapter_surface.py
 auth: |
   A Notion MCP server connected to the workspace holding the meeting notes. Access rides the
   workspace connection's page permissions — the MCP integration must be granted the meeting-notes
   pages. Verify: a read-only "list recent pages" (or equivalent) MCP call returns without error
-  (on a runtime with its own section below, that section's probe: `bin/adapter_surface.py --probe`).
+  (on a runtime with its own section below, that section's probe: `tools/adapter_surface.py --probe`).
 ---
 
 # Notion adapter (meetings)
@@ -18,7 +18,7 @@ auth: |
 Maps the `meetings` verb contract to Notion meeting-notes pages (the AI meeting notes Notion
 captures, or hand-kept meeting pages) via a Notion MCP's named operations. Read-only. The meeting
 `{id}` below — a Notion page id — is the validated id from a ticket's `meeting_ref:` (grammar in
-`stack.schema.md`; enumerate with `bin/meeting_refs.py` — ids arrive per-ticket, never from
+`stack.schema.md`; enumerate with `tools/meeting_refs.py` — ids arrive per-ticket, never from
 config).
 
 ## verb: fetch_transcript
@@ -111,7 +111,7 @@ capabilities, so the comparison outcome is `unverified` by construction.
 - A page the integration wasn't granted returns not-found, not forbidden — grant the meeting-notes
   section to the MCP connection, then retry.
 - Tool names differ by agent: Codex CLI lists this connector under other names (in its own
-  section of this file). `bin/adapter_surface.py --adapter adapters/meetings/notion.md` picks the
+  section of this file). `tools/adapter_surface.py --adapter adapters/meetings/notion.md` picks the
   right section for the agent running now. A name missing from your session's tool list is a gap
   to report so the kit can record it, never a local edit here or in a skill. The self-hosted Notion API server
   is a different tool with no meeting-notes query: give it its own adapter.

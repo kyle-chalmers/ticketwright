@@ -32,7 +32,7 @@ gives you as a table, drawn as a picture.
 ## One relationship model, two renderings
 
 The graph and the catalog are two renderings of one relationship model. The same cross-reference
-resolution in `bin/build_ticket_index.py` writes both in a single pass: `tickets/INDEX.md` and
+resolution in `tools/build_ticket_index.py` writes both in a single pass: `tickets/INDEX.md` and
 `tickets/OBJECTS.md` are how an agent queries the relationships, and the graph is how a person
 sees the shape of the corpus at a glance - which analyses cluster, which objects are load-bearing
 across many tickets, where the orphans are. Generated together, they cannot drift apart.

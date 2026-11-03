@@ -6,7 +6,7 @@
 #
 # Skills resolve which target to use per `adapters/README.md` § Multi-target seams; a `.sql` file
 # names its own target in a `-- warehouse-target: <name>` header comment.
-# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml
+# Field docs: stack.schema.md  ·  Validate: bash tools/verify_stack.sh .claude/config/stack.example.multi-warehouse.yaml
 
 project:
   key_prefix: TEST

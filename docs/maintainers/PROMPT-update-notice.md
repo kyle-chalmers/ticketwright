@@ -1,6 +1,6 @@
 # PROMPT — A visible "release available" notice, until upstream autoUpdate re-installs
 
-> **Historical brief, shipped.** This was the implementation brief for `bin/update_notice.py` and its SessionStart line. It is
+> **Historical brief, shipped.** This was the implementation brief for `tools/update_notice.py` and its SessionStart line. It is
 > kept as the design record for maintainers and is not user documentation; the status line
 > below is as it stood when written.
 
@@ -24,9 +24,9 @@ and a kit that silently swaps its own running code has a worse property than a s
 
 ## The design — one CLI, one presenter, per the house split
 
-1. `bin/update_notice.py` — harness-neutral CLI, stdlib-only, `--root <repo>`, no Claude env vars
+1. `tools/update_notice.py` — harness-neutral CLI, stdlib-only, `--root <repo>`, no Claude env vars
    REQUIRED, exit 0 ALWAYS (a notice tool must never break anything). Config-root override
-   follows the existing precedent in `bin/kit_paths.py`: honor `CLAUDE_CONFIG_DIR` when set,
+   follows the existing precedent in `tools/kit_paths.py`: honor `CLAUDE_CONFIG_DIR` when set,
    default `~/.claude` — and expose it as a flag for tests the way existing fixtures place
    `plugins/installed_plugins.json` directly under that root. It reads THREE local files, no
    network (the catalog refresh is Claude Code's own job):
@@ -92,7 +92,7 @@ line when the fixture config-root says newer, and stays byte-identical when the 
 (fail-open pin) and when it times out.
 
 ## Standing constraints (carried over)
-- `bash bin/selftest.sh` prints `0 failed` — CHECK THE EXIT CODE, not the printed tail. Add your
+- `bash tools/selftest.sh` prints `0 failed` — CHECK THE EXIT CODE, not the printed tail. Add your
   section; never renumber existing ones. The suite is read-only, offline, credential-free.
 - Existing configs in the wild keep working; fixture identifiers only, files AND commit messages;
   THIS REPO IS PUBLIC.

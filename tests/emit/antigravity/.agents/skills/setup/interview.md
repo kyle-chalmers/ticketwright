@@ -438,7 +438,7 @@ which asks question 13a and then re-runs this round.
     and that a doc the agent cannot open is reported as unreadable, never as checked. Write the
     answers to `project.team_docs.standards` and `project.team_docs.context`, each item a path or
     URL, or `{location: …, note: <a few words>}` when the link does not say what it is.
-    `bin/team_docs.py` is the one reader of this key.
+    `tools/team_docs.py` is the one reader of this key.
 
     The old analysis-tools question is gone: a tool name told the agent little, and "we build
     metrics in dbt" belongs in the standards doc, with its reason. `project.analysis_tools` still

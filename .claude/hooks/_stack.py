@@ -17,7 +17,7 @@ Two properties matter more than convenience here:
 2. **Block-scoped lookups.** `_block_lines` walks indentation rather than pattern-matching
    across the whole document, so a key is read from the block that actually owns it.
 
-DO NOT "FINISH THE MIGRATION" BY ROUTING THIS THROUGH bin/effective_config.py. Every other config
+DO NOT "FINISH THE MIGRATION" BY ROUTING THIS THROUGH tools/effective_config.py. Every other config
 consumer in the kit now reads through that resolver; these two hooks deliberately do not, and the
 reasons are safety reasons, not inertia:
 
@@ -39,7 +39,7 @@ reasons are safety reasons, not inertia:
    the resolver parses fine — so "resolver first, this scanner as a fallback" would not fall back at
    all, and would start emitting exactly the false prompts that design avoids.
 
-selftest asserts the guard still yields `MODE_ALL` with `bin/effective_config.py` deleted and with
+selftest asserts the guard still yields `MODE_ALL` with `tools/effective_config.py` deleted and with
 it stubbed to exit non-zero. If you change this, that test is what should stop you.
 
 Seam blocks are *not* handled here — `db_write_guard.seam_block` already does that, with

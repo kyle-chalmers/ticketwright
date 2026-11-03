@@ -1,8 +1,8 @@
-# tests/meeting_refs — fixtures for `bin/meeting_refs.py`
+# tests/meeting_refs — fixtures for `tools/meeting_refs.py`
 
 Stub files exercising the meeting-reference contract (grammar in
 `.claude/config/stack.schema.md`; parser exit family 0 ok · 2 usage · 4 malformed-or-refused).
-`bin/selftest.sh` section 51d copies these into fixture ticket trees and drives the parser:
+`tools/selftest.sh` section 51d copies these into fixture ticket trees and drives the parser:
 
 | Fixture | Proves |
 |---|---|

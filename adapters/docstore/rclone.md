@@ -21,7 +21,7 @@ owns only the local alias for the account that reaches it (`remote`, tier 3). `r
 double the prefix.
 
 **Every command below interpolates `{base_path}`, never `{remote}:{remote_path}` by hand.** The
-resolver composes `{base_path}` = `{remote}:{remote_path}` (`bin/effective_config.py`), exactly as it
+resolver composes `{base_path}` = `{remote}:{remote_path}` (`tools/effective_config.py`), exactly as it
 composes `{mount_root}/{drive_folder}` for the mounted adapters. That indirection is load-bearing,
 not cosmetic: `{base_path}` is the value delivery routing prints, fingerprints and metachar-checks,
 so writing the two halves out separately here would let what EXECUTES drift from what a human
@@ -29,7 +29,7 @@ approved — and a personal alias re-pointed after approval would then redirect 
 moving the `resolution_fingerprint`.
 
 **Under named targets** (`seams.docstore.targets:`), the destination is the ROUTED target's own,
-chosen from the ticket `delivery-plan.yaml`'s `classification:` declaration (`bin/delivery_plan.py`)
+chosen from the ticket `delivery-plan.yaml`'s `classification:` declaration (`tools/delivery_plan.py`)
 — never inferred from a folder name. `backup` records the target it used, and `link_for` is called
 against **that same target**, so a link can never be minted from a different store than the copy.
 
@@ -76,7 +76,7 @@ object store the top level lists buckets. Setup's folder question calls this ver
 
 ## verb: backup
 **In:** local ticket dir, dest name (**always full title, not just the ID** — recommended convention), and the
-routed `destination` from `bin/delivery_plan.py`. With per-person folders on (the default) that is
+routed `destination` from `tools/delivery_plan.py`. With per-person folders on (the default) that is
 `{base_path}/<person folder>`, the shipper's own folder inside the team's; with `per_person: false`
 it is `{base_path}` itself. Never rebuild it by hand: the routed value is the one the person approved.
 ```bash

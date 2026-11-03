@@ -16,7 +16,7 @@ Run the plugin doctor and paste its output. It reads local files only, sends not
 names the exact state an install is in:
 
 ```bash
-python3 ~/.claude/plugins/marketplaces/ticketwright/bin/plugin_doctor.py
+python3 ~/.claude/plugins/marketplaces/ticketwright/tools/plugin_doctor.py
 ```
 
 Inside a repo that `/setup` has configured, `bash bin/tw plugin_doctor.py` runs the same check.

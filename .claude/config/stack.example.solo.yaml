@@ -9,7 +9,7 @@
 # docstore are simply absent — /ship skips those artifacts and names the /setup command that would
 # enable them, rather than blocking.
 #
-# Field docs: stack.schema.md  ·  Validate: bash bin/verify_stack.sh .claude/config/stack.example.solo.yaml
+# Field docs: stack.schema.md  ·  Validate: bash tools/verify_stack.sh .claude/config/stack.example.solo.yaml
 
 project:
   # No key_prefix: there are no tracker keys to prefix. The session banner and statusline fall back

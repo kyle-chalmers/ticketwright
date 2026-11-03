@@ -15,11 +15,11 @@ auth: |
 Maps the `chat` verb contract to Teams. Same two rules as Slack: default to **draft**, and always
 include `{always_include}` (a fixed stakeholder list — never a self-tag). Teams uses Adaptive Cards /
 HTML rather than Slack mrkdwn. If `seams.chat.include_self: true`, also mention the shipper *in
-addition to* `{always_include}`: resolve via `bin/resolve_user.py`, preferring the handle in their
+addition to* `{always_include}`: resolve via `tools/resolve_user.py`, preferring the handle in their
 voice-profile frontmatter for `lookup_user`, else the resolver identity.
 
 **`{channel}` and `{always_include}` are the ROUTED resolution, not config reads** — the routed
-destination and recipient list from `bin/delivery_plan.py` (`destination` / `recipients`) that
+destination and recipient list from `tools/delivery_plan.py` (`destination` / `recipients`) that
 `/ship` pins. In the **default tool-only shape** the stack sets no `channel`: both are authored
 per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked
 at `/ship`.
@@ -28,7 +28,7 @@ at `/ship`.
 target's own — never another target's, never a slot-level one. Teams spells its destination key
 `channel` where Slack spells it `default_channel`, which is why this adapter declares
 `channel_key: channel` and no skill has to know the difference. The routed target comes from the
-ticket's `delivery-plan.yaml` `audience:` declaration (`bin/delivery_plan.py`), never from a channel
+ticket's `delivery-plan.yaml` `audience:` declaration (`tools/delivery_plan.py`), never from a channel
 name, a label, or the message text, and a routing failure never falls back to another channel.
 
 ## Permission posture (MCP)

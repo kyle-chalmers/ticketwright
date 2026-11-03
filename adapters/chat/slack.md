@@ -6,11 +6,11 @@ requires: [mcp]        # stack.yaml seams.chat.{mcp, default_mode}; destination 
 channel_key: default_channel   # THIS tool's destination key — read by delivery routing, never guessed by a skill
 user_keys: []             # tier-3 overridable: nothing here is machine-local; every key selects data or wires the seam
 default_surface: claude-code   # the runtime the `## verb:` sections were written against (Slack's own MCP tool names)
-surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by bin/adapter_surface.py
+surfaces: [codex-cli]          # runtimes that list this connector under other tool names: one `## Runtime surface:` section each, picked by tools/adapter_surface.py
 auth: |
   The `slack` MCP server must be connected. Verify with a read-only search.
   Verify: a `mcp__{mcp}__slack_search_channels` call returns without error (on a runtime with its
-  own section below, that section's probe instead: `bin/adapter_surface.py --probe` prints it).
+  own section below, that section's probe instead: `tools/adapter_surface.py --probe` prints it).
 note: |
   MCP cannot create a brand-new multi-person DM — create it once in the Slack UI, then reuse it.
 ---
@@ -23,14 +23,14 @@ to *draft*, not send — the human clicks send unless they say "send it";
 
 `{always_include}` is a **fixed stakeholder list** (the people always CC'd) — keep it that way. It is
 *not* a self-tag. If a repo also wants the shipper mentioned, set `seams.chat.include_self: true`
-(a **separate** token): resolve the shipper via `bin/resolve_user.py`, prefer the handle in their
+(a **separate** token): resolve the shipper via `tools/resolve_user.py`, prefer the handle in their
 voice-profile frontmatter (written once at `/setup --voice`) for `lookup_user`, else the resolver
 identity — and add that mention *in addition to* `{always_include}`. Never substitute the shipper
 *for* a stakeholder.
 
 **`{default_channel}` and `{always_include}` are the ROUTED resolution, not config reads.**
 `{default_channel}` is the routed **destination** and `{always_include}` the routed **recipient
-list**, both taken from `bin/delivery_plan.py`'s output (`destination` / `recipients`) that `/ship`
+list**, both taken from `tools/delivery_plan.py`'s output (`destination` / `recipients`) that `/ship`
 resolves and the fingerprint pins — the skill never reads a config key here. In the **default
 tool-only shape** the stack sets no `default_channel`: the destination + recipients are authored
 per-communication in the ticket's `delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked
@@ -106,7 +106,7 @@ Existing group DMs can be reused by searching; new multi-person DMs must be crea
 - The hosted connector **cannot post to Slack Connect (externally shared) channels**. A ticket
   whose audience lives in one goes out another way; say so at `/ship` rather than failing at send.
 - Tool names differ by agent: Codex CLI adds a `slack_` app prefix (in its own section of this file).
-  `bin/adapter_surface.py --adapter adapters/chat/slack.md` picks the right section for the agent
+  `tools/adapter_surface.py --adapter adapters/chat/slack.md` picks the right section for the agent
   running now. A name missing from your session's tool list is a gap to report so the kit can
   record it, never a local edit here or in a skill.
 - Tag the people the routed plan names; `{always_include}` is non-negotiable when the target has

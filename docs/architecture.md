@@ -74,7 +74,7 @@ verification proves them:
 2. **`adapters/<seam>/<tool>.md`** maps the abstract **verb contract** (`fetch_ticket`, `query`,
    `draft`, `backup`, `commit`, …) to that tool's concrete commands. Contract:
    [adapters/README.md](../adapters/README.md).
-3. **`bin/verify_stack.sh`** pings each slot's read-only `verify` before use — reachable slots
+3. **`tools/verify_stack.sh`** pings each slot's read-only `verify` before use — reachable slots
    run, unreachable ones halt with the adapter's auth notes.
 
 Skills are written **once against verbs** and never name a tool. Swapping a tool = edit
@@ -96,22 +96,22 @@ warehouse** — document/report deliverables, nothing to query) — the same ski
 
 **Adding a tool:** write one adapter (copy the closest reference in the same slot's directory;
 implement every verb section; keep the frontmatter), add a `verify` line to your `stack.yaml`
-entry, run `bash bin/verify_stack.sh`. No skill edits.
+entry, run `bash tools/verify_stack.sh`. No skill edits.
 
 **Chat delivery is decided per-communication.** The default single-mapping chat shape is *tool-only*
 — the stack names the tool and transport, not a standing channel. Who a result goes to varies by who
 it is *for*, so the destination and a non-empty recipient list are authored in the ticket's committed
-`delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at `/ship`; `bin/delivery_plan.py`
+`delivery-plan.yaml` (`chat.channel:` + `chat.recipients:`), asked at `/ship`; `tools/delivery_plan.py`
 halts (exit 9) rather than emit an empty channel, and the `resolution_fingerprint` pins those authored
 values so a plan edited after approval refuses.
 
 **Two audiences in one repo:** a `chat` or `docstore` slot that holds named targets routes per
 ticket, from a **declaration** — the ticket's committed `delivery-plan.yaml` names its `audience:`
-and `classification:`, and `bin/delivery_plan.py` matches those against the values each target
+and `classification:`, and `tools/delivery_plan.py` matches those against the values each target
 declares. Nothing infers an audience from prose, a channel name or a label, and nothing falls back:
 an absent or unmatched declaration halts and lists what is configured, because the target it would
 fall through to may be the external one. Each chat target carries its own non-empty `always_include`,
-applied after routing, and `bin/verify_stack.sh` fails a multi-target config that omits one. What the
+applied after routing, and `tools/verify_stack.sh` fails a multi-target config that omits one. What the
 kit cannot do is check a destination's real sharing permissions — `sharing_scope` is a declaration,
 not a verification. **Email is a chat target, not a slot of its own**: the `gmail`/`outlook` adapters map
 the same four chat verbs (destination key `to`, `always_include` rendered as visible Cc, draft-first
@@ -126,7 +126,7 @@ repo decides **when** a gate fires (policy `human_review_handoff`) and each pers
 it opens: the portable half (which file types you care about) lives in your committed
 `people/<id>.yaml`, the machine half (which application) in gitignored
 `.claude/config/connections.local.yaml`, and a full per-repo `.claude/config/viewer.local.yaml`
-(or a user-level file covering all your repos) wins when present. `bin/handoff.sh` resolves the
+(or a user-level file covering all your repos) wins when present. `tools/handoff.sh` resolves the
 layers and owns the rails — it never launches in CI or a headless session, never opens a path
 outside the project, and is a silent no-op when nothing is configured. Setup asks each person which
 app opens each kind of deliverable in one shared interview,
@@ -147,11 +147,11 @@ teammate one person's machine. Config is therefore three files:
 | 2 person, portable | `people/<id>.yaml` | yes | display name, identities, comms voice, file-type preferences |
 | 3 person, machine | `.claude/config/connections.local.yaml` | no | named profiles/connections, local mount roots |
 
-[`bin/effective_config.py`](../bin/effective_config.py) is the single authority that merges them, and
+[`tools/effective_config.py`](../tools/effective_config.py) is the single authority that merges them, and
 every consumer goes through it — nothing parses `stack.yaml` on its own any more. It is a public CLI
 needing no agent-specific environment variable, so it answers the same way under any harness.
 
-**WHO is working is resolved the same way.** [`bin/whoami.py`](../bin/whoami.py) is the single
+**WHO is working is resolved the same way.** [`tools/whoami.py`](../tools/whoami.py) is the single
 identity resolver (tier-3 `person:` → `$TICKETWRIGHT_PERSON` → the identities each person
 enumerates in `people/<id>.yaml`; statuses `resolved`/`miss`/`ambiguous`/`conflict`). It never
 guesses: a miss is answered by asking the person and recording the answer with
@@ -160,11 +160,11 @@ one person while git says another wins for the pin but warns naming both. **Who 
 how that was decided, is one answer from the resolver** — `owner` + `owner_source`
 (`resolved` · `unbound` · `assignee_dir_fallback` · `none`) — rather than a rule each skill
 re-derives. The person's tracker account is `tracker_handle` in the same file, set by their own
-`whoami.py --bind <id> --tracker-handle <account>`; `bin/assignee_check.py` compares it with a
+`whoami.py --bind <id> --tracker-handle <account>`; `tools/assignee_check.py` compares it with a
 ticket's assignee so `/ticket` can offer, never force, to assign the ticket to them.
 `project.assignee_dir` is the last resort for repos with no people map at all; once a
 roster exists, an unresolved person yields `unbound` and `/ticket` stops there, because filing an
-unbound teammate's work under that key lands it in a colleague's folder. `bin/resolve_user.py` is
+unbound teammate's work under that key lands it in a colleague's folder. `tools/resolve_user.py` is
 a thin shim over it that maps the resolved person to a voice profile, kept while `/ship` still
 calls it. The Claude SessionStart hook only *displays* the result ("Working as …") — it is never
 the resolver or the write path. Every ticket-opening and shipping workflow (`/ticket`, `/ship`,
@@ -179,9 +179,9 @@ Anything outside that allowlist is **rejected**, not ignored — a gitignored fi
 not be able to switch a safety gate off, and quietly discarding the attempt would be just as bad as
 honoring it.
 
-YAML is read by [`bin/_yamlite.py`](../bin/_yamlite.py), an explicit supported subset in stdlib
+YAML is read by [`tools/_yamlite.py`](../tools/_yamlite.py), an explicit supported subset in stdlib
 Python that fails loudly with a `file:line` rather than misreading. That is what lets the resolver
-keep the kit's zero-runtime-dependency promise, and it is why `bin/verify_stack.sh` no longer
+keep the kit's zero-runtime-dependency promise, and it is why `tools/verify_stack.sh` no longer
 requires `yq`.
 
 **Two deliberate exceptions.** `db_write_guard` and its `_stack` helper still read the policy
@@ -197,7 +197,7 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
 `.claude/settings.json` for non-plugin installs):
 
 - **`review_verdict_guard.py`** (PreToolUse/Bash) — the review-before-ship gate at the command
-  layer. `bin/review_verdict.py` is the classifier (the highest-numbered
+  layer. `tools/review_verdict.py` is the classifier (the highest-numbered
   `qc_queries/<n>_review_verdict.md`, its lowercase `verdict:` line → `approve` / `request-changes`
   / `skipped` / `awaiting-signoff` / `none` / `unreadable`, plus the deliverable count); the hook presents it on
   `git push`, `gh pr create|merge`, `glab mr`, `az repos pr create|update`, locating the ticket from the
@@ -214,11 +214,11 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   decision: the hook never approves a call, so it goes through the normal permission flow (the
   scanner still classifies it as `allow_fastpath`, which every presenter treats as silence). Under `bypassPermissions` it emits a `systemMessage` instead of asking, since
   the operator has already opted out of prompting.
-  The scanner itself lives in [`bin/sql_scan.py`](../bin/sql_scan.py) (one deterministic
-  implementation, shared with the non-Claude shims — logic in `bin/`, hooks as presentation); the
+  The scanner itself lives in [`tools/sql_scan.py`](../tools/sql_scan.py) (one deterministic
+  implementation, shared with the non-Claude shims — logic in `tools/`, hooks as presentation); the
   hook is the Claude-protocol presenter, and `tests/guard/golden.json` pins its stdin→stdout
   behavior byte-for-byte across that boundary. One failure mode is deliberate and new with the
-  split: if `bin/sql_scan.py` cannot be imported, the hook asks on **every** Bash command in the
+  split: if `tools/sql_scan.py` cannot be imported, the hook asks on **every** Bash command in the
   configured repo (naming the broken module) rather than falling into its blanket fail-open
   handler — nothing can be classified, so everything gates, visibly.
 - **`session_context.py`** (SessionStart) — primes every session with the configured stack, the
@@ -229,13 +229,13 @@ Claude Code hooks (declared in `.claude-plugin/plugin.json`; `setup` also wires 
   whenever a ticket folder changes.
 
 The hook *files* above are the Claude-Code-specific presentation; the logic they present is
-harness-neutral. [`bin/hook_shim.py`](../bin/hook_shim.py) adapts the same hooks to the other
+harness-neutral. [`tools/hook_shim.py`](../tools/hook_shim.py) adapts the same hooks to the other
 runtimes' protocols (`--runtime <name> --hook <name>`, protocol selected by each runtime adapter's
 `hook_protocol` frontmatter), and `ticketwright install` emits the wiring where a config location
 is documented: `.cursor/hooks.json` (with `failClosed: true` — required configuration on a
 fail-open-by-default runtime), `.agents/hooks.json` for Antigravity (PreToolUse guard +
 PostToolUse index regen), and the `.opencode/plugins/` throw-to-deny wrapper
-([`bin/opencode_tool_gate.js`](../bin/opencode_tool_gate.js)). Where the runtime has no ask tier
+([`tools/opencode_tool_gate.js`](../tools/opencode_tool_gate.js)). Where the runtime has no ask tier
 (codex-cli, opencode, devin), `high_risk` collapses to **deny-with-escape** — denied with a
 message naming the one-shot re-approval (`TICKETWRIGHT_APPROVE=once` prefix or the
 `.claude/config/approve.once` token, consumed on use) — never toward allow, and never blocking
@@ -252,7 +252,7 @@ comparison rule exist (the warehouse adapters), with outcomes recorded in gitign
 `.claude/config/posture.local.yaml` at setup time. Connector grants (chat/tracker) cannot be
 introspected in-session, so those cells cap at `unverified` and say so. Whether each runtime *honors* its documented wiring is
 live-verification work, tracked on the punch list ([`docs/live-verification.md`](live-verification.md),
-whose honesty link `bin/selftest.sh` section 44 enforces), and the docs must not imply parity
+whose honesty link `tools/selftest.sh` section 44 enforces), and the docs must not imply parity
 before it is paid.
 
 ## What's inside
@@ -278,7 +278,7 @@ before it is paid.
   `README.md`, or to `README.ticketwright.md` when a README already exists), ticket README, plan,
   spec, `.gitignore` (deliverables committed by default; PII opts out via `*.private.csv` / a
   `private/` subfolder), role snippets, and the generated-skill skeleton.
-- **`bin/`**: `verify_stack.sh`, `render.sh` (`--sections` fills multi-line prose such as `plan.md` from `## Heading` blocks) + `render_and_validate.sh` (render gate),
+- **`tools/`**: `verify_stack.sh`, `render.sh` (`--sections` fills multi-line prose such as `plan.md` from `## Heading` blocks) + `render_and_validate.sh` (render gate),
   `split_and_export.sh`, `handoff.sh` (the review-gate opener; `--check-apps` checks app names),
   `selftest.sh` (the CI suite + hook unit tests), the config/identity resolvers
   (`effective_config.py`, `whoami.py` + its voice shim `resolve_user.py`), the assign-offer check
@@ -340,15 +340,15 @@ to anyone adopting or extending the kit:
   they are not (cline) or the definition path is undocumented (opencode).
 
 One implementation, three ways in: `ticketwright install` (the pip entrypoint registers
-`bin/emit_runtime.py`), `bin/install.sh` (the shell convenience in the `bin/tw` launcher pattern),
+`tools/emit_runtime.py`), `tools/install.sh` (the shell convenience in the `bin/tw` launcher pattern),
 or the script directly. There is deliberately no fourth install route.
 
 ## One relationship model, two renderings
 
-`bin/build_ticket_index.py` resolves tickets, objects and cross-references once, then writes the
+`tools/build_ticket_index.py` resolves tickets, objects and cross-references once, then writes the
 result twice, each rendering tuned to its reader:
 
-- **The catalog** - `tickets/INDEX.md`, `tickets/OBJECTS.md`, and the `bin/recall.py` ranking over
+- **The catalog** - `tickets/INDEX.md`, `tickets/OBJECTS.md`, and the `tools/recall.py` ranking over
   `tickets/index_data.json` - is how an **agent** queries the relationships.
 - **The graph layer** - `tickets/graph/<owner>.<id>.md` + `tickets/objects/<object>.md`, browsable
   as an Obsidian vault ([docs/obsidian.md](obsidian.md)) - is how a **person** sees the shape of

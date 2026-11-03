@@ -33,14 +33,14 @@ and uploads via `pypa/gh-action-pypi-publish`.
 
 1. Bump all three version files in one command, then add a `CHANGELOG.md` entry:
    ```bash
-   bash bin/bump_version.sh 3.4.0
+   bash tools/bump_version.sh 3.4.0
    ```
    It rewrites `ticketwright/__init__.py` (the source of truth — `pyproject.toml` reads it
    dynamically via Hatch, so there is nothing to edit there), `.claude-plugin/plugin.json`, and
    `.claude-plugin/marketplace.json`, then verifies they agree and both manifests still parse.
    Doing this by hand is what let PyPI drift a full minor behind the plugin; `selftest.sh` §16
    fails the build if the three ever disagree.
-2. `bash bin/selftest.sh` — must be green.
+2. `bash tools/selftest.sh` — must be green.
 3. Commit, then tag and push the tag:
    ```bash
    git tag v3.4.0 && git push origin v3.4.0
@@ -65,7 +65,7 @@ by hand per release; if the job fails, the listing keeps serving the previous ve
 `vX.Y.Z` tag moves it: a prerelease tag such as `v4.3.0rc1` still publishes to PyPI but leaves the
 listing alone. `.git-sweep-keep` stops branch cleanup from deleting `directory`.
 
-**The listing serves a trimmed tree.** The commit holds the release tree but removes `tests/`, `scripts/`, `.github/`, `docs/images/`, `docs/maintainers/` and `bin/selftest.sh`.
+**The listing serves a trimmed tree.** The commit holds the release tree but removes `tests/`, `scripts/`, `.github/`, `docs/images/`, `docs/maintainers/` and `tools/selftest.sh`.
 Those are dev-only, and they are paths that trip the directory's reviewer holds: the self-test is
 over the 256 KiB per-file limit, a test fixture is a binary that is not an image, the media scripts
 and the README images are PNGs and GIFs a script could reach (the README loads its images from
@@ -117,7 +117,7 @@ Three rules follow from how the directory and Claude Code pick up a version:
 
 - **`version` must rise with every release.** The directory's checklist requires it, and Claude
   Code keeps an installed plugin on the `version` in `plugin.json` until that changes, so a commit at
-  an unchanged version reaches no existing install. `bin/bump_version.sh` already moves all three
+  an unchanged version reaches no existing install. `tools/bump_version.sh` already moves all three
   version files, the tag check in `publish.yml` refuses a tag that disagrees with
   `ticketwright/__init__.py`, and selftest section 16 keeps `plugin.json` in step with that file.
   This is also why the listing does not follow `main`: day-to-day commits there stay at the last
@@ -131,12 +131,11 @@ Three rules follow from how the directory and Claude Code pick up a version:
   top of it, the listed `/setup` is v4.9.1's, which still runs the removed self-test. The release
   also proves the Actions half. Submission is done by the maintainer in the portal.
 
-**The listing is Claude Code only.** Ticketwright ships its scripts in a top-level `bin/`, and
-claude.ai chat and Cowork refuse to install a plugin that has one
-([platform support](https://claude.com/docs/plugins/platform-support)); the portal derives the
-supported surfaces from that rule. `bin/` stays where it is: every installed project's `bin/tw`
-resolves kit scripts at `<kit>/bin/`, and those scripts are the harness-neutral layer the skills
-call (AGENTS.md, tiebreaker 5).
+**Why the kit's scripts live in `tools/`.** claude.ai chat and Cowork refuse to install a plugin
+with a top-level `bin/` ([platform support](https://claude.com/docs/plugins/platform-support)), and
+the portal derives the supported surfaces from that rule. So the kit keeps its scripts in `tools/`
+and ships no top-level `bin/` (LABS-209). The project launcher still lives at `<project>/bin/tw`:
+that folder is in the team's repo, not in the plugin, and it reads a kit in either layout.
 
 **What the directory checks, and where this repo stands.** The CI `plugin-directory` job runs
 `claude plugin validate --profile directory --strict` (Claude Code 2.1.305 or later) on the committed
@@ -165,7 +164,7 @@ to the plugin.
 The maintainer does this from their own claude.ai account; no script or agent touches the portal.
 
 1. Push the one-time bootstrap (above) if `directory` still has `tests/`. Then cut a release
-   (`bash bin/bump_version.sh X.Y.Z`, merge, push the `vX.Y.Z` tag) and wait for `publish.yml`'s
+   (`bash tools/bump_version.sh X.Y.Z`, merge, push the `vX.Y.Z` tag) and wait for `publish.yml`'s
    `directory-branch` job to go green. Confirm the newest commit on `directory` starts
    `directory: vX.Y.Z` and that its `.claude/skills/setup/teammate.md` offers the self-test only on a
    kit that has it. Both are required: the release is what lists a `/setup` that works without the
@@ -195,9 +194,9 @@ The maintainer does this from their own claude.ai account; no script or agent to
   a model CLI resolved per runtime (`adapters/runtime/*.md`, or `--model-cmd`), so this one **does**
   need some model command on `PATH` — `claude` by default.
 
-The kit assets (`bin/`, `.claude/`, `adapters/`, `templates/`) are bundled into the wheel under
+The kit assets (`tools/`, `.claude/`, `adapters/`, `templates/`) are bundled into the wheel under
 `ticketwright/_kit/` via hatchling `force-include`, so the Claude Code **plugin** and `cp -r` install
-paths (which reference `bin/` at the repo root) are unchanged.
+paths (which reference `tools/` at the repo root) are unchanged.
 
 `.claude/config` is force-included **file by file**, not as a directory: the repo's own
 `.claude/config/stack.yaml` is a fictional "Acme" worked example, and mapping the directory shipped
