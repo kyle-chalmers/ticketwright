@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **The docs say any warehouse with a command-line client works, not only the six that ship.** The
+  README's tool table adds "any CLI" to the warehouse row, and `adapters/README.md` explains the
+  step that matters: name the warehouse's CLI in the seam's `cli:` key, and the write guard inspects
+  that CLI's SQL like it does for the shipped adapters. No behavior changed; the guard already read
+  `cli:` (`tools/sql_scan.py`).
+
 ## [4.11.0] - 2026-11-02
 
 The kit's scripts now live in `tools/` instead of the plugin's top-level `bin/` folder, which
