@@ -62,7 +62,7 @@ config line and one adapter file:
 | Tool slot | Works with |
 |---|---|
 | Tracker | Jira (`acli` optional), Azure DevOps, Linear, Asana, Monday, GitHub Issues, or none (`id_mode: slug`) |
-| Warehouse | Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse, or none |
+| Warehouse | Snowflake, BigQuery, Databricks, Postgres, Redshift, Synapse, any CLI, or none |
 | Chat | Slack, Teams, Gmail, Outlook |
 | Docs | Google Drive, SharePoint, or Dropbox/S3/Box through rclone |
 | Meetings | Zoom, Fireflies, Granola, Teams, Notion (optional) |

@@ -149,6 +149,11 @@ always produces a *default the human confirms*, never an automatic selection.
 | `describe` | object name | columns + types (and DDL when supported) |
 | `dialect_notes` | — | *static section*: function names, sizing model, dedup idiom, type-cast rules, the warehouse-specific anti-patterns the `review` skill checks |
 
+Any warehouse with a command-line client can fill this seam. Name its CLI in the seam's `cli:` key
+(`warehouse: {tool: trino, cli: trino, adapter: adapters/warehouse/trino.md}`) and the write guard
+(`tools/sql_scan.py`) adds it to the CLIs it inspects, so high-risk SQL through it asks first like
+the shipped adapters do. SQL sent through an MCP server is not a shell command and is not seen.
+
 ### `chat` — team messaging
 | Verb | Inputs | Returns |
 |---|---|---|
